@@ -1,0 +1,27 @@
+﻿--- Running process check (node/npm/prisma) ---
+
+Name    Id       CPU StartTime            
+----    --       --- ---------            
+node 20388  1.328125 12/22/2025 4:01:01 PM
+node 20400      17.5 12/23/2025 8:52:08 PM
+node 27464         0 12/22/2025 6:07:53 PM
+node 33488       1.5 12/23/2025 8:56:15 PM
+node 37328   4.84375 12/22/2025 4:01:00 PM
+node 39648  0.609375 12/23/2025 2:40:04 PM
+node 41584 34.578125 12/22/2025 4:01:00 PM
+node 47788   1.09375 12/23/2025 8:56:14 PM
+
+
+
+--- Running process check (schema/query engines) ---
+
+Name                     Id      CPU StartTime            
+----                     --      --- ---------            
+schema-engine-windows 31576 0.078125 12/23/2025 8:56:16 PM
+
+
+
+--- DATABASE_URL sanity (no secrets) ---
+DATABASE_URL scheme ok: True
+DATABASE_URL length: 109
+DATABASE_URL prefix: postgresql:/...

@@ -1,0 +1,3637 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<!-- CACHE BUSTER v1.0.8 REMOVE-DEFERRED-404 -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://js.stripe.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://connect.facebook.net https://www.facebook.com https://api.stripe.com https://h2s-backend.vercel.app ws: wss: http://127.0.0.1:* ws://127.0.0.1:*; frame-src https://api.leadconnectorhq.com https://js.stripe.com;">
+<!-- H2S UTILS: Scroll Lock & Parity -->
+<script>
+window.H2S_lockScroll = function() {
+  // 1. Lock Body
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+  
+  // 2. Find and lock GHL wrapper if it's scrolling
+  var scrollable = Array.from(document.querySelectorAll('div')).find(div => {
+    return div.scrollHeight > div.clientHeight && 
+           (getComputedStyle(div).overflowY === 'auto' || getComputedStyle(div).overflowY === 'scroll');
+  });
+  
+  if (scrollable) {
+    scrollable.dataset.wasOverflow = scrollable.style.overflow;
+    scrollable.style.overflow = 'hidden';
+    window._ghlScrollContainer = scrollable;
+  }
+};
+
+window.H2S_unlockScroll = function() {
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+  
+  if (window._ghlScrollContainer) {
+    window._ghlScrollContainer.style.overflow = window._ghlScrollContainer.dataset.wasOverflow || '';
+    delete window._ghlScrollContainer;
+  }
+};
+</script>
+<!-- Meta Pixel base is installed globally via GLOBAL-TRACKING-HEADER.html -->
+<!-- Security -->
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
+<link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://js.stripe.com" crossorigin>
+<link rel="preconnect" href="https://api.stripe.com" crossorigin>
+<link rel="dns-prefetch" href="https://connect.facebook.net">
+<title>Smart Home Packages &bull; Home2Smart</title>
+<meta name="description" content="TV mounting and security camera packages. Pick a package, we handle the rest. Done right, done once.">
+<meta name="theme-color" content="#0a2a5a">
+
+<!-- SEO: Open Graph -->
+<meta property="og:title" content="Smart Home Installation Packages | Home2Smart">
+<meta property="og:description" content="Professional TV mounting & security camera installation. Licensed, insured, instant booking within availability. 500+ homes served, 4.9&#9733; rating.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://home2smart.com/bundles">
+<meta property="og:site_name" content="Home2Smart">
+
+<!-- SEO: Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Smart Home Installation Packages | Home2Smart">
+<meta name="twitter:description" content="Professional TV mounting & security camera installation. Licensed, insured, instant booking within availability.">
+
+<!-- SEO: Canonical URL -->
+<link rel="canonical" href="https://home2smart.com/bundles">
+
+<!-- SEO: Robots -->
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+
+<!-- Performance: Critical Resource Hints -->
+<link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://h2s-backend.vercel.app">
+<link rel="preconnect" href="https://js.stripe.com" crossorigin>
+<link rel="preconnect" href="https://api.stripe.com" crossorigin>
+<link rel="dns-prefetch" href="https://storage.googleapis.com">
+<!-- Add favicon to avoid 404 in local dev -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
+<!-- Preload logo for faster LCP (highest priority resource) -->
+<link rel="preload" href="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" as="image" fetchpriority="high" imagesrcset="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png 1x" imagesizes="64px">
+<!-- Font woff2 preload removed - version-specific URL (v18) causes 404 errors -->
+
+<!-- H2S Tracking Diagnostics & Enforcement -->
+<script defer>
+(function() {
+  const ls = window.localStorage;
+  
+  // RFC4122 v4 UUID fallback (for browsers without crypto.randomUUID)
+  function uuidv4Fallback() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  function getOrCreateVisitorId() {
+    let vid = ls.getItem('h2s_visitor_id');
+    if (!vid) {
+      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_visitor_id', vid);
+    }
+    return vid;
+  }
+  
+  function getOrCreateSessionId() {
+    let sid = ls.getItem('h2s_session_id');
+    if (!sid) {
+      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_session_id', sid);
+    }
+    return sid;
+  }
+  async function sendBackend(event_type, params={}) {
+    const visitor_id = getOrCreateVisitorId();
+    const session_id = getOrCreateSessionId();
+    
+    // Validate UUIDs before sending
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(visitor_id)) {
+      // Regenerate and try again
+      ls.removeItem('h2s_visitor_id');
+      return sendBackend(event_type, params);
+    }
+    if (!uuidRegex.test(session_id)) {
+      ls.removeItem('h2s_session_id');
+      return sendBackend(event_type, params);
+    }
+    
+    // Extract UTM parameters from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const utm_source = urlParams.get('utm_source') || null;
+    const utm_medium = urlParams.get('utm_medium') || null;
+    const utm_campaign = urlParams.get('utm_campaign') || null;
+    const utm_term = urlParams.get('utm_term') || null;
+    const utm_content = urlParams.get('utm_content') || null;
+    
+    const payload = {
+      event_type,
+      visitor_id,
+      session_id,
+      occurred_at: new Date().toISOString(),
+      page_url: location.href,
+      page_path: location.pathname,
+      referrer: document.referrer || '(direct)',
+      user_agent: navigator.userAgent,
+      // UTM parameters
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_term,
+      utm_content,
+      // Merge custom params
+      ...params
+    };
+    
+    try {
+      const res = await fetch('https://h2s-backend.vercel.app/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const txt = await res.text();
+      
+      if (!res.ok) {
+        // Parse error details
+        let errorDetails = txt;
+        try {
+          const errorJson = JSON.parse(txt);
+          errorDetails = errorJson.error || errorJson.details || txt;
+          
+          // Check for specific error types
+          if (errorDetails.includes('foreign key constraint') || errorDetails.includes('visitor_id_fkey')) {
+            // Backend needs to auto-create visitors
+          } else if (errorDetails.includes('invalid input syntax for type uuid')) {
+            ls.removeItem('h2s_visitor_id');
+            ls.removeItem('h2s_session_id');
+          }
+        } catch(e) {
+          // txt is not JSON, use as-is
+        }
+        
+        return { ok: false, error: errorDetails, status: res.status };
+      }
+      
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+  function onReady(fn){
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
+    else fn();
+  }
+  // REMOVED: page_view auto-send (global header handles it to avoid duplication)
+  // Global header tracking auto-sends page_view on page load
+  onReady(() => {
+    // PageView is handled by global header tracking
+    // Only send custom events here if needed
+  });
+  
+  // Expose globally with initialization flag
+  window.h2sSendBackend = sendBackend;
+  window.__H2S_TRACKING_READY__ = true;
+})();
+</script>
+
+<!-- Critical Fonts -->
+<!-- Fonts loaded async to avoid render-blocking -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" as="style" crossorigin onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" rel="stylesheet" crossorigin></noscript>
+
+<style>
+@font-face {
+  font-family: 'Archivo-fallback';
+  src: local('Arial');
+  font-display: swap;
+  size-adjust: 105%;
+  ascent-override: 95%;
+  descent-override: 25%;
+}
+body { font-family: Archivo, 'Archivo-fallback', system-ui, -apple-system, sans-serif; }
+</style>
+
+
+<!-- Page-only overrides: remove chat emoji/bubble on this page -->
+<style>
+  /* Hide decorative emoji/pseudo content used by chat launchers */
+  [data-chat-widget]::before,
+  [data-chat-widget]::after { content: '' !important; display: none !important; }
+  /* Hide common chat launcher containers (LeadConnector/GHL variants) */
+  [data-chat-widget],
+  .chat-widget-container,
+  #ghl-widget,
+  .ghl-widget,
+  .ghl-chat-widget,
+  .hl-cw-widget,
+  .leadconnector-chat-widget { display: none !important; }
+  /* Safety: strip any inline emoji spans inside chat launchers */
+  [data-chat-widget] .emoji, .chat-widget-container .emoji { display: none !important; }
+</style>
+
+
+
+<!-- Load remaining font weights async (non-blocking, low priority) -->
+<style>
+/* === CRITICAL CSS (INLINE) === */
+/* Performance: contain layout shifts */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+img, video { max-width: 100%; height: auto; }
+
+/* === ANTI-GHL RESET (User Requested Parity) === */
+:where(.hl_page-preview--content),
+:where(.c-section),
+:where(.c-row),
+:where(.c-column),
+:where(.inner) {
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  max-width: none !important;
+  width: 100% !important;
+  overflow: visible !important;
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+}
+
+/* Force Page Shell to own the view */
+#pageShell {
+  position: relative;
+  min-height: 100vh;
+  width: 100%;
+  background: var(--bg);
+  font-family: Archivo, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  isolation: isolate; /* Create new stacking context */
+  z-index: 1;
+}
+
+/* Ensure Modals are above everything */
+#modalRoot {
+  position: relative;
+  z-index: 99999; /* Nuclear option */
+}
+
+:root {
+  --cobalt: #0a2a5a;
+  --azure: #1493ff;
+  --ink: #0b1420;
+  --bg: #ffffff;
+  --border: #e1e6ed;
+  --muted: #6b778c;
+  --shadow-sm: 0 2px 8px rgba(11,20,32,.06);
+  --shadow-md: 0 4px 16px rgba(11,20,32,.08);
+  --shadow-lg: 0 8px 24px rgba(11,20,32,.12);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+  background: var(--cobalt); /* Prevent white flash / overscroll raw area */
+  overscroll-behavior-y: none; /* Clamp bounce */
+  overflow-x: clip; /* Prevent horizontal scroll without creating clip boundary for vertical content */
+}
+
+body {
+  /* Performance: Use system font first, upgrade to Archivo when it loads */
+  font-family: Archivo, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 'Archivo-fallback', Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.6;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Prevent body scroll when modal is open */
+html.modal-open,
+body.modal-open {
+  overflow: hidden !important;
+  touch-action: none;
+}
+
+body.modal-open {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+}
+
+#pageShell {
+  background: #fff;
+  min-height: 100vh;
+  position: relative;
+}
+
+/* === URGENCY BANNER === */
+.urgency-banner {
+  position: fixed;
+  bottom: 24px; /* Move to bottom to avoid header conflict and CLS */
+  top: auto;
+  left: 50%;
+  right: auto;
+  width: auto;
+  min-width: 300px;
+  max-width: 90%;
+  transform: translateX(-50%) translateY(150%); /* Start hidden below */
+  z-index: 1200;
+  background: linear-gradient(135deg, #ff6b35 0%, #f7931e 100%);
+  color: #fff;
+  padding: 12px 24px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  box-shadow: 0 8px 24px rgba(247, 147, 30, 0.3);
+  border-radius: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  height: auto;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.urgency-banner.visible {
+  transform: translateX(-50%) translateY(0);
+}
+
+.urgency-banner.dismissed {
+  display: none;
+}
+
+.urgency-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.urgency-text strong {
+  font-weight: 800;
+}
+
+.urgency-separator {
+  opacity: 0.6;
+}
+
+.urgency-close {
+  background: rgba(255,255,255,.2);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  transition: background 0.2s ease;
+  padding: 0;
+  margin-left: 8px;
+}
+
+.urgency-close:hover {
+  background: rgba(255,255,255,.3);
+}
+
+@media (max-width: 768px) {
+  .urgency-banner {
+    bottom: 16px;
+    padding: 10px 16px;
+    font-size: 13px;
+    width: 92%;
+    border-radius: 12px;
+  }
+  
+  .urgency-text {
+    gap: 8px;
+  }
+
+  /* Mobile form improvements */
+  .form {
+    margin: 40px 16px;
+    padding: 24px;
+    max-width: 100%;
+  }
+
+  .form h2 {
+    font-size: 24px;
+  }
+
+  .inp {
+    font-size: 16px; /* Prevents iOS zoom */
+  }
+
+  .btn {
+    min-height: 48px; /* Better touch targets */
+  }
+
+  .link-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Calendar Mobile Fix */
+  .cal-day {
+    padding: 6px !important;
+    font-size: 13px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+  }
+  
+  .schedule-container {
+    padding: 12px;
+  }
+  
+  .calendar-widget {
+    padding: 8px;
+  }
+}
+
+/* === MOBILE TOUCH & SCROLL OPTIMIZATION === */
+@media (max-width: 768px) {
+  /* Prevent double-tap zoom on buttons/links */
+  button, a, .btn, .link-btn {
+    touch-action: manipulation;
+  }
+  
+  /* Enhanced touch feedback - visual confirmation of taps */
+  .btn:active,
+  button:active,
+  .link-btn:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+  
+  /* Ensure cart items have visible active state */
+  .cart-item:active,
+  .bundle-card:active {
+    background: #f8f9fb;
+  }
+  
+  /* Smooth momentum scrolling for all scrollable areas */
+  .cart-body, .modal-content, .outlet, body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Prevent accidental horizontal scroll */
+  body, html {
+    overscroll-behavior-x: none;
+    overflow-x: hidden;
+  }
+  
+  /* Ensure text inputs don't cause zoom (16px minimum) */
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+  
+  /* Better tap targets - minimum 44x44px */
+  button, a, input[type="submit"], input[type="button"], .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Remove tap highlight on iOS */
+  button, a, input, textarea, select {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Ensure cart drawer scrolls smoothly */
+  .cart-drawer {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  
+  /* === SUCCESS PAGE MOBILE OPTIMIZATIONS === */
+  .form {
+    padding: 20px 16px !important;
+    margin: 20px auto 40px !important;
+    max-width: 100% !important;
+  }
+  
+  .details-grid > div {
+    padding: 10px 0 !important;
+  }
+  
+  .schedule-container {
+    padding: 16px !important;
+  }
+  
+  /* Make calendar responsive on mobile */
+  #calendarWidget {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .calendar-grid {
+    min-width: 280px;
+  }
+  
+  /* Ensure success page content scrolls properly */
+  #outlet {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  
+  /* Prevent text selection during scrolling */
+  .cart-body, .cart-item {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  
+  /* Allow text selection in inputs */
+  input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+/* Calendar Desktop Default */
+.cal-day {
+  padding: 12px;
+}
+
+.schedule-container {
+  padding: 16px;
+}
+
+.calendar-widget {
+  padding: 12px;
+}
+
+
+/* === HEADER (FULL BLEED) === */
+.header {
+  position: fixed; /* Clamp header */
+  inset: 0 0 auto 0;
+  height: 56px;
+  z-index: 200;
+  background: var(--cobalt);
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  box-shadow: var(--shadow-md);
+  width: 100%;
+  will-change: transform;
+  transition: top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  top: 0;
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+  font-weight: 900;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.logo-img {
+  width: 36px;
+  height: 36px;
+  display: block;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.menu-btn,
+.cart-btn,
+#accountBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+  position: relative;
+}
+
+.menu-btn:hover,
+.cart-btn:hover,
+#accountBtn:hover {
+  background: rgba(255,255,255,.1);
+}
+
+.menu-btn:focus-visible,
+.cart-btn:focus-visible,
+#accountBtn:focus-visible {
+  outline: 2px solid rgba(255,255,255,.4);
+  outline-offset: 2px;
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cart-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: var(--azure);
+  color: var(--cobalt);
+  font-size: 11px;
+  font-weight: 900;
+  padding: 2px 5px;
+  border-radius: 10px;
+  line-height: 1;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* === HERO === */
+.hero {
+  background-color: var(--cobalt);
+  background-image: linear-gradient(160deg, var(--cobalt) 0%, #0b1420 100%);
+  color: #fff;
+  padding: 72px 16px 56px;
+  text-align: center;
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  box-sizing: border-box;
+  transition: padding-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hero-inner {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.hero h1 {
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 12px;
+}
+
+.hero p {
+  font-size: 17px;
+  opacity: 1; /* Remove faded look on initial paint */
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+
+.hero-ctas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  max-width: 480px;
+  margin: 0 auto 24px;
+}
+
+/* Ghost buttons on hero (dark background) need light styling */
+.hero .btn-ghost {
+  background: transparent;
+  color: #fff;
+  border: 2px solid rgba(255,255,255,0.5);
+  font-weight: 600;
+}
+
+.hero .btn-ghost:hover {
+  background: rgba(255,255,255,0.15);
+  border-color: #fff;
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(255,255,255,0.2);
+}
+
+.hero .btn-ghost:active {
+  background: rgba(255,255,255,0.25);
+}
+
+/* === HERO REVIEW CAROUSEL === */
+.hero-reviews {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 16px 20px;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(10,42,90,0.12);
+  border: 1px solid rgba(255,255,255,0.6);
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-height: 120px; /* Prevent CLS when reviews load */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.hero-reviews:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(10,42,90,0.18);
+  border-color: rgba(20,147,255,0.3);
+}
+
+.hero-review-slide {
+  display: none;
+  animation: hero-review-fade 0.5s ease;
+}
+
+.hero-review-slide.active {
+  display: block;
+}
+
+@keyframes hero-review-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-review-stars {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #fbbf24;
+}
+
+.hero-review-text {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  text-align: center;
+  margin-bottom: 8px;
+  font-style: italic;
+  
+  /* Clamp to 2 lines with ellipsis */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 42px; /* 14px * 1.5 * 2 lines = prevent layout shift */
+  max-height: 42px;
+}
+
+.hero-review-text:empty {
+  display: none; /* Hide if no text */
+}
+
+.hero-review-author {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}
+
+.hero-review-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 12px;
+  padding-bottom: 4px;
+}
+
+.hero-review-dots::after { content: ''; display: none; }
+
+.hero-reviews:hover .hero-review-dots::after {
+  opacity: 0.7;
+}
+
+.hero-review-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.hero-review-dot.active {
+  background: var(--azure);
+  width: 20px;
+  border-radius: 3px;
+}
+
+/* === BUTTONS === */
+.btn {
+  appearance: none;
+  border: none;
+  background: var(--azure);
+  color: var(--cobalt);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 14px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  line-height: 1;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(20,147,255,.25);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:focus-visible {
+  outline: 3px solid rgba(20,147,255,.3);
+  outline-offset: 2px;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--cobalt);
+  border: 2px solid var(--azure);
+  font-weight: 600;
+}
+
+.btn-ghost:hover {
+  background: var(--azure);
+  color: #fff;
+  border-color: var(--azure);
+  box-shadow: 0 2px 8px rgba(20,147,255,0.2);
+}
+
+.btn-ghost:active {
+  background: #0c7fd9;
+}
+
+.btn-primary {
+  background: var(--azure);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(20,147,255,0.25);
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: #0c7fd9;
+  box-shadow: 0 4px 12px rgba(20,147,255,0.35);
+  transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(20,147,255,0.3);
+}
+
+.btn-secondary {
+  background: var(--cobalt);
+  color: #fff;
+}
+
+.btn-subtle {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 16px;
+}
+
+.btn-subtle:hover {
+  background: #f5f7fa;
+  color: var(--cobalt);
+  box-shadow: none;
+}
+
+/* === SPINNER (Loading Indicator) === */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Dark spinner for light backgrounds */
+.spinner-dark {
+  border-color: rgba(10, 42, 90, 0.2);
+  border-top-color: var(--cobalt);
+}
+
+/* === SECTION === */
+.section {
+  padding: 64px 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  background: #fff;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Only card sections need visible overflow to prevent clipping */
+#tv.section,
+#security.section {
+  overflow: visible;
+}
+
+.section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  background: linear-gradient(180deg, #f8f9fb 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 0; /* sit below card content */
+}
+
+/* Do not render the top gradient on sections with interactive cards */
+#tv.section::before,
+#security.section::before {
+  display: none;
+}
+
+.section-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.section-header h2 {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--cobalt);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.section-header p {
+  font-size: 16px;
+  color: var(--muted);
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* === TRUST BAR === */
+.trust-bar {
+  background-color: var(--cobalt);
+  background-image: linear-gradient(135deg, var(--cobalt) 0%, #0d3568 100%);
+  padding: 24px 16px;
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  box-sizing: border-box;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 100px;
+}
+
+.trust-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(20, 147, 255, 0.3) 50%, transparent 100%);
+}
+
+.trust-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(20, 147, 255, 0.3) 50%, transparent 100%);
+}
+
+.trust-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .trust-inner {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.trust-item {
+  text-align: center;
+  color: #fff;
+}
+
+.trust-item strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 900;
+  margin-bottom: 4px;
+  color: var(--azure);
+  letter-spacing: -0.02em;
+}
+
+.trust-item span {
+  font-size: 13px;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+/* === REVIEW CAROUSEL === */
+.review-carousel {
+  position: relative;
+  overflow: hidden;
+  padding: 96px 0 104px; /* Increased vertical padding for breathability */
+  background-color: #fafbfc;
+  background-image: linear-gradient(180deg, #fafbfc 0%, #f5f7fa 50%, #ffffff 100%);
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px;
+}
+
+/* Track container to handle overflow properly */
+.review-track-container {
+  overflow: hidden;
+  max-width: 1280px; /* Slightly wider to let cards breathe */
+  margin: 0 auto;
+  padding: 0 24px; /* Balanced outer padding */
+}
+
+/* Softer, subtle top fade instead of hard line */
+.review-carousel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: linear-gradient(180deg, rgba(248, 249, 251, 1) 0%, rgba(248, 249, 251, 0) 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Softer bottom fade */
+.review-carousel::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  background: linear-gradient(0deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0) 100%);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.review-carousel-header {
+  text-align: center;
+  margin-bottom: 56px; /* More space between header and cards */
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 16px;
+  position: relative;
+  z-index: 20;
+}
+
+.review-carousel-header h2 {
+  font-size: 36px; /* Larger headline */
+  font-weight: 900;
+  color: var(--cobalt);
+  margin-bottom: 16px;
+  letter-spacing: -0.03em;
+}
+
+.review-carousel-header p {
+  font-size: 18px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.review-track {
+  display: flex;
+  transition: transform 0.6s cubic-bezier(0.25, 1, 0.5, 1); /* Smoother ease-out */
+  gap: 0;
+  will-change: transform;
+  width: 100%;
+  padding-bottom: 40px; /* Space for shadows */
+}
+
+.review-card {
+  flex: 0 0 calc(100% - 24px); /* Mobile: 1 card */
+  background: #fff;
+  border-radius: 24px; /* Softer corners */
+  padding: 32px;
+  box-shadow: 0 4px 20px rgba(10, 42, 90, 0.06); /* Cleaner shadow */
+  border: 1px solid rgba(10, 42, 90, 0.06);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  margin: 0 12px; /* 24px gap total */
+  height: auto; /* Allow stretch */
+  position: relative;
+}
+
+.review-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 32px rgba(10, 42, 90, 0.12);
+  border-color: rgba(20, 147, 255, 0.3);
+}
+
+@media (min-width: 768px) {
+  .review-card {
+    flex: 0 0 calc(50% - 24px); /* Tablet: 2 cards */
+  }
+}
+
+@media (min-width: 1024px) {
+  .review-card {
+    flex: 0 0 calc(33.333% - 24px); /* Desktop: 3 cards */
+  }
+}
+
+.review-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.review-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--azure), var(--cobalt));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.review-meta {
+  flex: 1;
+}
+
+.review-name {
+  font-weight: 700;
+  color: var(--cobalt);
+  margin-bottom: 2px;
+  font-size: 15px;
+}
+
+.review-stars {
+  color: #fbbf24;
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+
+.review-time {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-top: 2px;
+  font-weight: 500;
+}
+
+.review-text {
+  color: #4b5563;
+  line-height: 1.65;
+  font-size: 15px;
+  margin-bottom: 16px;
+  flex-grow: 1;
+  max-height: none; /* Allow natural height */
+  position: relative;
+}
+
+/* Quote marks for authenticity */
+.review-text::before { content: none; }
+
+.review-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(10, 42, 90, 0.06);
+}
+
+.review-service {
+  font-size: 13px;
+  color: var(--azure);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.review-service::before { content: none; }
+
+.review-verified {
+  font-size: 11px;
+  color: #10b981;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.08);
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.review-verified::before { content: none; }
+
+.review-nav {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.review-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d5db;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.review-dot.active {
+  background: var(--azure);
+  width: 24px;
+  border-radius: 4px;
+}
+
+/* === PACKAGE GRID === */
+.package-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: 1fr;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+  margin: -8px; /* negative margin to give cards breathing room */
+  padding: 8px; /* compensate with padding to maintain spacing */
+}
+
+@media (min-width: 640px) {
+  .package-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .package-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* === PACKAGE CARD === */
+.package {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
+  position: relative;
+  z-index: 10;
+  transform: translateZ(0); /* force GPU layer to prevent clipping */
+  backface-visibility: hidden; /* smoother compositing */
+  contain: layout style paint; /* CSS containment for better rendering */
+  content-visibility: auto; /* render only visible cards */
+}
+
+.package:hover {
+  border-color: rgba(20,147,255,.4);
+  box-shadow: 0 8px 28px rgba(10,42,90,.12);
+  transform: translateY(-2px);
+  z-index: 20; /* elevate above neighboring cards during animation */
+}
+
+/* Keyboard focus should also elevate the card */
+.package:focus-within { z-index: 20; }
+
+.package.featured {
+  border-color: rgba(20,147,255,.6);
+  box-shadow: 0 6px 20px rgba(20,147,255,.12);
+}
+
+.package.featured::before {
+  content: 'RECOMMENDED';
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: rgba(20,147,255,.10);
+  color: var(--azure);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(20,147,255,.30);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.package-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.package-name {
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--cobalt);
+  line-height: 1.2;
+}
+
+.package-price {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--azure);
+}
+
+.package-promise {
+  font-size: 14px;
+  color: var(--ink);
+  opacity: 0.88;
+  line-height: 1.4;
+  flex-grow: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.package-includes {
+  background: #f3f6fb;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--cobalt);
+  border: 1px solid rgba(10,42,90,.08);
+}
+
+.package-includes strong {
+  display: block;
+  font-weight: 800;
+  margin-bottom: 6px;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  opacity: .7;
+}
+
+.package-includes ul {
+  list-style: disc;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Reserve space so the header text never sits under the badge */
+.package.featured .package-header {
+  padding-right: 96px;
+}
+
+.package-includes li::before {
+  content: none;
+  margin: 0;
+}
+
+/* Brand-colored list markers for readability, no emoji */
+.package-includes li::marker { color: var(--azure); }
+
+/* Keep CTAs aligned at the bottom of cards */
+.package .btn { margin-top: auto; }
+
+.package .btn {
+  width: 100%;
+}
+
+/* === DEFERRED CSS: Loaded after First Contentful Paint === */
+/* Menu drawer, cart drawer, modals, backdrops - not needed for initial render */
+</style>
+
+<style media="print" onload="this.media='all'" id="deferred-ui-styles">
+/* This CSS loads async - doesn't block render */
+
+/* === MENU DRAWER === */
+.menu-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(320px, 85vw);
+  background: #fff;
+  z-index: 1150; /* Match cart drawer, above backdrop, below modal */
+  transform: translateX(-100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 0 16px rgba(0,0,0,.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-drawer.open {
+  transform: translateX(0);
+}
+
+.menu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.menu-header h3 {
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--cobalt);
+}
+
+.menu-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.menu-link {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cobalt);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-decoration: none;
+}
+
+.menu-link:hover {
+  background: #f5f7fa;
+}
+
+/* === CART DRAWER === */
+.cart-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  background: #fff;
+  z-index: 1150; /* Above backdrop (1000), below modal (1300) */
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: -4px 0 16px rgba(0,0,0,.1);
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .cart-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+.cart-drawer.open {
+  transform: translateX(0);
+}
+
+.cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .cart-header {
+    padding: 12px 16px;
+  }
+}
+
+.cart-title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--cobalt);
+}
+
+@media (max-width: 768px) {
+  .cart-title {
+    font-size: 16px;
+  }
+}
+
+.cart-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 20px;
+  padding-bottom: 16px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  position: relative;
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .cart-body {
+    padding: 0 16px 12px;
+  }
+}
+
+@media (max-width: 768px) {
+  .cart-body {
+    padding: 0 16px 12px;
+  }
+}
+
+.cart-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.cart-empty::before {
+  content: "";
+  display: block;
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.3;
+}
+
+.cart-empty p {
+  font-size: 15px;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Bundle recommendations panel */
+.bundle-panel {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+  border: 1px solid #ffd97d;
+  border-radius: 12px;
+}
+
+.bundle-card {
+  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.bundle-card:last-child {
+  margin-bottom: 0;
+}
+
+.b-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.b-name {
+  font-weight: 800;
+  color: var(--cobalt);
+  font-size: 15px;
+}
+
+.b-save {
+  font-weight: 800;
+  color: #28a745;
+  font-size: 14px;
+}
+
+.b-list {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.b-actions button {
+  width: 100%;
+}
+
+/* Sign-in banner */
+.signin-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border: 1px solid #90caf9;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--cobalt);
+}
+
+.signin-banner strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+/* AI Recommendations Panel */
+.ai-recs-panel {
+  margin-bottom: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  border: 1px solid #ce93d8;
+  border-radius: 12px;
+}
+
+.ai-recs-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-icon {
+  font-size: 20px;
+}
+
+.ai-title {
+  font-weight: 800;
+  font-size: 15px;
+  color: #6a1b9a;
+}
+
+.ai-recs-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ai-rec-card {
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.ai-rec-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.ai-rec-reason {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.ai-rec-price {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--cobalt);
+}
+
+/* Bundle Panel (smart swap suggestions) */
+.bundle-panel {
+  margin-bottom: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.bundle-card {
+  padding: 14px;
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border: 1px solid #ffb74d;
+  border-radius: 12px;
+}
+
+.b-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.b-name {
+  font-weight: 800;
+  font-size: 15px;
+  color: #e65100;
+}
+
+.b-save {
+  font-weight: 700;
+  font-size: 13px;
+  color: #ff6f00;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.b-list {
+  font-size: 12px;
+  color: #6d4c41;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.b-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.b-actions .btn {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+/* Rule-based Recommendations */
+.recs-panel {
+  margin-bottom: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.rec-card {
+  display: grid;
+  grid-template-columns: 60px 1fr auto;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.rec-card img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.r-text {
+  flex: 1;
+}
+
+.r-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+
+.r-msg {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.rec-dismiss {
+  font-size: 11px;
+  color: #999;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.rec-dismiss:hover {
+  color: #666;
+}
+
+.r-price {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--cobalt);
+  margin-bottom: 6px;
+  text-align: right;
+}
+
+.rec-card .btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Cart lines */
+.cart-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-top: 16px;
+}
+
+.cart-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+  gap: 20px;
+}
+
+.cart-item:last-child {
+  border-bottom: none;
+}
+
+.cart-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.cart-item-name {
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--ink);
+  margin-bottom: 6px;
+  line-height: 1.3;
+}
+
+.cart-item-price {
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 14px;
+  font-weight: 500;
+}
+
+.cart-qty-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cart-qty-btn {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--cobalt);
+  background: white;
+  color: var(--cobalt);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.cart-qty-btn:hover {
+  background: var(--cobalt);
+  color: white;
+}
+
+.cart-qty-btn:active {
+  transform: scale(0.92);
+}
+
+.cart-qty-value {
+  font-weight: 700;
+  color: var(--cobalt);
+  min-width: 20px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.cart-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.cart-item-total {
+  font-weight: 900;
+  font-size: 19px;
+  color: var(--ink);
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+}
+
+.cart-remove-btn {
+  font-size: 13px;
+  font-weight: 700;
+  color: #dc3545;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px 0;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cart-remove-btn:hover {
+  color: #c82333;
+  text-decoration: underline;
+}
+
+.cart-foot {
+  border-top: 1px solid var(--border);
+  padding: 16px;
+  background: #f8f9fb;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .cart-foot {
+    padding: 12px;
+    background: #fff;
+    border-top: 2px solid var(--border);
+  }
+}
+
+@media (max-width: 768px) {
+  .cart-foot {
+    padding: 12px;
+    background: #fff;
+    border-top: 2px solid var(--border);
+  }
+}
+
+/* Error display */
+.checkout-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #c33;
+}
+
+.checkout-error[hidden] {
+  display: none !important;
+}
+
+.error-dismiss {
+  appearance: none;
+  border: none;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #c33;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+}
+
+/* Totals */
+.totals {
+  margin-bottom: 16px;
+  padding-top: 12px;
+}
+
+@media (max-width: 768px) {
+  .totals {
+    margin-bottom: 8px;
+    padding-top: 8px;
+  }
+  
+  .totals .kv {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+  }
+  
+  .totals .note {
+    font-size: 11px;
+    margin-top: 3px;
+  }
+  
+  /* Compact promo section on mobile */
+  .promo-section {
+    margin-bottom: 10px !important;
+  }
+  
+  .promo-section .inp {
+    padding: 10px 12px !important;
+    font-size: 16px !important; /* CRITICAL: Must be 16px to prevent iOS zoom */
+  }
+  
+  /* CRITICAL: Force promo input to 16px (prevent zoom on focus) */
+  #promoCode {
+    font-size: 16px !important;
+  }
+  
+  .promo-section .btn {
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+  }
+  
+  .promo-section .help {
+    margin-top: 4px !important;
+    font-size: 11px !important;
+  }
+}
+
+.kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.kv strong {
+  font-weight: 900;
+  color: var(--ink);
+  font-size: 20px;
+  letter-spacing: -0.5px;
+}
+
+.note {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* Footer actions */
+.foot-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.foot-actions .btn {
+  font-weight: 700;
+  padding: 14px 20px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+.foot-actions .btn-ghost {
+  flex: 0 0 auto;
+  background: white;
+  border: 2px solid var(--border);
+  color: var(--cobalt);
+}
+
+.foot-actions .btn-ghost:hover {
+  border-color: var(--cobalt);
+  background: white;
+}
+
+.foot-actions .btn-primary {
+  flex: 1;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 768px) {
+  .foot-actions {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  
+  .foot-actions .btn {
+    width: 100%;
+    padding: 16px 20px;
+    font-size: 16px;
+  }
+  
+  .foot-actions .btn-ghost {
+    order: 2;
+    padding: 12px 20px;
+    font-size: 14px;
+    border: 1px solid var(--border);
+  }
+  
+  .foot-actions .btn-primary {
+    order: 1;
+  }
+}
+
+.cart-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+/* === BACKDROP === */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  /* Must be below drawers (1150) and above page content */
+  z-index: 1000;
+  display: none;
+  pointer-events: none;
+}
+
+.backdrop.show {
+  display: block;
+  pointer-events: auto;
+}
+
+/* === MODAL === */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  pointer-events: none;
+  overflow-y: auto;
+}
+
+/* Scrim backdrop - separate layer so content stays crisp */
+.modal::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 0;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+  pointer-events: none;
+}
+
+.modal.show {
+  display: flex;
+  pointer-events: auto;
+}
+
+.modal.show::before {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-content {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 40px - env(safe-area-inset-bottom));
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  transform: scale(0.95);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  pointer-events: auto;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.modal.show .modal-content {
+  transform: scale(1);
+}
+
+/* modal input styling to match form styles */
+.modal .inp,
+.modal-content .inp,
+.modal-content textarea {
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.modal .inp:focus,
+.modal-content .inp:focus,
+.modal-content textarea:focus {
+  outline: none;
+  border-color: var(--azure);
+  box-shadow: 0 0 0 4px rgba(20,147,255,0.06);
+}
+
+/* Scrollbar styling (WebKit + modern) - Dark gunmetal theme */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1d23;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3f47;
+  border-radius: 10px;
+  border: 3px solid #1a1d23;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a505a;
+}
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: #3a3f47 #1a1d23; }
+
+.modal-header {
+  padding: 24px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--cobalt);
+  margin-bottom: 6px;
+}
+
+.modal-header p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.close-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 32px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.close-btn:hover {
+  color: var(--cobalt);
+}
+
+.modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.modal-body::after {
+  content: '';
+  position: sticky;
+  bottom: -20px;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.95));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.modal-body.has-scroll::after {
+  opacity: 1;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}
+
+/* === UTILITIES === */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* === LOADER === */
+.h2s-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: grid;
+  place-items: center;
+  background: rgba(255,255,255,0.98);
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.h2s-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.h2s-loader-stage {
+  position: relative;
+  width: min(72vw, 520px);
+  aspect-ratio: 5/2;
+}
+.h2s-loader-slices {
+  position: absolute;
+  inset: 0;
+}
+.h2s-loader-slice {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(24px);
+  will-change: transform, opacity;
+  animation: h2s-split 2.2s cubic-bezier(.22,.8,.32,1) infinite;
+  animation-delay: calc(var(--i) * 0.06s);
+}
+.h2s-loader-slice img {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+@keyframes h2s-split {
+  0% { opacity: 0; transform: translateY(24px); }
+  36% { opacity: 1; transform: translateY(0); }
+  68% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-12px); }
+}
+
+/* === SKELETON LOADING STATES === */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+  border-radius: 8px;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-hero {
+  height: 280px;
+  margin-bottom: 24px;
+}
+.skeleton-trust {
+  height: 80px;
+  margin-bottom: 32px;
+}
+.skeleton-card {
+  height: 420px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+}
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 0 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* === SMOOTH CONTENT REVEAL === */
+.content-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  animation: reveal-fade-in 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes reveal-fade-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.reveal-delay-1 { animation-delay: 0.05s; }
+.reveal-delay-2 { animation-delay: 0.1s; }
+.reveal-delay-3 { animation-delay: 0.15s; }
+.reveal-delay-4 { animation-delay: 0.2s; }
+
+/* Prevent layout shift */
+#outlet {
+  min-height: calc(100vh - 56px);
+  overflow: visible;
+  /* contain: layout; REMOVED to allow hero full-bleed overflow */
+}
+
+/* Initial page load - hide content until ready */
+/* OPTIMIZATION: Removed opacity:0 to allow immediate LCP paint of static content */
+/* Empty rulesets removed for linting */
+
+@keyframes initial-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .h2s-loader-slice,
+  .content-reveal,
+  .skeleton {
+    animation: none !important;
+  }
+  .content-reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .h2s-loader {
+    transition: none;
+  }
+}
+
+/* === SMALL MOBILE SCREENS === */
+@media (max-width: 390px) {
+  .modal {
+    padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .modal-content {
+    max-height: calc(100vh - 24px - env(safe-area-inset-bottom));
+  }
+}
+
+/* === DESKTOP TWEAKS === */
+@media (min-width: 768px) {
+  .hero {
+    padding: 88px 32px 72px;
+  }
+
+  .hero h1 {
+    font-size: 42px;
+  }
+
+  .hero p {
+    font-size: 19px;
+  }
+
+  .trust-bar {
+    padding: 32px 24px;
+  }
+
+  .section {
+    padding: 80px 24px;
+  }
+
+  .section-header h2 {
+    font-size: 36px;
+  }
+
+  .section-header p {
+    font-size: 18px;
+  }
+
+  .review-carousel {
+    padding: 64px 24px;
+  }
+
+  .modal {
+    padding: 32px;
+  }
+
+  .modal-content {
+    border-radius: 16px;
+    max-width: 600px;
+    max-height: calc(100vh - 64px);
+  }
+}
+
+/* === AUTH FORMS & ACCOUNT === */
+.form {
+  max-width: 480px;
+  margin: 80px auto 40px;
+  padding: 32px;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+
+.form h2 {
+  text-align: center;
+  color: var(--cobalt);
+  margin: 0 0 24px 0;
+  font-weight: 900;
+  font-size: 28px;
+}
+
+.inp {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  font-size: 16px;
+  font-family: inherit;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  transition: all 0.2s ease;
+}
+
+.inp:focus {
+  outline: none;
+  border-color: var(--azure);
+  box-shadow: 0 0 0 3px rgba(20, 147, 255, 0.1);
+}
+
+.inp:disabled {
+  background: #f5f5f5;
+  color: var(--muted);
+  cursor: not-allowed;
+  border-color: #e0e0e0;
+}
+
+.form .help {
+  font-size: 13px;
+  color: var(--muted);
+  margin: -6px 0 16px 0;
+  text-align: center;
+}
+
+.form > div[style*="display:flex"] {
+  justify-content: center;
+  margin-top: 20px;
+}
+
+.pd-box {
+  padding: 16px;
+  background: #fafcff;
+  border: 1px solid #e7eaf0;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.details-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.details-grid .row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e7eaf0;
+}
+
+.details-grid .row:last-child {
+  border-bottom: none;
+}
+
+.details-grid .k {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.details-grid .v {
+  font-weight: 700;
+  color: var(--cobalt);
+  font-size: 14px;
+}
+
+.cal-embed {
+  width: 100%;
+  height: 680px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 20px 0;
+}
+
+.cal-embed iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+@media (max-width: 768px) {
+  .form {
+    margin: 20px;
+    padding: 20px;
+  }
+
+  .details-grid .row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .cal-embed {
+    height: 600px;
+  }
+}
+
+/* Critical: Instant page shell visibility */
+#pageShell {
+  opacity: 1 !important;
+  visibility: visible !important;
+  /* contain: content; REMOVED to allow hero full-bleed overflow */
+}
+
+/* Loading skeleton for better perceived performance */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.bundle-skeleton {
+  height: 400px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+
+/* End deferred UI styles */
+</style>
+
+<!-- Performance: Remove API preload - catalog now loads in background -->
+
+</head>
+<body>
+<div id="pageShell">
+
+<!-- URGENCY BANNER -->
+<div class="urgency-banner" id="urgencyBanner">
+  <div class="urgency-text">
+    <span><strong id="urgencyMessage">Loading...</strong></span>
+    <span class="urgency-separator">|</span>
+    <span>We're available 7 days/week</span>
+  </div>
+  <button class="urgency-close" onclick="dismissUrgencyBanner()" aria-label="Dismiss banner">?&mdash;</button>
+</div>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-inner">
+    <a href="#" class="logo" aria-label="Home2Smart home" onclick="navSet({view:'shop'}); return false;">
+      <img src="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" alt="Home2Smart" class="logo-img" width="36" height="36" fetchpriority="high" decoding="async">
+    </a>
+
+    <div class="header-actions">
+      <button class="menu-btn" onclick="toggleMenu()" aria-label="Open menu">
+        <svg class="icon" viewBox="0 0 24 24">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <button id="accountBtn" class="header-btn" aria-label="Account">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </button>
+
+      <button class="cart-btn" onclick="toggleCart()" aria-label="Open cart">
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <path d="M16 10a4 4 0 0 1-8 0"></path>
+        </svg>
+        <span class="cart-badge" id="cartCount">0</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Main Outlet for Dynamic Views -->
+<main id="mainView">
+<div id="outlet">
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-inner">
+    <h1>Expert Installation.<br>Done Right.</h1>
+    <p>TV Mounting & Security Cameras. Pick a package, we handle the rest. Simple pricing, instant booking.</p>
+    <div class="hero-ctas">
+      <button class="btn btn-primary" onclick="scrollToSection('tv')">
+        Shop TV Packages
+      </button>
+      <button class="btn btn-ghost" onclick="scrollToSection('security')">
+        Shop Cameras
+      </button>
+    </div>
+    
+    <!-- Hero Review Carousel -->
+    <div class="hero-reviews" id="heroReviews" style="min-height: 120px; contain: content;">
+      <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
+      <div class="hero-review-slide active">
+        <div class="hero-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
+        <div class="hero-review-author">&mdash; Recent Customer</div>
+      </div>
+      <div class="hero-review-dots">
+        <div class="hero-review-dot active"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST BAR -->
+<section class="trust-bar content-reveal reveal-delay-1">
+  <div class="trust-inner">
+    <div class="trust-item">
+      <strong>500+</strong>
+      <span>Homes Served</span>
+    </div>
+    <div class="trust-item">
+      <strong>4.9&#9733;</strong>
+      <span>Average Rating</span>
+    </div>
+    <div class="trust-item">
+      <strong>Licensed</strong>
+      <span>& Insured</span>
+    </div>
+    <div class="trust-item">
+      <strong>Instant</strong>
+      <span>Booking Available</span>
+    </div>
+  </div>
+</section>
+
+<!-- TV MOUNTING SECTION -->
+<section class="section content-reveal reveal-delay-2" id="tv">
+  <div class="section-header">
+    <h2>TVs: pick by TV count</h2>
+    <p>Clean installs, book instantly. First TV $249, each additional discounted.</p>
+  </div>
+
+  <div class="package-grid">
+    <!-- Single TV -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">1 TV</h3>
+        <div class="package-price">$249</div>
+      </div>
+      <p class="package-promise">One TV mounted clean and ready to watch tonight.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>TV securely mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming setup</li>
+          <li>Ready to go</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_single', '1 TV', 249)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- 2-TV Package (FEATURED) -->
+    <article class="package featured">
+      <div class="package-header">
+        <h3 class="package-name">2 TVs (recommended)</h3>
+        <div class="package-price">$428 <small style="opacity:.6">(save $70)</small></div>
+      </div>
+      <p class="package-promise">Two rooms, theater-ready. Same visit, better deal.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>Both TVs mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming on both</li>
+          <li>One appointment</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_2pack', '2 TVs (recommended)', 428)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- Multi-Room -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">3–4 TVs</h3>
+        <div class="package-price">From $699</div>
+      </div>
+      <p class="package-promise">Whole-home entertainment in one visit.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>3-4 TVs mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming + soundbar</li>
+          <li>Universal remote</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3–4 TVs', 699)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- Custom -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">5+ TVs (quote)</h3>
+        <div class="package-price">Request Quote</div>
+      </div>
+      <p class="package-promise">Large properties or commercial setups&mdash;we'll design a plan.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>Site consultation</li>
+          <li>Custom wiring plan</li>
+          <li>Volume pricing</li>
+          <li>Project manager</li>
+        </ul>
+      </div>
+      <button class="btn btn-secondary" onclick="safeRequestQuote('tv_custom')">
+        Request Quote
+      </button>
+    </article>
+  </div>
+</section>
+
+<!-- SECURITY CAMERAS SECTION -->
+<section class="section" id="security">
+  <div class="section-header">
+    <h2>Cameras: pick by coverage level</h2>
+    <p>Choose coverage by outcome — faces at the door, plates in the driveway, or full perimeter protection.</p>
+  </div>
+
+  <div class="package-grid">
+    <!-- Front Door Only -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">Front Door Only</h3>
+        <div class="package-price">$599</div>
+      </div>
+      <p class="package-promise">See faces at the door with instant alerts.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li><strong>Areas covered:</strong> Front door</li>
+          <li><strong>Visibility level:</strong> Faces at the door</li>
+          <li><strong>Install + setup included:</strong> App setup, alerts, zones</li>
+          <li><strong>Support level:</strong> Standard support</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('cam_basic', 'Front Door Only', 599)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- Standard Perimeter (FEATURED) -->
+    <article class="package featured">
+      <div class="package-header">
+        <h3 class="package-name">Standard Perimeter</h3>
+        <div class="package-price">$1,199</div>
+      </div>
+      <p class="package-promise">Front, driveway, backyard — practical coverage for most homes.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li><strong>Areas covered:</strong> Front, driveway, backyard</li>
+          <li><strong>Visibility level:</strong> Faces at door + plates in driveway</li>
+          <li><strong>Install + setup included:</strong> App setup, alerts, zones</li>
+          <li><strong>Support level:</strong> Standard support</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('cam_standard', 'Standard Perimeter', 1199)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- Full Perimeter -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">Full Perimeter</h3>
+        <div class="package-price">$2,199</div>
+      </div>
+      <p class="package-promise">Full-property protection with visibility on faces and plates.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li><strong>Areas covered:</strong> Full perimeter</li>
+          <li><strong>Visibility level:</strong> Full perimeter coverage (faces + plates)</li>
+          <li><strong>Install + setup included:</strong> App setup, alerts, zones</li>
+          <li><strong>Support level:</strong> Priority support</li>
+        </ul>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('cam_premium', 'Full Perimeter', 2199)">
+        Add to Cart
+      </button>
+    </article>
+
+    <!-- Custom -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">Custom (quote)</h3>
+        <div class="package-price">Quote</div>
+      </div>
+      <p class="package-promise">Unique property? We’ll design a coverage plan with you.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li><strong>Areas covered:</strong> Custom camera plan</li>
+          <li><strong>Visibility level:</strong> Tailored to faces, plates, or both</li>
+          <li><strong>Install + setup included:</strong> App setup, alerts, zones</li>
+          <li><strong>Support level:</strong> Priority support</li>
+        </ul>
+      </div>
+      <button class="btn btn-secondary" onclick="safeRequestQuote('cam_custom')">
+        Request Quote
+      </button>
+    </article>
+  </div>
+</section>
+</div>
+<!-- End Outlet -->
+</main>
+
+<!-- Global Loader Overlay -->
+<div id="h2s-loader" class="h2s-loader" aria-hidden="true" style="display:none">
+  <div class="h2s-loader-stage">
+    <div id="h2sLoaderSlices" class="h2s-loader-slices"></div>
+  </div>
+</div>
+
+<!-- MENU DRAWER -->
+<aside class="menu-drawer" id="menuDrawer" style="content-visibility: auto;">
+  <div class="menu-header">
+    <h3>Menu</h3>
+    <button class="btn-subtle" onclick="toggleMenu()" style="padding: 6px 10px; font-size: 13px;">Close</button>
+  </div>
+  <nav class="menu-body">
+    <div class="menu-nav">
+      <a href="/" class="menu-link">Home</a>
+      <button class="menu-link" onclick="scrollToSection('tv'); toggleMenu();">TV Mounting</button>
+      <button class="menu-link" onclick="scrollToSection('security'); toggleMenu();">Security Cameras</button>
+      <button class="menu-link" onclick="openBooking(); toggleMenu();">Schedule Appointment</button>
+      <a href="tel:864-528-1475" class="menu-link">Call: 864-528-1475</a>
+    </div>
+  </nav>
+</aside>
+
+<!-- CART DRAWER -->
+<aside class="cart-drawer" id="cartDrawer" onclick="event.stopPropagation()" style="content-visibility: auto;">
+  <div class="cart-header">
+    <h3 class="cart-title">Your Cart</h3>
+    <button class="btn-subtle" onclick="toggleCart()" style="padding: 6px 10px; font-size: 13px;">Close</button>
+  </div>
+  
+  <!-- Scrollable body -->
+  <div class="cart-body">
+    <!-- AI Recommendations Panel -->
+    <div id="aiRecommendationsPanel" class="ai-recs-panel" style="display:none;min-height:80px">
+      <div class="ai-recs-header">
+        <div class="ai-icon">&#10024;</div>
+        <div class="ai-title">Recommended for you</div>
+      </div>
+      <div id="aiRecommendations" class="ai-recs-list"></div>
+    </div>
+    
+    <!-- Bundle recommendations (smart swap suggestions) -->
+    <div id="bundlePanel" class="bundle-panel" style="display:none;min-height:60px"></div>
+    
+    <!-- Rule-based Recommendations -->
+    <div id="recsPanel" class="recs-panel" style="display:none;min-height:60px"></div>
+    
+    <!-- Empty state -->
+    <div id="cartEmpty" class="cart-empty" hidden>
+      <p>Your cart is empty</p>
+      <p style="font-size: 13px; margin-top: 8px;">Pick a package to get started</p>
+    </div>
+    
+    <!-- Cart items -->
+    <div id="cartItems" class="cart-lines">
+      <!-- Items rendered by paintCart() -->
+    </div>
+  </div>
+  
+  <!-- Footer -->
+  <div class="cart-foot">
+    <!-- Error display -->
+    <div id="checkoutError" class="checkout-error" role="alert" aria-live="polite" hidden>
+      <span id="checkoutErrorMsg"></span>
+      <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">?&mdash;</button>
+    </div>
+
+    <!-- Promo Code -->
+    <div class="promo-section" style="margin-bottom: 16px;">
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="promoCode" class="inp" placeholder="Promo code" style="padding: 8px 12px; flex: 1;">
+        <button id="applyPromo" class="btn ghost" style="padding: 8px 14px; font-size: 13px; white-space: nowrap;">Apply</button>
+      </div>
+      <div id="promoMsg" class="help" style="margin-top: 6px; font-size: 12px;"></div>
+    </div>
+    
+    <!-- Totals -->
+    <div class="totals">
+      <div class="kv" style="font-size: 14px; color: var(--muted);">
+        <span id="cartItemCount">0 items</span>
+        <span></span>
+      </div>
+      <!-- Subtotal (visible when no promo active) -->
+      <div id="cartSubtotalLine" class="kv" style="font-size: 14px; color: var(--ink); padding-top: 8px; border-top: 1px solid var(--border);">
+        <span>Subtotal</span>
+        <span id="cartSubtotal">$0.00</span>
+      </div>
+      
+      <!-- Raw Subtotal (Visible when promo is active, replaces above) -->
+      <div id="rawSubtotalLine" class="kv" style="font-size: 14px; color: var(--ink); display: none;">
+        <span>Subtotal</span>
+        <span id="rawSubtotalAmount">$0.00</span>
+      </div>
+
+      <!-- Promo Discount Line -->
+      <div id="promoLine" class="kv" style="font-size: 14px; color: #059669; display: none;">
+        <span id="promoLineLabel">Promo</span>
+        <span id="promoAmount">-$0.00</span>
+      </div>
+
+      <!-- Grand Total (shows final amount after discount) -->
+      <div class="kv" style="font-size: 16px; font-weight: 700; padding-top: 12px; border-top: 1px solid var(--border);">
+        <span id="totalLabel">Total</span>
+        <strong id="grandTotal">$0.00</strong>
+      </div>
+      <div class="note">Flat-rate pricing. No hidden fees. Workmanship guaranteed.</div>
+    </div>
+    
+    <!-- Actions -->
+    <div class="foot-actions">
+      <button class="btn btn-ghost" onclick="window.location.href='tel:864-528-1475'">
+        Prefer to call?
+      </button>
+      <button id="checkoutBtn" class="btn btn-primary">
+        Checkout
+      </button>
+    </div>
+  </div>
+</aside>
+
+<!-- BACKDROP -->
+<div class="backdrop" id="backdrop"></div>
+
+<!-- QUOTE REQUEST MODAL -->
+<div class="modal" id="quoteModal">
+  <div class="modal-content" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 id="quoteModalTitle">Request Custom Quote</h3>
+      <p id="quoteModalSubtitle">Tell us what you need and we'll get back to you fast</p>
+    </div>
+    <div class="modal-body" style="padding: 24px;">
+      <!-- Smart Fields for Dynamic Quote -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Type</label>
+          <select id="quoteType" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
+            <option value="tv">TV Mounting</option>
+            <option value="camera">Security Cameras</option>
+            <option value="both">Both / Other</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Quantity</label>
+          <input type="number" id="quoteQty" class="inp" value="1" min="1" max="50" style="width: 100%;" onchange="updateQuoteEstimate()" oninput="updateQuoteEstimate()">
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Surface / Wall Type</label>
+        <select id="quoteSurface" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
+          <option value="drywall">Drywall (Standard)</option>
+          <option value="brick">Brick / Stone / Concrete (+$50/item)</option>
+          <option value="commercial">Commercial / High Ceiling</option>
+        </select>
+      </div>
+
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 600; color: #166534; font-size: 14px;">Estimated Range:</span>
+        <span id="quoteEstimateValue" style="font-weight: 800; color: #15803d; font-size: 18px;">$149 - $199</span>
+      </div>
+      
+      <div style="display: grid; gap: 16px;">
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Your Name *</label>
+          <input type="text" id="quoteName" class="inp" placeholder="John Smith" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Email *</label>
+          <input type="email" id="quoteEmail" class="inp" placeholder="john@example.com" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Phone *</label>
+          <input type="tel" id="quotePhone" class="inp" placeholder="(864) 528-1475" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Details</label>
+          <textarea id="quoteDetails" class="inp" placeholder="Tell us about your project..." style="width: 100%; min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
+        </div>
+        
+        <div id="quoteMessage" class="help" style="margin-top: 4px;"></div>
+      </div>
+      
+      <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
+        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">📞 Prefer to call?</div>
+        <a href="tel:864-528-1475" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f9ff; border: 1px solid #d7eafc; border-radius: 8px; text-decoration: none; color: var(--cobalt); font-weight: 600; transition: all 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>(864) 528-1475</span>
+        </a>
+      </div>
+    </div>
+    <div class="modal-footer" style="gap: 8px;">
+      <button class="btn btn-primary" id="submitQuoteBtn" onclick="submitQuoteRequest()" style="flex: 1;">
+        Send Request
+      </button>
+      <button class="btn btn-subtle" id="cancelQuoteBtn" onclick="safeCloseQuoteModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modalTitle">Package Selected</h3>
+      <p id="modalSubtitle">We'll finalize the details during your free consultation.</p>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <!-- Dynamic content -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="modalPrimaryCTA" onclick="addPackageToCart()">Add to Cart</button>
+      <button class="btn btn-subtle" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEO: Structured Data (JSON-LD) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Home2Smart",
+  "description": "Professional smart home installation services including TV mounting and security camera installation",
+  "url": "https://home2smart.com",
+  "telephone": "+1-864-528-1475",
+  "priceRange": "$$",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.9",
+    "reviewCount": "500"
+  },
+  "areaServed": {
+    "@type": "State",
+    "name": "South Carolina"
+  },
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Installation Services",
+    "itemListElement": [
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "TV Mounting Installation",
+          "description": "Professional TV mounting with wire concealment"
+        },
+        "price": "249",
+        "priceCurrency": "USD"
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "Security Camera Installation",
+          "description": "Complete security camera system installation"
+        },
+        "price": "599",
+        "priceCurrency": "USD"
+      }
+    ]
+  }
+}
+</script>
+
+<!-- Performance: Detect when Archivo font loads and apply it -->
+<!-- Font loading handled by CSS font-display: swap -->
+
+<script defer src="bundles.js"></script>
+
+<!-- Performance metrics moved to deferred module to avoid main-thread work affecting LCP -->
+</div><!-- /#pageShell -->
+<div id="modalRoot"></div>
+<script defer>
+(function() {
+  // Portal Pattern: Move modal root to body to escape GHL stacking contexts
+  function moveModalsToBody() {
+    var root = document.getElementById('modalRoot');
+    if (!root) {
+      root = document.createElement('div');
+      root.id = 'modalRoot';
+      document.body.appendChild(root);
+    } else {
+      document.body.appendChild(root);
+    }
+    
+    // Move known fixed elements
+    var ids = ['quoteModal', 'modal', 'tvSizeModal', 'menuDrawer', 'cartDrawer', 'backdrop', 'urgencyBanner'];
+    ids.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) root.appendChild(el);
+    });
+  }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', moveModalsToBody);
+  } else {
+    moveModalsToBody();
+  }
+})();
+
+// === TRACKING CONGRUENCE ===
+// Fire ViewContent after 3s delay (Engaged Browser)
+setTimeout(function() {
+  if (typeof h2sTrack === 'function') {
+    h2sTrack('ViewContent', {
+      content_name: 'Bundles Shop',
+      content_type: 'product_group',
+      page: '/bundles',
+      currency: 'USD'
+    });
+  } else {
+    console.warn('h2sTrack not found for ViewContent');
+  }
+}, 3000);
+</script>
+
+<!-- === TEXT / GLYPH FIXES (Bundles Page) === -->
+<script>
+(function(){
+  try {
+    if (typeof window.escapeHtml === 'function' && !window.escapeHtml.__h2s_textfix) {
+      var origEscape = window.escapeHtml;
+      window.escapeHtml = function(){
+        var out = origEscape.apply(this, arguments);
+        try {
+          if (typeof out === 'string') {
+            out = out
+              .replace(/\?&mdash;|\?\u2014|\?—/g, '—')
+              .replace(/&mdash;/g, '—');
+          }
+        } catch (_) {}
+        return out;
+      };
+      window.escapeHtml.__h2s_textfix = true;
+    }
+
+    if (typeof window.renderHeroReviews === 'function' && !window.renderHeroReviews.__h2s_textfix) {
+      var origRenderHeroReviews = window.renderHeroReviews;
+      window.renderHeroReviews = function(){
+        var res = origRenderHeroReviews.apply(this, arguments);
+        try {
+          document.querySelectorAll('.hero-review-text').forEach(function(el){
+            if (el && typeof el.textContent === 'string') {
+              el.textContent = el.textContent.replace('Same-day service saved me!', 'Instant booking saved me!');
+            }
+          });
+        } catch (_) {}
+        return res;
+      };
+      window.renderHeroReviews.__h2s_textfix = true;
+    }
+  } catch (_) {}
+})();
+</script>
+
+<!-- === UX / SMOOTHNESS PATCHES (Bundles Page) === -->
+<script>
+(function(){
+  if (window.__H2S_BUNDLES_UX_PATCH__) return;
+  window.__H2S_BUNDLES_UX_PATCH__ = true;
+
+  function getView(){
+    try { return new URL(location.href).searchParams.get('view'); } catch (_) { return null; }
+  }
+
+  function safeCloseAll(){
+    try {
+      if (typeof window.closeAll === 'function') return window.closeAll();
+    } catch (_) {}
+    try {
+      document.getElementById('menuDrawer')?.classList.remove('open');
+      document.getElementById('cartDrawer')?.classList.remove('open');
+      document.getElementById('backdrop')?.classList.remove('show');
+      document.getElementById('modal')?.classList.remove('show');
+      document.getElementById('quoteModal')?.classList.remove('show');
+      document.getElementById('tvSizeModal')?.classList.remove('show');
+      document.documentElement.classList.remove('modal-open');
+      document.body.classList.remove('modal-open');
+      if (typeof window.H2S_unlockScroll === 'function') window.H2S_unlockScroll();
+    } catch (_) {}
+  }
+
+  function anyOverlayOpen(){
+    try {
+      return !!(
+        document.getElementById('menuDrawer')?.classList.contains('open') ||
+        document.getElementById('cartDrawer')?.classList.contains('open') ||
+        document.getElementById('modal')?.classList.contains('show') ||
+        document.getElementById('quoteModal')?.classList.contains('show') ||
+        document.getElementById('tvSizeModal')?.classList.contains('show')
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  try {
+    var bd = document.getElementById('backdrop');
+    if (bd && !bd.__h2sUxBound) {
+      bd.addEventListener('click', function(e){
+        if (e && e.target && e.target.id === 'backdrop' && anyOverlayOpen()) safeCloseAll();
+      });
+      bd.__h2sUxBound = true;
+    }
+  } catch (_) {}
+
+  try {
+    document.addEventListener('keydown', function(e){
+      if (e && e.key === 'Escape' && anyOverlayOpen()) {
+        e.preventDefault();
+        safeCloseAll();
+      }
+    }, { passive: false });
+  } catch (_) {}
+
+  try {
+    if (typeof window.toggleMenu === 'function' && !window.toggleMenu.__h2sUxWrapped) {
+      var origToggleMenu = window.toggleMenu;
+      window.toggleMenu = function(){
+        var wasOpen = !!document.getElementById('menuDrawer')?.classList.contains('open');
+        var res = origToggleMenu.apply(this, arguments);
+        var isOpen = !!document.getElementById('menuDrawer')?.classList.contains('open');
+        if (!wasOpen && isOpen && typeof window.H2S_lockScroll === 'function') {
+          window.H2S_lockScroll();
+        }
+        if (wasOpen && !isOpen) {
+          if (!anyOverlayOpen() && typeof window.H2S_unlockScroll === 'function') window.H2S_unlockScroll();
+        }
+        return res;
+      };
+      window.toggleMenu.__h2sUxWrapped = true;
+    }
+  } catch (_) {}
+
+  function patchSuccessView(){
+    if (getView() !== 'shopsuccess') return;
+    try { if (typeof window.showLoader === 'function') window.showLoader(); } catch (_) {}
+
+    var tries = 0;
+    var t = setInterval(function(){
+      tries++;
+      var outlet = document.getElementById('outlet');
+      if (outlet) {
+        try {
+          outlet.querySelectorAll('a[href^="tel:"]').forEach(function(a){
+            var txt = ((a.textContent || '') + '').trim().toLowerCase();
+            if (!txt) return;
+            if (txt.includes('call us')) {
+              a.textContent = 'Prefer to call?';
+              try {
+                a.classList.remove('btn-primary');
+                a.classList.add('btn-ghost');
+              } catch (_) {}
+              try {
+                a.style.fontSize = '14px';
+                a.style.opacity = '0.9';
+                a.style.marginTop = '12px';
+              } catch (_) {}
+            }
+          });
+
+          outlet.querySelectorAll('p').forEach(function(p){
+            if (!p || typeof p.textContent !== 'string') return;
+            p.textContent = p.textContent
+              .replace('Our team will contact you within 24 hours to schedule your installation.', 'Next: pick an installation time (subject to availability).');
+          });
+        } catch (_) {}
+      }
+
+      var ready = !!document.getElementById('successOrderId') || !!document.getElementById('scheduleEmbed') || (outlet && outlet.querySelector && outlet.querySelector('.schedule-container'));
+      if (ready || tries >= 40) {
+        clearInterval(t);
+        try { if (typeof window.hideLoader === 'function') window.hideLoader(); } catch (_) {}
+      }
+    }, 150);
+  }
+
+  try {
+    var _ps = history.pushState;
+    history.pushState = function(){
+      var r = _ps.apply(this, arguments);
+      try { patchSuccessView(); } catch (_) {}
+      return r;
+    };
+    var _rs = history.replaceState;
+    history.replaceState = function(){
+      var r2 = _rs.apply(this, arguments);
+      try { patchSuccessView(); } catch (_) {}
+      return r2;
+    };
+    window.addEventListener('popstate', function(){
+      try { patchSuccessView(); } catch (_) {}
+    });
+  } catch (_) {}
+
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', patchSuccessView);
+    } else {
+      patchSuccessView();
+    }
+  } catch (_) {}
+})();
+</script>
+
+<!-- === TRACKING DEDUPE (Bundles Page) === -->
+<script>
+(function(){
+  if (window.__H2S_BUNDLES_TRACK_DEDUPE__) return;
+  window.__H2S_BUNDLES_TRACK_DEDUPE__ = true;
+
+  window.__H2S_EVENT_ONCE__ = window.__H2S_EVENT_ONCE__ || {};
+  window.__H2S_EVENT_ONCE__.pageview = true;
+
+  function norm(ev){
+    return String(ev || '').replace(/\s+/g,'').toLowerCase();
+  }
+
+  function wrapTrackFn(key){
+    var fn = window[key];
+    if (typeof fn !== 'function' || fn.__h2s_deduped) return;
+    window[key] = function(eventName, data){
+      var k = norm(eventName);
+      if (k === 'pageview' || k === 'page_view') {
+        return;
+      }
+      if (k === 'viewcontent' || k === 'view_content') {
+        if (window.__H2S_EVENT_ONCE__.viewcontent) return;
+        window.__H2S_EVENT_ONCE__.viewcontent = true;
+      }
+      return fn.apply(this, arguments);
+    };
+    window[key].__h2s_deduped = true;
+  }
+
+  try {
+    wrapTrackFn('h2sTrack');
+    wrapTrackFn('h2sFbTrack');
+  } catch (_) {}
+})();
+</script>
+</body>
+</html>
+
+
+
+
+

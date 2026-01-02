@@ -1,0 +1,329 @@
+// This is a Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-1.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Candidate {
+  id                        String    @id @default(uuid()) @map("Candidate_ID")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  phone                     String?   @map("Phone")
+  email                     String?   @map("Email")
+  source                    String?   @map("Source")
+  currentStage              String    @default("NEW") @map("Current_Stage")
+  screeningDate             DateTime? @map("Screening_Date")
+  interviewDate             DateTime? @map("Interview_Date")
+  notesConcerns             String?   @map("Notes_Concerns")
+  toolsRequirementsMet      Boolean?  @map("Tools_Requirements_Met")
+  experienceLevel           String?   @map("Experience_Level")
+  commuteOk                 Boolean?  @map("Commute_OK")
+  weekdayDaytimeAvailable   Boolean?  @map("Weekday_Daytime_Available")
+  eveningSaturdayAvailable  Boolean?  @map("Evening_Saturday_Available")
+  screeningOutcome          String?   @map("Screening_Outcome")
+  interviewOutcome          String?   @map("Interview_Outcome")
+  interviewNotes            String?   @map("Interview_Notes")
+  technicalAssessment       String?   @map("Technical_Assessment")
+  nextAction                String?   @map("Next_Action")
+  nextActionDate            DateTime? @map("Next_Action_Date")
+  owner                     String?   @map("Owner")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+
+  // Relations
+  screeningLogs             ScreeningLog[]
+  interviewLogs             InterviewLog[]
+  aiProfile                 AiCandidateProfile?
+  meetings                  Meeting[]
+
+  @@map("Candidate_Master")
+}
+
+model ScreeningLog {
+  id                        String    @id @default(uuid()) @map("Log_ID")
+  candidateId               String    @map("Candidate_ID")
+  timestamp                 DateTime  @default(now()) @map("Timestamp")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  phone                     String?   @map("Phone")
+  email                     String?   @map("Email")
+  notesConcerns             String?   @map("Notes_Concerns")
+  toolsRequirementsMet      Boolean?  @map("Tools_Requirements_Met")
+  experienceLevel           String?   @map("Experience_Level")
+  commuteOk                 Boolean?  @map("Commute_OK")
+  weekdayDaytimeAvailable   Boolean?  @map("Weekday_Daytime_Available")
+  eveningSaturdayAvailable  Boolean?  @map("Evening_Saturday_Available")
+  screeningOutcome          String?   @map("Screening_Outcome")
+  rawPayload                String?   @map("Raw_Payload")
+  loggedBy                  String?   @map("Logged_By")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("Screening_Log")
+}
+
+model InterviewLog {
+  id                        String    @id @default(uuid()) @map("Interview_ID")
+  candidateId               String    @map("Candidate_ID")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  interviewDate             DateTime  @map("Interview_Date")
+  interviewType             String?   @map("Interview_Type")
+  durationMinutes           Int?      @map("Duration_Minutes")
+  technicalAssessment       String?   @map("Technical_Assessment")
+  interviewOutcome          String?   @map("Interview_Outcome")
+  interviewNotes            String?   @map("Interview_Notes")
+  nextSteps                 String?   @map("Next_Steps")
+  interviewedBy             String?   @map("Interviewed_By")
+  loggedAt                  DateTime  @default(now()) @map("Logged_At")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("Interview_Log")
+}
+
+model VaHoursLog {
+  id                        String    @id @default(uuid()) @map("Entry_ID")
+  date                      DateTime  @map("Date")
+  hours                     Float     @map("Hours")
+  tasks                     String    @map("Tasks")
+  loggedBy                  String    @map("Logged_By")
+  loggedAt                  DateTime  @default(now()) @map("Logged_At")
+  aiSummary                 String?   @map("AI_Summary")
+
+  @@map("VA_Hours_Log")
+}
+
+model AiCandidateProfile {
+  candidateId               String    @id @map("Candidate_ID")
+  profileGeneratedAt        DateTime  @default(now()) @map("Profile_Generated_At")
+  aiModelUsed               String?   @map("AI_Model_Used")
+  profileSummary            String?   @map("Profile_Summary")
+  strengths                 String?   @map("Strengths")
+  concerns                  String?   @map("Concerns")
+  fitScore                  Int?      @map("Fit_Score")
+  recommendation            String?   @map("Recommendation")
+  fullAnalysis              String?   @map("Full_Analysis")
+  rawPromptUsed             String?   @map("Raw_Prompt_Used")
+  errorLog                  String?   @map("Error_Log")
+  manualDecision            String?   @map("Manual_Decision")
+  decisionDate              DateTime? @map("Decision_Date")
+  decisionBy                String?   @map("Decision_By")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("AI_Candidate_Profiles")
+}
+
+model TrainingResource {
+  id                        String    @id @default(uuid()) @map("Resource_ID")
+  title                     String    @map("Title")
+  type                      String    @map("Type")
+  url                       String    @map("URL")
+  description               String?   @map("Description")
+  category                  String?   @map("Category")
+  order                     Int?      @default(0) @map("Order")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  createdBy                 String?   @map("Created_By")
+  
+  // Skills/competencies this training covers (comma-separated)
+  skillsTaught              String?   @map("Skills_Taught")
+  difficultyLevel           String?   @default("BEGINNER") @map("Difficulty_Level") // BEGINNER, INTERMEDIATE, ADVANCED
+  estimatedMinutes          Int?      @map("Estimated_Minutes")
+  
+  // Relations
+  completions               TrainingCompletion[]
+
+  @@map("Training_Resources")
+}
+
+model TrainingCompletion {
+  id                        String    @id @default(uuid()) @map("Completion_ID")
+  resourceId                String    @map("Resource_ID")
+  completedBy               String    @map("Completed_By") // VA name
+  completedAt               DateTime  @default(now()) @map("Completed_At")
+  
+  // VA's learnings and feedback
+  notesLearned              String?   @map("Notes_Learned") // What the VA wrote about what they learned
+  comprehensionRating       Int?      @map("Comprehension_Rating") // 1-5 self-rating
+  timeSpentMinutes          Int?      @map("Time_Spent_Minutes")
+  
+  // AI analysis of the learning
+  aiExtractedConcepts       String?   @map("AI_Extracted_Concepts") // AI-identified key concepts learned
+  aiKnowledgeGaps           String?   @map("AI_Knowledge_Gaps") // Areas VA still seems weak on
+  aiConfidenceScore         Int?      @map("AI_Confidence_Score") // 0-100 AI's assessment of mastery
+  aiAnalysisRaw             String?   @map("AI_Analysis_Raw") // Full AI analysis response
+  
+  resource                  TrainingResource @relation(fields: [resourceId], references: [id])
+  
+  @@map("Training_Completions")
+  @@index([completedBy])
+  @@index([resourceId])
+}
+
+model VaKnowledgeProfile {
+  id                        String    @id @default(uuid()) @map("Profile_ID")
+  vaName                    String    @unique @map("VA_Name")
+  
+  // Aggregate skill tracking (JSON object: { "skill_name": { score: 0-100, lastUpdated: date, trainingCount: number } })
+  skillCompetencies         String?   @map("Skill_Competencies") @db.Text
+  
+  // Overall stats
+  totalTrainingsCompleted   Int       @default(0) @map("Total_Trainings_Completed")
+  totalLearningHours        Float     @default(0) @map("Total_Learning_Hours")
+  overallMasteryScore       Int?      @map("Overall_Mastery_Score") // 0-100 weighted average
+  
+  // Identified gaps and recommendations
+  topSkillGaps              String?   @map("Top_Skill_Gaps") // JSON array of skills needing work
+  recommendedTrainings      String?   @map("Recommended_Trainings") // JSON array of Resource_IDs
+  
+  lastAnalyzedAt            DateTime  @default(now()) @map("Last_Analyzed_At")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+  
+  @@map("VA_Knowledge_Profile")
+}
+
+model TrainingAnalytics {
+  id                        String    @id @default(uuid()) @map("Analytics_ID")
+  vaName                    String    @map("VA_Name")
+  analysisDate              DateTime  @default(now()) @map("Analysis_Date")
+  
+  // Category-level insights
+  category                  String?   @map("Category")
+  videosCompleted           Int       @default(0) @map("Videos_Completed")
+  totalVideosInCategory     Int       @default(0) @map("Total_Videos_In_Category")
+  avgComprehension          Float?    @map("Avg_Comprehension")
+  avgAiConfidence           Float?    @map("Avg_AI_Confidence")
+  
+  // Learning velocity
+  completionsLast7Days      Int       @default(0) @map("Completions_Last_7_Days")
+  completionsLast30Days     Int       @default(0) @map("Completions_Last_30_Days")
+  
+  // Insights
+  strongestSkills           String?   @map("Strongest_Skills") // JSON array
+  weakestSkills             String?   @map("Weakest_Skills") // JSON array
+  suggestedNextSteps        String?   @map("Suggested_Next_Steps") // AI-generated recommendations
+  
+  @@map("Training_Analytics")
+  @@index([vaName])
+  @@index([category])
+}
+
+
+model Task {
+  id                        String    @id @default(uuid()) @map("Task_ID")
+  title                     String    @map("Title")
+  type                      String?   @map("Type")
+  content                   String?   @map("Content")
+  url                       String?   @map("URL")
+  description               String?   @map("Description")
+  status                    String    @default("PENDING") @map("Status")
+  priority                  String    @default("MEDIUM") @map("Priority")
+  assignedTo                String?   @map("Assigned_To")
+  dueDate                   DateTime? @map("Due_Date")
+  category                  String?   @map("Category")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+  completedAt               DateTime? @map("Completed_At")
+
+  @@map("Tasks")
+}
+
+model Meeting {
+  id                        String    @id @default(uuid()) @map("Meeting_ID")
+  candidateId               String?   @map("Candidate_ID") // Nullable for internal meetings
+  meetingType               String    @map("Meeting_Type") // SCREENING, INTERVIEW, TECHNICAL, FINAL, ONBOARDING
+  scheduledAt               DateTime  @map("Scheduled_At")
+  durationMinutes           Int       @default(30) @map("Duration_Minutes")
+  status                    String    @default("SCHEDULED") @map("Status") // SCHEDULED, COMPLETED, CANCELLED, NO_SHOW, RESCHEDULED
+  meetingUrl                String?   @map("Meeting_URL") // Zoom/Google Meet/Calendly link
+  joinUrl                   String?   @map("Join_URL") // Quick join link
+  calendarEventId           String?   @map("Calendar_Event_ID") // Calendly/Google Calendar event ID
+  provider                  String    @default("CALENDLY") @map("Provider") // CALENDLY, GOOGLE, MANUAL
+  scheduledBy               String    @map("Scheduled_By") // VA name
+  meetingNotes              String?   @map("Meeting_Notes") // Pre-meeting prep
+  outcome                   String?   @map("Outcome") // HIRED, REJECTED, PENDING, CALLBACK
+  outcomeNotes              String?   @map("Outcome_Notes") // Post-meeting summary
+  reminderSent              Boolean   @default(false) @map("Reminder_Sent")
+  confirmationSent          Boolean   @default(false) @map("Confirmation_Sent")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+  completedAt               DateTime? @map("Completed_At")
+  cancelledAt               DateTime? @map("Cancelled_At")
+  cancelledReason           String?   @map("Cancelled_Reason")
+
+  // Relations
+  candidate                 Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  attendees                 MeetingAttendee[]
+
+  @@map("Meetings")
+  @@index([candidateId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([provider])
+}
+
+model MeetingAttendee {
+  id                        String    @id @default(uuid()) @map("Attendee_ID")
+  meetingId                 String    @map("Meeting_ID")
+  attendeeName              String    @map("Attendee_Name")
+  attendeeEmail             String?   @map("Attendee_Email")
+  role                      String?   @map("Role") // CANDIDATE, INTERVIEWER, OBSERVER
+  rsvpStatus                String    @default("PENDING") @map("RSVP_Status") // PENDING, ACCEPTED, DECLINED
+
+  // Relations
+  meeting                   Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("Meeting_Attendees")
+}
+
+model CalendarIntegration {
+  id                        String    @id @default(uuid()) @map("Config_ID")
+  provider                  String    @map("Provider") // CALENDLY, GOOGLE
+  apiKey                    String?   @map("API_Key")
+  accessToken               String?   @map("Access_Token")
+  refreshToken              String?   @map("Refresh_Token")
+  calendarId                String?   @map("Calendar_ID")
+  webhookUrl                String?   @map("Webhook_URL")
+  webhookSecret             String?   @map("Webhook_Secret")
+  active                    Boolean   @default(true) @map("Active")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+
+  @@map("Calendar_Integrations")
+}
+
+model Deliverable {
+  id                        String    @id @default(uuid()) @map("Deliverable_ID")
+  title                     String    @map("Title")
+  description               String    @map("Description")
+  fileLink                  String?   @map("File_Link")
+  submittedBy               String    @map("Submitted_By") // VA/employee name
+  status                    String    @default("PENDING") @map("Status") // PENDING, APPROVED, REJECTED, PUBLISHED
+  reviewedBy                String?   @map("Reviewed_By")
+  reviewNotes               String?   @map("Review_Notes")
+  reviewedAt                 DateTime? @map("Reviewed_At")
+  publishedAt               DateTime? @map("Published_At")
+  
+  // AI Analysis
+  aiQualityScore            Int?      @map("AI_Quality_Score") // 0-100 assessment
+  aiStrengths               String?   @map("AI_Strengths") // JSON array of strengths
+  aiImprovements            String?   @map("AI_Improvements") // JSON array of suggested improvements
+  aiSummary                 String?   @map("AI_Summary") // Brief AI summary
+  aiAnalysisRaw             String?   @map("AI_Analysis_Raw") // Full AI analysis response
+  
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+
+  @@map("Deliverables")
+  @@index([status])
+  @@index([submittedBy])
+}

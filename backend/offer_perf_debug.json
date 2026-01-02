@@ -1,0 +1,61 @@
+﻿{
+    "ok":  true,
+    "offer_performance":  {
+                              "offer_name":  "all_offers",
+                              "period_days":  90,
+                              "date_range":  {
+                                                 "start":  "2025-09-21T03:46:56.883Z",
+                                                 "end":  "2025-12-20T03:46:56.883Z"
+                                             },
+                              "summary":  {
+                                              "total_events":  1,
+                                              "page_views":  1,
+                                              "unique_visitors":  1,
+                                              "leads":  0,
+                                              "purchases":  0,
+                                              "total_revenue":  0,
+                                              "avg_order_value":  0,
+                                              "revenue_per_visitor":  0
+                                          },
+                              "conversion_rates":  {
+                                                       "visitor_to_lead":  0,
+                                                       "lead_to_purchase":  0,
+                                                       "visitor_to_purchase":  0
+                                                   },
+                              "event_breakdown":  {
+                                                      "page_view":  1
+                                                  },
+                              "source_breakdown":  {
+                                                       "direct":  1
+                                                   },
+                              "has_data":  true,
+                              "debug":  {
+                                            "total_events_in_db":  1,
+                                            "total_events_found":  1,
+                                            "event_type_breakdown":  {
+                                                                         "page_view":  1
+                                                                     },
+                                            "unique_utm_campaigns":  [
+
+                                                                     ],
+                                            "unique_page_paths":  [
+                                                                      "/bundles"
+                                                                  ],
+                                            "sample_events":  [
+                                                                  {
+                                                                      "event_type":  "page_view",
+                                                                      "occurred_at":  "2025-12-16T18:52:25.812537+00:00",
+                                                                      "visitor_id":  "a9a76c92...",
+                                                                      "utm_campaign":  null,
+                                                                      "page_path":  "/bundles",
+                                                                      "metadata":  "{}"
+                                                                  }
+                                                              ],
+                                            "filter_applied":  "none",
+                                            "query_date_range":  {
+                                                                     "start":  "2025-09-21T03:46:56.883Z",
+                                                                     "end":  "2025-12-20T03:46:56.883Z"
+                                                                 }
+                                        }
+                          }
+}

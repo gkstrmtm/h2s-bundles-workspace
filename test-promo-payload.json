@@ -1,0 +1,11 @@
+{
+  "__action": "promo_check_cart",
+  "promotion_code": "h2sqa-e2e-2025",
+  "line_items": [
+    {
+      "price": "price_test",
+      "unit_amount": 14900,
+      "quantity": 1
+    }
+  ]
+}

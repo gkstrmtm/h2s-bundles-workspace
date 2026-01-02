@@ -1,0 +1,154 @@
+// This is a Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Candidate {
+  id                        String    @id @default(uuid()) @map("Candidate_ID")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  phone                     String?   @map("Phone")
+  email                     String?   @map("Email")
+  source                    String?   @map("Source")
+  currentStage              String    @default("NEW") @map("Current_Stage")
+  screeningDate             DateTime? @map("Screening_Date")
+  interviewDate             DateTime? @map("Interview_Date")
+  notesConcerns             String?   @map("Notes_Concerns")
+  toolsRequirementsMet      Boolean?  @map("Tools_Requirements_Met")
+  experienceLevel           String?   @map("Experience_Level")
+  commuteOk                 Boolean?  @map("Commute_OK")
+  weekdayDaytimeAvailable   Boolean?  @map("Weekday_Daytime_Available")
+  eveningSaturdayAvailable  Boolean?  @map("Evening_Saturday_Available")
+  screeningOutcome          String?   @map("Screening_Outcome")
+  interviewOutcome          String?   @map("Interview_Outcome")
+  interviewNotes            String?   @map("Interview_Notes")
+  technicalAssessment       String?   @map("Technical_Assessment")
+  nextAction                String?   @map("Next_Action")
+  nextActionDate            DateTime? @map("Next_Action_Date")
+  owner                     String?   @map("Owner")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+
+  // Relations
+  screeningLogs             ScreeningLog[]
+  interviewLogs             InterviewLog[]
+  aiProfile                 AiCandidateProfile?
+
+  @@map("Candidate_Master")
+}
+
+model ScreeningLog {
+  id                        String    @id @default(uuid()) @map("Log_ID")
+  candidateId               String    @map("Candidate_ID")
+  timestamp                 DateTime  @default(now()) @map("Timestamp")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  phone                     String?   @map("Phone")
+  email                     String?   @map("Email")
+  notesConcerns             String?   @map("Notes_Concerns")
+  toolsRequirementsMet      Boolean?  @map("Tools_Requirements_Met")
+  experienceLevel           String?   @map("Experience_Level")
+  commuteOk                 Boolean?  @map("Commute_OK")
+  weekdayDaytimeAvailable   Boolean?  @map("Weekday_Daytime_Available")
+  eveningSaturdayAvailable  Boolean?  @map("Evening_Saturday_Available")
+  screeningOutcome          String?   @map("Screening_Outcome")
+  rawPayload                String?   @map("Raw_Payload")
+  loggedBy                  String?   @map("Logged_By")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("Screening_Log")
+}
+
+model InterviewLog {
+  id                        String    @id @default(uuid()) @map("Interview_ID")
+  candidateId               String    @map("Candidate_ID")
+  firstName                 String    @map("First_Name")
+  lastName                  String    @map("Last_Name")
+  interviewDate             DateTime  @map("Interview_Date")
+  interviewType             String?   @map("Interview_Type")
+  durationMinutes           Int?      @map("Duration_Minutes")
+  technicalAssessment       String?   @map("Technical_Assessment")
+  interviewOutcome          String?   @map("Interview_Outcome")
+  interviewNotes            String?   @map("Interview_Notes")
+  nextSteps                 String?   @map("Next_Steps")
+  interviewedBy             String?   @map("Interviewed_By")
+  loggedAt                  DateTime  @default(now()) @map("Logged_At")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("Interview_Log")
+}
+
+model VaHoursLog {
+  id                        String    @id @default(uuid()) @map("Entry_ID")
+  date                      DateTime  @map("Date")
+  hours                     Float     @map("Hours")
+  tasks                     String    @map("Tasks")
+  loggedBy                  String    @map("Logged_By")
+  loggedAt                  DateTime  @default(now()) @map("Logged_At")
+  aiSummary                 String?   @map("AI_Summary")
+
+  @@map("VA_Hours_Log")
+}
+
+model AiCandidateProfile {
+  candidateId               String    @id @map("Candidate_ID")
+  profileGeneratedAt        DateTime  @default(now()) @map("Profile_Generated_At")
+  aiModelUsed               String?   @map("AI_Model_Used")
+  profileSummary            String?   @map("Profile_Summary")
+  strengths                 String?   @map("Strengths")
+  concerns                  String?   @map("Concerns")
+  fitScore                  Int?      @map("Fit_Score")
+  recommendation            String?   @map("Recommendation")
+  fullAnalysis              String?   @map("Full_Analysis")
+  rawPromptUsed             String?   @map("Raw_Prompt_Used")
+  errorLog                  String?   @map("Error_Log")
+  manualDecision            String?   @map("Manual_Decision")
+  decisionDate              DateTime? @map("Decision_Date")
+  decisionBy                String?   @map("Decision_By")
+
+  candidate                 Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("AI_Candidate_Profiles")
+}
+
+model TrainingResource {
+  id                        String    @id @default(uuid()) @map("Resource_ID")
+  title                     String    @map("Title")
+  type                      String    @map("Type")
+  url                       String    @map("URL")
+  description               String?   @map("Description")
+  category                  String?   @map("Category")
+  order                     Int?      @default(0) @map("Order")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  createdBy                 String?   @map("Created_By")
+
+  @@map("Training_Resources")
+}
+
+model Task {
+  id                        String    @id @default(uuid()) @map("Task_ID")
+  title                     String    @map("Title")
+  type                      String?   @map("Type")
+  content                   String?   @map("Content")
+  url                       String?   @map("URL")
+  description               String?   @map("Description")
+  status                    String    @default("PENDING") @map("Status")
+  priority                  String    @default("MEDIUM") @map("Priority")
+  assignedTo                String?   @map("Assigned_To")
+  dueDate                   DateTime? @map("Due_Date")
+  category                  String?   @map("Category")
+  createdAt                 DateTime  @default(now()) @map("Created_At")
+  updatedAt                 DateTime  @updatedAt @map("Updated_At")
+  completedAt               DateTime? @map("Completed_At")
+
+  @@map("Tasks")
+}
