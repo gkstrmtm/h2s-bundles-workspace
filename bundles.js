@@ -2421,7 +2421,8 @@ function paintCart(){
           if (!resp.ok && resp.status === 0) {
             // CORS error - backend blocks this domain
             if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
-            logger.error('[Promo] CORS error - backend does not allow this origin');\n            return;
+            logger.error('[Promo] CORS error - backend does not allow this origin');
+            return;
           }
           const data = await resp.json();
           if(!(data && data.ok && data.valid)){
