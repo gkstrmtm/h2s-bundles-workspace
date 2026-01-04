@@ -2429,10 +2429,12 @@ function paintCart(){
               let desc = '';
               if(c.percent_off){ desc = `${c.percent_off}% off`; }
               else if(c.amount_off){ desc = `${money((c.amount_off||0)/100)} off`; }
-              promoMsg.textContent = `Code recognized${desc?`: ${desc}`:''}. Checking cart...`;
+              promoMsg.textContent = `Code recognized${desc?`: ${desc}`:''}. Applying...`;
               promoMsg.style.color = '#0b6e0b';
             }
+            // CRITICAL: Wait for promo estimate to complete before showing success
             await updatePromoEstimate();
+            logger.log('[Promo] Estimate update completed');
           }
         }catch(e){
           if(promoMsg){ promoMsg.textContent = 'Could not validate code. Try again.'; promoMsg.style.color = '#c33'; }
@@ -2447,8 +2449,8 @@ function paintCart(){
   renderBundlePanel();
   queueRenderRecsPanel();
 
-  // Update promo estimate whenever cart repaints
-  Promise.resolve().then(()=>{ try{ updatePromoEstimate(); }catch(_){} });
+  // Update promo estimate whenever cart repaints (await to ensure it completes)
+  updatePromoEstimate().catch(e => logger.warn('[Promo] Update failed:', e));
 }
 
 async function updatePromoEstimate(){
@@ -2557,7 +2559,11 @@ async function updatePromoEstimate(){
       }
       
       if(totalLabel) totalLabel.textContent = 'Grand Total';
-      if(promoMsg){ promoMsg.textContent = 'Code will apply at checkout.'; promoMsg.style.color = '#0b6e0b'; }
+      if(promoMsg){ 
+        const savings = money(savingsCents/100);
+        promoMsg.textContent = `✓ Discount applied! You save ${savings}`;
+        promoMsg.style.color = '#0b6e0b'; 
+      }
     } else {
       logger.warn('[Promo] Not applicable or invalid response');
       // Promo not applicable - restore regular subtotal display
