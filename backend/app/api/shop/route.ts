@@ -53,6 +53,7 @@ function corsHeaders(request?: Request) {
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
+    'https://shop.home2smart.com',
     'http://localhost:3000',
     'http://localhost:3001'
   ];
