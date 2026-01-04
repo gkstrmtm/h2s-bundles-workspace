@@ -158,6 +158,7 @@ let catalog = { services:[], serviceOptions:[], priceTiers:[], bundles:[], bundl
 let allReviews = []; // Global reviews store
 let heroReviews = []; // Global hero reviews store
 let reviewsLoadedFromAPI = false;
+let reviewIndex = 0; // Track current carousel page for review section
 let cart = loadCart();
 let user = loadUser();
 let lastSearch = '';
@@ -179,7 +180,7 @@ function loadBundlesDeferred(){
 function queueRenderRecsPanel(){
   if(window._queuedRecs) return; // collapse bursts
   window._queuedRecs = true;
-  const invoke = ()=> loadExtraDeferred().then(()=>{
+  const invoke = ()=> loadBundlesDeferred().then(()=>{
     if(window.renderRecsPanel) window.renderRecsPanel();
     window._queuedRecs = false;
   }).catch(err => {
@@ -2417,6 +2418,11 @@ function paintCart(){
           // First validate code generically
           const baseUrl = API.replace('/api/shop','/api/promo_validate') + '?code=' + encodeURIComponent(code);
           const resp = await fetch(baseUrl);
+          if (!resp.ok && resp.status === 0) {
+            // CORS error - backend blocks this domain
+            if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
+            logger.error('[Promo] CORS error - backend does not allow this origin');\n            return;
+          }
           const data = await resp.json();
           if(!(data && data.ok && data.valid)){
             localStorage.removeItem('h2s_promo_code');
@@ -2519,6 +2525,13 @@ async function updatePromoEstimate(){
 
     logger.log('[Promo] Checking cart with', line_items.length, 'items');
     const resp = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ __action:'promo_check_cart', promotion_code: code, line_items })});
+    if (!resp.ok && resp.status === 0) {
+      // CORS error - backend blocks this domain
+      logger.error('[Promo] CORS error - backend does not allow this origin');
+      promoLine.style.display = 'none';
+      if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
+      return;
+    }
     const data = await resp.json();
     logger.log('[Promo] Backend response:', data);
     
