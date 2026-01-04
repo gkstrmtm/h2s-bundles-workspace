@@ -2456,9 +2456,8 @@ function paintCart(){
     }
   }catch(_){ /* ignore promo wiring errors */ }
   
-  // Update recommendation panels
+  // Update bundle recommendation panel only
   renderBundlePanel();
-  queueRenderRecsPanel();
 
   // Update promo estimate whenever cart repaints (await to ensure it completes)
   updatePromoEstimate().catch(e => logger.warn('[Promo] Update failed:', e));
