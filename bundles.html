@@ -45,6 +45,9 @@ window.H2S_unlockScroll = function() {
 <link rel="preconnect" href="https://js.stripe.com" crossorigin>
 <link rel="preconnect" href="https://api.stripe.com" crossorigin>
 <link rel="dns-prefetch" href="https://connect.facebook.net">
+<link rel="dns-prefetch" href="https://api.leadconnectorhq.com">
+<link rel="dns-prefetch" href="https://www.googletagmanager.com">
+<link rel="dns-prefetch" href="https://storage.googleapis.com">
 <title>Smart Home Packages &bull; Home2Smart</title>
 <meta name="description" content="TV mounting and security camera packages. Pick a package, we handle the rest. Done right, done once.">
 <meta name="theme-color" content="#0a2a5a">
@@ -67,19 +70,11 @@ window.H2S_unlockScroll = function() {
 <!-- SEO: Robots -->
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 
-<!-- Performance: Critical Resource Hints -->
-<link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="dns-prefetch" href="https://h2s-backend.vercel.app">
-<link rel="preconnect" href="https://js.stripe.com" crossorigin>
-<link rel="preconnect" href="https://api.stripe.com" crossorigin>
-<link rel="dns-prefetch" href="https://storage.googleapis.com">
+<!-- Performance: Preload Critical Resources -->
+<link rel="preload" href="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" as="image" fetchpriority="high" imagesrcset="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png 1x" imagesizes="64px">
+<link rel="preload" href="bundles.js" as="script">
 <!-- Add favicon to avoid 404 in local dev -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
-<!-- Preload logo for faster LCP (highest priority resource) -->
-<link rel="preload" href="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" as="image" fetchpriority="high" imagesrcset="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png 1x" imagesizes="64px">
-<!-- Font woff2 preload removed - version-specific URL (v18) causes 404 errors -->
 
 <!-- H2S Tracking Diagnostics & Enforcement -->
 <script defer>
