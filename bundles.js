@@ -2461,14 +2461,22 @@ async function updatePromoEstimate(){
     const rawLine = byId('rawSubtotalLine');
     const rawAmount = byId('rawSubtotalAmount');
     
-    if(!promoLine || !promoAmount) return;
+    if(!promoLine || !promoAmount) {
+      logger.warn('[Promo] Missing promo UI elements');
+      return;
+    }
     
     // Reset to default state first
-    if(totalLabel) totalLabel.textContent = 'Subtotal';
+    if(totalLabel) totalLabel.textContent = 'Total';
     if(rawLine) rawLine.style.display = 'none';
     
     const code = localStorage.getItem('h2s_promo_code') || '';
-    if(!code){ promoLine.style.display = 'none'; return; }
+    if(!code){ 
+      promoLine.style.display = 'none'; 
+      return; 
+    }
+
+    logger.log('[Promo] Found code in localStorage:', code);
 
     // Build line_items from current cart (ALL items including hardware/addons)
     const line_items = (cart||[]).map(item => {
@@ -2501,15 +2509,23 @@ async function updatePromoEstimate(){
       return { price: priceId, unit_amount: unitAmount, quantity: item.qty || 1 };
     }).filter(Boolean);
     
-    if(!line_items.length){ promoLine.style.display = 'none'; return; }
+    if(!line_items.length){ 
+      logger.warn('[Promo] No valid line items in cart');
+      promoLine.style.display = 'none'; 
+      return; 
+    }
 
+    logger.log('[Promo] Checking cart with', line_items.length, 'items');
     const resp = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ __action:'promo_check_cart', promotion_code: code, line_items })});
     const data = await resp.json();
+    logger.log('[Promo] Backend response:', data);
     
     if(data && data.ok && data.applicable && data.estimate){
       const savingsCents = Number(data.estimate.savings_cents||0);
       const totalCents = Number(data.estimate.total_cents||0);
       const subtotalCents = Number(data.estimate.subtotal_cents||0);
+      
+      logger.log('[Promo] ✅ Applicable! Savings:', savingsCents/100, 'Total:', totalCents/100);
       
       // Show promo discount line
       promoAmount.textContent = '-' + money(savingsCents/100);
@@ -2543,6 +2559,7 @@ async function updatePromoEstimate(){
       if(totalLabel) totalLabel.textContent = 'Grand Total';
       if(promoMsg){ promoMsg.textContent = 'Code will apply at checkout.'; promoMsg.style.color = '#0b6e0b'; }
     } else {
+      logger.warn('[Promo] Not applicable or invalid response');
       // Promo not applicable - restore regular subtotal display
       const cartSubtotalLine = byId('cartSubtotalLine');
       if(cartSubtotalLine) cartSubtotalLine.style.display = 'flex';

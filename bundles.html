@@ -2,243 +2,47 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<!-- CACHE BUSTER v1.1.1 POLISH-API-READY-2026-01-03 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://connect.facebook.net https://js.stripe.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https: data:; connect-src 'self' https://connect.facebook.net https://www.facebook.com https://api.stripe.com https://h2s-backend.vercel.app ws: wss: http://127.0.0.1:* ws://127.0.0.1:*; frame-src https://api.leadconnectorhq.com https://js.stripe.com;">
-<!-- H2S UTILS: Scroll Lock & Parity -->
-<script>
-window.H2S_lockScroll = function() {
-  // 1. Lock Body
-  document.body.style.overflow = 'hidden';
-  document.documentElement.style.overflow = 'hidden';
-  
-  // 2. Find and lock GHL wrapper if it's scrolling
-  var scrollable = Array.from(document.querySelectorAll('div')).find(div => {
-    return div.scrollHeight > div.clientHeight && 
-           (getComputedStyle(div).overflowY === 'auto' || getComputedStyle(div).overflowY === 'scroll');
-  });
-  
-  if (scrollable) {
-    scrollable.dataset.wasOverflow = scrollable.style.overflow;
-    scrollable.style.overflow = 'hidden';
-    window._ghlScrollContainer = scrollable;
-  }
-};
-
-window.H2S_unlockScroll = function() {
-  document.body.style.overflow = '';
-  document.documentElement.style.overflow = '';
-  
-  if (window._ghlScrollContainer) {
-    window._ghlScrollContainer.style.overflow = window._ghlScrollContainer.dataset.wasOverflow || '';
-    delete window._ghlScrollContainer;
-  }
-};
-</script>
-<!-- Meta Pixel base is installed globally via GLOBAL-TRACKING-HEADER.html -->
-<!-- Security -->
-<meta http-equiv="X-Content-Type-Options" content="nosniff">
-<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
+<title>Smart Home Packages &bull; Home2Smart</title>
+<meta name="description" content="TV mounting and security camera packages. Pick a package, we handle the rest. Done right, done once.">
+<meta name="theme-color" content="#0a2a5a">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
+
+<!-- Critical CSS - Inline for instant paint -->
+<style>
+*,*::before,*::after{box-sizing:border-box;}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a2332;background:#fff;}
+.hero{background:linear-gradient(135deg,#0a2a5a 0%,#1a4d8f 100%);color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
+.hero h1{font-size:clamp(32px,7vw,56px);font-weight:900;margin:0 0 20px;letter-spacing:-0.03em;line-height:1.1;}
+.hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
+.hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+.btn{padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;transition:all 0.2s;}
+.btn-primary{background:#1493ff;color:#fff;}
+.btn-ghost{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);}
+</style>
+
+<!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://js.stripe.com" crossorigin>
-<link rel="preconnect" href="https://api.stripe.com" crossorigin>
 <link rel="dns-prefetch" href="https://connect.facebook.net">
 <link rel="dns-prefetch" href="https://api.leadconnectorhq.com">
 <link rel="dns-prefetch" href="https://www.googletagmanager.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
-<title>Smart Home Packages &bull; Home2Smart</title>
-<meta name="description" content="TV mounting and security camera packages. Pick a package, we handle the rest. Done right, done once.">
-<meta name="theme-color" content="#0a2a5a">
 
-<!-- SEO: Open Graph -->
+<!-- SEO -->
+<link rel="canonical" href="https://home2smart.com/bundles">
 <meta property="og:title" content="Smart Home Installation Packages | Home2Smart">
-<meta property="og:description" content="Professional TV mounting & security camera installation. Licensed, insured, instant booking within availability. 500+ homes served, 4.9&#9733; rating.">
+<meta property="og:description" content="Same-week TV mounting & security cameras. Licensed, insured, 500+ homes served.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://home2smart.com/bundles">
-<meta property="og:site_name" content="Home2Smart">
-
-<!-- SEO: Twitter Card -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Smart Home Installation Packages | Home2Smart">
-<meta name="twitter:description" content="Professional TV mounting & security camera installation. Licensed, insured, instant booking within availability.">
 
-<!-- SEO: Canonical URL -->
-<link rel="canonical" href="https://home2smart.com/bundles">
+<!-- Fonts - Async Load -->
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" rel="stylesheet"></noscript>
 
-<!-- SEO: Robots -->
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
-
-<!-- Performance: Preload Critical Resources -->
-<link rel="preload" href="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" as="image" fetchpriority="high" imagesrcset="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png 1x" imagesizes="64px">
-<link rel="preload" href="bundles.js" as="script">
-<!-- Add favicon to avoid 404 in local dev -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
-
-<!-- H2S Tracking Diagnostics & Enforcement -->
-<script defer>
-(function() {
-  const ls = window.localStorage;
-  
-  // RFC4122 v4 UUID fallback (for browsers without crypto.randomUUID)
-  function uuidv4Fallback() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
-  
-  function getOrCreateVisitorId() {
-    let vid = ls.getItem('h2s_visitor_id');
-    if (!vid) {
-      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_visitor_id', vid);
-    }
-    return vid;
-  }
-  
-  function getOrCreateSessionId() {
-    let sid = ls.getItem('h2s_session_id');
-    if (!sid) {
-      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_session_id', sid);
-    }
-    return sid;
-  }
-  async function sendBackend(event_type, params={}) {
-    const visitor_id = getOrCreateVisitorId();
-    const session_id = getOrCreateSessionId();
-    
-    // Validate UUIDs before sending
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(visitor_id)) {
-      // Regenerate and try again
-      ls.removeItem('h2s_visitor_id');
-      return sendBackend(event_type, params);
-    }
-    if (!uuidRegex.test(session_id)) {
-      ls.removeItem('h2s_session_id');
-      return sendBackend(event_type, params);
-    }
-    
-    // Extract UTM parameters from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const utm_source = urlParams.get('utm_source') || null;
-    const utm_medium = urlParams.get('utm_medium') || null;
-    const utm_campaign = urlParams.get('utm_campaign') || null;
-    const utm_term = urlParams.get('utm_term') || null;
-    const utm_content = urlParams.get('utm_content') || null;
-    
-    const payload = {
-      event_type,
-      visitor_id,
-      session_id,
-      occurred_at: new Date().toISOString(),
-      page_url: location.href,
-      page_path: location.pathname,
-      referrer: document.referrer || '(direct)',
-      user_agent: navigator.userAgent,
-      // UTM parameters
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      utm_term,
-      utm_content,
-      // Merge custom params
-      ...params
-    };
-    
-    try {
-      const res = await fetch('https://h2s-backend.vercel.app/api/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const txt = await res.text();
-      
-      if (!res.ok) {
-        // Parse error details
-        let errorDetails = txt;
-        try {
-          const errorJson = JSON.parse(txt);
-          errorDetails = errorJson.error || errorJson.details || txt;
-          
-          // Check for specific error types
-          if (errorDetails.includes('foreign key constraint') || errorDetails.includes('visitor_id_fkey')) {
-            // Backend needs to auto-create visitors
-          } else if (errorDetails.includes('invalid input syntax for type uuid')) {
-            ls.removeItem('h2s_visitor_id');
-            ls.removeItem('h2s_session_id');
-          }
-        } catch(e) {
-          // txt is not JSON, use as-is
-        }
-        
-        return { ok: false, error: errorDetails, status: res.status };
-      }
-      
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  }
-  function onReady(fn){
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
-    else fn();
-  }
-  // REMOVED: page_view auto-send (global header handles it to avoid duplication)
-  // Global header tracking auto-sends page_view on page load
-  onReady(() => {
-    // PageView is handled by global header tracking
-    // Only send custom events here if needed
-  });
-  
-  // Expose globally with initialization flag
-  window.h2sSendBackend = sendBackend;
-  window.__H2S_TRACKING_READY__ = true;
-})();
-</script>
-
-<!-- Critical Fonts -->
-<!-- Fonts loaded async to avoid render-blocking -->
-<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" as="style" crossorigin onload="this.onload=null;this.rel='stylesheet'">
-<noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" rel="stylesheet" crossorigin></noscript>
-
-<style>
-@font-face {
-  font-family: 'Archivo-fallback';
-  src: local('Arial');
-  font-display: swap;
-  size-adjust: 105%;
-  ascent-override: 95%;
-  descent-override: 25%;
-}
-body { font-family: Archivo, 'Archivo-fallback', system-ui, -apple-system, sans-serif; }
-</style>
-
-
-<!-- Page-only overrides: remove chat emoji/bubble on this page -->
-<style>
-  /* Hide decorative emoji/pseudo content used by chat launchers */
-  [data-chat-widget]::before,
-  [data-chat-widget]::after { content: '' !important; display: none !important; }
-  /* Hide common chat launcher containers (LeadConnector/GHL variants) */
-  [data-chat-widget],
-  .chat-widget-container,
-  #ghl-widget,
-  .ghl-widget,
-  .ghl-chat-widget,
-  .hl-cw-widget,
-  .leadconnector-chat-widget { display: none !important; }
-  /* Safety: strip any inline emoji spans inside chat launchers */
-  [data-chat-widget] .emoji, .chat-widget-container .emoji { display: none !important; }
-</style>
-
-
-
-<!-- Load remaining font weights async (non-blocking, low priority) -->
+<!-- Full Styles -->
 <style>
 /* === CRITICAL CSS (INLINE) === */
 /* Performance: contain layout shifts */
@@ -1110,14 +914,17 @@ body.modal-open {
   background-image: linear-gradient(180deg, #fafbfc 0%, #f5f7fa 50%, #ffffff 100%);
   content-visibility: auto;
   contain-intrinsic-size: 0 500px;
+  z-index: 10;
 }
 
 /* Track container to handle overflow properly */
 .review-track-container {
-  overflow: hidden;
+  overflow: visible;
   max-width: 1280px; /* Slightly wider to let cards breathe */
   margin: 0 auto;
-  padding: 0 24px; /* Balanced outer padding */
+  padding: 16px 24px 0; /* Top padding to prevent hover clipping */
+  position: relative;
+  z-index: 20;
 }
 
 /* Softer, subtle top fade instead of hard line */
@@ -1154,7 +961,7 @@ body.modal-open {
   margin-right: auto;
   padding: 0 16px;
   position: relative;
-  z-index: 20;
+  z-index: 30;
 }
 
 .review-carousel-header h2 {
@@ -1178,6 +985,7 @@ body.modal-open {
   will-change: transform;
   width: 100%;
   padding-bottom: 40px; /* Space for shadows */
+  padding-top: 12px; /* Space for hover lift */
 }
 
 .review-card {
@@ -1193,6 +1001,7 @@ body.modal-open {
   margin: 0 12px; /* 24px gap total */
   height: auto; /* Allow stretch */
   position: relative;
+  z-index: 15;
 }
 
 .review-card:hover {
@@ -3264,8 +3073,8 @@ body.modal-open {
 <!-- HERO -->
 <section class="hero">
   <div class="hero-inner">
-    <h1>Expert Installation.<br>Done Right.</h1>
-    <p>TV Mounting & Security Cameras. Pick a package, we handle the rest. Simple pricing, instant booking.</p>
+    <h1>Get Your TV Mounted<br>This Week, Not Next Month.</h1>
+    <p>Professional TV mounting & security cameras. Book online, we handle the rest. Licensed, insured, same-week slots.</p>
     <div class="hero-ctas">
       <button class="btn btn-primary" onclick="scrollToSection('tv')">
         Browse TV Packages
@@ -4198,7 +4007,7 @@ window.scrollReviews = function(direction) {
 })();
 
 // === TRACKING CONGRUENCE ===
-// Fire ViewContent after 3s delay (Engaged Browser)
+// Fire ViewContent after 5s delay (reduce initial load impact)
 setTimeout(function() {
   if (typeof h2sTrack === 'function') {
     h2sTrack('ViewContent', {
