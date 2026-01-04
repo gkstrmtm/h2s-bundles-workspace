@@ -8,6 +8,12 @@
 <meta name="theme-color" content="#0a2a5a">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
 
+<!-- Scroll Lock Utils (Required by modals/drawers) -->
+<script>
+window.H2S_lockScroll=function(){document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';var s=Array.from(document.querySelectorAll('div')).find(d=>d.scrollHeight>d.clientHeight&&(getComputedStyle(d).overflowY==='auto'||getComputedStyle(d).overflowY==='scroll'));if(s){s.dataset.wasOverflow=s.style.overflow;s.style.overflow='hidden';window._ghlScrollContainer=s;}};
+window.H2S_unlockScroll=function(){document.body.style.overflow='';document.documentElement.style.overflow='';if(window._ghlScrollContainer){window._ghlScrollContainer.style.overflow=window._ghlScrollContainer.dataset.wasOverflow||'';delete window._ghlScrollContainer;}};
+</script>
+
 <!-- Critical CSS - Inline for instant paint -->
 <style>
 *,*::before,*::after{box-sizing:border-box;}
