@@ -238,6 +238,7 @@ function showSkeleton(){
 // Use the global h2sSendBackend helper (defined at top of page) for backend tracking
 // This ensures proper visitor_id and session_id are always included
 function h2sTrack(event, data={}){
+  console.log(`📊 [Tracking] ${event}`, data);
   
   // Send to Meta Pixel with readiness guard to avoid early warnings
   (function sendPixel(){
@@ -246,6 +247,7 @@ function h2sTrack(event, data={}){
         const params = buildAdvancedParams();
         const eventData = { ...data };
         fbq('track', event, eventData, params);
+        console.log(`✅ [Meta Pixel] ${event} sent`);
       } catch (e) {
         console.warn('⚠️ [Meta Pixel] send failed:', e);
       }
@@ -260,6 +262,7 @@ function h2sTrack(event, data={}){
             const params = buildAdvancedParams();
             const eventData = { ...data };
             fbq('track', event, eventData, params);
+            console.log(`✅ [Meta Pixel] ${event} sent (delayed)`);
           } catch(e){ console.warn('⚠️ [Meta Pixel] delayed send failed:', e); }
         } else if (++tries >= maxTries) {
           clearInterval(timer);
@@ -281,12 +284,13 @@ function h2sTrack(event, data={}){
       };
       try {
         const result = window.h2sSendBackend(event_type, trackingData);
+        console.log(`✅ [Backend] ${event_type} sent to database`);
         // Only await if it returns a promise
         if (result && typeof result.catch === 'function') {
           result.catch(() => {});
         }
       } catch(err) {
-        // Silent fail
+        console.warn(`⚠️ [Backend] ${event_type} failed:`, err);
       }
     } else if (attempt <= 5) {
       // Backend not ready yet, retry after delay
