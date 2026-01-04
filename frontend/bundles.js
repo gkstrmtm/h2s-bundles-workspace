@@ -179,7 +179,7 @@ function loadBundlesDeferred(){
 function queueRenderRecsPanel(){
   if(window._queuedRecs) return; // collapse bursts
   window._queuedRecs = true;
-  const invoke = ()=> loadExtraDeferred().then(()=>{
+  const invoke = ()=> loadBundlesDeferred().then(()=>{
     if(window.renderRecsPanel) window.renderRecsPanel();
     window._queuedRecs = false;
   }).catch(err => {
@@ -2416,11 +2416,13 @@ function paintCart(){
         try{
           // First validate code generically
           const baseUrl = API.replace('/api/shop','/api/promo_validate') + '?code=' + encodeURIComponent(code);
-          console.log('🎫 [PROMO] Validating code:', code);
-          console.log('🎫 [PROMO] Validation URL:', baseUrl);
           const resp = await fetch(baseUrl);
+          if (!resp.ok && resp.status === 0) {
+            // CORS error - backend blocks this domain
+            if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
+            logger.error('[Promo] CORS error - backend does not allow this origin');\n            return;
+          }
           const data = await resp.json();
-          console.log('🎫 [PROMO] Validation response:', data);
           if(!(data && data.ok && data.valid)){
             localStorage.removeItem('h2s_promo_code');
             if(promoMsg){ promoMsg.textContent = 'Invalid or expired code'; promoMsg.style.color = '#c33'; }
@@ -2432,10 +2434,12 @@ function paintCart(){
               let desc = '';
               if(c.percent_off){ desc = `${c.percent_off}% off`; }
               else if(c.amount_off){ desc = `${money((c.amount_off||0)/100)} off`; }
-              promoMsg.textContent = `Code recognized${desc?`: ${desc}`:''}. Checking cart...`;
+              promoMsg.textContent = `Code recognized${desc?`: ${desc}`:''}. Applying...`;
               promoMsg.style.color = '#0b6e0b';
             }
+            // CRITICAL: Wait for promo estimate to complete before showing success
             await updatePromoEstimate();
+            logger.log('[Promo] Estimate update completed');
           }
         }catch(e){
           if(promoMsg){ promoMsg.textContent = 'Could not validate code. Try again.'; promoMsg.style.color = '#c33'; }
@@ -2450,8 +2454,8 @@ function paintCart(){
   renderBundlePanel();
   queueRenderRecsPanel();
 
-  // Update promo estimate whenever cart repaints
-  Promise.resolve().then(()=>{ try{ updatePromoEstimate(); }catch(_){} });
+  // Update promo estimate whenever cart repaints (await to ensure it completes)
+  updatePromoEstimate().catch(e => logger.warn('[Promo] Update failed:', e));
 }
 
 async function updatePromoEstimate(){
@@ -2464,14 +2468,22 @@ async function updatePromoEstimate(){
     const rawLine = byId('rawSubtotalLine');
     const rawAmount = byId('rawSubtotalAmount');
     
-    if(!promoLine || !promoAmount) return;
+    if(!promoLine || !promoAmount) {
+      logger.warn('[Promo] Missing promo UI elements');
+      return;
+    }
     
     // Reset to default state first
-    if(totalLabel) totalLabel.textContent = 'Subtotal';
+    if(totalLabel) totalLabel.textContent = 'Total';
     if(rawLine) rawLine.style.display = 'none';
     
     const code = localStorage.getItem('h2s_promo_code') || '';
-    if(!code){ promoLine.style.display = 'none'; return; }
+    if(!code){ 
+      promoLine.style.display = 'none'; 
+      return; 
+    }
+
+    logger.log('[Promo] Found code in localStorage:', code);
 
     // Build line_items from current cart (ALL items including hardware/addons)
     const line_items = (cart||[]).map(item => {
@@ -2504,17 +2516,30 @@ async function updatePromoEstimate(){
       return { price: priceId, unit_amount: unitAmount, quantity: item.qty || 1 };
     }).filter(Boolean);
     
-    if(!line_items.length){ promoLine.style.display = 'none'; return; }
+    if(!line_items.length){ 
+      logger.warn('[Promo] No valid line items in cart');
+      promoLine.style.display = 'none'; 
+      return; 
+    }
 
-    console.log('🎫 [PROMO] Checking cart with code:', code, 'line_items:', line_items);
+    logger.log('[Promo] Checking cart with', line_items.length, 'items');
     const resp = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ __action:'promo_check_cart', promotion_code: code, line_items })});
+    if (!resp.ok && resp.status === 0) {
+      // CORS error - backend blocks this domain
+      logger.error('[Promo] CORS error - backend does not allow this origin');
+      promoLine.style.display = 'none';
+      if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
+      return;
+    }
     const data = await resp.json();
-    console.log('🎫 [PROMO] Cart check response:', data);
+    logger.log('[Promo] Backend response:', data);
     
     if(data && data.ok && data.applicable && data.estimate){
       const savingsCents = Number(data.estimate.savings_cents||0);
       const totalCents = Number(data.estimate.total_cents||0);
       const subtotalCents = Number(data.estimate.subtotal_cents||0);
+      
+      logger.log('[Promo] ✅ Applicable! Savings:', savingsCents/100, 'Total:', totalCents/100);
       
       // Show promo discount line
       promoAmount.textContent = '-' + money(savingsCents/100);
@@ -2546,8 +2571,13 @@ async function updatePromoEstimate(){
       }
       
       if(totalLabel) totalLabel.textContent = 'Grand Total';
-      if(promoMsg){ promoMsg.textContent = 'Code will apply at checkout.'; promoMsg.style.color = '#0b6e0b'; }
+      if(promoMsg){ 
+        const savings = money(savingsCents/100);
+        promoMsg.textContent = `✓ Discount applied! You save ${savings}`;
+        promoMsg.style.color = '#0b6e0b'; 
+      }
     } else {
+      logger.warn('[Promo] Not applicable or invalid response');
       // Promo not applicable - restore regular subtotal display
       const cartSubtotalLine = byId('cartSubtotalLine');
       if(cartSubtotalLine) cartSubtotalLine.style.display = 'flex';
