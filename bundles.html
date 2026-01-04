@@ -57,6 +57,141 @@ window.__H2S_FB_INIT__ = true;
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=2384221445259822&ev=PageView&noscript=1"/></noscript>
 
+<!-- H2S Backend Tracking -->
+<script>
+(function() {
+  function __h2sStartTracking() {
+  const ls = window.localStorage;
+  
+  function uuidv4Fallback() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  function getOrCreateVisitorId() {
+    let vid = ls.getItem('h2s_visitor_id');
+    if (!vid) {
+      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_visitor_id', vid);
+    }
+    return vid;
+  }
+  
+  function getOrCreateSessionId() {
+    let sid = ls.getItem('h2s_session_id');
+    if (!sid) {
+      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_session_id', sid);
+    }
+    return sid;
+  }
+  
+  async function sendBackend(event_type, params={}) {
+    const visitor_id = getOrCreateVisitorId();
+    const session_id = getOrCreateSessionId();
+    
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(visitor_id)) {
+      ls.removeItem('h2s_visitor_id');
+      return sendBackend(event_type, params);
+    }
+    if (!uuidRegex.test(session_id)) {
+      ls.removeItem('h2s_session_id');
+      return sendBackend(event_type, params);
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const utm_source = urlParams.get('utm_source') || null;
+    const utm_medium = urlParams.get('utm_medium') || null;
+    const utm_campaign = urlParams.get('utm_campaign') || null;
+    const utm_term = urlParams.get('utm_term') || null;
+    const utm_content = urlParams.get('utm_content') || null;
+    
+    function normalizePathname(p) {
+      const s = (p || '').toString().trim();
+      if (!s) return '/';
+      if (s === '/') return '/';
+      return s.replace(/\/+$/g, '');
+    }
+
+    const payload = {
+      event_type,
+      visitor_id,
+      session_id,
+      occurred_at: new Date().toISOString(),
+      page_url: location.href,
+      page_path: normalizePathname(location.pathname),
+      referrer: document.referrer || '(direct)',
+      user_agent: navigator.userAgent,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_term,
+      utm_content,
+      ...params
+    };
+    
+    const endpoint = 'https://h2s-backend.vercel.app/api/track';
+    const body = JSON.stringify(payload);
+    const isLocalPreview = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
+
+    try {
+      if (isLocalPreview) {
+        await fetch(endpoint, {
+          method: 'POST',
+          mode: 'no-cors',
+          credentials: 'omit',
+          body,
+          cache: 'no-store',
+          keepalive: true
+        });
+        return { ok: true, via: 'no-cors' };
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        credentials: 'omit',
+        cache: 'no-store',
+        keepalive: true
+      });
+
+      if (res.ok) return { ok: true };
+
+      const txt = await res.text();
+      let errorDetails = txt;
+      try {
+        const errorJson = JSON.parse(txt);
+        errorDetails = errorJson.error || errorJson.details || txt;
+        if (String(errorDetails).includes('invalid input syntax for type uuid')) {
+          ls.removeItem('h2s_visitor_id');
+          ls.removeItem('h2s_session_id');
+        }
+      } catch (e) {}
+
+      return { ok: false, error: errorDetails, status: res.status };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  }
+  
+  window.h2sSendBackend = sendBackend;
+  window.__H2S_TRACKING_READY__ = true;
+  }
+  
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(__h2sStartTracking, { timeout: 2500 });
+  } else {
+    setTimeout(__h2sStartTracking, 0);
+  }
+})();
+</script>
+
 <!-- Full Styles -->
 <style>
 /* === CRITICAL CSS (INLINE) === */
