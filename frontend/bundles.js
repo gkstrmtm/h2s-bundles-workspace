@@ -158,6 +158,7 @@ let catalog = { services:[], serviceOptions:[], priceTiers:[], bundles:[], bundl
 let allReviews = []; // Global reviews store
 let heroReviews = []; // Global hero reviews store
 let reviewsLoadedFromAPI = false;
+let reviewIndex = 0; // Track current carousel page for review section
 let cart = loadCart();
 let user = loadUser();
 let lastSearch = '';
