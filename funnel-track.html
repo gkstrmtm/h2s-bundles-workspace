@@ -1063,6 +1063,7 @@
                     
                     <button onclick="refreshData()" style="padding: 8px 16px; background: #34A853; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                         <span>Refresh</span>
+                        <span>Refresh</span>
                     </button>
                 </div>
             </div>
@@ -1123,7 +1124,7 @@
                 <div class="kpi-card fade-in-delay-1">
                     <div class="kpi-header">
                         <div class="kpi-title">Pixel Events</div>
-                        <div class="kpi-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">EV</div>
+                        <div class="kpi-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">TE</div>
                     </div>
                     <div class="kpi-value" id="pixelTotalEvents">-</div>
                     <div class="kpi-change" id="pixelEventsChange">Loading...</div>
@@ -1133,7 +1134,7 @@
                 <div class="kpi-card fade-in-delay-2">
                     <div class="kpi-header">
                         <div class="kpi-title">Unique Users</div>
-                        <div class="kpi-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">UU</div>
+                        <div class="kpi-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">US</div>
                     </div>
                     <div class="kpi-value" id="pixelMatchQuality">-</div>
                     <div class="kpi-change" id="pixelQualityChange">Tracked across sessions</div>
@@ -1143,7 +1144,7 @@
                 <div class="kpi-card fade-in-delay-3">
                     <div class="kpi-header">
                         <div class="kpi-title">Top Content by Engagement</div>
-                        <div class="kpi-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">TOP</div>
+                        <div class="kpi-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">TP</div>
                     </div>
                     <div class="kpi-value" id="pixelTopPage" style="font-size: clamp(16px, 2.5vw, 22px); line-height: 1.3;">-</div>
                     <div class="kpi-change" id="pixelTopPageEvents">-</div>
@@ -1153,7 +1154,7 @@
                 <div class="kpi-card">
                     <div class="kpi-header">
                         <div class="kpi-title">Total Conversion Value</div>
-                        <div class="kpi-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white;">$</div>
+                        <div class="kpi-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white;">TV</div>
                     </div>
                     <div class="kpi-value" id="pixelTotalValue">$0.00</div>
                     <div class="kpi-change" id="pixelConversions">0 conversions</div>
@@ -1194,7 +1195,7 @@
             <div class="chart-card" style="margin-top: 24px;">
                 <h3>Traffic Source Attribution</h3>
                 <div id="pixelAttributionQuality" style="font-size: 12px; color: #666; margin: 8px 0 10px 0; line-height: 1.4;">
-                    <span style="opacity: 0.75;">Measuring UTM coverage...</span>
+                    <strong>Attribution Quality:</strong> Loading...
                 </div>
                 <div id="pixelUTMSources" style="max-height: 300px; overflow-y: auto;">
                     <div class="loading">
@@ -1271,7 +1272,7 @@
         <div class="tracking-content">
             <div class="tracking-header">
                 <h2>Home2Smart Tracking Reference</h2>
-                <button class="close-modal" onclick="closeTrackingReference()" aria-label="Close">X</button>
+                <button class="close-modal" onclick="closeTrackingReference()" aria-label="Close">&times;</button>
             </div>
             <div class="tracking-body">
                 
@@ -1607,6 +1608,7 @@ ORDER BY converted_at DESC;</pre>
         <div class="modal-content" style="background-color: #fefefe; margin: 5% auto; padding: 0; border-radius: 16px; width: 90%; max-width: 600px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); animation: slideIn 0.3s ease;">
             <div class="modal-header" style="padding: 24px 24px 16px 24px; border-bottom: 1px solid #e7eaf0; display: flex; justify-content: space-between; align-items: center;">
                 <h2 id="settingsTitle" style="margin: 0; font-size: 24px; font-weight: 900; color: var(--cobalt); display: flex; align-items: center; gap: 10px;">
+                    <span>SET</span>
                     <span>Dashboard Settings</span>
                 </h2>
                 <button onclick="closeSettings()" aria-label="Close settings" style="background: transparent; border: none; font-size: 28px; color: #5f6368; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all 0.2s;" onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent'">&times;</button>
@@ -1617,6 +1619,7 @@ ORDER BY converted_at DESC;</pre>
                 <!-- Data Retention Section -->
                 <section style="margin-bottom: 24px; padding: 20px; background: #f5f9ff; border-radius: 12px; border: 1px solid #d7eafc;">
                     <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700; color: var(--cobalt); display: flex; align-items: center; gap: 8px;">
+                        <span>DB</span>
                         <span>Data Retention</span>
                     </h3>
                     
@@ -1644,6 +1647,7 @@ ORDER BY converted_at DESC;</pre>
                 <!-- Display Preferences Section -->
                 <section style="margin-bottom: 24px; padding: 20px; background: #f5fff8; border-radius: 12px; border: 1px solid #c6f6d5;">
                     <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700; color: var(--cobalt); display: flex; align-items: center; gap: 8px;">
+                        <span>UI</span>
                         <span>Display Preferences</span>
                     </h3>
                     
@@ -1676,6 +1680,7 @@ ORDER BY converted_at DESC;</pre>
                 <!-- Data Quality Section -->
                 <section style="padding: 20px; background: #fff3e0; border-radius: 12px; border: 1px solid #ffcc80;">
                     <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700; color: var(--cobalt); display: flex; align-items: center; gap: 8px;">
+                        <span>Q</span>
                         <span>Data Quality</span>
                     </h3>
                     
@@ -1699,6 +1704,7 @@ ORDER BY converted_at DESC;</pre>
                 <!-- Path Exclusion Rules Section -->
                 <section style="margin-top: 24px; padding: 20px; background: #f3e5f5; border-radius: 12px; border: 1px solid #ce93d8;">
                     <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 700; color: var(--cobalt); display: flex; align-items: center; gap: 8px;">
+                        <span>X</span>
                         <span>Path Exclusion Rules</span>
                     </h3>
                     
@@ -1880,12 +1886,14 @@ ORDER BY converted_at DESC;</pre>
             if (preset === 'custom') {
                 customInputs.style.display = 'flex';
                 // Set defaults to previous period
-                if (currentStartDate && currentEndDate) {
-                    const duration = currentEndDate - currentStartDate;
-                    const compareEnd = new Date(currentStartDate);
-                    const compareStart = new Date(currentStartDate.getTime() - duration);
-                    document.getElementById('compareStartDate').value = formatDateTimeLocal(compareStart);
-                    document.getElementById('compareEndDate').value = formatDateTimeLocal(compareEnd);
+                if (currentStartDate) {
+                    if (currentEndDate) {
+                        const duration = currentEndDate - currentStartDate;
+                        const compareEnd = new Date(currentStartDate);
+                        const compareStart = new Date(currentStartDate.getTime() - duration);
+                        document.getElementById('compareStartDate').value = formatDateTimeLocal(compareStart);
+                        document.getElementById('compareEndDate').value = formatDateTimeLocal(compareEnd);
+                    }
                 }
                 return;
             } else {
@@ -1893,13 +1901,15 @@ ORDER BY converted_at DESC;</pre>
             }
             
             // Previous period
-            if (currentStartDate && currentEndDate) {
-                const duration = currentEndDate - currentStartDate;
-                comparisonEndDate = new Date(currentStartDate);
-                comparisonStartDate = new Date(currentStartDate.getTime() - duration);
-                
-                summary.textContent = `vs ${formatDateRange(comparisonStartDate, comparisonEndDate)}`;
-                refreshData();
+            if (currentStartDate) {
+                if (currentEndDate) {
+                    const duration = currentEndDate - currentStartDate;
+                    comparisonEndDate = new Date(currentStartDate);
+                    comparisonStartDate = new Date(currentStartDate.getTime() - duration);
+                    
+                    summary.textContent = `vs ${formatDateRange(comparisonStartDate, comparisonEndDate)}`;
+                    refreshData();
+                }
             }
         }
         
@@ -1939,13 +1949,16 @@ ORDER BY converted_at DESC;</pre>
             const display = document.getElementById('currentRangeText');
             if (!display) return;
             
-            if (currentStartDate && currentEndDate) {
-                display.textContent = formatDateRange(currentStartDate, currentEndDate);
-            } else {
-                const preset = document.getElementById('timeRangePreset').value;
-                const presetText = document.getElementById('timeRangePreset').options[document.getElementById('timeRangePreset').selectedIndex].text;
-                display.textContent = presetText;
+            if (currentStartDate) {
+                if (currentEndDate) {
+                    display.textContent = formatDateRange(currentStartDate, currentEndDate);
+                    return;
+                }
             }
+
+            const preset = document.getElementById('timeRangePreset').value;
+            const presetText = document.getElementById('timeRangePreset').options[document.getElementById('timeRangePreset').selectedIndex].text;
+            display.textContent = presetText;
         }
 
         function withExcludeTest(url) {
@@ -1963,17 +1976,23 @@ ORDER BY converted_at DESC;</pre>
             let params = [];
             
             // Use custom date range if set
-            if (currentStartDate && currentEndDate) {
-                params.push(`start_date=${currentStartDate.toISOString()}`);
-                params.push(`end_date=${currentEndDate.toISOString()}`);
-            } else {
-                // Otherwise use preset
+            if (currentStartDate) {
+                if (currentEndDate) {
+                    params.push(`start_date=${currentStartDate.toISOString()}`);
+                    params.push(`end_date=${currentEndDate.toISOString()}`);
+                }
+            }
+
+            // Otherwise use preset
+            if (params.length === 0) {
                 const preset = document.getElementById('timeRangePreset')?.value || DEFAULT_TIME_RANGE_DAYS.toString();
                 
-                if (preset !== 'custom' && preset !== 'all') {
-                    const startDate = new Date();
-                    startDate.setDate(startDate.getDate() - parseInt(preset));
-                    params.push(`start_date=${startDate.toISOString()}`);
+                if (preset !== 'custom') {
+                    if (preset !== 'all') {
+                        const startDate = new Date();
+                        startDate.setDate(startDate.getDate() - parseInt(preset));
+                        params.push(`start_date=${startDate.toISOString()}`);
+                    }
                 }
             }
             
@@ -2000,10 +2019,12 @@ ORDER BY converted_at DESC;</pre>
         function getTimeRangeLabel() {
             const preset = document.getElementById('timeRangePreset')?.value;
             
-            if (currentStartDate && currentEndDate) {
-                const start = currentStartDate.toLocaleDateString();
-                const end = currentEndDate.toLocaleDateString();
-                return `${start} - ${end}`;
+            if (currentStartDate) {
+                if (currentEndDate) {
+                    const start = currentStartDate.toLocaleDateString();
+                    const end = currentEndDate.toLocaleDateString();
+                    return `${start} - ${end}`;
+                }
             }
             
             if (preset === 'all') return 'All Time';
@@ -2029,6 +2050,69 @@ ORDER BY converted_at DESC;</pre>
                 return Number.isFinite(parsed) ? parsed : fallback;
             }
             return fallback;
+        }
+
+        function fmtCurrency(value) {
+            const n = asNumber(value, 0);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
+        }
+
+        function fmtCurrencyNoCents(value) {
+            const n = asNumber(value, 0);
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+        }
+
+        function normalizeTrafficSourceLabel(raw) {
+            if (raw === null || raw === undefined) return '';
+
+            let s = String(raw).trim();
+            if (!s) return '';
+
+            try {
+                const decoded = decodeURIComponent(s);
+                if (decoded) s = decoded;
+            } catch (e) {
+                // ignore
+            }
+
+            const lower = s.toLowerCase().trim();
+
+            if (lower.includes('{{') || lower.includes('}}')) return '';
+
+            const junk = new Set([
+                'site_source_name',
+                '{{site_source_name}}',
+                'undefined',
+                'null',
+                '(not set)',
+                '(none)',
+                'none',
+                'unknown',
+                'n/a',
+                'na',
+                '[object object]'
+            ]);
+            if (junk.has(lower)) return '';
+
+            if (lower === 'direct' || lower === '(direct)') return 'Direct';
+            if (lower === 'fb' || lower === 'facebook' || lower.includes('facebook.com')) return 'Facebook';
+            if (lower === 'ig' || lower === 'instagram' || lower.includes('instagram.com')) return 'Instagram';
+            if (lower === 'google' || lower.includes('google')) return 'Google';
+            if (lower.includes('tiktok')) return 'TikTok';
+            if (lower.includes('youtube')) return 'YouTube';
+            if (lower.includes('email') || lower === 'mailchimp' || lower === 'klaviyo') return 'Email';
+            if (lower.includes('sms') || lower.includes('text')) return 'SMS';
+
+            if (/^https?:\/\//i.test(s)) {
+                try {
+                    const url = new URL(s);
+                    if (url.hostname) return url.hostname.replace(/^www\./, '');
+                } catch (e) {
+                    // ignore
+                }
+            }
+
+            return s.length > 40 ? (s.slice(0, 37) + '...') : s;
         }
 
         function showStatus(message, isWarning=true) {
@@ -2092,9 +2176,11 @@ ORDER BY converted_at DESC;</pre>
                 
                 // Start auto-refresh if enabled
                 const refreshInterval = localStorage.getItem('h2s_refresh_interval') || '30';
-                if (AUTO_REFRESH_ENABLED && !autoRefreshInterval) {
-                    autoRefreshInterval = setInterval(silentRefresh, parseInt(refreshInterval) * 1000);
-                    console.log(`Auto-refresh enabled (every ${refreshInterval}s)`);
+                if (AUTO_REFRESH_ENABLED) {
+                    if (!autoRefreshInterval) {
+                        autoRefreshInterval = setInterval(silentRefresh, parseInt(refreshInterval) * 1000);
+                        console.log(`Auto-refresh enabled (every ${refreshInterval}s)`);
+                    }
                 }
             } catch (error) {
                 console.error('Dashboard initialization error:', error);
@@ -2153,14 +2239,15 @@ ORDER BY converted_at DESC;</pre>
                 if (warnings.length) showStatus(warnings.join(' - '));
 
                 const timeRange = getTimeRangeLabel();
-                const totalOrders = toInt(revenueData.total_orders, 0);
-                const totalRevenue = toNumber(revenueData.total_revenue, 0);
-                const avgOrderValue = toNumber(revenueData.average_order_value, 0);
+                const totalOrders = Math.trunc(asNumber(revenueData.total_orders, 0));
+                const totalRevenue = asNumber(revenueData.total_revenue, 0);
+                const avgOrderValue = asNumber(revenueData.average_order_value, 0);
                 const kpis = [
                     {
                         title: 'Sessions',
                         subtitle: timeRange,
                         value: totalOrders.toLocaleString(),
+                        icon: 'S',
                         label: 'S',
                         color: '#1493ff'
                     },
@@ -2168,6 +2255,7 @@ ORDER BY converted_at DESC;</pre>
                         title: 'Revenue',
                         subtitle: timeRange,
                         value: fmtCurrency(totalRevenue),
+                        icon: '$',
                         label: '$',
                         color: '#34A853'
                     },
@@ -2175,6 +2263,7 @@ ORDER BY converted_at DESC;</pre>
                         title: 'Orders',
                         subtitle: timeRange,
                         value: totalOrders.toLocaleString(),
+                        icon: 'O',
                         label: 'O',
                         color: '#FBBC04'
                     },
@@ -2182,6 +2271,7 @@ ORDER BY converted_at DESC;</pre>
                         title: 'Avg Order Value',
                         subtitle: timeRange,
                         value: fmtCurrency(avgOrderValue),
+                        icon: 'A',
                         label: 'A',
                         color: '#EA4335'
                     },
@@ -2189,6 +2279,7 @@ ORDER BY converted_at DESC;</pre>
                         title: 'Users',
                         subtitle: timeRange,
                         value: (cohortData.total_users || 0).toLocaleString(),
+                        icon: 'U',
                         label: 'U',
                         color: '#9C27B0'
                     },
@@ -2196,6 +2287,7 @@ ORDER BY converted_at DESC;</pre>
                         title: 'Customers',
                         subtitle: timeRange,
                         value: (cohortData.user_cohorts?.customer || 0).toLocaleString(),
+                        icon: 'C',
                         label: 'C',
                         color: '#FF9800'
                     }
@@ -2203,7 +2295,7 @@ ORDER BY converted_at DESC;</pre>
 
                 renderKPIs(kpis);
             } catch (error) {
-                console.error('Error loading KPIs:', error);
+                console.error('ERROR loading KPIs:', error);
                 console.error('Error details:', {
                     message: error.message,
                     stack: error.stack
@@ -2267,10 +2359,26 @@ ORDER BY converted_at DESC;</pre>
                 console.log('Meta Pixel Data loaded:', response);
                 
                 const payload = response.meta_pixel_events || response;
-                if (payload && payload.summary) {
-                    const summary = payload.summary;
-                    const hasData = summary.total_events && summary.total_events > 0;
+                if (!payload || !payload.summary) {
+                    // No summary data - show empty state
+                    document.getElementById('pixelTotalEvents').textContent = '0';
+                    document.getElementById('pixelEventsChange').textContent = 'No tracking data yet';
+                    document.getElementById('pixelEventsChange').className = 'kpi-change';
                     
+                    document.getElementById('pixelMatchQuality').textContent = '0';
+                    document.getElementById('pixelTopPage').textContent = 'No data';
+                    document.getElementById('pixelTopPageEvents').textContent = 'Waiting for events...';
+                    document.getElementById('pixelTopPageEvents').className = 'kpi-change';
+                    
+                    document.getElementById('pixelTotalValue').textContent = '$0.00';
+                    document.getElementById('pixelConversions').textContent = '0 conversions';
+                    document.getElementById('pixelConversions').className = 'kpi-change';
+                    
+                    renderMetaPixelCharts({}, false);
+                } else {
+                    const summary = payload.summary;
+                    const hasData = (summary.total_events || 0) > 0;
+
                     // Update KPI values - show FILTERED count for selected time range
                     const filteredTotal = summary.total_events || 0;
                     
@@ -2317,25 +2425,9 @@ ORDER BY converted_at DESC;</pre>
                     
                     // Render charts - pass full payload for all new fields
                     renderMetaPixelCharts(payload, hasData);
-                } else {
-                    // No summary data - show empty state
-                    document.getElementById('pixelTotalEvents').textContent = '0';
-                    document.getElementById('pixelEventsChange').textContent = 'No tracking data yet';
-                    document.getElementById('pixelEventsChange').className = 'kpi-change';
-                    
-                    document.getElementById('pixelMatchQuality').textContent = '0';
-                    document.getElementById('pixelTopPage').textContent = 'No data';
-                    document.getElementById('pixelTopPageEvents').textContent = 'Waiting for events...';
-                    document.getElementById('pixelTopPageEvents').className = 'kpi-change';
-                    
-                    document.getElementById('pixelTotalValue').textContent = '$0.00';
-                    document.getElementById('pixelConversions').textContent = '0 conversions';
-                    document.getElementById('pixelConversions').className = 'kpi-change';
-                    
-                    renderMetaPixelCharts({}, false);
                 }
             } catch (error) {
-                console.error('Error loading Meta Pixel data:', error);
+                console.error('ERROR loading Meta Pixel data:', error);
                 // Set error state
                 document.getElementById('pixelTotalEvents').textContent = '0';
                 document.getElementById('pixelEventsChange').textContent = 'Error loading data';
@@ -2352,102 +2444,6 @@ ORDER BY converted_at DESC;</pre>
                 
                 renderMetaPixelCharts({}, false);
             }
-        }
-
-        function normalizeTrafficSourceLabel(raw) {
-            const rawString = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
-            let s = rawString.trim();
-            if (!s) return 'Direct';
-
-            // Try to decode URL-encoded values (safe; ignore failures)
-            try {
-                if (/%[0-9a-f]{2}/i.test(s)) {
-                    s = decodeURIComponent(s).trim();
-                }
-            } catch (e) {
-                // ignore
-            }
-
-            const lower = s.toLowerCase();
-
-            // Filter placeholder/stale/noise values
-            // Examples: "{{site_source_name}}", "{{ campaign.name }}", "undefined", "(not set)"
-            if (lower.includes('{{') && lower.includes('}}')) return null;
-            if (lower.includes('site_source_name')) return null;
-            if (lower === 'undefined' || lower === 'null') return null;
-            if (lower === '[object object]') return null;
-            if (lower === '(not set)' || lower === '(none)' || lower === 'not set' || lower === 'none') return null;
-            if (lower === 'n/a' || lower === 'na') return null;
-
-            // If someone accidentally sent a URL as source, show the hostname (still useful)
-            if (lower.startsWith('http://') || lower.startsWith('https://')) {
-                try {
-                    const u = new URL(s);
-                    if (u.hostname) return u.hostname.replace(/^www\./i, '');
-                } catch (e) {
-                    // ignore
-                }
-            }
-
-            // Canonicalize common sources
-            const key = lower.replace(/[^a-z0-9]+/g, '');
-            const map = {
-                direct: 'Direct',
-                google: 'Google',
-                adwords: 'Google',
-                g: 'Google',
-                bing: 'Bing',
-                facebook: 'Facebook',
-                fb: 'Facebook',
-                instagram: 'Instagram',
-                ig: 'Instagram',
-                tiktok: 'TikTok',
-                linkedin: 'LinkedIn',
-                youtube: 'YouTube',
-                email: 'Email',
-                newsletter: 'Email',
-                sms: 'SMS',
-                text: 'SMS',
-                organic: 'Organic',
-                referral: 'Referral'
-            };
-            if (map[key]) return map[key];
-
-            // Keep unknown values, but avoid empty/meaningless strings
-            if (s.length < 2) return null;
-            return s;
-        }
-
-        function escapeHtml(value) {
-            const s = value == null ? '' : String(value);
-            return s
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#39;');
-        }
-
-        function toNumber(value, fallback = 0) {
-            if (value === null || value === undefined) return fallback;
-            if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
-            if (typeof value === 'string') {
-                const cleaned = value.trim().replace(/[^0-9.-]/g, '');
-                if (!cleaned) return fallback;
-                const n = Number(cleaned);
-                return Number.isFinite(n) ? n : fallback;
-            }
-            return fallback;
-        }
-
-        function toInt(value, fallback = 0) {
-            const n = toNumber(value, NaN);
-            return Number.isFinite(n) ? Math.trunc(n) : fallback;
-        }
-
-        function fmtCurrency(value) {
-            const n = toNumber(value, 0);
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
         }
 
         // Render Analytics Context - Enhanced storytelling with time context
@@ -2468,7 +2464,7 @@ ORDER BY converted_at DESC;</pre>
             const container = document.getElementById('analyticsContext');
             
             // Check for actual property names from backend
-            if (!context.days_tracked && !growth.avg_users_per_day && !context.first_event_date) {
+            if (!(context.days_tracked || growth.avg_users_per_day || context.first_event_date)) {
                 console.warn('No analytics context data available yet');
                 container.innerHTML = '<p style="text-align: center; padding: 20px; opacity: 0.7;">Gathering analytics context... Check back after data starts flowing.</p>';
                 return;
@@ -2519,7 +2515,7 @@ ORDER BY converted_at DESC;</pre>
                     </div>
                     <div style="padding: 12px; background: rgba(255,255,255,0.1); border-radius: 8px;">
                         <div style="font-weight: 600; margin-bottom: 4px;">Top Source</div>
-                        <div>${topSourceLabel ? `${escapeHtml(topSourceLabel)}<br>${topSource.conversions || 0} conversions (${topSource.conversion_rate || 0}%)<br>${fmtMoney(topSource.revenue || 0)} revenue` : 'No traffic data'}</div>
+                        <div>${topSourceLabel ? `${escapeHtml(topSourceLabel)}<br>${topSource.conversions || 0} conversions (${topSource.conversion_rate || 0}%)<br>${fmtMoney(asNumber(topSource.revenue || 0, 0))} revenue` : 'No traffic data'}</div>
                     </div>
                 </div>
                 <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.15); border-radius: 8px; border-left: 4px solid rgba(255,255,255,0.5);">
@@ -2538,19 +2534,21 @@ ORDER BY converted_at DESC;</pre>
                                 (sessionQuality.avg_events_per_session >= 5 ? 'High' : 
                                  sessionQuality.avg_events_per_session >= 3 ? 'Medium' : 'Low');
                             
-                            if (quality === 'Low' && sessionQuality.avg_events_per_session < 2) {
-                                return `<strong>Low engagement detected:</strong> Average ${sessionQuality.avg_events_per_session} events per session. Users are bouncing quickly. Consider adding interactive elements, clearer CTAs, or reducing page load times to increase engagement.`;
+                            if (quality === 'Low') {
+                                if (sessionQuality.avg_events_per_session < 2) {
+                                    return `<strong>Low engagement detected:</strong> Average ${sessionQuality.avg_events_per_session} events per session. Users are bouncing quickly. Consider adding interactive elements, clearer CTAs, or reducing page load times to increase engagement.`;
+                                }
                             }
                             if (quality === 'Medium') {
                                 return `<strong>Moderate engagement:</strong> ${sessionQuality.avg_events_per_session} events per session shows decent interest. Test adding urgency elements or limited-time offers to convert browsers into buyers.`;
                             }
                             if (quality === 'High') {
-                                return `<strong>Strong engagement:</strong> ${sessionQuality.avg_events_per_session} events per session indicates high interest. Focus on optimizing checkout flow and retargeting engaged users who didn't convert.`;
+                                return `<strong>Strong engagement:</strong> ${sessionQuality.avg_events_per_session} events per session indicates high interest! Focus on optimizing checkout flow and retargeting engaged users who didn't convert.`;
                             }
                         }
                         
                         // Growth Insight
-                        if (growth.avg_users_per_day && growth.avg_users_per_day > 50) {
+                        if ((growth.avg_users_per_day || 0) > 50) {
                             return `<strong>Strong traffic growth:</strong> Averaging ${growth.avg_users_per_day} users/day. Make sure your conversion funnel can handle this volume and consider scaling your team to match demand.`;
                         }
                         
@@ -2584,13 +2582,14 @@ ORDER BY converted_at DESC;</pre>
             
             // Event Type Distribution
             const eventTypesContainer = document.getElementById('pixelEventTypes');
-            if (summary.by_event_type && Object.keys(summary.by_event_type).length > 0) {
+            const hasEventTypeData = summary.by_event_type ? (Object.keys(summary.by_event_type).length > 0) : false;
+            if (hasEventTypeData) {
                 const eventTypes = Object.entries(summary.by_event_type)
                     .map(([name, data]) => {
                         // Handle both {count, revenue} object and plain number
                         const count = typeof data === 'object' ? (data.count || 0) : data;
                         const revenue = typeof data === 'object' ? (data.revenue || 0) : 0;
-                        return [name, { count, revenue: toNumber(revenue, 0) }];
+                        return [name, { count, revenue: asNumber(revenue, 0) }];
                     })
                     .sort((a, b) => b[1].count - a[1].count)
                     .slice(0, 8);
@@ -2600,7 +2599,7 @@ ORDER BY converted_at DESC;</pre>
                     <div style="margin-bottom: 12px;">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
                             <span style="font-size: 13px; color: #333; font-weight: 600;">${name}</span>
-                            <span style="font-size: 13px; color: #1493ff; font-weight: 700;">${data.count.toLocaleString()}${data.revenue > 0 ? ` - ${fmtCurrency(data.revenue).replace('.00', '')}` : ''}</span>
+                            <span style="font-size: 13px; color: #1493ff; font-weight: 700;">${data.count.toLocaleString()}${data.revenue > 0 ? ` - ${fmtCurrencyNoCents(data.revenue)}` : ''}</span>
                         </div>
                         <div style="background: #f0f0f0; border-radius: 4px; height: 10px; overflow: hidden;">
                             <div style="background: linear-gradient(90deg, #1493ff, #0d7de0); height: 100%; width: ${(data.count / maxCount * 100).toFixed(1)}%; transition: width 0.5s ease;"></div>
@@ -2610,6 +2609,7 @@ ORDER BY converted_at DESC;</pre>
             } else {
                 eventTypesContainer.innerHTML = `
                     <div style="color: #999; text-align: center; padding: 40px 20px; background: #f9f9f9; border-radius: 8px; border: 2px dashed #ddd;">
+                        <div style="font-size: 36px; margin-bottom: 12px;">STATS</div>
                         <div style="font-size: 15px; font-weight: 600; color: #666; margin-bottom: 8px;">No Event Data Yet</div>
                         <div style="font-size: 13px; color: #999;">Events like PageView, Purchase, and AddToCart will appear here once tracking begins.</div>
                     </div>
@@ -2620,7 +2620,7 @@ ORDER BY converted_at DESC;</pre>
             const pagePerformanceContainer = document.getElementById('pixelPagePerformance');
             const scoredPages = payload.page_performance || [];
             
-            if (scoredPages && scoredPages.length > 0) {
+            if (scoredPages.length > 0) {
                 // Display top performing pages with scores
                 const maxScore = scoredPages[0].score || 1;
                 pagePerformanceContainer.innerHTML = scoredPages.slice(0, 8).map((page) => {
@@ -2694,77 +2694,58 @@ ORDER BY converted_at DESC;</pre>
             const utmSourcesContainer = document.getElementById('pixelUTMSources');
             const attributionQualityEl = document.getElementById('pixelAttributionQuality');
             const sourceData = payload.by_utm_source || {};
-            
-            if (Object.keys(sourceData).length > 0) {
-                const aggregated = {};
-                const totalRawSources = Object.keys(sourceData).length;
-                let filteredSources = 0;
-                let keptSources = 0;
-                let directCount = 0;
-                let nonDirectCount = 0;
-                let totalCount = 0;
 
-                for (const pair of Object.entries(sourceData)) {
-                    const rawName = pair[0];
-                    const rawCount = pair[1];
-                    const count = typeof rawCount === 'number' ? rawCount : parseInt(String(rawCount || '0'), 10);
-                    if (!Number.isFinite(count) || count <= 0) {
-                        filteredSources += 1;
-                        continue;
-                    }
+            let totalRawSources = 0;
+            let filteredSources = 0;
+            let keptSources = 0;
+            let totalCount = 0;
+            let directCount = 0;
+            let nonDirectCount = 0;
 
-                    const label = normalizeTrafficSourceLabel(rawName);
-                    if (!label) {
-                        filteredSources += 1;
-                        continue;
-                    }
+            const aggregated = {};
+            for (const [rawName, rawCount] of Object.entries(sourceData)) {
+                totalRawSources += 1;
+                const count = Math.max(0, Math.trunc(asNumber(rawCount, 0)));
+                if (!count) continue;
 
-                    keptSources += 1;
-
-                    totalCount += count;
-                    if (label === 'Direct') {
-                        directCount += count;
-                    } else {
-                        nonDirectCount += count;
-                    }
-
-                    aggregated[label] = (aggregated[label] || 0) + count;
+                const label = normalizeTrafficSourceLabel(rawName);
+                if (!label) {
+                    filteredSources += 1;
+                    continue;
                 }
 
-                const sourceEntries = Object.entries(aggregated)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 8);
+                keptSources += 1;
+                totalCount += count;
+                if (label === 'Direct') {
+                    directCount += count;
+                } else {
+                    nonDirectCount += count;
+                }
+                aggregated[label] = (aggregated[label] || 0) + count;
+            }
 
-                if (attributionQualityEl) {
-                    const directPct = totalCount > 0 ? Math.round((directCount / totalCount) * 100) : 0;
-                    const taggedPct = totalCount > 0 ? Math.round((nonDirectCount / totalCount) * 100) : 0;
+            const sourceEntries = Object.entries(aggregated)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 8);
 
-                    let actionLine = 'Use this to allocate budget by source.';
-                    if (totalCount === 0) {
-                        actionLine = 'Waiting for attribution data.';
-                    } else if (directPct >= 70) {
-                        actionLine = 'High Direct traffic usually means missing UTMs. Add UTMs to every ad/link so attribution becomes usable.';
-                    } else if (taggedPct >= 70) {
-                        actionLine = 'Great UTM coverage. You can trust source-level comparisons.';
-                    }
+            if (attributionQualityEl) {
+                const directPct = totalCount > 0 ? Math.round((directCount / totalCount) * 100) : 0;
+                const taggedPct = totalCount > 0 ? Math.round((nonDirectCount / totalCount) * 100) : 0;
 
-                    const filterLine = (filteredSources > 0) ? ` - Filtered ${filteredSources} low-signal values` : '';
-                    attributionQualityEl.innerHTML = `<strong>Attribution Quality:</strong> ${taggedPct}% tagged (UTM), ${directPct}% Direct${filterLine}<br><span style="opacity: 0.85;">${escapeHtml(actionLine)}</span>`;
+                let actionLine = 'Use this to allocate budget by source.';
+                if (totalCount === 0) {
+                    actionLine = 'Waiting for attribution data.';
+                } else if (directPct >= 70) {
+                    actionLine = 'High Direct traffic usually means missing UTMs. Add UTMs to every ad/link so attribution becomes usable.';
+                } else if (taggedPct >= 70) {
+                    actionLine = 'Great UTM coverage. You can trust source-level comparisons.';
                 }
 
-                if (sourceEntries.length === 0) {
-                    utmSourcesContainer.innerHTML = `
-                        <div style="color: #999; text-align: center; padding: 40px 20px; background: #f9f9f9; border-radius: 8px; border: 2px dashed #ddd;">
-                            <div style="font-size: 15px; font-weight: 600; color: #666; margin-bottom: 8px;">No Useful Attribution Yet</div>
-                            <div style="font-size: 13px; color: #999;">We're filtering out placeholders (like <code>{{site_source_name}}</code>) and other low-signal values.</div>
-                        </div>
-                    `;
-                    if (attributionQualityEl) {
-                        attributionQualityEl.innerHTML = '<strong>Attribution Quality:</strong> No usable sources yet. Add UTMs to ad links to unlock attribution.';
-                    }
-                    return;
-                }
-                
+                const filterLine = (filteredSources > 0 || totalRawSources > keptSources) ? ` - Filtered ${filteredSources} low-signal values` : '';
+                attributionQualityEl.innerHTML = `<strong>Attribution Quality:</strong> ${taggedPct}% tagged (UTM), ${directPct}% Direct${filterLine}<br><span style="opacity: 0.85;">${escapeHtml(actionLine)}</span>`;
+            }
+
+            if (sourceEntries.length > 0) {
                 const maxCount = sourceEntries[0][1];
                 const listHtml = sourceEntries.map(([name, count]) => `
                     <div style="margin-bottom: 12px;">
@@ -2788,12 +2769,12 @@ ORDER BY converted_at DESC;</pre>
             } else {
                 utmSourcesContainer.innerHTML = `
                     <div style="color: #999; text-align: center; padding: 40px 20px; background: #f9f9f9; border-radius: 8px; border: 2px dashed #ddd;">
-                        <div style="font-size: 15px; font-weight: 600; color: #666; margin-bottom: 8px;">No Attribution Data Yet</div>
-                        <div style="font-size: 13px; color: #999;">Traffic sources from Google, Facebook, Email campaigns, and Direct will appear here.</div>
+                        <div style="font-size: 15px; font-weight: 600; color: #666; margin-bottom: 8px;">No Useful Attribution Yet</div>
+                        <div style="font-size: 13px; color: #999;">We're filtering out placeholders (like <code>{{site_source_name}}</code>) and other low-signal values.</div>
                     </div>
                 `;
                 if (attributionQualityEl) {
-                    attributionQualityEl.innerHTML = '<strong>Attribution Quality:</strong> No attribution data yet.';
+                    attributionQualityEl.innerHTML = '<strong>Attribution Quality:</strong> No usable sources yet. Add UTMs to ad links to unlock attribution.';
                 }
             }
         }
@@ -2821,7 +2802,7 @@ ORDER BY converted_at DESC;</pre>
 
                 renderFunnel(stages);
             } catch (error) {
-                console.error('Error loading funnel:', error);
+                console.error('ERROR loading funnel:', error);
                 console.error('Error details:', {
                     message: error.message,
                     stack: error.stack
@@ -2864,12 +2845,13 @@ ORDER BY converted_at DESC;</pre>
                 const revenueData = dashboardData.revenue || {};
                 const revenueByDay = revenueData.revenue_by_day || {};
                 const dates = Object.keys(revenueByDay).sort();
-                const revenues = dates.map(d => toNumber(revenueByDay[d], 0));
-                const hasRevenueData = dates.length > 0 && revenues.some(v => v > 0);
+                const revenues = dates.map(d => asNumber(revenueByDay[d], 0));
+                const hasRevenueData = (dates.length > 0) ? revenues.some(v => v > 0) : false;
 
                 if (!hasRevenueData) {
                     document.getElementById('revenueChart').parentElement.innerHTML = `
                         <div style="text-align: center; padding: 32px;">
+                            <div style="font-size: 36px; margin-bottom: 12px; opacity: 0.5;">REV</div>
                             <div style="font-size: 14px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">No Revenue Data Yet</div>
                             <div style="font-size: 12px; color: #5f6368;">Charts will appear once orders are processed.</div>
                         </div>
@@ -3001,7 +2983,18 @@ ORDER BY converted_at DESC;</pre>
                 console.log('Users data loaded:', usersResponse);
                 
                 // Handle empty or failed responses gracefully
-                if (!usersResponse || usersResponse.ok === false || (!usersResponse.users && !usersResponse.top_users && !Array.isArray(usersResponse))) {
+                let hasUsersPayload = false;
+                if (Array.isArray(usersResponse)) {
+                    hasUsersPayload = true;
+                } else if (usersResponse) {
+                    if (usersResponse.users) {
+                        hasUsersPayload = true;
+                    } else if (usersResponse.top_users) {
+                        hasUsersPayload = true;
+                    }
+                }
+
+                if (!usersResponse || usersResponse.ok === false || !hasUsersPayload) {
                     tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 32px; color: #5f6368;">No customer data available yet. Customer data will appear here once purchases are tracked.</td></tr>';
                     return;
                 }
@@ -3014,9 +3007,9 @@ ORDER BY converted_at DESC;</pre>
                         <tr>
                             <td><strong>${user.Email || user.Visitor_ID || 'N/A'}</strong></td>
                             <td>${(user.Total_Orders || 0).toLocaleString()}</td>
-                            <td><strong style="color: var(--success)">$${(toNumber(user.Lifetime_Revenue, 0).toFixed(2)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</strong></td>
+                            <td><strong style="color: var(--success)">$${((user.Lifetime_Revenue || 0).toFixed(2)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</strong></td>
                             <td>${user.Last_Purchase_Date ? new Date(user.Last_Purchase_Date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}</td>
-                            <td><span style="color: ${user.Current_Funnel_Stage === 'customer' ? 'var(--success)' : 'var(--warning)'}; font-weight: 600;">${(user.Current_Funnel_Stage || 'customer').charAt(0).toUpperCase() + (user.Current_Funnel_Stage || 'customer').slice(1)}</span></td>
+                            <td><span style="color: ${user.Current_Funnel_Stage === 'customer' ? 'var(--success)' : 'var(--warning)'}">o</span> ${(user.Current_Funnel_Stage || 'customer').charAt(0).toUpperCase() + (user.Current_Funnel_Stage || 'customer').slice(1)}</td>
                         </tr>
                     `).join('');
                 } else {
@@ -3024,7 +3017,7 @@ ORDER BY converted_at DESC;</pre>
                 }
 
             } catch (error) {
-                console.error('Error loading users:', error);
+                console.error('ERROR loading users:', error);
                 console.error('Error details:', {
                     message: error.message,
                     stack: error.stack,
@@ -3069,7 +3062,8 @@ ORDER BY converted_at DESC;</pre>
                 const result = await response.json();
                 console.log('AI Report result:', result);
                 
-                if (result.status === 'success' && result.report) {
+                if (result.status === 'success') {
+                    if (result.report) {
                     content.innerHTML = result.report;
                     console.log('AI report rendered successfully');
                     
@@ -3079,9 +3073,11 @@ ORDER BY converted_at DESC;</pre>
                     
                     // Show email button
                     document.getElementById('emailReportBtn').style.display = 'inline-flex';
-                } else {
-                    throw new Error(result.message || 'Failed to generate report');
+                        return;
+                    }
                 }
+
+                throw new Error(result.message || 'Failed to generate report');
                 
             } catch (error) {
                 console.error('AI Report Error:', error);
@@ -3174,7 +3170,7 @@ ORDER BY converted_at DESC;</pre>
                 const result = await response.json();
                 
                 if (result.status === 'success') {
-                    btn.innerHTML = 'Sent';
+                    btn.innerHTML = 'Sent!';
                     setTimeout(() => {
                         btn.innerHTML = originalHTML;
                         btn.disabled = false;
@@ -3240,33 +3236,26 @@ ORDER BY converted_at DESC;</pre>
 
         // Refresh Data (manual button click)
         async function refreshData() {
-            const evt = (typeof event !== 'undefined') ? event : null;
-            const btn = evt && evt.target && evt.target.tagName === 'BUTTON' ? evt.target : null;
-            const originalHTML = btn ? btn.innerHTML : null;
-            if (btn) {
-                btn.disabled = true;
-                btn.textContent = 'Refreshing...';
-            }
+            const btn = event.target;
+            const originalHTML = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>...</span>';
             
             try {
                 // Use silent refresh (no loading overlay)
                 await silentRefresh();
-
-                if (btn) {
-                    btn.textContent = 'Refreshed';
-                    setTimeout(() => {
-                        btn.innerHTML = originalHTML;
-                        btn.disabled = false;
-                    }, 1500);
-                }
+                
+                btn.innerHTML = '<span>OK</span>';
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                }, 1500);
             } catch (error) {
-                if (btn) {
-                    btn.textContent = 'Refresh failed';
-                    setTimeout(() => {
-                        btn.innerHTML = originalHTML;
-                        btn.disabled = false;
-                    }, 2000);
-                }
+                btn.innerHTML = '<span>ERR</span>';
+                setTimeout(() => {
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                }, 2000);
             }
         }
 
@@ -3309,7 +3298,7 @@ ORDER BY converted_at DESC;</pre>
             const text = document.getElementById(elementId).textContent;
             navigator.clipboard.writeText(text).then(() => {
                 const originalText = button.textContent;
-                button.textContent = 'Copied';
+                button.textContent = 'Copied!';
                 button.classList.add('copied');
                 setTimeout(() => {
                     button.textContent = originalText;
@@ -3393,7 +3382,7 @@ ORDER BY converted_at DESC;</pre>
             applyVisibilitySettings();
 
             closeSettings();
-            alert('Settings saved successfully.');
+            alert('Settings saved successfully!');
             refreshData();
         }
 
@@ -3408,7 +3397,7 @@ ORDER BY converted_at DESC;</pre>
             localStorage.removeItem('h2s_refresh_interval');
 
             loadSettings();
-            alert('Settings reset to defaults.');
+            alert('Settings reset to defaults');
         }
 
         function applyVisibilitySettings() {
@@ -3434,7 +3423,7 @@ ORDER BY converted_at DESC;</pre>
             }
 
             localStorage.setItem('h2s_min_data_date', minDate);
-            alert(`Data retention set. Data older than ${minDate} will be excluded from queries.`);
+            alert(`Data retention set! Data older than ${minDate} will be excluded from queries.`);
             refreshData();
         }
 
@@ -3503,26 +3492,33 @@ ORDER BY converted_at DESC;</pre>
         }
 
         async function purgeOldData() {
-            const minDate = document.getElementById('minDataDate').value;
-            if (!minDate) return;
-
-            const statsEl = document.getElementById('dbStatsText');
+            const evt = (typeof event !== 'undefined') ? event : null;
+            const btn = evt && evt.target && evt.target.tagName === 'BUTTON' ? evt.target : null;
+            const originalHTML = btn ? btn.innerHTML : null;
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Refreshing...';
+            }
             statsEl.textContent = 'Purging old data... Please wait...';
 
             try {
                 const response = await fetch(`${API_BASE}?action=purge_old_data`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ min_date: minDate })
-                });
 
-                const result = await response.json();
+                if (btn) {
+                    btn.textContent = 'Refreshed';
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.disabled = false;
+                    }, 1500);
+                }
 
-                if (result.ok) {
-                    alert(`Successfully purged ${result.deleted_count || 0} old records.`);
-                    loadDatabaseStats();
-                    refreshData();
-                } else {
+                if (btn) {
+                    btn.textContent = 'Refresh failed';
+                    setTimeout(() => {
+                        btn.innerHTML = originalHTML;
+                        btn.disabled = false;
+                    }, 2000);
+                }
                     alert(`Purge failed: ${result.error || 'Unknown error'}`);
                     statsEl.textContent = 'Purge failed';
                 }
@@ -3941,7 +3937,7 @@ ORDER BY converted_at DESC;</pre>
                 <div class="status-indicator" id="status-indicator"></div>
                 <span id="status-title-text">Tracking Active</span>
             </div>
-            <button class="close-btn" onclick="closeTrackingStatus()" aria-label="Close tracking status">X</button>
+            <button class="close-btn" onclick="closeTrackingStatus()" aria-label="Close tracking status">&times;</button>
         </div>
         
         <div class="status-row">
@@ -3983,62 +3979,65 @@ ORDER BY converted_at DESC;</pre>
         var events24h = document.getElementById('events-24h');
         var meta24h = document.getElementById('meta-24h');
         
+        // Define API endpoints in this scope
+        var TRACK_PING_API = 'https://h2s-backend.vercel.app/api/track-ping';
+        
         // Check tracking health
         function checkTrackingHealth(){
             fetch(TRACK_PING_API, { method: 'GET' })
                 .then(function(res){ return res.json(); })
                 .then(function(data){
-                    if (data.ok && data.healthy) {
-                        // HEALTHY - Tracking working
-                        indicator.classList.remove('error');
-                        titleText.textContent = 'Tracking Active';
-                        backendStatusText.textContent = 'Connected';
-                        backendStatusText.classList.remove('error');
-                        
-                        // Prefer explicit last_event_mins; if missing but events exist, treat as fresh
-                        var lastMins = (data.last_event_mins !== undefined && data.last_event_mins !== null)
-                            ? data.last_event_mins
-                            : ((data.total_events_24h || 0) > 0 ? 0 : null);
-                        if (lastMins === null) {
-                            lastEventTime.textContent = 'Unknown';
-                        } else if (lastMins === 0) {
-                            lastEventTime.textContent = 'Just now';
-                        } else if (lastMins === 1) {
-                            lastEventTime.textContent = '1 min ago';
+                    if (data.ok) {
+                        if (data.healthy) {
+                            // HEALTHY - Tracking working
+                            indicator.classList.remove('error');
+                            titleText.textContent = 'Tracking Active';
+                            backendStatusText.textContent = 'Connected';
+                            backendStatusText.classList.remove('error');
+
+                            // Prefer explicit last_event_mins; if missing but events exist, treat as fresh
+                            var hasLastMins = (data.last_event_mins !== undefined) ? (data.last_event_mins !== null) : false;
+                            var lastMins = hasLastMins
+                                ? data.last_event_mins
+                                : ((data.total_events_24h || 0) > 0 ? 0 : null);
+                            if (lastMins === null) {
+                                lastEventTime.textContent = 'Unknown';
+                            } else if (lastMins === 0) {
+                                lastEventTime.textContent = 'Just now';
+                            } else if (lastMins === 1) {
+                                lastEventTime.textContent = '1 min ago';
+                            } else {
+                                lastEventTime.textContent = lastMins + ' mins ago';
+                            }
+                            lastEventTime.classList.remove('error');
+
+                            backendMessage.className = 'backend-status';
+                            backendMessage.textContent = 'All systems operational - ' +
+                                (data.total_events_24h || 0) + ' events tracked today';
+
+                            // Show metrics
+                            metricsGrid.style.display = 'grid';
+                            events24h.textContent = data.total_events_24h || 0;
+                            meta24h.textContent = data.total_meta_24h || 0;
                         } else {
-                            lastEventTime.textContent = lastMins + ' mins ago';
+                            // DEGRADED - No recent events
+                            indicator.classList.add('error');
+                            titleText.textContent = 'Tracking Alert';
+                            backendStatusText.textContent = 'Degraded';
+                            backendStatusText.classList.add('error');
+
+                            var hasLastMins = (data.last_event_mins !== undefined) ? (data.last_event_mins !== null) : false;
+                            var lastMins = hasLastMins ? data.last_event_mins : null;
+                            lastEventTime.textContent = (lastMins === null) ? 'Unknown' : (lastMins + ' mins ago');
+                            lastEventTime.classList.add('error');
+
+                            backendMessage.className = 'backend-status error';
+                            backendMessage.textContent = (lastMins === null)
+                                ? 'No recent event timestamp available - Verify tracking ping'
+                                : ('No events in ' + lastMins + ' minutes - Check tracking code on pages');
+
+                            metricsGrid.style.display = 'none';
                         }
-                        lastEventTime.classList.remove('error');
-                        
-                        backendMessage.className = 'backend-status';
-                        backendMessage.textContent = 'All systems operational - ' + 
-                            (data.total_events_24h || 0) + ' events tracked today';
-                        
-                        // Show metrics
-                        metricsGrid.style.display = 'grid';
-                        events24h.textContent = data.total_events_24h || 0;
-                        meta24h.textContent = data.total_meta_24h || 0;
-                        
-                    } else if (data.ok && !data.healthy) {
-                        // DEGRADED - No recent events
-                        indicator.classList.add('error');
-                        titleText.textContent = 'Tracking Alert';
-                        backendStatusText.textContent = 'Degraded';
-                        backendStatusText.classList.add('error');
-                        
-                        var lastMins = (data.last_event_mins !== undefined && data.last_event_mins !== null)
-                            ? data.last_event_mins
-                            : null;
-                        lastEventTime.textContent = (lastMins === null) ? 'Unknown' : (lastMins + ' mins ago');
-                        lastEventTime.classList.add('error');
-                        
-                        backendMessage.className = 'backend-status error';
-                        backendMessage.textContent = (lastMins === null)
-                            ? 'No recent event timestamp available - Verify tracking ping'
-                            : ('No events in ' + lastMins + ' minutes - Check tracking code on pages');
-                        
-                        metricsGrid.style.display = 'none';
-                        
                     } else {
                         // ERROR - Backend issue
                         indicator.classList.add('error');
@@ -4047,10 +4046,10 @@ ORDER BY converted_at DESC;</pre>
                         backendStatusText.classList.add('error');
                         lastEventTime.textContent = 'Unknown';
                         lastEventTime.classList.add('error');
-                        
+
                         backendMessage.className = 'backend-status error';
                         backendMessage.textContent = (data.error || 'Backend unreachable');
-                        
+
                         metricsGrid.style.display = 'none';
                     }
                 })
@@ -4079,11 +4078,15 @@ ORDER BY converted_at DESC;</pre>
         
         // Keyboard shortcut: Ctrl+Shift+T to toggle
         document.addEventListener('keydown', function(e){
-            if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-                widget.classList.toggle('hidden');
-                if (!widget.classList.contains('hidden')) {
-                    sessionStorage.removeItem('tracking_status_closed');
-                    checkTrackingHealth();
+            if (e.ctrlKey) {
+                if (e.shiftKey) {
+                    if (e.key === 'T') {
+                        widget.classList.toggle('hidden');
+                        if (!widget.classList.contains('hidden')) {
+                            sessionStorage.removeItem('tracking_status_closed');
+                            checkTrackingHealth();
+                        }
+                    }
                 }
             }
         });
@@ -4165,7 +4168,21 @@ ORDER BY converted_at DESC;</pre>
         
         // Send event with retry
         function sendEvent(payload, retries = 1) {
-            const useBeacon = navigator.sendBeacon && retries === 1;
+            // Important: navigator.sendBeacon uses credentials mode "include" in most browsers.
+            // When TRACK_API is cross-origin and the backend responds with `Access-Control-Allow-Origin: *`,
+            // credentialed requests will be blocked. So: never use beacon cross-origin.
+            let isCrossOrigin = true;
+            try {
+                const trackUrl = new URL(TRACK_API, window.location.href);
+                isCrossOrigin = trackUrl.origin !== window.location.origin;
+            } catch (_) {
+                // If URL parsing fails, treat as cross-origin to be safe.
+                isCrossOrigin = true;
+            }
+
+            const useBeacon = (!isCrossOrigin)
+                ? (navigator.sendBeacon ? (retries === 1) : false)
+                : false;
             
             if (useBeacon) {
                 // Use sendBeacon for page unload scenarios
@@ -4178,6 +4195,8 @@ ORDER BY converted_at DESC;</pre>
             // Fallback to fetch with keepalive
             return fetch(TRACK_API, {
                 method: 'POST',
+                mode: 'cors',
+                credentials: 'omit',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
                 keepalive: true
@@ -4269,14 +4288,18 @@ ORDER BY converted_at DESC;</pre>
                 
                 // Try to find email field (common patterns)
                 const emailInput = form.querySelector('input[type="email"], input[name*="email" i], input[name*="Email"], input[id*="email" i], input[id*="Email"]');
-                if (emailInput && emailInput.value) {
-                    customerEmail = emailInput.value.trim().toLowerCase();
+                if (emailInput) {
+                    if (emailInput.value) {
+                        customerEmail = emailInput.value.trim().toLowerCase();
+                    }
                 }
                 
                 // Try to find phone field (common patterns)
                 const phoneInput = form.querySelector('input[type="tel"], input[name*="phone" i], input[name*="Phone"], input[id*="phone" i], input[id*="Phone"], input[name*="mobile" i], input[name*="Mobile"]');
-                if (phoneInput && phoneInput.value) {
-                    customerPhone = phoneInput.value.trim();
+                if (phoneInput) {
+                    if (phoneInput.value) {
+                        customerPhone = phoneInput.value.trim();
+                    }
                 }
                 
                 const trackData = {
@@ -4295,22 +4318,21 @@ ORDER BY converted_at DESC;</pre>
         // Track outbound links
         document.addEventListener('click', function(e) {
             const link = e.target.closest('a[href]');
-            if (link && link.hostname !== window.location.hostname) {
-                track('outbound', {
-                    element_id: link.id || null,
-                    element_text: link.textContent?.trim().substring(0, 100) || null,
-                    metadata: { url: link.href }
-                });
+            if (link) {
+                if (link.hostname !== window.location.hostname) {
+                    track('outbound', {
+                        element_id: link.id || null,
+                        element_text: link.textContent?.trim().substring(0, 100) || null,
+                        metadata: { url: link.href }
+                    });
+                }
             }
         });
         
         // Expose track function globally for manual tracking
         window.h2sTrack = track;
-        
-        // Track page unload
-        window.addEventListener('beforeunload', function() {
-            track('page_unload');
-        });
+
+        // Intentionally do not track page unload.
     })();
     </script>
 </body>

@@ -127,6 +127,34 @@ type PathRuleRow = {
   updated_at?: string;
 };
 
+// Cache for path rules to avoid DB query on every event check
+let cachedPathRules: PathRuleRow[] | null = null;
+let cacheExpiry: number = 0;
+const CACHE_TTL_MS = 60000; // 1 minute cache
+
+async function getCachedPathRules(): Promise<PathRuleRow[]> {
+  const now = Date.now();
+  if (cachedPathRules && now < cacheExpiry) {
+    return cachedPathRules;
+  }
+  
+  try {
+    const db = getTrackingDb();
+    const { data: rows } = await db
+      .from('h2s_tracking_path_rules')
+      .select('id,pattern,match_type,is_blocked,reason,created_at,updated_at')
+      .eq('is_blocked', true)
+      .limit(1000);
+    
+    cachedPathRules = (rows || []) as PathRuleRow[];
+    cacheExpiry = now + CACHE_TTL_MS;
+    return cachedPathRules;
+  } catch (error) {
+    console.error('Failed to load path rules:', error);
+    return [];
+  }
+}
+
 function pathMatchesRule(path: string, rule: PathRuleRow): boolean {
   const pattern = String(rule.pattern || '').trim().toLowerCase();
   if (!pattern) return false;
@@ -390,11 +418,21 @@ function normalizePathForInternalCheck(path: string): string {
   return normalized.toLowerCase();
 }
 
-function isInternalTrackingPathFromEvent(event: any): boolean {
+function isInternalTrackingPathFromEvent(event: any, customRules?: PathRuleRow[]): boolean {
   const p = normalizePathForInternalCheck(toPathFromEvent(event));
   if (!p) return false;
+  
+  // Check hardcoded internal paths
   const blockedRoots = ['/funnels', '/dashboard', '/portal', '/dispatch', '/funnel-track'];
-  return blockedRoots.some((root) => p === root || p.startsWith(`${root}/`));
+  const isHardcodedInternal = blockedRoots.some((root) => p === root || p.startsWith(`${root}/`));
+  if (isHardcodedInternal) return true;
+  
+  // Check custom database rules if provided
+  if (customRules && customRules.length > 0) {
+    return customRules.some(rule => rule.is_blocked && pathMatchesRule(p, rule));
+  }
+  
+  return false;
 }
 
 function escapeHtml(text: string): string {
@@ -411,6 +449,17 @@ function renderAiInsightsToHtml(payload: any): string {
   const summaryBullets: string[] = Array.isArray(payload?.executive_summary?.top_priorities)
     ? payload.executive_summary.top_priorities
     : [];
+
+  const windowLabel = (() => {
+    const start = payload?.meta?.start;
+    const end = payload?.meta?.end;
+    if (start && end) {
+      // Keep this simple and deterministic: show ISO timestamps as returned.
+      return `${start} to ${end}`;
+    }
+    const days = payload?.meta?.days;
+    return `Last ${escapeHtml(String(days || 30))} days`;
+  })();
 
   const kpis = payload?.kpis || {};
   const recs: any[] = Array.isArray(payload?.recommendations) ? payload.recommendations : [];
@@ -481,7 +530,7 @@ function renderAiInsightsToHtml(payload: any): string {
       <h3 style="margin:18px 0 8px 0;">Key Priorities</h3>
       ${bulletsHtml}
 
-      <h3 style="margin:18px 0 8px 0;">KPIs (Last ${escapeHtml(String(payload?.meta?.days || 30))} days)</h3>
+      <h3 style="margin:18px 0 8px 0;">KPIs (${escapeHtml(windowLabel)})</h3>
       <table style="border-collapse:collapse;width:100%;max-width:720px;background:#fff;border:1px solid #e7eaf0;border-radius:12px;overflow:hidden;">
         <tbody>${kpiTable}</tbody>
       </table>
@@ -499,30 +548,76 @@ async function buildAiReport(params: {
   request: Request;
   days: number;
   limit: number;
+  startDate?: string;
+  endDate?: string;
+  minDate?: string;
 }): Promise<{ status: 'success' | 'error'; report?: string; insights?: any; message?: string; timestamp: string }> {
   if (!openai) {
     return { status: 'error', message: 'OpenAI not configured', timestamp: new Date().toISOString() };
   }
 
-  const days = Math.min(Math.max(params.days, 1), 365);
-  const limit = Math.min(Math.max(params.limit, 200), 5000);
+  const { searchParams } = new URL(params.request.url);
+  const excludeTest = ['1', 'true', 'yes', 'on'].includes(
+    String(searchParams.get('exclude_test') || searchParams.get('excludeTest') || '').toLowerCase()
+  );
+  const includeInternal = ['1', 'true', 'yes', 'on'].includes(
+    String(searchParams.get('include_internal') || searchParams.get('includeInternal') || '').toLowerCase()
+  );
+  const excludeInternal = !includeInternal;
+  const customPathRules = excludeInternal ? await getCachedPathRules() : [];
 
-  const start = new Date();
-  start.setDate(start.getDate() - days);
+  const days = Math.min(Math.max(params.days, 1), 365);
+  const limit = Math.min(Math.max(params.limit, 200), 10000);
+
+  // Use explicit date range if provided, otherwise calculate from days.
+  // If only one side is provided, infer the other side.
+  const inferredEnd = params.endDate || new Date().toISOString();
+  const inferredStart = (() => {
+    if (params.startDate) return params.startDate;
+    const end = new Date(inferredEnd);
+    if (isNaN(end.getTime())) {
+      const start = new Date();
+      start.setDate(start.getDate() - days);
+      return start.toISOString();
+    }
+    const start = new Date(end.getTime());
+    start.setDate(start.getDate() - days);
+    return start.toISOString();
+  })();
+
+  const queryStart = inferredStart;
+  const queryEnd = inferredEnd;
 
   const trackingDb = getTrackingDb();
-  const { data: reportEvents, error } = await trackingDb
+  let query = trackingDb
     .from('h2s_tracking_events')
     .select('*')
-    .gte('occurred_at', start.toISOString())
-    .order('occurred_at', { ascending: false })
-    .limit(limit);
+    .order('occurred_at', { ascending: false });
+  
+  // Apply date filters
+  if (params.minDate) {
+    query = query.gte('occurred_at', params.minDate);
+  }
+  query = query.gte('occurred_at', queryStart).lte('occurred_at', queryEnd);
+  
+  // Prefetch more rows so in-memory filters (test/internal) don't starve the AI input.
+  const prefilterLimit = Math.min(Math.max(limit * 4, limit), 20000);
+  const { data: reportEvents, error } = await query.limit(prefilterLimit);
 
   if (error) {
     return { status: 'error', message: `Database error: ${error.message}`, timestamp: new Date().toISOString() };
   }
 
-  const events: TrackingEventRow[] = (reportEvents || []) as any;
+  let events: TrackingEventRow[] = (reportEvents || []) as any;
+  if (excludeTest) {
+    events = events.filter((e: any) => !isTestTrackingEvent(e));
+  }
+  if (excludeInternal) {
+    events = events.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
+  }
+  if (events.length > limit) {
+    events = events.slice(0, limit);
+  }
   const uniqueVisitors = new Set(events.map((e) => e.visitor_id).filter(Boolean)).size;
   const uniqueSessions = new Set(events.map((e) => e.session_id).filter(Boolean)).size;
 
@@ -604,7 +699,12 @@ async function buildAiReport(params: {
   if (missingPathPct > 10) dataQualityIssues.push(`High missing page_path rate: ${missingPathPct.toFixed(1)}%`);
 
   const aiInput = {
-    window: { days, start: start.toISOString(), end: new Date().toISOString() },
+    window: { days, start: queryStart, end: queryEnd },
+    filters: {
+      exclude_test: excludeTest,
+      exclude_internal: excludeInternal,
+      min_date: params.minDate || null
+    },
     kpis: {
       total_events: events.length,
       unique_visitors: uniqueVisitors,
@@ -658,7 +758,13 @@ async function buildAiReport(params: {
 
   // Ensure the KPIs in the response match the computed truth (avoid hallucinated numbers)
   insights.kpis = aiInput.kpis;
-  insights.meta = { days, limit, start: aiInput.window.start, end: aiInput.window.end };
+  insights.meta = {
+    days,
+    limit,
+    start: aiInput.window.start,
+    end: aiInput.window.end,
+    filters: aiInput.filters
+  };
   insights.generated_at = new Date().toISOString();
   if (!insights.diagnostics) insights.diagnostics = {};
   if (!Array.isArray(insights.diagnostics.data_quality_issues)) insights.diagnostics.data_quality_issues = [];
@@ -688,6 +794,14 @@ export async function GET(request: Request) {
 
   const debug = ['1', 'true', 'yes', 'on'].includes(String(searchParams.get('debug') || '').toLowerCase());
   
+  // Parse date range filters
+  const startDate = searchParams.get('start_date') || searchParams.get('startDate') || undefined;
+  const endDate = searchParams.get('end_date') || searchParams.get('endDate') || undefined;
+  const minDate = searchParams.get('min_date') || searchParams.get('minDate') || undefined;
+  
+  // Preload custom path exclusion rules (cached for 1 minute)
+  const customPathRules = excludeInternal ? await getCachedPathRules() : [];
+  
   // Force fresh build - v2
   try {
     let result;
@@ -712,6 +826,14 @@ export async function GET(request: Request) {
 
           const limit = toInt(searchParams.get('limit'), 2000);
           const includeRules = ['1', 'true', 'yes', 'on'].includes(String(searchParams.get('include_rules') || '').toLowerCase());
+
+          const windowHours = Math.min(Math.max(toInt(searchParams.get('window_hours'), 24), 1), 168);
+          const maxEvents = Math.min(Math.max(toInt(searchParams.get('max_events'), 50000), 1000), 200000);
+
+          const windowEnd = endDate ? new Date(endDate) : new Date();
+          const windowStart = startDate ? new Date(startDate) : new Date(windowEnd.getTime() - windowHours * 60 * 60 * 1000);
+          const windowStartIso = isNaN(windowStart.getTime()) ? new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString() : windowStart.toISOString();
+          const windowEndIso = isNaN(windowEnd.getTime()) ? new Date().toISOString() : windowEnd.toISOString();
 
           const db = getTrackingDb();
 
@@ -746,6 +868,41 @@ export async function GET(request: Request) {
 
           const activeBlocked = rules.filter((r) => r.is_blocked);
 
+          // Compute recent event counts for observed paths.
+          // Note: counts are limited by maxEvents to keep query bounded.
+          const pathsForCount = (observed || [])
+            .map((p: any) => String(p.path || '').trim().toLowerCase())
+            .filter(Boolean);
+
+          const countMap: Record<string, number> = {};
+          let countsTruncated = false;
+          if (pathsForCount.length > 0) {
+            const { data: recentRows, error: recentError } = await db
+              .from('h2s_tracking_events')
+              .select('page_path,occurred_at')
+              .in('page_path', pathsForCount)
+              .gte('occurred_at', windowStartIso)
+              .lte('occurred_at', windowEndIso)
+              .order('occurred_at', { ascending: false })
+              .limit(maxEvents);
+
+            if (recentError) {
+              return NextResponse.json(
+                { ok: false, error: `Failed to load recent events for path counts: ${recentError.message}` },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+
+            const rows = (recentRows || []) as any[];
+            if (rows.length >= maxEvents) countsTruncated = true;
+
+            for (const row of rows) {
+              const key = String(row.page_path || '').trim().toLowerCase();
+              if (!key) continue;
+              countMap[key] = (countMap[key] || 0) + 1;
+            }
+          }
+
           const paths = (observed || []).map((p: any) => {
             const path = String(p.path || '').toLowerCase();
             const matched = activeBlocked
@@ -756,6 +913,7 @@ export async function GET(request: Request) {
               path: p.path,
               first_seen_at: p.first_seen_at,
               last_seen_at: p.last_seen_at,
+              recent_event_count: countMap[path] || 0,
               is_blocked: !!matched,
               matched_rule: matched
                 ? {
@@ -768,7 +926,15 @@ export async function GET(request: Request) {
             };
           });
 
-          result = includeRules ? { paths, rules } : { paths };
+          const meta = {
+            window_start: windowStartIso,
+            window_end: windowEndIso,
+            window_hours: windowHours,
+            max_events: maxEvents,
+            counts_truncated: countsTruncated
+          };
+
+          result = includeRules ? { paths, rules, meta } : { paths, meta };
         }
         break;
 
@@ -1422,18 +1588,59 @@ Format: JSON only, no markdown.`;
         // Calculate next 5 available meeting slots
         // Simple implementation: suggest next 5 business days at 10am, 2pm, 4pm
         const availableSlots = [];
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() + 1); // Tomorrow
+        const availableSlotsStartDate = new Date();
+        availableSlotsStartDate.setDate(availableSlotsStartDate.getDate() + 1); // Tomorrow
         
         // Get existing meetings to avoid conflicts
         const { data: existingMeetings } = await getSupabase()
           .from('Meetings')
           .select('Scheduled_At, Duration_Minutes')
-          .gte('Scheduled_At', startDate.toISOString())
+          .gte('Scheduled_At', availableSlotsStartDate.toISOString())
           .in('Status', ['SCHEDULED', 'RESCHEDULED']);
         
-        // ... (rest of availableSlots logic would go here, simplified for now)
-        result = []; 
+        const existingTimes = (existingMeetings || []).map(m => new Date(m.Scheduled_At).getTime());
+        
+        for (let day = 0; day < 7; day++) {
+          const date = new Date(availableSlotsStartDate);
+          date.setDate(date.getDate() + day);
+          
+          // Skip weekends
+          if (date.getDay() === 0 || date.getDay() === 6) continue;
+          
+          // Morning slot (10 AM)
+          const morning = new Date(date);
+          morning.setHours(10, 0, 0, 0);
+          if (!existingTimes.includes(morning.getTime())) {
+            availableSlots.push({
+              start: morning.toISOString(),
+              end: new Date(morning.getTime() + 30 * 60000).toISOString()
+            });
+          }
+          
+          // Afternoon slot (2 PM)
+          const afternoon = new Date(date);
+          afternoon.setHours(14, 0, 0, 0);
+          if (!existingTimes.includes(afternoon.getTime())) {
+            availableSlots.push({
+              start: afternoon.toISOString(),
+              end: new Date(afternoon.getTime() + 30 * 60000).toISOString()
+            });
+          }
+          
+          // Evening slot (4 PM)
+          const evening = new Date(date);
+          evening.setHours(16, 0, 0, 0);
+          if (!existingTimes.includes(evening.getTime())) {
+            availableSlots.push({
+              start: evening.toISOString(),
+              end: new Date(evening.getTime() + 30 * 60000).toISOString()
+            });
+          }
+          
+          if (availableSlots.length >= 5) break;
+        }
+        
+        result = { slots: availableSlots.slice(0, 5) };
         break;
 
       case 'submitTrainingCompletion':
@@ -1568,52 +1775,6 @@ Format: JSON only, no markdown.`;
         result = newResource;
         break;
 
-        
-        const existingTimes = (existingMeetings || []).map(m => new Date(m.Scheduled_At).getTime());
-        
-        for (let day = 0; day < 7; day++) {
-          const date = new Date(startDate);
-          date.setDate(date.getDate() + day);
-          
-          // Skip weekends
-          if (date.getDay() === 0 || date.getDay() === 6) continue;
-          
-          // Morning slot (10 AM)
-          const morning = new Date(date);
-          morning.setHours(10, 0, 0, 0);
-          if (!existingTimes.includes(morning.getTime())) {
-            availableSlots.push({
-              start: morning.toISOString(),
-              end: new Date(morning.getTime() + 30 * 60000).toISOString()
-            });
-          }
-          
-          // Afternoon slot (2 PM)
-          const afternoon = new Date(date);
-          afternoon.setHours(14, 0, 0, 0);
-          if (!existingTimes.includes(afternoon.getTime())) {
-            availableSlots.push({
-              start: afternoon.toISOString(),
-              end: new Date(afternoon.getTime() + 30 * 60000).toISOString()
-            });
-          }
-          
-          // Evening slot (4 PM)
-          const evening = new Date(date);
-          evening.setHours(16, 0, 0, 0);
-          if (!existingTimes.includes(evening.getTime())) {
-            availableSlots.push({
-              start: evening.toISOString(),
-              end: new Date(evening.getTime() + 30 * 60000).toISOString()
-            });
-          }
-          
-          if (availableSlots.length >= 5) break;
-        }
-        
-        result = { slots: availableSlots.slice(0, 5) };
-        break;
-
       // Funnel Tracking Endpoints
       case 'stats':
         // Get overall stats from h2s_tracking_events
@@ -1622,7 +1783,7 @@ Format: JSON only, no markdown.`;
           .select('session_id, visitor_id, occurred_at');
 
         let statsEvents = excludeTest ? (events || []).filter((e: any) => !isTestTrackingEvent(e)) : (events || []);
-        if (excludeInternal) statsEvents = statsEvents.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+        if (excludeInternal) statsEvents = statsEvents.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
         
         const uniqueSessions = new Set(statsEvents.map((e: any) => e.session_id).filter(Boolean) || []).size;
         const uniqueUsers = new Set(statsEvents.map((e: any) => e.visitor_id).filter(Boolean) || []).size;
@@ -1760,7 +1921,7 @@ Format: JSON only, no markdown.`;
         let revenueEvents = excludeTest
           ? (purchaseEventsRevenue || []).filter((e: any) => !isTestTrackingEvent(e))
           : (purchaseEventsRevenue || []);
-        if (excludeInternal) revenueEvents = revenueEvents.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+        if (excludeInternal) revenueEvents = revenueEvents.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
 
         const totalRevenueEvents =
           revenueEvents.reduce((sum: number, e: any) => sum + normalizeRevenueAmount(e.revenue_amount), 0) || 0;
@@ -1800,7 +1961,7 @@ Format: JSON only, no markdown.`;
           .limit(10000);
 
         let cohortEventsFiltered = excludeTest ? (cohortEvents || []).filter((e: any) => !isTestTrackingEvent(e)) : (cohortEvents || []);
-        if (excludeInternal) cohortEventsFiltered = cohortEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+        if (excludeInternal) cohortEventsFiltered = cohortEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
         
         // Group by visitor and determine their stage
         const visitorCohorts = new Map<string, any>();
@@ -1878,21 +2039,40 @@ Format: JSON only, no markdown.`;
         const db1Client = getTrackingDb();
         
         if (db1Client) {
-          // FIRST: Get total count (unfiltered)
-          const { count: dbCount, error: countError } = await db1Client
+          // Build query with date filters
+          let countQuery = db1Client
             .from('h2s_tracking_events')
             .select('*', { count: 'exact', head: true });
+          
+          // Apply date range filters at database level for accurate counts
+          if (minDate) {
+            countQuery = countQuery.gte('occurred_at', minDate);
+          }
+          if (startDate) {
+            countQuery = countQuery.gte('occurred_at', startDate);
+          }
+          if (endDate) {
+            countQuery = countQuery.lte('occurred_at', endDate);
+          }
+          
+          // FIRST: Get filtered count
+          const { count: dbCount, error: countError } = await countQuery;
           
           if (!countError && typeof dbCount === 'number') {
             totalEventsInDatabase = dbCount;
           }
           
-          // THEN: Query events (limited for performance, but we have the real count)
-          const { data: events, error } = await db1Client
+          // THEN: Query events with same filters (limited for performance)
+          let eventQuery = db1Client
             .from('h2s_tracking_events')
             .select('*')
-            .order('occurred_at', { ascending: false })
-            .limit(5000);
+            .order('occurred_at', { ascending: false });
+          
+          if (minDate) eventQuery = eventQuery.gte('occurred_at', minDate);
+          if (startDate) eventQuery = eventQuery.gte('occurred_at', startDate);
+          if (endDate) eventQuery = eventQuery.lte('occurred_at', endDate);
+          
+          const { data: events, error } = await eventQuery.limit(10000);
           
           if (!error && events) {
             allEvents = events;
@@ -1933,7 +2113,7 @@ Format: JSON only, no markdown.`;
           allEvents = (allEvents || []).filter((e: any) => !isTestTrackingEvent(e));
         }
         if (excludeInternal) {
-          allEvents = (allEvents || []).filter((e: any) => !isInternalTrackingPathFromEvent(e));
+          allEvents = (allEvents || []).filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
         }
 
         // Filter to intentional/allowlisted event types.
@@ -2197,7 +2377,9 @@ Format: JSON only, no markdown.`;
         const uniqueUsersCanonical = canonicalUsers.size;
         
         // ENHANCED ANALYTICS: Time-based breakdowns and trends
-        const now = new Date();
+        // When a custom end_date is provided, compute "recent" windows relative to that
+        // so the context card stays consistent with the selected time range.
+        const now = endDate ? new Date(endDate) : new Date();
         const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
         const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const thirtyDaysAgoAnalytics = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -2438,7 +2620,7 @@ Format: JSON only, no markdown.`;
 
           let rows: any[] = events || [];
           if (excludeTest) rows = rows.filter((e: any) => !isTestTrackingEvent(e));
-          if (excludeInternal) rows = rows.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+          if (excludeInternal) rows = rows.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
 
           const purchases = rows
             .filter((e: any) => normalizeTrackingEventType(e.event_type || e.event_name) === 'purchase')
@@ -2483,7 +2665,7 @@ Format: JSON only, no markdown.`;
           .select('event_type, event_name, visitor_id, session_id, occurred_at, customer_email, metadata');
 
         let funnelEventsFiltered = excludeTest ? (funnelEvents || []).filter((e: any) => !isTestTrackingEvent(e)) : (funnelEvents || []);
-        if (excludeInternal) funnelEventsFiltered = funnelEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+        if (excludeInternal) funnelEventsFiltered = funnelEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
         
         const uniqueVisitors = new Set<string>();
         const visitorsWithViewContent = new Set<string>();
@@ -2577,7 +2759,7 @@ Format: JSON only, no markdown.`;
           .order('occurred_at', { ascending: false });
 
         let userEventsFiltered = excludeTest ? (userEvents || []).filter((e: any) => !isTestTrackingEvent(e)) : (userEvents || []);
-        if (excludeInternal) userEventsFiltered = userEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e));
+        if (excludeInternal) userEventsFiltered = userEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
         
         // Aggregate by customer (email or visitor_id as fallback)
         const userMap = new Map<string, any>();
@@ -2634,7 +2816,14 @@ Format: JSON only, no markdown.`;
         {
           const days = toInt(searchParams.get('days'), 30);
           const limit = toInt(searchParams.get('limit'), 1500);
-          result = await buildAiReport({ request, days, limit });
+          result = await buildAiReport({ 
+            request, 
+            days, 
+            limit, 
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            minDate: minDate || undefined
+          });
         }
         break;
 
@@ -2643,7 +2832,14 @@ Format: JSON only, no markdown.`;
         {
           const days = toInt(searchParams.get('days'), 30);
           const limit = toInt(searchParams.get('limit'), 1500);
-          result = await buildAiReport({ request, days, limit });
+          result = await buildAiReport({ 
+            request, 
+            days, 
+            limit,
+            startDate: startDate || undefined,
+            endDate: endDate || undefined,
+            minDate: minDate || undefined
+          });
         }
         break;
 
@@ -2775,12 +2971,18 @@ Be realistic and conservative. If unsure, use medium confidence.`;
         const startDateOffer = new Date();
         startDateOffer.setDate(startDateOffer.getDate() - daysBackOffer);
         
-        // Use the EXACT SAME query as meta_pixel_events - get ALL events first
-        const { data: allEventsOffer, error: queryError } = await getTrackingDb()
+        // Use the EXACT SAME query as meta_pixel_events - with date filtering
+        let offerQuery = getTrackingDb()
           .from('h2s_tracking_events')
           .select('*')
-          .order('occurred_at', { ascending: false })
-          .limit(5000);
+          .order('occurred_at', { ascending: false });
+        
+        // Apply date filters
+        if (minDate) offerQuery = offerQuery.gte('occurred_at', minDate);
+        if (startDate) offerQuery = offerQuery.gte('occurred_at', startDate);
+        if (endDate) offerQuery = offerQuery.lte('occurred_at', endDate);
+        
+        const { data: allEventsOffer, error: queryError } = await offerQuery.limit(10000);
         
         // Log raw query results for debugging
         console.log('🔍 offer_performance - Raw query results:', {
@@ -2961,6 +3163,58 @@ Be realistic and conservative. If unsure, use medium confidence.`;
             }
           } : {})
         };
+        break;
+
+      case 'database_stats':
+        {
+          const db = getTrackingDb();
+          
+          // Get total event count
+          const { count: totalEvents, error: countError } = await db
+            .from('h2s_tracking_events')
+            .select('*', { count: 'exact', head: true });
+          
+          if (countError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to count events: ${countError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+          
+          // Get oldest and newest event dates
+          const { data: dateRange, error: dateError } = await db
+            .from('h2s_tracking_events')
+            .select('occurred_at')
+            .order('occurred_at', { ascending: true })
+            .limit(1);
+          
+          const { data: dateRangeNewest, error: dateErrorNewest } = await db
+            .from('h2s_tracking_events')
+            .select('occurred_at')
+            .order('occurred_at', { ascending: false })
+            .limit(1);
+          
+          if (dateError || dateErrorNewest) {
+            return NextResponse.json(
+              { ok: false, error: 'Failed to fetch date range' },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+          
+          const oldestDate = dateRange && dateRange.length > 0 
+            ? new Date(dateRange[0].occurred_at).toLocaleDateString() 
+            : 'N/A';
+          
+          const newestDate = dateRangeNewest && dateRangeNewest.length > 0 
+            ? new Date(dateRangeNewest[0].occurred_at).toLocaleDateString() 
+            : 'N/A';
+          
+          result = {
+            total_events: totalEvents || 0,
+            oldest_event_date: oldestDate,
+            newest_event_date: newestDate
+          };
+        }
         break;
 
       default:
@@ -3156,7 +3410,10 @@ export async function POST(request: Request) {
         {
           const days = toInt(body?.days ?? searchParams.get('days'), 30);
           const limit = toInt(body?.limit ?? searchParams.get('limit'), 1500);
-          const report = await buildAiReport({ request, days, limit });
+          const startDate = body?.start_date || body?.startDate || searchParams.get('start_date') || searchParams.get('startDate') || undefined;
+          const endDate = body?.end_date || body?.endDate || searchParams.get('end_date') || searchParams.get('endDate') || undefined;
+          const minDate = body?.min_date || body?.minDate || searchParams.get('min_date') || searchParams.get('minDate') || undefined;
+          const report = await buildAiReport({ request, days, limit, startDate, endDate, minDate });
           // Keep response shape stable for FunnelTrack
           return NextResponse.json(report, { headers: corsHeaders(request) });
         }
@@ -4307,6 +4564,67 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
 
         result = { deleted: true, offerId: body.offerId };
+        break;
+
+      case 'purge_old_data':
+        {
+          const auth = requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          const minDate = body?.min_date;
+          if (!minDate) {
+            return NextResponse.json(
+              { ok: false, error: 'min_date is required (format: YYYY-MM-DD)' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          // Validate date format
+          const dateObj = new Date(minDate);
+          if (isNaN(dateObj.getTime())) {
+            return NextResponse.json(
+              { ok: false, error: 'Invalid date format. Use YYYY-MM-DD' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const db = getTrackingDb();
+          
+          // First, count how many records will be deleted
+          const { count: deleteCount, error: countError } = await db
+            .from('h2s_tracking_events')
+            .select('*', { count: 'exact', head: true })
+            .lt('occurred_at', minDate);
+
+          if (countError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to count old records: ${countError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          // Delete old records
+          const { error: deleteError } = await db
+            .from('h2s_tracking_events')
+            .delete()
+            .lt('occurred_at', minDate);
+
+          if (deleteError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to purge old data: ${deleteError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = { 
+            ok: true, 
+            deleted_count: deleteCount || 0,
+            min_date: minDate,
+            purged_at: new Date().toISOString()
+          };
+        }
         break;
 
       default:
