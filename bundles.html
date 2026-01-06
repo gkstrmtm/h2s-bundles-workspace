@@ -8,6 +8,12 @@
 <meta name="theme-color" content="#0a2a5a">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='8' fill='%230a2a5a'/%3E%3C/svg%3E">
 
+<!-- Perf Mark - Head Start -->
+<script>
+  performance.mark('ss_nav_head_start');
+  window.__SS_NAV_START = performance.timeOrigin;
+</script>
+
 <!-- Scroll Lock Utils (Required by modals/drawers) -->
 <script>
 window.H2S_lockScroll=function(){document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';var s=Array.from(document.querySelectorAll('div')).find(d=>d.scrollHeight>d.clientHeight&&(getComputedStyle(d).overflowY==='auto'||getComputedStyle(d).overflowY==='scroll'));if(s){s.dataset.wasOverflow=s.style.overflow;s.style.overflow='hidden';window._ghlScrollContainer=s;}};
@@ -3182,6 +3188,76 @@ body.modal-open {
 
 </head>
 <body>
+
+<script>
+// ⚡ INSTANT SHOP SUCCESS PRE-RENDERER v2 (BODY PREPEND) ⚡
+(function(){
+  try {
+    const p = new URLSearchParams(location.search);
+    if(p.get('view') === 'shopsuccess') {
+      console.log('⚡ [PreRender] Prepended Overlay');
+      
+      // Inject CSS immediately
+      const style = document.createElement('style');
+      style.innerHTML = `
+        #success-pre-overlay {
+          position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+          background: #ffffff; z-index: 2147483647; 
+          padding-top: max(env(safe-area-inset-top), 60px);
+          text-align: center; overflow-y: auto; -webkit-overflow-scrolling: touch;
+          font-family: system-ui, -apple-system, sans-serif;
+        }
+        .sp-badge {
+           width: 80px; height: 80px; margin: 0 auto 20px;
+           background: linear-gradient(135deg, #10b981, #059669);
+           border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        }
+        .sp-card {
+           background: #f8fafc; border: 1px solid #e2e8f0; 
+           margin: 0 20px 20px; padding: 24px; border-radius: 16px;
+           max-width: 600px; margin-left: auto; margin-right: auto;
+        }
+      `;
+      document.head.appendChild(style);
+
+      // Create Overlay
+      const div = document.createElement('div');
+      div.id = 'success-pre-overlay';
+      div.innerHTML = `
+        <div class="sp-badge">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 style="margin:0 0 8px; font-weight:900; font-size:28px; color:#0f172a;">Order Confirmed!</h2>
+        <p style="color:#64748b; font-size:16px; margin-bottom:32px;">Thank you for choosing Home2Smart</p>
+        <div class="sp-card">
+          <div style="height:20px; background:#e2e8f0; border-radius:4px; margin-bottom:12px; width:60%; margin:0 auto 12px;"></div>
+          <div style="height:30px; background:#cbd5e1; border-radius:4px; width:40%; margin:0 auto;"></div>
+        </div>
+      `;
+      
+      // Prepend to body
+      if(document.body) {
+          document.body.prepend(div);
+          // Hides the rest of the page content until JS handles it or we decide to remove overlay
+          // Actually, we WANT to hide #pageShell or whatever if it exists
+          const styleHide = document.createElement('style');
+          styleHide.id = 'hide-content-temp';
+          styleHide.innerHTML = '#pageShell, #mainView { display: none !important; }';
+          document.head.appendChild(styleHide);
+      } else {
+          // If script is in HEAD? No, we will put this after body start.
+          document.addEventListener('DOMContentLoaded', () => {
+             document.body.prepend(div);
+          });
+      }
+      
+      performance.mark('shopsuccess_skeleton_painted'); // Early mark
+    }
+  } catch(e) { console.error(e); }
+})();
+</script>
+
+
 <div id="pageShell">
 
 <!-- URGENCY BANNER -->
@@ -3232,6 +3308,9 @@ body.modal-open {
 <!-- Main Outlet for Dynamic Views -->
 <main id="mainView">
 <div id="outlet">
+
+
+
 <!-- HERO -->
 <section class="hero">
   <div class="hero-inner">
@@ -4124,7 +4203,8 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
-<script defer src="bundles.js"></script>
+
+<script defer src="bundles.js?v=PERF_V11_HERO_FIX"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>

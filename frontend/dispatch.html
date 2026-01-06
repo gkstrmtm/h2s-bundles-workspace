@@ -795,6 +795,10 @@ body {
             <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             Payouts
         </div>
+        <div class="nav-item" onclick="switchView('pros', this)">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+            Pro Management
+        </div>
         <div class="nav-item" onclick="openSettings()" style="margin-top:auto">
             <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             Settings
@@ -989,6 +993,49 @@ body {
             </div>
             <div id="payouts-container" style="overflow-x:auto">
                 <div style="text-align:center; padding:40px; color:var(--text-muted)">Loading payouts...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRO MANAGEMENT VIEW -->
+    <div id="view-pros" class="hidden">
+        <div class="page-header">
+            <h1 class="page-title">Pro Management</h1>
+            <div style="display:flex; gap:12px; align-items:center">
+                <input type="text" id="pros-search" placeholder="Search name/email/zip..." oninput="filterProsTable()" style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:14px; min-width:250px">
+                <select id="pros-status-filter" onchange="filterProsTable()" style="padding:8px 12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:14px">
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+                <button class="btn btn-primary" onclick="loadProsList()">Refresh</button>
+            </div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="metrics-grid" style="margin-bottom:30px">
+            <div class="metric-card">
+                <div class="metric-label">Total Pros</div>
+                <div class="metric-value" id="pros-total-count">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Active Pros</div>
+                <div class="metric-value" id="pros-active-count" style="color:var(--brand-green)">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Pending Approval</div>
+                <div class="metric-value" id="pros-pending-count" style="color:var(--brand-gold)">0</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Jobs (Week)</div>
+                <div class="metric-value" id="pros-jobs-week" style="color:var(--brand-azure)">0</div>
+            </div>
+        </div>
+
+        <!-- Pros Table -->
+        <div class="section">
+            <div id="pros-container" style="overflow-x:auto">
+                <div style="text-align:center; padding:40px; color:var(--text-muted)">Loading pros...</div>
             </div>
         </div>
     </div>
@@ -1272,12 +1319,187 @@ body {
         document.getElementById('view-dashboard').classList.add('hidden');
         document.getElementById('view-jobs').classList.add('hidden');
         document.getElementById('view-payouts').classList.add('hidden');
+        document.getElementById('view-pros').classList.add('hidden');
         
         document.getElementById(`view-${view}`).classList.remove('hidden');
         
         if (view === 'dashboard') loadMetrics();
         if (view === 'jobs') loadJobs();
         if (view === 'payouts') loadPayouts();
+        if (view === 'pros') loadProsList();
+    }
+
+    // --- PRO MANAGEMENT ---
+    let allPros = [];
+    
+    async function loadProsList() {
+        const container = document.getElementById('pros-container');
+        container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted)">Loading pros...</div>';
+        
+        try {
+            const res = await fetchWithRetry(`${API_BASE}/admin_pros_list`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: ADMIN_TOKEN })
+            });
+            
+            const data = await res.json();
+            
+            if (!data.ok) {
+                container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--error)">Error: ${data.error || 'Failed to load pros'}</div>`;
+                return;
+            }
+            
+            allPros = data.pros || [];
+            updateProsMetrics();
+            renderProsTable();
+            
+        } catch(err) {
+            console.error('[loadProsList] Error:', err);
+            container.innerHTML = `<div style="text-align:center; padding:40px; color:var(--error)">Error loading pros: ${err.message}</div>`;
+        }
+    }
+    
+    function updateProsMetrics() {
+        document.getElementById('pros-total-count').textContent = allPros.length;
+        document.getElementById('pros-active-count').textContent = allPros.filter(p => p.is_active).length;
+        document.getElementById('pros-pending-count').textContent = allPros.filter(p => !p.is_active).length;
+        
+        // Calculate jobs this week
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        weekStart.setHours(0,0,0,0);
+        const jobsThisWeek = allPros.reduce((sum, p) => sum + (p.jobs_count_week || 0), 0);
+        document.getElementById('pros-jobs-week').textContent = jobsThisWeek;
+    }
+    
+    function renderProsTable() {
+        const container = document.getElementById('pros-container');
+        const filtered = filterProsList();
+        
+        if (filtered.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted)">No pros found</div>';
+            return;
+        }
+        
+        let html = `
+            <table style="width:100%; border-collapse:collapse; font-size:13px">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left; padding:12px; color:var(--text-muted); font-weight:600">Pro</th>
+                        <th style="text-align:left; padding:12px; color:var(--text-muted); font-weight:600">Contact</th>
+                        <th style="text-align:left; padding:12px; color:var(--text-muted); font-weight:600">Location</th>
+                        <th style="text-align:center; padding:12px; color:var(--text-muted); font-weight:600">Radius</th>
+                        <th style="text-align:center; padding:12px; color:var(--text-muted); font-weight:600">Jobs (Week)</th>
+                        <th style="text-align:center; padding:12px; color:var(--text-muted); font-weight:600">Status</th>
+                        <th style="text-align:center; padding:12px; color:var(--text-muted); font-weight:600">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        filtered.forEach(pro => {
+            const statusColor = pro.is_active ? 'var(--brand-green)' : 'var(--text-muted)';
+            const statusText = pro.is_active ? 'Active' : 'Inactive';
+            const actionText = pro.is_active ? 'Deactivate' : 'Activate';
+            const actionColor = pro.is_active ? 'var(--error)' : 'var(--brand-green)';
+            
+            html += `
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:12px">
+                        <div style="font-weight:600; color:#fff">${escapeHtml(pro.name || 'N/A')}</div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.company_name || '')}</div>
+                    </td>
+                    <td style="padding:12px">
+                        <div style="color:var(--text-muted)">${escapeHtml(pro.email || 'N/A')}</div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.phone || '')}</div>
+                    </td>
+                    <td style="padding:12px">
+                        <div style="color:var(--text-muted)">${escapeHtml(pro.city || '')} ${escapeHtml(pro.state || '')}</div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.home_zip || pro.zip || '')}</div>
+                    </td>
+                    <td style="padding:12px; text-align:center; color:var(--text-muted)">
+                        ${pro.service_radius_miles || 35} mi
+                    </td>
+                    <td style="padding:12px; text-align:center; color:var(--text-muted)">
+                        ${pro.jobs_count_week || 0}
+                    </td>
+                    <td style="padding:12px; text-align:center">
+                        <span style="display:inline-block; padding:4px 12px; border-radius:12px; background:${pro.is_active ? 'rgba(16, 185, 129, 0.1)' : 'rgba(148, 163, 184, 0.1)'}; color:${statusColor}; font-size:12px; font-weight:600">
+                            ${statusText}
+                        </span>
+                    </td>
+                    <td style="padding:12px; text-align:center">
+                        <button onclick="toggleProStatus('${pro.pro_id}', ${!pro.is_active})" style="padding:6px 14px; border:none; border-radius:6px; background:${actionColor}; color:white; font-size:12px; font-weight:600; cursor:pointer">
+                            ${actionText}
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+    
+    function filterProsList() {
+        const search = document.getElementById('pros-search').value.toLowerCase();
+        const statusFilter = document.getElementById('pros-status-filter').value;
+        
+        return allPros.filter(pro => {
+            const matchesSearch = !search || 
+                (pro.name || '').toLowerCase().includes(search) ||
+                (pro.email || '').toLowerCase().includes(search) ||
+                (pro.home_zip || '').toLowerCase().includes(search) ||
+                (pro.zip || '').toLowerCase().includes(search);
+            
+            const matchesStatus = statusFilter === 'all' ||
+                (statusFilter === 'active' && pro.is_active) ||
+                (statusFilter === 'inactive' && !pro.is_active);
+            
+            return matchesSearch && matchesStatus;
+        });
+    }
+    
+    function filterProsTable() {
+        renderProsTable();
+    }
+    
+    async function toggleProStatus(proId, newStatus) {
+        const action = newStatus ? 'activate' : 'deactivate';
+        if (!confirm(`Are you sure you want to ${action} this pro?`)) return;
+        
+        try {
+            const res = await fetchWithRetry(`${API_BASE}/admin_seed_pro`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    token: ADMIN_TOKEN,
+                    pro_id: proId,
+                    is_active: newStatus
+                })
+            });
+            
+            const data = await res.json();
+            
+            if (!data.ok) {
+                alert(`Error: ${data.error || 'Failed to update pro'}`);
+                return;
+            }
+            
+            // Update local data
+            const pro = allPros.find(p => p.pro_id === proId);
+            if (pro) pro.is_active = newStatus;
+            
+            updateProsMetrics();
+            renderProsTable();
+            
+            showToast(`Pro ${newStatus ? 'activated' : 'deactivated'} successfully`);
+            
+        } catch(err) {
+            console.error('[toggleProStatus] Error:', err);
+            alert(`Error: ${err.message}`);
+        }
     }
 
     // --- DASHBOARD METRICS ---

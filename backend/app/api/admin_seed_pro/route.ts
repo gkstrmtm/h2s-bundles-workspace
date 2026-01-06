@@ -139,6 +139,33 @@ export async function POST(request: Request) {
     const geo_lng = typeof body?.geo_lng === 'number' ? body.geo_lng : null;
     const service_radius_miles = typeof body?.service_radius_miles === 'number' ? body.service_radius_miles : null;
 
+    // Handle is_active toggle for Pro Management UI
+    if (pro_id && typeof body?.is_active === 'boolean') {
+      try {
+        const { error: updateError } = await dispatch
+          .from('h2s_pros')
+          .update({ is_active: body.is_active, updated_at: new Date().toISOString() })
+          .eq('pro_id', pro_id);
+
+        if (updateError) throw updateError;
+
+        return NextResponse.json(
+          {
+            ok: true,
+            mode: 'updated',
+            pro_id,
+            is_active: body.is_active,
+          },
+          { headers: corsHeaders(request) }
+        );
+      } catch (err: any) {
+        return NextResponse.json(
+          { ok: false, error: `Failed to update is_active: ${err.message}` },
+          { status: 500, headers: corsHeaders(request) }
+        );
+      }
+    }
+
     const result = await tryInsertOrUpdatePro(dispatch, {
       pro_id: pro_id || undefined,
       email,

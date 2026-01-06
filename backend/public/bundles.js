@@ -1,6 +1,33 @@
-﻿// PERFORMANCE: defer attribute allows HTML parsing to continue
+﻿// === FAST RENDER START ===
+// Detect success view immediately and render skeleton before heavy init
+performance.mark('ss_check_start');
+if (typeof URLSearchParams !== 'undefined' && (new URLSearchParams(window.location.search).has('shopsuccess') || window.location.search.includes('view=shopsuccess'))) {
+    performance.mark('ss_success_view_detected');
+    window.__H2S_EARLY_RENDER = true;
+    
+    // Attempt synchronous render (function is hoisted)
+    try {
+        if (typeof renderShopSuccessView === 'function') {
+             performance.mark('ss_render_invoked');
+             console.log('⚡ [FastRender] Invoking renderShopSuccessView immediately');
+             renderShopSuccessView();
+        } else {
+             console.warn('[FastRender] renderShopSuccessView not hoisted?');
+        }
+    } catch(e) {
+        console.error('[FastRender] Failed:', e);
+    }
+}
+performance.mark('ss_check_end');
+// === FAST RENDER END ===
+
+// PERFORMANCE: defer attribute allows HTML parsing to continue
 // Script executes after DOM is ready but doesn't block initial paint
 'use strict';
+
+// BUILD FINGERPRINT - Always logs to prove which version is running
+window.__H2S_BUNDLES_BUILD = "🚀🚀🚀 BRAND_NEW_DEPLOY_JAN6_830AM_UNICORN 🚀🚀🚀";
+console.log('[BUILD]', window.__H2S_BUNDLES_BUILD);
 
 // Production-safe logger - only logs in development
 const isDev = window.location.hostname === 'localhost' || window.location.hostname.includes('127.0.0.1') || window.location.hostname.includes('vercel.app');
@@ -330,6 +357,581 @@ function buildAdvancedParams(){
   return params;
 }
 
+// === HOISTED RENDERER FUNCTIONS (NEVER IN TDZ) ===
+// These function declarations are hoisted, so they exist before any code runs
+
+function renderFatal(message) {
+  const outlet = byId('outlet');
+  if(!outlet) return;
+  
+  outlet.innerHTML = `
+    <div style="padding:60px 20px;text-align:center;max-width:600px;margin:0 auto;font-family:sans-serif;">
+      <div style="width:64px;height:64px;background:#dc2626;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;">
+        <span style="color:white;font-size:32px;font-weight:bold;">!</span>
+      </div>
+      <h2 style="margin:0 0 16px 0;font-weight:900;font-size:24px;color:#dc2626;">Something Went Wrong</h2>
+      <p style="margin:0 0 24px 0;color:#64748b;font-size:16px;">${escapeHtml(message)}</p>
+      <a href="/bundles" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;">Return to Shop</a>
+      <p style="margin-top:24px;font-size:14px;color:#94a3b8;">Need help? Call <a href="tel:864-528-1475" style="color:#2563eb;">(864) 528-1475</a></p>
+    </div>
+  `;
+  outlet.style.opacity = '1';
+  outlet.style.visibility = 'visible';
+}
+
+function renderShopView() {
+  const outlet = byId('outlet');
+  if(!outlet) return;
+  
+  if(!catalog || !catalog.bundles || catalog.bundles.length === 0) {
+    outlet.innerHTML = '<div style="padding:40px;text-align:center;">Loading shop...</div>';
+    return;
+  }
+  
+  logger.log('[ROUTE] Shop view active');
+}
+
+async function renderShopSuccessView() {
+  performance.mark('shopsuccess:start');
+  performance.mark('renderer_start');
+  console.log('🦄🦄🦄 VERY UNIQUE LOG - NEW SUCCESS PAGE DEPLOYED 830AM 🦄🦄🦄');
+  console.log('🔵 [renderShopSuccessView] START - self-contained implementation');
+  
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get('session_id') || params.get('stripe_session_id') || '';
+  
+  console.log('🔵 [renderShopSuccessView] Session ID:', sessionId);
+  
+  if(!sessionId) {
+    renderFatal('Missing session ID. This page requires a valid payment session. Please complete checkout first or contact support at (864) 528-1475.');
+    return;
+  }
+  
+  // Clear cart immediately
+  try {
+    if(typeof cart !== 'undefined' && cart && cart.length > 0) {
+      cart = [];
+      if(typeof saveCart === 'function') saveCart();
+      localStorage.removeItem('h2s_checkout_snapshot');
+    }
+  } catch(e) {
+    console.error('[renderShopSuccessView] Cart clear failed:', e);
+  }
+  
+  const outlet = byId('outlet');
+  if(!outlet) {
+    console.error('[renderShopSuccessView] No outlet element');
+    return;
+  }
+  
+  // IMMEDIATE SKELETON RENDER - no async, no waiting
+  const skeletonHTML = `
+    <style>
+      /* Success page styles - scoped */
+      .success-page-wrapper {
+        min-height: 100dvh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      .success-header-safe {
+        padding: calc(20px + env(safe-area-inset-top)) 20px 20px 20px;
+        text-align: center;
+        margin-bottom: 24px;
+      }
+      
+      .success-badge {
+        width: 72px;
+        height: 72px;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);
+        animation: badgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+      
+      @keyframes badgePop {
+        0% { transform: scale(0.8); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      
+      @media (max-width: 480px) {
+        .success-header-safe {
+          padding: calc(16px + env(safe-area-inset-top)) 16px 16px 16px;
+          margin-bottom: 20px;
+        }
+        .success-badge {
+          width: 64px;
+          height: 64px;
+        }
+        .success-badge svg {
+          width: 28px;
+          height: 28px;
+        }
+      }
+      
+      .skeleton-pulse {
+        animation: pulse 1.5s ease-in-out infinite;
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+      }
+      
+      @keyframes pulse {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      
+      .cal-day {
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      
+      .cal-day:hover:not(.disabled) {
+        background: rgba(59, 130, 246, 0.12);
+        border-color: rgba(59, 130, 246, 0.3);
+        transform: scale(1.05);
+      }
+      
+      .cal-day.selected {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        border-color: #2563eb;
+        color: white;
+        transform: scale(1.08);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+      }
+      
+      .time-slot-btn {
+        transition: all 0.2s;
+      }
+      
+      .time-slot-btn:hover:not(.selected):not(:disabled) {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: rgba(59, 130, 246, 0.4);
+        transform: scale(1.02);
+      }
+      
+      .time-slot-btn.selected {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        border-color: #2563eb;
+        color: white;
+        font-weight: 700;
+      }
+    </style>
+    
+    <div class="success-page-wrapper" style="max-width: 720px; margin: 0 auto; padding: 0 16px 40px;">
+      <div class="success-header-safe">
+        <div class="success-badge">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+        </div>
+        <h2 style="margin: 0 0 8px 0; font-weight: 900; font-size: clamp(24px, 5vw, 28px); color: #0a2a5a;">Order Confirmed!</h2>
+        <p style="margin: 0; color: #64748b; font-size: 15px;">Thank you for choosing Home2Smart</p>
+      </div>
+
+      <div style="background: #f8f9fb; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 800; color: #0a2a5a; text-transform: uppercase; letter-spacing: 0.5px;">Order Details</h3>
+        
+        <div style="display: grid; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+            <span style="font-weight: 600; color: #64748b; font-size: 14px;">Order ID</span>
+            <span id="orderId" style="font-family: monospace; font-size: 13px; color: #0a2a5a; font-weight: 700;" class="skeleton-pulse">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+          </div>
+          
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+            <span style="font-weight: 600; color: #64748b; font-size: 14px;">Items</span>
+            <span id="orderItems" style="font-weight: 700; color: #1a2332; font-size: 14px;" class="skeleton-pulse">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+          </div>
+          
+          <div style="display: flex; justify-content: space-between; padding: 16px 0 0 0;">
+            <span style="font-weight: 800; color: #1a2332; font-size: 16px;">Total Paid</span>
+            <span id="orderTotal" style="font-weight: 900; color: #0a2a5a; font-size: 22px;" class="skeleton-pulse">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid #93c5fd; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <div style="width: 32px; height: 32px; background: #0a2a5a; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+          </div>
+          <h3 style="margin: 0; font-size: 17px; font-weight: 800; color: #0a2a5a;">Schedule Your Installation</h3>
+        </div>
+        <p style="margin: 0 0 16px 0; color: #1e3a8a; font-size: 14px; line-height: 1.6;">Pick a date from the calendar, then choose your preferred time window.</p>
+        
+        <div id="calendarWidget" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.15);">
+          <div style="padding: 40px 20px; text-align: center; color: #64748b;">
+            <div class="skeleton-pulse" style="height: 200px; border-radius: 8px;"></div>
+          </div>
+        </div>
+        
+        <div id="timeWindowSection" style="display:none; margin-top:20px; padding-top:20px; border-top:2px solid rgba(59, 130, 246, 0.1);">
+          <label style="display:block; font-weight:700; font-size:15px; margin-bottom:12px; color:#0a2a5a; text-align:center;">Select Time Window</label>
+          <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px;">
+            <button class="time-slot-btn" data-window="9:00 AM - 12:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; color:#1e40af;">9AM - 12PM</button>
+            <button class="time-slot-btn" data-window="12:00 PM - 3:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; color:#1e40af;">12PM - 3PM</button>
+            <button class="time-slot-btn" data-window="3:00 PM - 6:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; color:#1e40af;">3PM - 6PM</button>
+          </div>
+        </div>
+        
+        <div style="display:flex; gap:12px; margin-top:20px; justify-content: center;">
+          <button class="btn btn-primary" id="confirmApptBtn" style="width: 100%; max-width: 320px; padding:14px 24px; font-weight:700; font-size:15px; opacity: 0.5; pointer-events: none;">Confirm Appointment</button>
+        </div>
+        <div id="schedMsg" style="margin-top:12px; text-align:center; font-size:14px;"></div>
+      </div>
+
+      <div style="text-align: center; padding: 20px 0;">
+        <a href="/bundles" class="btn btn-secondary" style="display: inline-block; padding: 12px 32px; background: #f1f5f9; color: #0a2a5a; border-radius: 8px; text-decoration: none; font-weight: 700;">← Return to Shop</a>
+      </div>
+      
+      <div style="text-align: center; padding: 20px 0; border-top: 1px solid #e2e8f0; margin-top: 32px;">
+        <p style="color: #94a3b8; font-size: 13px;">Questions? Call us at <a href="tel:864-528-1475" style="color: #2563eb; font-weight: 600;">(864) 528-1475</a></p>
+        <p style="color: #cbd5e1; font-size: 12px; margin-top: 8px;">Build: ${window.__H2S_BUNDLES_BUILD || 'unknown'}</p>
+      </div>
+    </div>
+  `;
+  
+  outlet.innerHTML = skeletonHTML;
+  outlet.style.opacity = '1';
+  outlet.style.visibility = 'visible';
+  
+  performance.mark('shopsuccess:skeleton_painted');
+  console.log('🦄🦄🦄 VERY UNIQUE LOG - SKELETON PAINTED INSTANTLY 🦄🦄🦄');
+  console.log('🔵 [renderShopSuccessView] Skeleton painted');
+  
+  // Async data loading with timeout
+  const fetchDataWithTimeout = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    
+    try {
+      const response = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      
+      if(response.ok) {
+        const data = await response.json();
+        return data;
+      }
+    } catch(err) {
+      clearTimeout(timeoutId);
+      if(err.name === 'AbortError') {
+        console.warn('[renderShopSuccessView] Data fetch timeout');
+      } else {
+        console.error('[renderShopSuccessView] Data fetch error:', err);
+      }
+    }
+    
+    // Fallback to URL params
+    return {
+      order_id: params.get('order_id') || sessionId,
+      order_total: params.get('order_total') || '',
+      order_currency: params.get('order_currency') || 'USD',
+      order_summary: params.get('order_summary') || 'Your order',
+      order_discount_code: params.get('order_discount_code') || ''
+    };
+  };
+  
+  // Load data and update skeleton
+  fetchDataWithTimeout().then(orderData => {
+    performance.mark('shopsuccess:data_loaded');
+    
+    const displayOrderId = orderData.order_id || sessionId;
+    const shortOrderId = displayOrderId.length > 20 ? displayOrderId.substring(0, 20) + '...' : displayOrderId;
+    const prettyTotal = orderData.order_total ? money(Number(orderData.order_total)) : 'Paid';
+    
+    // Update DOM
+    const orderIdEl = byId('orderId');
+    const orderItemsEl = byId('orderItems');
+    const orderTotalEl = byId('orderTotal');
+    
+    if(orderIdEl) {
+      orderIdEl.textContent = shortOrderId;
+      orderIdEl.title = displayOrderId;
+      orderIdEl.classList.remove('skeleton-pulse');
+    }
+    
+    if(orderItemsEl) {
+      orderItemsEl.textContent = orderData.order_summary || 'Your order';
+      orderItemsEl.classList.remove('skeleton-pulse');
+    }
+    
+    if(orderTotalEl) {
+      orderTotalEl.innerHTML = `${escapeHtml(prettyTotal)} <span style="font-size: 14px; color: #64748b;">${escapeHtml(orderData.order_currency || 'USD')}</span>`;
+      orderTotalEl.classList.remove('skeleton-pulse');
+    }
+    
+    // Performance logging
+    try {
+      performance.measure('shopsuccess:skeleton-to-data', 'shopsuccess:skeleton_painted', 'shopsuccess:data_loaded');
+      performance.measure('shopsuccess:total', 'shopsuccess:start', 'shopsuccess:data_loaded');
+      
+      const measures = performance.getEntriesByType('measure');
+      const skeletonTime = measures.find(m => m.name === 'shopsuccess:skeleton-to-data')?.duration || 0;
+      const totalTime = measures.find(m => m.name === 'shopsuccess:total')?.duration || 0;
+      
+      console.log(`⚡ [PERF] Success page: skeleton=${skeletonTime.toFixed(0)}ms, total=${totalTime.toFixed(0)}ms`);
+    } catch(e) {}
+    
+    console.log('🔵 [renderShopSuccessView] Data loaded and patched');
+  });
+  
+  // Load calendar immediately (parallel to data fetch)
+  loadCalendar();
+  
+  console.log('🔵 [renderShopSuccessView] Complete (skeleton + async loading)');
+}
+
+function loadCalendar() {
+  const calWidget = byId('calendarWidget');
+  if(!calWidget) return;
+  
+  let selectedDate = null;
+  let selectedWindow = null;
+  let availabilityData = null;
+  
+  // Fetch availability
+  fetch('https://h2s-backend.vercel.app/api/get-availability')
+    .then(res => res.json())
+    .then(data => {
+      if(data.ok && data.availability) {
+        availabilityData = data.availability;
+        renderCalendar();
+      } else {
+        renderCalendarError();
+      }
+    })
+    .catch(err => {
+      console.error('[Calendar] Availability fetch failed:', err);
+      renderCalendarError();
+    });
+  
+  function renderCalendarError() {
+    calWidget.innerHTML = `
+      <div style="padding:20px; text-align:center;">
+        <p style="margin:0 0 12px 0; color:#64748b;">Calendar temporarily unavailable.</p>
+        <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:#0a2a5a; color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call to Schedule</a>
+      </div>
+    `;
+  }
+  
+  function renderCalendar(monthOffset = 0) {
+    const now = new Date();
+    const displayMonth = now.getMonth() + monthOffset;
+    const displayYear = now.getFullYear() + Math.floor(displayMonth / 12);
+    const currentMonth = ((displayMonth % 12) + 12) % 12;
+    
+    const firstDay = new Date(displayYear, currentMonth, 1).getDay();
+    const daysInMonth = new Date(displayYear, currentMonth + 1, 0).getDate();
+    const today = now.getDate();
+    const isCurrentMonth = monthOffset === 0;
+    
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    let html = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom:16px; border-bottom:2px solid rgba(59, 130, 246, 0.1);">
+        <button id="prevMonthBtn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border:none; color:white; font-size:18px; cursor:pointer; padding:8px 14px; border-radius:8px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);${monthOffset <= 0 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset <= 0 ? 'disabled' : ''}>&larr;</button>
+        <h4 style="margin:0; font-size:18px; font-weight:800; color:#0a2a5a;">${monthNames[currentMonth]} ${displayYear}</h4>
+        <button id="nextMonthBtn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border:none; color:white; font-size:18px; cursor:pointer; padding:8px 14px; border-radius:8px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);${monthOffset >= 3 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset >= 3 ? 'disabled' : ''}>&rarr;</button>
+      </div>
+      <div style="display:grid; grid-template-columns: repeat(7, 1fr); gap:4px; text-align:center;">
+        ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; text-transform:uppercase;">${d}</div>`).join('')}
+    `;
+    
+    for(let i = 0; i < firstDay; i++) html += `<div></div>`;
+    
+    for(let day = 1; day <= daysInMonth; day++) {
+      const dateObj = new Date(displayYear, currentMonth, day);
+      const isPast = dateObj < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const dateStr = `${displayYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      
+      const dayAvail = availabilityData?.find(d => d.date === dateStr);
+      const hasAvailability = dayAvail?.available !== false;
+      
+      if(isPast || !hasAvailability) {
+        html += `<div style="padding:10px; color:#d1d5db; font-size:14px; font-weight:500;">${day}</div>`;
+      } else {
+        const isToday = isCurrentMonth && day === today;
+        const style = isToday 
+          ? 'border:2px solid #0a2a5a; background:rgba(59, 130, 246, 0.08); border-radius:10px; cursor:pointer; font-weight:700; font-size:14px; color:#0a2a5a; padding:10px;'
+          : 'border:2px solid transparent; background:rgba(59, 130, 246, 0.02); border-radius:10px; cursor:pointer; font-size:14px; padding:10px; font-weight:600;';
+        html += `<div class="cal-day" data-date="${dateStr}" style="${style}">${day}</div>`;
+      }
+    }
+    html += `</div>`;
+    calWidget.innerHTML = html;
+    
+    // Wire up navigation
+    const prevBtn = byId('prevMonthBtn');
+    const nextBtn = byId('nextMonthBtn');
+    if(prevBtn) prevBtn.onclick = () => { if(monthOffset > 0) renderCalendar(monthOffset - 1); };
+    if(nextBtn) nextBtn.onclick = () => { if(monthOffset < 3) renderCalendar(monthOffset + 1); };
+    
+    // Wire up day selection
+    document.querySelectorAll('.cal-day').forEach(dayEl => {
+      dayEl.onclick = () => {
+        selectedDate = dayEl.getAttribute('data-date');
+        document.querySelectorAll('.cal-day').forEach(d => d.classList.remove('selected'));
+        dayEl.classList.add('selected');
+        byId('timeWindowSection').style.display = 'block';
+        updateConfirmButton();
+      };
+    });
+  }
+  
+  // Wire up time slots
+  document.querySelectorAll('.time-slot-btn').forEach(btn => {
+    btn.onclick = () => {
+      selectedWindow = btn.getAttribute('data-window');
+      document.querySelectorAll('.time-slot-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      updateConfirmButton();
+    };
+  });
+  
+  function updateConfirmButton() {
+    const confirmBtn = byId('confirmApptBtn');
+    if(confirmBtn && selectedDate && selectedWindow) {
+      confirmBtn.style.opacity = '1';
+      confirmBtn.style.pointerEvents = 'auto';
+      confirmBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+      
+      if(!confirmBtn.hasAttribute('data-wired')) {
+        confirmBtn.setAttribute('data-wired', 'true');
+        confirmBtn.onclick = async () => {
+          const schedMsg = byId('schedMsg');
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = 'Confirming...';
+          
+          try {
+            const params = new URLSearchParams(window.location.search);
+            const sessionId = params.get('session_id') || params.get('stripe_session_id') || '';
+            
+            const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: sessionId,
+                date: selectedDate,
+                time_window: selectedWindow
+              })
+            });
+            
+            if(response.ok) {
+              confirmBtn.textContent = 'Confirmed ✓';
+              confirmBtn.style.background = '#059669';
+              if(schedMsg) schedMsg.innerHTML = '<div style="color:#059669; font-weight:600;">✓ Appointment scheduled! We\'ll send confirmation shortly.</div>';
+            } else {
+              throw new Error('Scheduling failed');
+            }
+          } catch(err) {
+            console.error('[Schedule] Error:', err);
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm Appointment';
+            if(schedMsg) schedMsg.innerHTML = '<div style="color:#dc2626;">Failed to schedule. <button onclick="this.parentElement.innerHTML=\'\'; byId(\'confirmApptBtn\').click();" style="color:#2563eb; text-decoration:underline; background:none; border:none; cursor:pointer;">Retry</button></div>';
+          }
+        };
+      }
+    }
+  }
+}
+
+function renderSignInView() {
+  if(typeof renderSignIn === 'function') renderSignIn();
+  else renderFatal('Sign in page not available');
+}
+
+function renderSignUpView() {
+  if(typeof renderSignUp === 'function') renderSignUp();
+  else renderFatal('Sign up page not available');
+}
+
+function renderAccountView() {
+  if(typeof renderAccount === 'function') renderAccount();
+  else renderFatal('Account page not available');
+}
+
+function renderForgotView() {
+  if(typeof renderForgot === 'function') renderForgot();
+  else renderFatal('Password reset page not available');
+}
+
+function renderResetView() {
+  const token = getParam('token');
+  if(typeof renderReset === 'function') renderReset(token);
+  else renderFatal('Password reset page not available');
+}
+
+function renderCalReturnView() {
+  if(typeof handleCalReturn === 'function') handleCalReturn();
+  else renderFatal('Calendar return page not available');
+}
+
+function renderApptReturnView() {
+  if(typeof handleCalReturn === 'function') handleCalReturn();
+  else renderFatal('Appointment return page not available');
+}
+
+// === RENDERER MAP FACTORY ===
+// Returns the map at call time, ensuring all functions are hoisted and available
+function getViewRenderers() {
+  return {
+    shop: renderShopView,
+    shopsuccess: renderShopSuccessView,
+    signin: renderSignInView,
+    signup: renderSignUpView,
+    account: renderAccountView,
+    forgot: renderForgotView,
+    reset: renderResetView,
+    calreturn: renderCalReturnView,
+    apptreturn: renderApptReturnView
+  };
+}
+
+// === ROUTING ===
+async function route(){
+  console.log('🔴 [ROUTE] FUNCTION CALLED');
+  const view = getParam('view') || 'shop';
+  console.log('🔴 [ROUTE] View parameter:', view);
+  logger.log('[ROUTE] View parameter:', view);
+
+  // Safety: ensure we never carry a scroll lock across views
+  H2S_forceUnlockScroll();
+  
+  // Get the renderer for this view
+  const renderers = getViewRenderers();
+  const renderer = renderers[view];
+  
+  if(!renderer) {
+    console.error('[ROUTE] Unknown view:', view);
+    renderFatal(`Unknown page view: "${view}". The page you're looking for doesn't exist.`);
+    return;
+  }
+  
+  // Call the renderer safely
+  try {
+    console.log('🔴 [ROUTE] Calling renderer for view:', view);
+    await renderer();
+    console.log('🔴 [ROUTE] Renderer completed');
+  } catch(err) {
+    console.error('[ROUTE] Fatal render error:', err);
+    console.error('[ROUTE] Error stack:', err.stack);
+    renderFatal('Something broke loading this page. Please refresh or contact support.');
+  }
+  
+  // Close any open modals/drawers after rendering
+  closeAll();
+}
+
 // === INIT ===
 async function init(){
   console.log('🟢 [INIT] Function called');
@@ -656,12 +1258,22 @@ function setupMobileInputHandling() {
 console.log('🟢 [INIT] Setting up DOMContentLoaded listener...');
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', () => { 
-    console.log('🟢 [INIT] DOMContentLoaded fired, calling init()');
-    try{ init(); }catch(e){ logger.error('[Init] Failed:', e); } 
+    console.log('🟢 [INIT] DOMContentLoaded fired, checking execution mode');
+    if(window.__H2S_EARLY_RENDER) {
+         console.log('⚡ [FastRender] init() skipped - success view already active');
+    } else {
+         console.log('🟢 [INIT] Calling init()');
+         try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
+    }
   });
 } else {
-  console.log('🟢 [INIT] DOM already loaded, calling init() immediately');
-  try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
+  console.log('🟢 [INIT] DOM already loaded, checking execution mode');
+  if(window.__H2S_EARLY_RENDER) {
+       console.log('⚡ [FastRender] init() skipped - success view already active');
+  } else {
+       console.log('🟢 [INIT] Calling init() immediately');
+       try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
+  }
 }
 
 // Fire Meta Pixel ViewContent quickly after DOM is ready
@@ -697,74 +1309,6 @@ async function fetchCatalogFromAPI(cacheBust = false){
   }catch(err){
     logger.warn('[Catalog] Fetch failed:', err);
     return false;
-  }
-}
-
-// === ROUTING ===
-function route(){
-  console.log('🔴 [ROUTE] FUNCTION CALLED');
-  const view = getParam('view');
-  console.log('🔴 [ROUTE] View parameter:', view);
-  logger.log('[ROUTE] View parameter:', view);
-
-  // Safety: ensure we never carry a scroll lock across views
-  H2S_forceUnlockScroll();
-  
-  // CRITICAL: If redirecting to success page, prepare for render
-  if(view === 'shopsuccess'){
-    console.log('🔴 [ROUTE] Detected shopsuccess view');
-    // CRITICAL: Unlock scroll FIRST (might be locked from cart/checkout)
-    H2S_unlockScroll();
-    
-    const outlet = byId('outlet');
-    if(outlet){
-      // Brief hide to prevent flicker, but will be shown immediately in renderShopSuccess
-      outlet.style.opacity = '0';
-      outlet.style.visibility = 'hidden';
-    }
-    console.log('🔴 [ROUTE] About to call renderShopSuccess()...');
-    console.log('🔴 [ROUTE] typeof renderShopSuccess:', typeof renderShopSuccess);
-    console.log('🔴 [ROUTE] typeof window.renderShopSuccess:', typeof window.renderShopSuccess);
-    logger.log('[ROUTE] Calling renderShopSuccess()...'); 
-    try {
-      window.renderShopSuccess();
-      console.log('🔴 [ROUTE] renderShopSuccess() returned');
-    } catch(err) {
-      console.error('🔴 [ROUTE] ERROR calling renderShopSuccess():', err);
-      console.error('🔴 [ROUTE] Error stack:', err.stack);
-    }
-    return; 
-  }
-  
-  // Close any open modals/drawers when navigating
-  closeAll();
-  
-  if(view === 'signin'){ renderSignIn(); return; }
-  if(view === 'signup'){ renderSignUp(); return; }
-  if(view === 'account'){ renderAccount(); return; }
-  if(view === 'forgot'){ renderForgot(); return; }
-  if(view === 'reset'){ renderReset(getParam('token')); return; }
-  if(view === 'calreturn' || view === 'apptreturn'){ handleCalReturn(); return; }
-  
-  // Default: show shop
-  const outlet = byId('outlet');
-  if (!outlet) return;
-  
-  const hasShopContent = outlet.querySelector('.hero');
-  
-  if (!hasShopContent) {
-    renderShop();
-  } else {
-    // Static shop content already loaded, ensure it's visible
-    outlet.style.opacity = '1';
-    outlet.style.transition = '';
-    document.body.classList.add('app-ready');
-    
-    // Re-initialize hero reviews if they haven't loaded
-    const heroReviewsEl = document.getElementById('heroReviews');
-    if (heroReviewsEl && !heroReviewsEl.querySelector('.hero-review-slide')) {
-      // Wait for BUNDLES_DATA_API to return
-    }
   }
 }
 
@@ -3474,6 +4018,7 @@ window.renderShopSuccess = async function(){
   } catch(e) {
     logger.warn('[renderShopSuccess] Cart clear failed:', e);
   }
+  console.log('🔵 [renderShopSuccess] Cart handling complete');
   
   // FALLBACK: If no session ID in URL, check if we just completed checkout
   if(!sessionId) {
