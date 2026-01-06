@@ -3,11 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="0;url=/bundles.html">
   <title>Home2Smart - Redirecting...</title>
+  <script>
+  if (window.location.hostname === 'portal.home2smart.com') {
+    window.location.href = '/portal.html';
+  } else {
+    window.location.href = '/bundles.html';
+  }
+  </script>
 </head>
 <body>
-  <p>Redirecting to <a href="/bundles.html">bundles page</a>...</p>
-  <script>window.location.href='/bundles.html';</script>
+  <p>Redirecting...</p>
 </body>
 </html>
+
