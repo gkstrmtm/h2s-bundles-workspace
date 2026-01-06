@@ -8,10 +8,6 @@
       "destination": "/index.html"
     },
     {
-      "source": "/bundles",
-      "destination": "/bundles.html"
-    },
-    {
       "source": "/shop",
       "destination": "/bundles.html"
     }
@@ -23,6 +19,10 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=3600, s-maxage=3600"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
         }
       ]
     },
