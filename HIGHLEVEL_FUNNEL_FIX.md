@@ -3,6 +3,10 @@
 ## What’s happening
 The live page `https://home2smart.com/funnel` is hosted by HighLevel/LeadConnector and contains an embedded “Custom Code” block with a tracking client.
 
+Separately, we’ve seen HighLevel/LeadConnector (or an intermediate HTML sanitizer) HTML-escape JavaScript inside `<script>` blocks. When that happens, the JavaScript token `&&` can become `&amp;&amp;`, which causes:
+
+- `Uncaught SyntaxError: Invalid or unexpected token` at `funnel:1`
+
 That embedded client is currently:
 - Sending `track('page_unload')` on `beforeunload` (inflates totals)
 - Including `page_url: window.location.href` in every tracking payload
@@ -15,6 +19,10 @@ In HighLevel:
 2. Open the “Custom Code” element that contains the dashboard HTML.
 3. Find the section labeled `TRACKING CLIENT`.
 4. Apply BOTH edits below, then save + publish.
+
+If you’re pasting a full dashboard HTML file into HighLevel, use the updated `funnel-track.html` from this repo (it has been refactored to avoid `&&` tokens so HTML escaping can’t break parsing).
+
+If you must keep existing code, search the Custom Code content for `&amp;&amp;` and replace it with a safe equivalent (preferred: refactor the condition into nested `if` blocks).
 
 ### Edit 1 — Stop sending page_url
 In the `track()` payload object, delete this line:

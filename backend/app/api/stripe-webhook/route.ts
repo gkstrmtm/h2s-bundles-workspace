@@ -150,7 +150,8 @@ export async function POST(req: NextRequest) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             type: notificationType,
-            data: {
+              idempotency_key: `stripe_checkout_completed|${session.id}`,
+              data: {
               service: serviceName,
               customerName: customerName || 'Unknown',
               orderNumber: order?.order_id || session.id.slice(-8).toUpperCase(),

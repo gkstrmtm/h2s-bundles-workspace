@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseDb1, getSupabase } from '@/lib/supabase';
+import { getSupabaseDb1, getSupabase, getSupabaseDispatch } from '@/lib/supabase';
+import { resolveDispatchRequiredIds } from '@/lib/dispatchRequiredIds';
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import crypto from 'crypto';
@@ -853,11 +854,104 @@ export async function POST(request: Request) {
         }, { status: 400, headers: corsHeaders(request) });
       }
 
+      // === Offer logic (non-invasive) ===
+      // NEWYEAR50: $50 off total (Stripe promo code) + free Roku when booking 2+ TV mounts.
+      // Roku is fulfillment metadata only (not a $0 Stripe line item) to avoid checkout edge cases.
+      const offerMeta: any = { ...(metadata || {}) };
+      const promoCodeText = String(promotion_code || '').trim().toUpperCase();
+      const offerCode = 'NEWYEAR50';
+      const countTvMountsInCart = (items: any[]): number => {
+        let count = 0;
+        for (const it of items || []) {
+          const qty = Number(it?.qty || 1);
+
+          // Prefer explicit TV-package metadata (multi-TV flows set these)
+          const meta = it?.metadata || {};
+          const tvCount = Number(meta?.tv_count || 0);
+          if (Number.isFinite(tvCount) && tvCount > 0 && Number.isFinite(qty) && qty > 0) {
+            count += (tvCount * qty);
+            continue;
+          }
+
+          // Fallback: items_json array (one element per TV)
+          const itemsJson = meta?.items_json;
+          if (Array.isArray(itemsJson) && itemsJson.length && Number.isFinite(qty) && qty > 0) {
+            const inner = itemsJson.reduce((sum: number, row: any) => sum + (Number(row?.qty || 1) || 1), 0);
+            if (inner > 0) {
+              count += (inner * qty);
+              continue;
+            }
+          }
+
+          // Fallback: single-TV metadata on line item
+          if (meta && (meta.tv_size || meta.mount_type) && Number.isFinite(qty) && qty > 0) {
+            count += qty;
+            continue;
+          }
+
+          // Last resort: name heuristic
+          const name = String(it?.name || it?.service_name || it?.service_id || it?.id || '').toLowerCase();
+          // Heuristic: treat anything that looks like TV mounting as a TV mount.
+          const isTv = name.includes('tv');
+          const isMount = name.includes('mount');
+          if (isTv && isMount && Number.isFinite(qty) && qty > 0) count += qty;
+        }
+        return count;
+      };
+
+      const tvMountQty = countTvMountsInCart(cart);
+      if (promoCodeText === offerCode) {
+        offerMeta.offer_code = offerCode;
+        offerMeta.offer_amount_off_usd = 50;
+        offerMeta.tv_mount_qty = tvMountQty;
+        if (tvMountQty >= 2) {
+          offerMeta.free_roku = true;
+          // One Roku per TV mount (2 TVs => 2 Rokus)
+          offerMeta.free_roku_qty = tvMountQty;
+        }
+      }
+
+      const toStripeMetaValue = (v: any): string | undefined => {
+        if (v === null || v === undefined) return undefined;
+        if (typeof v === 'string') return v.length > 450 ? v.slice(0, 450) : v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        // Do not send objects/arrays to Stripe metadata
+        return undefined;
+      };
+
+      const buildStripeSessionMetadata = (): Record<string, string> => {
+        const out: Record<string, string> = {};
+        const set = (k: string, v: any) => {
+          const sv = toStripeMetaValue(v);
+          if (sv !== undefined && sv !== '') out[k] = sv;
+        };
+
+        // Always include core fields
+        set('customer_name', customer?.name || '');
+        set('customer_phone', customer?.phone || '');
+        set('customer_email', customer?.email || '');
+        set('source', offerMeta?.source || 'shop_rebuilt');
+
+        // Service address fields (these arrive via payload.metadata)
+        set('service_address', offerMeta?.service_address);
+        set('service_city', offerMeta?.service_city);
+        set('service_state', offerMeta?.service_state);
+        set('service_zip', offerMeta?.service_zip);
+
+        // Offer fields (optional)
+        set('offer_code', offerMeta?.offer_code);
+        set('offer_amount_off_usd', offerMeta?.offer_amount_off_usd);
+        set('tv_mount_qty', offerMeta?.tv_mount_qty);
+        set('free_roku', offerMeta?.free_roku);
+        set('free_roku_qty', offerMeta?.free_roku_qty);
+
+        return out;
+      };
+
       // Transform cart items to Stripe line items
       const lineItems = cart.map(item => {
         const productData: any = {
-          name: item.name || item.service_name || 'Service',
-          metadata: item.metadata || {}
+          name: item.name || item.service_name || 'Service'
         };
         
         // Only add description if it's not empty
@@ -880,19 +974,15 @@ export async function POST(request: Request) {
         payment_method_types: ['card'],
         line_items: lineItems,
         mode: 'payment',
-        success_url: success_url || 'https://home2smart.com/bundles?view=shopsuccess&session_id={CHECKOUT_SESSION_ID}',
-        cancel_url: cancel_url || 'https://home2smart.com/bundles',
+        success_url: success_url || 'https://shop.home2smart.com/bundles?view=shopsuccess&session_id={CHECKOUT_SESSION_ID}',
+        cancel_url: cancel_url || 'https://shop.home2smart.com/bundles',
         customer_email: customer.email,
         billing_address_collection: 'required',
         shipping_address_collection: {
           allowed_countries: ['US']
         },
         metadata: {
-          customer_name: customer.name || '',
-          customer_phone: customer.phone || '',
-          customer_email: customer.email || '',
-          source: metadata?.source || 'shop_rebuilt',
-          ...metadata
+          ...buildStripeSessionMetadata()
         }
       };
 
@@ -965,13 +1055,388 @@ export async function POST(request: Request) {
             total: subtotal, // Will be updated by webhook after payment
             currency: 'usd',
             status: 'pending',
-            metadata_json: metadata || {},
+            metadata_json: offerMeta || {},
             created_at: new Date().toISOString(),
-            address: metadata?.service_address || '',
-            city: metadata?.service_city || '',
-            state: metadata?.service_state || '',
-            zip: metadata?.service_zip || ''
+            address: offerMeta?.service_address || '',
+            city: offerMeta?.service_city || '',
+            state: offerMeta?.service_state || '',
+            zip: offerMeta?.service_zip || ''
           });
+
+          // Create a dispatch job immediately (even before scheduling) so ops/portal can see it.
+          // The schedule-appointment API will later find and update this job to `scheduled`.
+          try {
+            const dispatch = getSupabaseDispatch() || client;
+            if (dispatch) {
+              const lookupKeys = Array.from(new Set([orderId, session.id].filter(Boolean)));
+              let exists = false;
+              for (const k of lookupKeys) {
+                try {
+                    const { data } = await dispatch.from('h2s_dispatch_jobs').select('job_id').eq('order_id', k).maybeSingle();
+                    if (data?.job_id) {
+                      exists = true;
+                      break;
+                    }
+                  } catch {
+                    // ignore
+                  }
+
+                  try {
+                    const { data } = await dispatch.from('h2s_dispatch_jobs').select('job_id').eq('order_ref', k).maybeSingle();
+                    if (data?.job_id) {
+                      exists = true;
+                      break;
+                    }
+                  } catch {
+                    // ignore
+                  }
+
+                  try {
+                    const { data } = await dispatch.from('h2s_dispatch_jobs').select('job_id').eq('order_number', k).maybeSingle();
+                    if (data?.job_id) {
+                      exists = true;
+                      break;
+                    }
+                } catch {
+                  // ignore
+                }
+              }
+
+              if (!exists) {
+                const serviceId = String(offerMeta?.service_id || cart?.[0]?.id || cart?.[0]?.service_id || cart?.[0]?.name || '').trim() || null;
+                const customerName = String(customer?.name || '').trim();
+                const customerEmail = String(customer?.email || '').trim();
+                const customerPhone = String(customer?.phone || '').trim();
+                const address = String(offerMeta?.service_address || '').trim();
+                const city = String(offerMeta?.service_city || '').trim();
+                const state = String(offerMeta?.service_state || '').trim();
+                const zip = String(offerMeta?.service_zip || '').trim();
+
+                const enrichedMetadata: any = {
+                  ...(offerMeta || {}),
+                  order_id_text: orderId,
+                  session_id: session.id,
+                  created_via: 'api/shop:create_checkout_session',
+                  items_json: items,
+                  customer_name: customerName || (metadata as any)?.customer_name,
+                  customer_email: customerEmail || (metadata as any)?.customer_email,
+                  customer_phone: customerPhone || (metadata as any)?.customer_phone,
+                  service_address: address || (metadata as any)?.service_address,
+                  service_city: city || (metadata as any)?.service_city,
+                  service_state: state || (metadata as any)?.service_state,
+                  service_zip: zip || (metadata as any)?.service_zip,
+                  service_id: serviceId,
+                };
+
+                const insertJob: any = {
+                  status: 'queued',
+                  order_id: orderId,
+                  created_at: new Date().toISOString(),
+                  due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                  metadata: enrichedMetadata,
+                };
+
+                if (customerName) insertJob.customer_name = customerName;
+                if (customerEmail) insertJob.customer_email = customerEmail;
+                if (customerPhone) insertJob.customer_phone = customerPhone;
+                if (address) insertJob.service_address = address;
+                if (city) insertJob.service_city = city;
+                if (state) insertJob.service_state = state;
+                if (zip) insertJob.service_zip = zip;
+                if (serviceId) insertJob.service_id = serviceId;
+
+                const extractMissingColumn = (err: any): string | null => {
+                  const msg = String(err?.message || '');
+                  const m = msg.match(/Could not find the '([^']+)' column/i);
+                  return m?.[1] || null;
+                };
+
+                const extractNotNullColumn = (err: any): string | null => {
+                  const msg = String(err?.message || '');
+                  const m = msg.match(/null value in column\s+"([^"]+)"(?:\s+of\s+relation\s+"[^"]+")?\s+violates not-null constraint/i);
+                  return m?.[1] || null;
+                };
+
+                const computeNextSequenceId = async (): Promise<number | null> => {
+                  try {
+                    const { data, error } = await dispatch
+                      .from('h2s_dispatch_jobs')
+                      .select('sequence_id')
+                      .order('sequence_id', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    if (error) return null;
+                    const current = (data as any)?.sequence_id;
+                    const n = typeof current === 'number' ? current : Number(current);
+                    if (!Number.isFinite(n)) return 1;
+                    return Math.max(1, Math.floor(n) + 1);
+                  } catch {
+                    return null;
+                  }
+                };
+
+                const pickExistingSequenceId = async (): Promise<string | number | null> => {
+                  try {
+                    const { data, error } = await dispatch
+                      .from('h2s_dispatch_jobs')
+                      .select('sequence_id')
+                      .order('created_at', { ascending: false })
+                      .limit(5);
+                    if (error || !Array.isArray(data)) return null;
+                    for (const row of data) {
+                      const v = (row as any)?.sequence_id;
+                      if (v === null || v === undefined) continue;
+                      const s = String(v).trim();
+                      if (s) return v;
+                    }
+                    return null;
+                  } catch {
+                    return null;
+                  }
+                };
+
+                const pickDispatchSequenceId = async (): Promise<string | number | null> => {
+                  const fromEnv = String(
+                    process.env.DEFAULT_DISPATCH_SEQUENCE_ID || process.env.DISPATCH_DEFAULT_SEQUENCE_ID || ''
+                  ).trim();
+                  if (fromEnv) return fromEnv;
+
+                  const fromJobs = await pickExistingSequenceId();
+                  if (fromJobs !== null) return fromJobs;
+
+                  for (const table of [
+                    'h2s_dispatch_sequences',
+                    'dispatch_sequences',
+                    'h2s_sequences',
+                    'sequences',
+                    'h2s_job_sequences',
+                    'job_sequences'
+                  ]) {
+                    try {
+                      const { data, error } = await dispatch.from(table).select('*').limit(1);
+                      if (error) continue;
+                      const row = Array.isArray(data) ? data[0] : null;
+                      if (!row) continue;
+                      const candidates = [row.sequence_id, row.id, row.uuid];
+                      for (const c of candidates) {
+                        if (c === null || c === undefined) continue;
+                        const s = String(c).trim();
+                        if (s) return c;
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }
+
+                  return null;
+                };
+
+                const pickExistingRecipientId = async (): Promise<string | null> => {
+                  try {
+                    const { data, error } = await dispatch
+                      .from('h2s_dispatch_jobs')
+                      .select('recipient_id')
+                      .order('created_at', { ascending: false })
+                      .limit(5);
+                    if (error || !Array.isArray(data)) return null;
+                    for (const row of data) {
+                      const rid = String((row as any)?.recipient_id ?? '').trim();
+                      if (rid) return rid;
+                    }
+                    return null;
+                  } catch {
+                    return null;
+                  }
+                };
+
+                const pickDispatchRecipientId = async (): Promise<string | null> => {
+                  const fromEnv = String(
+                    process.env.DEFAULT_DISPATCH_RECIPIENT_ID || process.env.DISPATCH_DEFAULT_RECIPIENT_ID || ''
+                  ).trim();
+                  if (fromEnv) return fromEnv;
+
+                  const fromJobs = await pickExistingRecipientId();
+                  if (fromJobs) return fromJobs;
+
+                  for (const table of ['h2s_dispatch_recipients', 'dispatch_recipients', 'recipients']) {
+                    try {
+                      const { data, error } = await dispatch.from(table).select('*').limit(1);
+                      if (error) continue;
+                      const row = Array.isArray(data) ? data[0] : null;
+                      if (!row) continue;
+                      const candidates = [row.recipient_id, row.id, row.uuid, row.user_id];
+                      for (const c of candidates) {
+                        const s = String(c || '').trim();
+                        if (s) return s;
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }
+
+                  try {
+                    const { data: pros, error } = await dispatch.from('h2s_dispatch_pros').select('*').limit(25);
+                    if (!error && Array.isArray(pros)) {
+                      for (const p of pros) {
+                        const candidates = [p?.pro_id, p?.tech_id, p?.user_id, p?.id];
+                        for (const c of candidates) {
+                          const s = String(c || '').trim();
+                          if (s) return s;
+                        }
+                      }
+                    }
+                  } catch {
+                    // ignore
+                  }
+
+                  return null;
+                };
+
+                const pickDispatchIdForColumn = async (column: string): Promise<string | null> => {
+                  const col = String(column || '').trim();
+                  if (!col) return null;
+
+                  const envKeyA = `DEFAULT_DISPATCH_${col.toUpperCase()}`;
+                  const envKeyB = `DISPATCH_DEFAULT_${col.toUpperCase()}`;
+                  const envVal = String((process.env as any)?.[envKeyA] || (process.env as any)?.[envKeyB] || '').trim();
+                  if (envVal) return envVal;
+
+                  try {
+                    const { data, error } = await dispatch
+                      .from('h2s_dispatch_jobs')
+                      .select(col)
+                      .order('created_at', { ascending: false })
+                      .limit(5);
+                    if (!error && Array.isArray(data)) {
+                      for (const row of data) {
+                        const v = String((row as any)?.[col] ?? '').trim();
+                        if (v) return v;
+                      }
+                    }
+                  } catch {
+                    // ignore
+                  }
+
+                  const base = col.endsWith('_id') ? col.slice(0, -3) : col;
+                  const candidatesTables = Array.from(
+                    new Set([
+                      `h2s_dispatch_${base}s`,
+                      `dispatch_${base}s`,
+                      `${base}s`,
+                      `h2s_${base}s`,
+                      `h2s_dispatch_${base}`,
+                      `dispatch_${base}`,
+                      `${base}`,
+                      `h2s_${base}`,
+                    ])
+                  );
+
+                  for (const table of candidatesTables) {
+                    try {
+                      const { data, error } = await dispatch.from(table).select('*').limit(1);
+                      if (error) continue;
+                      const row = Array.isArray(data) ? data[0] : null;
+                      if (!row) continue;
+                      const idCandidates = [
+                        (row as any)?.[col],
+                        (row as any)?.[`${base}_id`],
+                        (row as any)?.id,
+                        (row as any)?.uuid,
+                      ];
+                      for (const c of idCandidates) {
+                        const s = String(c ?? '').trim();
+                        if (s) return s;
+                      }
+                    } catch {
+                      // ignore
+                    }
+                  }
+
+                  return null;
+                };
+
+                const safeInsertDispatchJob = async (initial: any): Promise<{ ok: boolean; error?: any }> => {
+                  const payload: any = { ...(initial || {}) };
+                  for (const k of Object.keys(payload)) {
+                    if (payload[k] === undefined) delete payload[k];
+                  }
+
+                  let lastErr: any = null;
+                  let triedRecipientSentinel = false;
+                  let triedSequenceSentinel = false;
+                  const triedIdSentinelByCol: Record<string, boolean> = {};
+                  for (let i = 0; i < 25; i++) {
+                    const { error } = await dispatch.from('h2s_dispatch_jobs').insert(payload);
+                    if (!error) return { ok: true };
+                    lastErr = error;
+
+                    if (String(error?.code || '') === '23502') {
+                      const col = extractNotNullColumn(error);
+                      if ((col === 'sequence_id' || col === 'recipient_id' || col === 'step_id') && (payload as any)[col] == null) {
+                        const picked = await resolveDispatchRequiredIds(dispatch);
+                        if (col === 'sequence_id' && picked.sequenceId) {
+                          payload.sequence_id = picked.sequenceId;
+                          continue;
+                        }
+                        if (col === 'recipient_id' && picked.recipientId) {
+                          payload.recipient_id = picked.recipientId;
+                          continue;
+                        }
+                        if (col === 'step_id' && picked.stepId) {
+                          payload.step_id = picked.stepId;
+                          continue;
+                        }
+                        break;
+                      }
+
+                      if (col && /_id$/i.test(col) && (payload as any)[col] == null) {
+                        const picked = await pickDispatchIdForColumn(col);
+                        if (picked) {
+                          (payload as any)[col] = picked;
+                          continue;
+                        }
+
+                        if (!triedIdSentinelByCol[col]) {
+                          triedIdSentinelByCol[col] = true;
+                          (payload as any)[col] = '00000000-0000-0000-0000-000000000000';
+                          continue;
+                        }
+                      }
+                    }
+
+                    if (String(error?.code || '') === '22P02') {
+                      const msg = String(error?.message || '');
+                      if (!triedSequenceSentinel && typeof payload.sequence_id === 'number' && /type\s+uuid/i.test(msg)) {
+                        triedSequenceSentinel = true;
+                        payload.sequence_id = '00000000-0000-0000-0000-000000000000';
+                        continue;
+                      }
+                    }
+
+                    const missing = extractMissingColumn(error);
+                    if (missing && missing in payload) {
+                      delete payload[missing];
+                      continue;
+                    }
+                    break;
+                  }
+
+                  return { ok: false, error: lastErr };
+                };
+
+                const ins = await safeInsertDispatchJob(insertJob);
+                if (!ins.ok) {
+                  console.warn('[Checkout] Dispatch job insert failed (non-fatal):', ins.error?.message || ins.error);
+                } else {
+                  console.log('[Checkout] Dispatch job created for order:', orderId);
+                }
+              } else {
+                console.log('[Checkout] Dispatch job already exists for order:', orderId);
+              }
+            }
+          } catch (jobCreateErr) {
+            console.warn('[Checkout] Dispatch job creation exception (non-fatal):', jobCreateErr);
+          }
           
           console.log('[Checkout] Order created:', orderId, 'for session:', session.id);
         } catch (dbError) {

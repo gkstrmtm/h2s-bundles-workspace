@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseDb1 } from '@/lib/supabase';
+import { getSupabase, getSupabaseDb1 } from '@/lib/supabase';
 
 function corsHeaders() {
   return {
@@ -18,15 +18,10 @@ export async function GET(request: Request) {
   const period = searchParams.get('period') || 'day'; // day, week, month
 
   try {
-    const client = getSupabaseDb1();
-    
-    if (!client) {
-      return NextResponse.json({
-        success: false,
-        stats: {},
-        error: 'Tracking database not available'
-      }, { status: 503, headers: corsHeaders() });
-    }
+    // Prefer dedicated tracking DB if configured; otherwise fall back to primary DB.
+    // This matches /api/track-ping behavior and avoids noisy 503s when DB1 env vars
+    // are intentionally not set.
+    const client = getSupabaseDb1() || getSupabase();
 
     // Calculate date range based on period
     const now = new Date();

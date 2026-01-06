@@ -1171,7 +1171,7 @@ export async function GET(request: Request) {
 
         // Map dashboard status values to dispatch job statuses.
         if (status === 'pending' || status === 'offers') {
-          offersQuery = offersQuery.in('status', ['pending_assign', 'pending', 'open']);
+          offersQuery = offersQuery.in('status', ['pending_assign', 'pending', 'open', 'queued']);
         } else if (status === 'upcoming') {
           offersQuery = offersQuery.in('status', ['accepted', 'scheduled']);
         } else if (status === 'completed') {
@@ -1198,12 +1198,14 @@ export async function GET(request: Request) {
             (j.payout_estimated != null ? j.payout_estimated : undefined) ??
             (j.metadata && j.metadata.estimated_payout != null ? j.metadata.estimated_payout : undefined);
           const date = j.window || j.start_iso || (j.metadata && (j.metadata.window || j.metadata.start_iso)) || null;
-          const jobTitle = j.service_name || j.description || j.customer_name || 'Job Offer';
-          const description = j.description || j.service_name || null;
+          const serviceName = j.service_name || (j.metadata && j.metadata.service_name) || j.description || null;
+          const jobTitle = serviceName || j.customer_name || 'Job Offer';
+          const description = j.description || serviceName || null;
           return {
             ...j,
             id,
             jobTitle,
+            service_name: serviceName,
             date,
             payRate,
             description,

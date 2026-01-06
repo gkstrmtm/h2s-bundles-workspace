@@ -8,16 +8,48 @@ const openai = process.env.OPENAI_API_KEY
   : null;
 
 // Helper to handle CORS
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+const CORS_ALLOWED_ORIGINS = new Set([
+  'https://home2smart.com',
+  'https://www.home2smart.com',
+]);
+
+function isAllowedOrigin(origin: string): boolean {
+  const o = origin.trim();
+  if (!o) return false;
+  if (CORS_ALLOWED_ORIGINS.has(o)) return true;
+
+  // Allow subdomains of home2smart.com
+  if (/^https:\/\/([a-z0-9-]+\.)*home2smart\.com$/i.test(o)) return true;
+
+  // Local dev
+  if (/^http:\/\/localhost:\d+$/i.test(o)) return true;
+
+  return false;
 }
 
-export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders() });
+function corsHeaders(request?: Request) {
+  const originHeader = request?.headers.get('origin') || '';
+  const allowOrigin = isAllowedOrigin(originHeader) ? originHeader : '*';
+  const requestedHeaders = request?.headers.get('access-control-request-headers');
+
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': requestedHeaders || 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
+  };
+
+  // Only allow credentials when we echo a specific origin.
+  if (allowOrigin !== '*') {
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  }
+
+  return headers;
+}
+
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
 export async function GET(request: Request) {
@@ -34,7 +66,7 @@ export async function GET(request: Request) {
     build: buildMarker
   }, { 
     status: 200,
-    headers: corsHeaders()
+    headers: corsHeaders(request)
   });
 }
 
@@ -438,7 +470,7 @@ export async function POST(request: Request) {
         request_id: requestId,
         message: 'Database connection not available',
         details: {}
-      }, { status: 500, headers: corsHeaders() });
+      }, { status: 500, headers: corsHeaders(request) });
     }
 
     const cookies = parseCookies(request);
@@ -537,7 +569,7 @@ export async function POST(request: Request) {
           details: visitorError.details,
           hint: visitorError.hint
         }
-      }, { status: 500, headers: corsHeaders() });
+      }, { status: 500, headers: corsHeaders(request) });
     }
 
     console.log('[TRACK_POST_VISITOR_SUCCESS]', {
@@ -567,7 +599,7 @@ export async function POST(request: Request) {
           reason: 'event_type_not_allowlisted',
           event_type: eventName
         },
-        { status: 200, headers: corsHeaders() }
+        { status: 200, headers: corsHeaders(request) }
       );
 
       if (process.env.NODE_ENV === 'production') {
@@ -590,7 +622,7 @@ export async function POST(request: Request) {
           reason: 'missing_or_invalid_page_path',
           event_type: eventName
         },
-        { status: 200, headers: corsHeaders() }
+        { status: 200, headers: corsHeaders(request) }
       );
 
       if (process.env.NODE_ENV === 'production') {
@@ -625,7 +657,7 @@ export async function POST(request: Request) {
         },
         {
           status: 200,
-          headers: corsHeaders()
+          headers: corsHeaders(request)
         }
       );
 
@@ -653,7 +685,7 @@ export async function POST(request: Request) {
         },
         {
           status: 200,
-          headers: corsHeaders()
+          headers: corsHeaders(request)
         }
       );
 
@@ -728,7 +760,7 @@ export async function POST(request: Request) {
             inserted_event_id: eventId,
             duplicate: true
           },
-          { status: 200, headers: corsHeaders() }
+          { status: 200, headers: corsHeaders(request) }
         );
 
         if (process.env.NODE_ENV === 'production') {
@@ -758,7 +790,7 @@ export async function POST(request: Request) {
           details: eventError.details,
           hint: eventError.hint
         }
-      }, { status: 500, headers: corsHeaders() });
+      }, { status: 500, headers: corsHeaders(request) });
     }
 
     console.log('[TRACK_POST_EVENT_SUCCESS]', {
@@ -846,7 +878,7 @@ export async function POST(request: Request) {
     // PART 3: Set cookie fallback (in production)
     const res = NextResponse.json(response, {
       status: 200,
-      headers: corsHeaders()
+      headers: corsHeaders(request)
     });
 
     if (process.env.NODE_ENV === 'production') {
@@ -874,6 +906,6 @@ export async function POST(request: Request) {
         type: error.constructor.name,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
       }
-    }, { status: 500, headers: corsHeaders() });
+    }, { status: 500, headers: corsHeaders(request) });
   }
 }

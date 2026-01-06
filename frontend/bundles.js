@@ -298,6 +298,10 @@ function h2sTrack(event, data={}){
   sendToBackend();
 }
 
+// NOTE: Dispatch job creation happens server-side:
+// - A `pending_assign` dispatch job is created when the order row is written.
+// - Scheduling updates the existing job to `scheduled`.
+
 async function sha256(text){
   if(!crypto || !crypto.subtle) return '';
   try{
@@ -609,22 +613,22 @@ async function init(){
 // Mobile input handling - prevent zoom issues and ensure smooth scrolling
 function setupMobileInputHandling() {
   // Ensure all inputs have minimum 16px font size (already in CSS, but enforce)
-  const inputs = document.querySelectorAll('input, textarea, select');
+  // NOTE: Avoid touching <select> here.
+  // On iOS, forcing scroll on select focus while body is scroll-locked (position:fixed) can
+  // jump the window scroll to 0 while body.top remains negative -> appears as a white screen.
+  const inputs = document.querySelectorAll('input, textarea');
   inputs.forEach(input => {
     // On focus, scroll input into view smoothly
     input.addEventListener('focus', function(e) {
       setTimeout(() => {
+        // If any overlay is open, body scroll is locked (position:fixed + top offset).
+        // Scrolling the window here can desync scroll position vs body.top.
+        if (document.body.classList.contains('modal-open') || document.documentElement.classList.contains('modal-open')) {
+          return;
+        }
         // Smooth scroll to bring input into view
         e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300); // Delay to let keyboard appear
-    }, { passive: true });
-    
-    // On blur, scroll back if needed
-    input.addEventListener('blur', function() {
-      // Allow natural scroll restoration
-      setTimeout(() => {
-        window.scrollTo({ top: window.scrollY, behavior: 'smooth' });
-      }, 100);
     }, { passive: true });
   });
   
@@ -691,6 +695,9 @@ async function fetchCatalogFromAPI(cacheBust = false){
 function route(){
   const view = getParam('view');
   logger.log('[ROUTE] View parameter:', view);
+
+  // Safety: ensure we never carry a scroll lock across views
+  H2S_forceUnlockScroll();
   
   // CRITICAL: If redirecting to success page, prepare for render
   if(view === 'shopsuccess'){
@@ -722,7 +729,7 @@ function route(){
             <h2 style="margin:0 0 16px 0; font-weight:900; font-size:28px; color:#0a2a5a;">Order Confirmed!</h2>
             <p style="margin:0 0 24px 0; color:#6b778c; font-size:16px;">Your payment was successful. We'll send confirmation details to your email shortly.</p>
             <p style="margin:0 0 24px 0; color:#6b778c; font-size:16px;">Our team will contact you within 24 hours to schedule your installation.</p>
-            <a href="tel:864-528-1475" style="display:inline-block; padding:14px 28px; background:#1493ff; color:white; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px;">Call Us: (864) 528-1475</a>
+            <a href="tel:864-528-1475" style="display:inline-block; padding:14px 28px; background:#1493ff; color:white; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px; white-space:nowrap;">Call Us: (864) 528-1475</a>
             <div style="margin-top:24px;">
               <button onclick="navSet({view:null})" class="btn btn-ghost">Back to Shop</button>
             </div>
@@ -961,28 +968,45 @@ function toggleCart(){
 
 // Expose to window for onclick handlers
 window.toggleMenu = toggleMenu;
-window.toggleCart = toggleCart;
+window.__toggleCart = toggleCart; // Use internal name to avoid conflict with HTML wrapper
+window.toggleCart = toggleCart; // Keep for backward compatibility
+
+function H2S_forceUnlockScroll(){
+  try { if(typeof H2S_unlockScroll === 'function') H2S_unlockScroll(); } catch(_) {}
+  try { document.documentElement.classList.remove('modal-open'); } catch(_) {}
+  try { document.body.classList.remove('modal-open'); } catch(_) {}
+  try { document.body.style.top = ''; } catch(_) {}
+
+  // Best-effort cleanup for iOS scroll pin handlers
+  try {
+    const tvModal = document.getElementById('tvSizeModal');
+    if(tvModal && tvModal._scrollLockHandler){
+      try { window.removeEventListener('scroll', tvModal._scrollLockHandler); } catch(_) {}
+      tvModal._scrollLockHandler = null;
+    }
+  } catch(_) {}
+}
 
 function closeAll(){
   const menu = document.getElementById('menuDrawer');
   const cart = document.getElementById('cartDrawer');
+  const backdrop = document.getElementById('backdrop');
   
-  menu.classList.remove('open');
-  cart.classList.remove('open');
-  document.getElementById('backdrop').classList.remove('show');
-  H2S_unlockScroll(); // Unlock scroll
+  try { menu && menu.classList.remove('open'); } catch(_) {}
+  try { cart && cart.classList.remove('open'); } catch(_) {}
+  try { backdrop && backdrop.classList.remove('show'); } catch(_) {}
+  H2S_forceUnlockScroll();
   
   setTimeout(()=>{ 
-    if(!menu.classList.contains('open')) menu.style.contentVisibility = 'hidden';
-    if(!cart.classList.contains('open')) cart.style.contentVisibility = 'hidden';
+    try { if(menu && !menu.classList.contains('open')) menu.style.contentVisibility = 'hidden'; } catch(_) {}
+    try { if(cart && !cart.classList.contains('open')) cart.style.contentVisibility = 'hidden'; } catch(_) {}
   }, 300);
 
   closeModal();
   safeCloseQuoteModal();
   if(typeof closeTVSizeModal === 'function') closeTVSizeModal();
   
-  document.documentElement.classList.remove('modal-open');
-  document.body.classList.remove('modal-open');
+  H2S_forceUnlockScroll();
 }
 
 function showModal(){
@@ -1340,6 +1364,16 @@ function showTVSizeModal(packageId, packageName, packagePrice) {
   document.body.classList.add('modal-open');
   document.body.style.top = `-${scrollY}px`;
   modal._savedScrollY = scrollY;
+
+  // Keep window scroll pinned while body is fixed.
+  // Prevents iOS/select-focus from changing window.scrollY and desyncing body.top (white screen).
+  try {
+    window.scrollTo(0, 0);
+    modal._scrollLockHandler = () => {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    window.addEventListener('scroll', modal._scrollLockHandler, { passive: true });
+  } catch(_) { /* noop */ }
   
   // Hide quantity selector and config container initially (show after mount provider selection)
   const quantitySelector = byId('tvQuantitySelector');
@@ -1580,6 +1614,10 @@ function closeTVSizeModal() {
     
     // Unlock body scroll and restore position
     const scrollY = modal._savedScrollY || 0;
+    if (modal._scrollLockHandler) {
+      try { window.removeEventListener('scroll', modal._scrollLockHandler); } catch(_) {}
+      modal._scrollLockHandler = null;
+    }
     document.documentElement.classList.remove('modal-open');
     document.body.classList.remove('modal-open');
     document.body.style.top = '';
@@ -2212,13 +2250,40 @@ function paintCart(){
     logger.log('[Cart] Cart is empty, showing empty state');
     emptyState.hidden = false;
     items.innerHTML = '';
-    // Zero out totals when cart is empty
-    subtotal.textContent = '$0.00';
-    const grandTotal = byId('grandTotal');
-    if(grandTotal) grandTotal.textContent = '$0.00';
+
+    // Zero out totals + remove any promo "residue" when cart is empty.
+    // Use querySelectorAll([id="..."]) in case the DOM has duplicate IDs.
+    const setTextAll = (id, text) => {
+      try { document.querySelectorAll(`[id="${id}"]`).forEach(el => { el.textContent = text; }); } catch(_) {}
+    };
+    const setDisplayAll = (id, display) => {
+      try { document.querySelectorAll(`[id="${id}"]`).forEach(el => { el.style.display = display; }); } catch(_) {}
+    };
+
+    setTextAll('cartSubtotal', '$0.00');
+    setTextAll('grandTotal', '$0.00');
+    setTextAll('promoAmount', '-$0.00');
+    setTextAll('rawSubtotalAmount', '$0.00');
+    setTextAll('totalLabel', 'Total');
+
+    // Direct resets as a backup (in case of unexpected DOM changes)
+    try { subtotal.textContent = '$0.00'; } catch(_) {}
+    try { const gt = byId('grandTotal'); if(gt) gt.textContent = '$0.00'; } catch(_) {}
+
+    // Ensure promo/raw subtotal lines and subtotal line are hidden when cart is empty
+    setDisplayAll('promoLine', 'none');
+    setDisplayAll('rawSubtotalLine', 'none');
+    setDisplayAll('cartSubtotalLine', 'none');
+
+    // Clear promo messaging so we don't show "Discount applied" on an empty cart
+    setTextAll('promoMsg', '');
+
     const checkoutBtn = byId('checkoutBtn');
     if(checkoutBtn) checkoutBtn.disabled = true;
     if(itemCount) itemCount.textContent = '0 items';
+
+    // Refresh offer message to avoid stale TV count messaging
+    try { h2sRenderOfferMessage(); } catch(_){ }
     return;
   }
   
@@ -2404,6 +2469,24 @@ function paintCart(){
         promoMsg.textContent = 'Saved code will be applied at checkout.';
         promoMsg.style.color = '#0b6e0b';
       }
+
+      // Support ad links like ?promo=NEWYEAR50 (prefill + auto-apply once per session)
+      try{
+        const qs = new URLSearchParams(window.location.search || '');
+        const urlCode = (qs.get('promo') || qs.get('promotion_code') || qs.get('code') || '').trim();
+        if(urlCode){
+          const normalized = urlCode.toUpperCase();
+          const already = sessionStorage.getItem('h2s_url_promo_applied') || '';
+          if(already !== normalized){
+            promoInput.value = normalized;
+            promoMsg.textContent = 'Applying promo from link...';
+            promoMsg.style.color = '#0b6e0b';
+            sessionStorage.setItem('h2s_url_promo_applied', normalized);
+            // Click Apply to reuse existing validation + estimate logic.
+            setTimeout(() => { try{ promoBtn && promoBtn.click(); }catch(_){} }, 0);
+          }
+        }
+      }catch(_){ /* ignore URL promo */ }
     }
     if(promoBtn){
       promoBtn.onclick = async () => {
@@ -2421,7 +2504,8 @@ function paintCart(){
           if (!resp.ok && resp.status === 0) {
             // CORS error - backend blocks this domain
             if(promoMsg){ promoMsg.textContent = 'Cannot connect to server. Contact support.'; promoMsg.style.color = '#c33'; }
-            logger.error('[Promo] CORS error - backend does not allow this origin');\n            return;
+            logger.error('[Promo] CORS error - backend does not allow this origin');
+            return;
           }
           const data = await resp.json();
           if(!(data && data.ok && data.valid)){
@@ -2440,6 +2524,7 @@ function paintCart(){
             }
             // CRITICAL: Wait for promo estimate to complete before showing success
             await updatePromoEstimate();
+            try { h2sRenderOfferMessage(); } catch(_) {}
             logger.log('[Promo] Estimate update completed');
           }
         }catch(e){
@@ -2457,6 +2542,9 @@ function paintCart(){
 
   // Update promo estimate whenever cart repaints (await to ensure it completes)
   updatePromoEstimate().catch(e => logger.warn('[Promo] Update failed:', e));
+
+  // Offer message refresh
+  try { h2sRenderOfferMessage(); } catch(_) {}
 }
 
 async function updatePromoEstimate(){
@@ -2604,6 +2692,89 @@ async function updatePromoEstimate(){
   }
 }
 
+// === LIMITED-TIME OFFER MESSAGING ===
+const H2S_OFFER = {
+  code: 'NEWYEAR50',
+  amountOffUsd: 50,
+  freebie: 'Roku',
+  tvMountsRequired: 2,
+};
+
+function h2sGetPromoCodeUpper(){
+  try { return String(localStorage.getItem('h2s_promo_code') || '').trim().toUpperCase(); } catch(_) { return ''; }
+}
+
+function h2sCountTvMountsInCart(){
+  try {
+    let count = 0;
+    (cart || []).forEach(function(item){
+      const qty = Number(item && item.qty ? item.qty : 1) || 1;
+
+      // Prefer explicit TV-package metadata (multi-TV flows set these)
+      const meta = item && item.metadata ? item.metadata : {};
+      const tvCount = Number(meta && meta.tv_count ? meta.tv_count : 0);
+      if (Number.isFinite(tvCount) && tvCount > 0) {
+        count += (tvCount * qty);
+        return;
+      }
+
+      // Fallback: items_json array (one element per TV)
+      const itemsJson = meta && meta.items_json ? meta.items_json : null;
+      if (Array.isArray(itemsJson) && itemsJson.length) {
+        const inner = itemsJson.reduce((sum, it) => sum + (Number(it && it.qty ? it.qty : 1) || 1), 0);
+        if (inner > 0) {
+          count += (inner * qty);
+          return;
+        }
+      }
+
+      // Fallback: single-TV metadata on line item
+      if (meta && (meta.tv_size || meta.mount_type)) {
+        count += qty;
+        return;
+      }
+
+      // Last resort: name heuristic
+      const name = String(item?.name || item?.service_name || item?.service_id || item?.id || '').toLowerCase();
+      const isTv = name.indexOf('tv') !== -1;
+      const isMount = name.indexOf('mount') !== -1;
+      if (isTv && isMount) count += qty;
+    });
+    return count;
+  } catch(_) { return 0; }
+}
+
+function h2sRenderOfferMessage(){
+  const el = byId('offerMsg');
+  if (!el) return;
+
+  const tvCount = h2sCountTvMountsInCart();
+  const code = h2sGetPromoCodeUpper();
+  const hasCode = code === H2S_OFFER.code;
+
+  const rokuQty = (tvCount >= H2S_OFFER.tvMountsRequired) ? tvCount : 1;
+  const rokuLabel = `${rokuQty} ${H2S_OFFER.freebie}${rokuQty === 1 ? '' : 's'}`;
+
+  // Default: show a simple, clear instruction.
+  let msg = `New Year offer: Use code ${H2S_OFFER.code} for $${H2S_OFFER.amountOffUsd} off. Free Rokus (one per TV) when booking ${H2S_OFFER.tvMountsRequired}+ TV mounts.`;
+  let color = 'var(--muted)';
+
+  if (tvCount >= H2S_OFFER.tvMountsRequired && hasCode) {
+    msg = `Offer unlocked: $${H2S_OFFER.amountOffUsd} off + ${rokuLabel} included.`;
+    color = '#0b6e0b';
+  } else if (hasCode && tvCount < H2S_OFFER.tvMountsRequired) {
+    const remaining = H2S_OFFER.tvMountsRequired - tvCount;
+    msg = `$${H2S_OFFER.amountOffUsd} off is active. Add ${remaining} more TV mount${remaining === 1 ? '' : 's'} to unlock free Rokus (one per TV).`;
+    color = 'var(--muted)';
+  } else if (!hasCode && tvCount >= H2S_OFFER.tvMountsRequired) {
+    msg = `You have ${tvCount} TV mounts. Enter code ${H2S_OFFER.code} for $${H2S_OFFER.amountOffUsd} off and ${rokuLabel}.`;
+    color = 'var(--muted)';
+  }
+
+  el.textContent = msg;
+  el.style.color = color;
+}
+
 function removeFromCart(idx){
   logger.log('[Cart] Removing item at index:', idx);
   try {
@@ -2702,9 +2873,9 @@ function calcBundlePlan(bundle){
     bundle_id: bundle.bundle_id,
     name: bundle.name || bundle.bundle_id,
     image_url: bundle.image_url || '',
+    bundle_price: bundlePrice,
+    required_cost: requiredCost,
     savings,
-    requiredCost,
-    bundlePrice,
     use,
     recipeList: lineList
   };
@@ -2945,8 +3116,13 @@ function showCheckoutModal() {
   
   // Focus first empty field
   setTimeout(() => {
-    if(!document.getElementById('coName').value) document.getElementById('coName').focus();
-    else if(!document.getElementById('coAddress').value) document.getElementById('coAddress').focus();
+    try {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iP(ad|hone|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) return;
+      if(!document.getElementById('coName').value) document.getElementById('coName').focus();
+      else if(!document.getElementById('coAddress').value) document.getElementById('coAddress').focus();
+    } catch(_) { /* noop */ }
   }, 100);
 }
 
@@ -3034,8 +3210,7 @@ window.handleCheckoutSubmit = async function(e) {
           service_city: city,
           service_state: state,
           service_zip: zip,
-          source: 'shop_rebuilt',
-          cart_items: JSON.stringify(cart_items) // Include for webhook processing
+          source: 'shop_rebuilt'
         }
       };
 
@@ -3383,7 +3558,7 @@ window.renderShopSuccess = async function(){
           
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 0 0 0;">
             <span style="font-weight: 800; color: var(--ink); font-size: 16px;">Total Paid</span>
-            <span id="successOrderTotal" style="font-weight: 900; color: var(--cobalt); font-size: 22px;">${escapeHtml(prettyTotal)} <span style="font-size: 14px; font-weight: 600; color: var(--muted);">${escapeHtml(order.order_currency)}</span></span>
+            <span id="successOrderTotal" style="font-weight: 900; color: var(--cobalt); font-size: 22px; white-space: nowrap;">${escapeHtml(prettyTotal)} <span style="font-size: 14px; font-weight: 600; color: var(--muted);">${escapeHtml(order.order_currency)}</span></span>
           </div>
         </div>
       </div>
@@ -3404,30 +3579,30 @@ window.renderShopSuccess = async function(){
         <p style="margin: 0; color: #1e3a8a; font-size: 14px; line-height: 1.6;">Pick a date from the calendar, then choose your preferred time window.</p>
         
         <!-- Calendar Grid -->
-        <div id="calendarWidget" class="calendar-widget" style="background: white; border-radius: 8px; margin: 16px auto 0; max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+        <div id="calendarWidget" class="calendar-widget" style="background: white; border-radius: 12px; margin: 16px auto 0; max-width: 100%; width: 100%; box-sizing: border-box; overflow-x: hidden; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.15); padding: 20px;">
           <div style="padding: 20px; text-align: center; color: var(--muted);">Loading calendar...</div>
         </div>
         
         <!-- Time Window Selection (appears after date selected) -->
-        <div id="timeWindowSection" style="display:none; margin-top:16px;">
-          <label style="display:block; font-weight:600; font-size:14px; margin-bottom:8px; color:var(--ink);">Select Time Window</label>
-          <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:8px; max-width: 100%; overflow: hidden;">
-            <button class="time-slot-btn" data-window="9:00 AM - 12:00 PM" style="padding:10px 8px; border:2px solid var(--border); border-radius:8px; background:white; cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box;">9AM - 12PM</button>
-            <button class="time-slot-btn" data-window="12:00 PM - 3:00 PM" style="padding:10px 8px; border:2px solid var(--border); border-radius:8px; background:white; cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box;">12PM - 3PM</button>
-            <button class="time-slot-btn" data-window="3:00 PM - 6:00 PM" style="padding:10px 8px; border:2px solid var(--border); border-radius:8px; background:white; cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box;">3PM - 6PM</button>
+        <div id="timeWindowSection" style="display:none; margin-top:20px; padding-top:20px; border-top:2px solid rgba(59, 130, 246, 0.1);">
+          <label style="display:block; font-weight:700; font-size:15px; margin-bottom:12px; color:var(--cobalt); text-align:center;">Select Time Window</label>
+          <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; max-width: 100%; overflow: hidden;">
+            <button class="time-slot-btn" data-window="9:00 AM - 12:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box; color:#1e40af;" onmouseover="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.1)'; this.style.borderColor='rgba(59, 130, 246, 0.4)'; this.style.transform='scale(1.02)'; }" onmouseout="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.02)'; this.style.borderColor='rgba(59, 130, 246, 0.2)'; this.style.transform='scale(1)'; }">9AM - 12PM</button>
+            <button class="time-slot-btn" data-window="12:00 PM - 3:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box; color:#1e40af;" onmouseover="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.1)'; this.style.borderColor='rgba(59, 130, 246, 0.4)'; this.style.transform='scale(1.02)'; }" onmouseout="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.02)'; this.style.borderColor='rgba(59, 130, 246, 0.2)'; this.style.transform='scale(1)'; }">12PM - 3PM</button>
+            <button class="time-slot-btn" data-window="3:00 PM - 6:00 PM" style="padding:14px 12px; border:2px solid rgba(59, 130, 246, 0.2); border-radius:10px; background:rgba(59, 130, 246, 0.02); cursor:pointer; font-weight:600; font-size:13px; transition: all 0.2s; min-width:0; box-sizing:border-box; color:#1e40af;" onmouseover="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.1)'; this.style.borderColor='rgba(59, 130, 246, 0.4)'; this.style.transform='scale(1.02)'; }" onmouseout="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.02)'; this.style.borderColor='rgba(59, 130, 246, 0.2)'; this.style.transform='scale(1)'; }">3PM - 6PM</button>
           </div>
         </div>
         
-        <div style="display:flex; gap:12px; margin-top:16px; justify-content: center;">
-          <button class="btn btn-primary" id="confirmApptBtn" style="width: 100%; max-width: 300px; opacity: 0.5; pointer-events: none;">Confirm Appointment</button>
+        <div style="display:flex; gap:12px; margin-top:20px; justify-content: center;">
+          <button class="btn btn-primary" id="confirmApptBtn" style="width: 100%; max-width: 320px; padding:14px 24px; font-weight:700; font-size:15px; opacity: 0.5; pointer-events: none; background: linear-gradient(135deg, #9ca3af 0%, #6b7280 100%); box-shadow: none;">Confirm Appointment</button>
         </div>
-        <div id="schedMsg" class="help" style="margin-top:8px;"></div>
+        <div id="schedMsg" class="help" style="margin-top:12px; text-align:center; font-size:14px;"></div>
       </div>
 
       <!-- Footer Actions -->
       <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
         <button class="btn btn-ghost" id="backToShop" style="min-width: 160px;">Return to Shop</button>
-        <a href="tel:864-528-1475" class="btn btn-secondary" style="min-width: 160px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Call Support</a>
+        <a href="tel:864-528-1475" class="btn btn-secondary" style="min-width: 160px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;">Call Support</a>
       </div>
     </section>
   `;
@@ -3495,19 +3670,19 @@ window.renderShopSuccess = async function(){
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     
     let html = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <button id="prevMonthBtn" style="background:none; border:none; color:var(--cobalt); font-size:20px; cursor:pointer; padding:4px 12px;${monthOffset <= 0 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset <= 0 ? 'disabled' : ''}>&larr;</button>
-        <h4 style="margin:0; font-size:16px; font-weight:800; color:var(--cobalt);">${monthNames[currentMonth]} ${currentYear}</h4>
-        <button id="nextMonthBtn" style="background:none; border:none; color:var(--cobalt); font-size:20px; cursor:pointer; padding:4px 12px;${monthOffset >= 3 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset >= 3 ? 'disabled' : ''}>&rarr;</button>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; padding-bottom: 16px; border-bottom: 2px solid rgba(59, 130, 246, 0.1);">
+        <button id="prevMonthBtn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border:none; color:white; font-size:18px; cursor:pointer; padding:8px 14px; border-radius: 8px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);${monthOffset <= 0 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset <= 0 ? 'disabled' : ''}>&larr;</button>
+        <h4 style="margin:0; font-size:18px; font-weight:800; color:var(--cobalt); letter-spacing: -0.02em;">${monthNames[currentMonth]} ${currentYear}</h4>
+        <button id="nextMonthBtn" style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border:none; color:white; font-size:18px; cursor:pointer; padding:8px 14px; border-radius: 8px; transition: all 0.2s; box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);${monthOffset >= 3 ? ' opacity:0.3; cursor:not-allowed;' : ''}" ${monthOffset >= 3 ? 'disabled' : ''}>&rarr;</button>
       </div>
-      <div style="display:grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap:2px; text-align:center; max-width:100%; overflow:hidden;">
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Sun</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Mon</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Tue</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Wed</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Thu</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Fri</div>
-        <div style="font-size:12px; font-weight:700; color:var(--muted); padding:8px 0; min-width:0;">Sat</div>
+      <div style="display:grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap:4px; text-align:center; max-width:100%; overflow:hidden;">
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Sun</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Mon</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Tue</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Wed</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Thu</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Fri</div>
+        <div style="font-size:11px; font-weight:800; color:#3b82f6; padding:10px 0; min-width:0; text-transform: uppercase; letter-spacing: 0.05em;">Sat</div>
     `;
     
     for(let i = 0; i < firstDay; i++) html += `<div></div>`;
@@ -3522,14 +3697,14 @@ window.renderShopSuccess = async function(){
       const hasAvailability = dayAvail?.available !== false;
       
       if(isPast) {
-        html += `<div style="padding:12px; color:#ccc; font-size:14px; min-width:0;">${day}</div>`;
+        html += `<div style="padding:10px; color:#d1d5db; font-size:14px; min-width:0; font-weight:500;">${day}</div>`;
       } else if(!hasAvailability && availabilityData) {
-        html += `<div style="padding:12px; color:#ccc; font-size:14px; min-width:0; text-decoration:line-through;" title="No availability">${day}</div>`;
+        html += `<div style="padding:10px; color:#d1d5db; font-size:14px; min-width:0; text-decoration:line-through; font-weight:500;" title="No availability">${day}</div>`;
       } else {
         const style = isToday 
-          ? 'border:2px solid var(--cobalt); border-radius:8px; cursor:pointer; font-weight:700; font-size:14px; color:var(--cobalt); transition: all 0.2s; min-width:0;'
-          : 'border:2px solid transparent; border-radius:8px; cursor:pointer; font-size:14px; transition: all 0.2s; hover:border-color:var(--azure); min-width:0;';
-        html += `<div class="cal-day" data-date="${dateStr}" style="${style}">${day}</div>`;
+          ? 'border:2px solid var(--cobalt); background: rgba(59, 130, 246, 0.08); border-radius:10px; cursor:pointer; font-weight:700; font-size:14px; color:var(--cobalt); transition: all 0.2s; min-width:0; padding:10px;'
+          : 'border:2px solid transparent; background: rgba(59, 130, 246, 0.02); border-radius:10px; cursor:pointer; font-size:14px; transition: all 0.2s; min-width:0; padding:10px; font-weight:600;';
+        html += `<div class="cal-day" data-date="${dateStr}" style="${style}" onmouseover="this.style.background='rgba(59, 130, 246, 0.12)'; this.style.borderColor='rgba(59, 130, 246, 0.3)'; this.style.transform='scale(1.05)';" onmouseout="if(!this.classList.contains('selected')) { this.style.background='rgba(59, 130, 246, 0.02)'; this.style.borderColor='transparent'; this.style.transform='scale(1)'; }">${day}</div>`;
       }
     }
     html += `</div>`;
@@ -3546,14 +3721,18 @@ window.renderShopSuccess = async function(){
         selectedDate = dayEl.getAttribute('data-date');
         document.querySelectorAll('.cal-day').forEach(d => {
           d.classList.remove('selected');
-          d.style.background = 'white';
+          d.style.background = 'rgba(59, 130, 246, 0.02)';
           d.style.borderColor = 'transparent';
           d.style.color = 'inherit';
+          d.style.transform = 'scale(1)';
         });
         dayEl.classList.add('selected');
-        dayEl.style.background = 'var(--azure)';
-        dayEl.style.borderColor = 'var(--azure)';
+        dayEl.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+        dayEl.style.borderColor = '#2563eb';
         dayEl.style.color = 'white';
+        dayEl.style.transform = 'scale(1.08)';
+        dayEl.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
+        dayEl.style.padding = '10px';
         byId('timeWindowSection').style.display = 'block';
         selectedWindow = null;
         updateTimeSlots(selectedDate);
@@ -3567,7 +3746,7 @@ window.renderShopSuccess = async function(){
       cal.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted);">
           <p style="margin:0 0 12px 0;">Calendar temporarily unavailable. Please call to schedule:</p>
-          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 528-1475</a>
+          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700; white-space:nowrap;">Call (864) 528-1475</a>
         </div>
       `;
     }
@@ -3606,7 +3785,7 @@ window.renderShopSuccess = async function(){
       cal.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted);">
           <p style="margin:0 0 12px 0;">Unable to load calendar. Please call us to schedule:</p>
-          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 528-1475</a>
+          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700; white-space:nowrap;">Call (864) 528-1475</a>
         </div>
       `;
     }
@@ -3726,6 +3905,9 @@ window.renderShopSuccess = async function(){
             revenue_amount: parseFloat(total) || 0
           });
           
+          // Create dispatch jobs from this order
+          // Dispatch job is created server-side on checkout; scheduling updates it.
+          
           // Cart already cleared at top of renderShopSuccess
         }
       })
@@ -3739,16 +3921,24 @@ window.renderShopSuccess = async function(){
       if(btn.disabled) return;
       selectedWindow = btn.getAttribute('data-window');
       document.querySelectorAll('.time-slot-btn').forEach(b => {
-        b.style.borderColor = 'var(--border)';
-        b.style.background = 'white';
-        b.style.color = 'inherit';
+        b.classList.remove('selected');
+        b.style.borderColor = 'rgba(59, 130, 246, 0.2)';
+        b.style.background = 'rgba(59, 130, 246, 0.02)';
+        b.style.color = '#1e40af';
+        b.style.transform = 'scale(1)';
+        b.style.boxShadow = 'none';
       });
-      btn.style.borderColor = 'var(--azure)';
-      btn.style.background = 'var(--azure)';
+      btn.classList.add('selected');
+      btn.style.borderColor = '#2563eb';
+      btn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
       btn.style.color = 'white';
+      btn.style.transform = 'scale(1.05)';
+      btn.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.4)';
       const confirmBtn = byId('confirmApptBtn');
       confirmBtn.style.opacity = '1';
       confirmBtn.style.pointerEvents = 'auto';
+      confirmBtn.style.background = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+      confirmBtn.style.boxShadow = '0 4px 12px rgba(59, 130, 246, 0.3)';
     };
   });
   
@@ -3760,6 +3950,7 @@ window.renderShopSuccess = async function(){
         if(schedMsg){ schedMsg.style.color = '#c33'; schedMsg.textContent = 'Select a date and time window.'; }
         return;
       }
+      let scheduledOk = false;
       confirmBtn.disabled = true; const prev = confirmBtn.textContent; confirmBtn.textContent = 'Saving...';
       try{
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
@@ -3793,7 +3984,16 @@ window.renderShopSuccess = async function(){
           if(data.error_code === 'slot_full') throw new Error(`${errorMsg}\n\nTip: Try selecting a different time window or date.`);
           throw new Error(errorMsg);
         }
-        if(schedMsg){ schedMsg.style.color = '#0b6e0b'; schedMsg.textContent = 'Appointment scheduled. Check your email for confirmation.'; }
+        scheduledOk = true;
+        if(schedMsg){
+          if(data.job_creation_warning){
+            schedMsg.style.color = '#0b6e0b';
+            schedMsg.textContent = 'Appointment scheduled. Confirmation will arrive shortly. (Dispatch syncing…)';
+          } else {
+            schedMsg.style.color = '#0b6e0b';
+            schedMsg.textContent = 'Appointment scheduled. Check your email for confirmation.';
+          }
+        }
         confirmBtn.textContent = 'Scheduled';
         confirmBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
         confirmBtn.disabled = true;
@@ -3801,7 +4001,9 @@ window.renderShopSuccess = async function(){
         if(schedMsg){ schedMsg.style.color = '#c33'; schedMsg.textContent = 'Failed to schedule: ' + err.message; }
         logger.error('[Schedule] Failed to schedule', err);
       }finally{
-        confirmBtn.disabled = false; confirmBtn.textContent = prev;
+        if(!scheduledOk){
+          confirmBtn.disabled = false; confirmBtn.textContent = prev;
+        }
       }
     };
   }
@@ -3849,11 +4051,11 @@ window.renderShopSuccess = async function(){
             <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid #93c5fd; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
               <h3 style="margin: 0 0 12px 0; font-size: 17px; font-weight: 800; color: var(--cobalt);">What's Next?</h3>
               <p style="margin: 0 0 16px 0; color: #1e3a8a; font-size: 14px;">Our team will contact you within 24 hours to schedule your installation. You'll receive a confirmation email at <strong>${recentCheckout.customer_email || 'your email address'}</strong>.</p>
-              <a href="tel:864-528-1475" style="display: inline-block; padding: 12px 24px; background: var(--cobalt); color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">Call Us: (864) 528-1475</a>
+              <a href="tel:864-528-1475" style="display: inline-block; padding: 12px 24px; background: var(--cobalt); color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; white-space: nowrap;">Call Us: (864) 528-1475</a>
             </div>
             
             <div style="text-align: center; padding: 20px; color: var(--muted); font-size: 13px;">
-              <p style="margin: 0;">Questions? Call us at <a href="tel:864-528-1475" style="color: var(--cobalt); font-weight: 600;">(864) 528-1475</a></p>
+              <p style="margin: 0;">Questions? Call us at <a href="tel:864-528-1475" style="color: var(--cobalt); font-weight: 600; white-space: nowrap;">(864) 528-1475</a></p>
             </div>
             
             ${err.message.includes('network') || err.message.includes('fetch') ? '<div style="background: #fee; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px; margin-top: 16px; text-align: center; font-size: 13px; color: #991b1b;">⚠️ Unable to load full order details. Your payment was successful and we\'ll send confirmation via email.</div>' : ''}
@@ -3880,7 +4082,7 @@ window.renderShopSuccess = async function(){
             </div>
             <h2 style="margin:0 0 8px 0;font-weight:900;font-size:28px;color:#1e3a8a;">Payment Successful!</h2>
             <p style="margin:0 0 20px 0;color:#64748b;">Your order has been received. We'll send confirmation via email.</p>
-            <a href="tel:864-528-1475" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;">Call (864) 528-1475</a>
+            <a href="tel:864-528-1475" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;white-space:nowrap;">Call (864) 528-1475</a>
           </div>
         `;
       }
@@ -4220,7 +4422,7 @@ window.renderAccount = function(){
   const outlet = byId('outlet');
   outlet.innerHTML = `
     <section class="form">
-      <div style="text-align:center; margin-bottom:24px;">
+      <div style="text-align:center; margin:12px 0 24px;">
         <a href="#" onclick="navSet({view:null}); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
           Back to shop
         </a>
@@ -4458,7 +4660,7 @@ async function loadOrders(){
               </div>
               
               <div class="photo-counter" style="font-size:12px; color:#6b778c;">
-                <span id="photoCount-${escapeHtml(jobId)}">Loading...</span>
+                <span id="photoCount-${escapeHtml(jobId)}">No photos yet</span>
               </div>
             </div>
           ` : ''}

@@ -608,22 +608,22 @@ async function init(){
 // Mobile input handling - prevent zoom issues and ensure smooth scrolling
 function setupMobileInputHandling() {
   // Ensure all inputs have minimum 16px font size (already in CSS, but enforce)
-  const inputs = document.querySelectorAll('input, textarea, select');
+  // NOTE: Avoid touching <select> here.
+  // On iOS, forcing scroll on select focus while body is scroll-locked (position:fixed) can
+  // jump the window scroll to 0 while body.top remains negative -> appears as a white screen.
+  const inputs = document.querySelectorAll('input, textarea');
   inputs.forEach(input => {
     // On focus, scroll input into view smoothly
     input.addEventListener('focus', function(e) {
       setTimeout(() => {
+        // If any overlay is open, body scroll is locked (position:fixed + top offset).
+        // Scrolling the window here can desync scroll position vs body.top.
+        if (document.body.classList.contains('modal-open') || document.documentElement.classList.contains('modal-open')) {
+          return;
+        }
         // Smooth scroll to bring input into view
         e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300); // Delay to let keyboard appear
-    }, { passive: true });
-    
-    // On blur, scroll back if needed
-    input.addEventListener('blur', function() {
-      // Allow natural scroll restoration
-      setTimeout(() => {
-        window.scrollTo({ top: window.scrollY, behavior: 'smooth' });
-      }, 100);
     }, { passive: true });
   });
   
@@ -1339,6 +1339,16 @@ function showTVSizeModal(packageId, packageName, packagePrice) {
   document.body.classList.add('modal-open');
   document.body.style.top = `-${scrollY}px`;
   modal._savedScrollY = scrollY;
+
+  // Keep window scroll pinned while body is fixed.
+  // Prevents iOS/select-focus from changing window.scrollY and desyncing body.top (white screen).
+  try {
+    window.scrollTo(0, 0);
+    modal._scrollLockHandler = () => {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+    };
+    window.addEventListener('scroll', modal._scrollLockHandler, { passive: true });
+  } catch(_) { /* noop */ }
   
   // Hide quantity selector and config container initially (show after mount provider selection)
   const quantitySelector = byId('tvQuantitySelector');
@@ -1579,6 +1589,10 @@ function closeTVSizeModal() {
     
     // Unlock body scroll and restore position
     const scrollY = modal._savedScrollY || 0;
+    if (modal._scrollLockHandler) {
+      try { window.removeEventListener('scroll', modal._scrollLockHandler); } catch(_) {}
+      modal._scrollLockHandler = null;
+    }
     document.documentElement.classList.remove('modal-open');
     document.body.classList.remove('modal-open');
     document.body.style.top = '';
@@ -2211,13 +2225,40 @@ function paintCart(){
     logger.log('[Cart] Cart is empty, showing empty state');
     emptyState.hidden = false;
     items.innerHTML = '';
-    // Zero out totals when cart is empty
-    subtotal.textContent = '$0.00';
-    const grandTotal = byId('grandTotal');
-    if(grandTotal) grandTotal.textContent = '$0.00';
+
+    // Zero out totals + remove any promo "residue" when cart is empty.
+    // Use querySelectorAll([id="..."]) in case the DOM has duplicate IDs.
+    const setTextAll = (id, text) => {
+      try { document.querySelectorAll(`[id="${id}"]`).forEach(el => { el.textContent = text; }); } catch(_) {}
+    };
+    const setDisplayAll = (id, display) => {
+      try { document.querySelectorAll(`[id="${id}"]`).forEach(el => { el.style.display = display; }); } catch(_) {}
+    };
+
+    setTextAll('cartSubtotal', '$0.00');
+    setTextAll('grandTotal', '$0.00');
+    setTextAll('promoAmount', '-$0.00');
+    setTextAll('rawSubtotalAmount', '$0.00');
+    setTextAll('totalLabel', 'Total');
+
+    // Direct resets as a backup (in case of unexpected DOM changes)
+    try { subtotal.textContent = '$0.00'; } catch(_) {}
+    try { const gt = byId('grandTotal'); if(gt) gt.textContent = '$0.00'; } catch(_) {}
+
+    // Ensure promo/raw subtotal lines and subtotal line are hidden when cart is empty
+    setDisplayAll('promoLine', 'none');
+    setDisplayAll('rawSubtotalLine', 'none');
+    setDisplayAll('cartSubtotalLine', 'none');
+
+    // Clear promo messaging so we don't show "Discount applied" on an empty cart
+    setTextAll('promoMsg', '');
+
     const checkoutBtn = byId('checkoutBtn');
     if(checkoutBtn) checkoutBtn.disabled = true;
     if(itemCount) itemCount.textContent = '0 items';
+
+    // Refresh offer message to avoid stale TV count messaging
+    try { h2sRenderOfferMessage(); } catch(_){ }
     return;
   }
   
@@ -2914,8 +2955,13 @@ function showCheckoutModal() {
   
   // Focus first empty field
   setTimeout(() => {
-    if(!document.getElementById('coName').value) document.getElementById('coName').focus();
-    else if(!document.getElementById('coAddress').value) document.getElementById('coAddress').focus();
+    try {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iP(ad|hone|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (isIOS) return;
+      if(!document.getElementById('coName').value) document.getElementById('coName').focus();
+      else if(!document.getElementById('coAddress').value) document.getElementById('coAddress').focus();
+    } catch(_) { /* noop */ }
   }, 100);
 }
 
@@ -3003,8 +3049,7 @@ window.handleCheckoutSubmit = async function(e) {
           service_city: city,
           service_state: state,
           service_zip: zip,
-          source: 'shop_rebuilt',
-          cart_items: JSON.stringify(cart_items) // Include for webhook processing
+          source: 'shop_rebuilt'
         }
       };
 

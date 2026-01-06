@@ -29,11 +29,9 @@ body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;col
 
 <!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://checkout.stripe.com" crossorigin>
 <link rel="dns-prefetch" href="https://connect.facebook.net">
-<link rel="dns-prefetch" href="https://api.leadconnectorhq.com">
-<link rel="dns-prefetch" href="https://www.googletagmanager.com">
+<link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
 
 <!-- SEO -->
@@ -44,20 +42,26 @@ body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;col
 <meta property="og:url" content="https://home2smart.com/bundles">
 <meta name="twitter:card" content="summary_large_image">
 
-<!-- Fonts - Async Load -->
-<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<!-- Fonts - Fully Async (no blocking) -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&display=swap" rel="stylesheet"></noscript>
 
-<!-- Meta Pixel -->
+<!-- Meta Pixel - Deferred (non-blocking) -->
 <script>
-!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '2384221445259822');
-fbq('track', 'PageView');
-window.__H2S_FB_INIT__ = true;
+(function(){
+  function initPixel(){
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '2384221445259822');
+    fbq('track', 'PageView');
+    window.__H2S_FB_INIT__ = true;
+  }
+  // Load after page interactive
+  if(document.readyState==='complete'){initPixel();}else{window.addEventListener('load',initPixel,{once:true});}
+})();
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=2384221445259822&ev=PageView&noscript=1"/></noscript>
 
-<!-- H2S Backend Tracking -->
+<!-- H2S Backend Tracking - Deferred -->
 <script>
 (function() {
   function __h2sStartTracking() {
@@ -184,11 +188,8 @@ window.__H2S_FB_INIT__ = true;
   window.__H2S_TRACKING_READY__ = true;
   }
   
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(__h2sStartTracking, { timeout: 2500 });
-  } else {
-    setTimeout(__h2sStartTracking, 0);
-  }
+  // Load after page interactive (don't block main thread)
+  if(document.readyState==='complete'){__h2sStartTracking();}else{window.addEventListener('load',__h2sStartTracking,{once:true});}
 })();
 </script>
 
@@ -509,6 +510,12 @@ body.modal-open {
   #calendarWidget {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    padding: 16px !important;
+  }
+  
+  .cal-day {
+    padding: 12px !important;
+    font-size: 13px !important;
   }
   
   .calendar-grid {
@@ -536,15 +543,20 @@ body.modal-open {
 
 /* Calendar Desktop Default */
 .cal-day {
-  padding: 12px;
+  padding: 10px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cal-day:hover {
+  transform: scale(1.05);
 }
 
 .schedule-container {
-  padding: 16px;
+  padding: 20px;
 }
 
 .calendar-widget {
-  padding: 12px;
+  padding: 20px;
 }
 
 
@@ -3879,6 +3891,7 @@ body.modal-open {
         <button id="applyPromo" class="btn ghost" style="padding: 8px 14px; font-size: 13px; white-space: nowrap;">Apply</button>
       </div>
       <div id="promoMsg" class="help" style="margin-top: 6px; font-size: 12px;"></div>
+      <div id="offerMsg" class="help" style="margin-top: 6px; font-size: 12px;"></div>
     </div>
     
     <!-- Totals -->
@@ -4113,6 +4126,17 @@ window.scrollReviews = function(direction) {
 
 <script defer src="bundles.js"></script>
 
+<!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
+<script>
+window.toggleCart = function() {
+  if (typeof window.__toggleCart === 'function') {
+    window.__toggleCart();
+  } else {
+    setTimeout(function() { if (typeof toggleCart === 'function') toggleCart(); }, 100);
+  }
+};
+</script>
+
 <!-- Performance metrics moved to deferred module to avoid main-thread work affecting LCP -->
 </div><!-- /#pageShell -->
 <div id="modalRoot"></div>
@@ -4145,19 +4169,27 @@ window.scrollReviews = function(direction) {
 })();
 
 // === TRACKING CONGRUENCE ===
-// Fire ViewContent after 5s delay (reduce initial load impact)
-setTimeout(function() {
-  if (typeof h2sTrack === 'function') {
-    h2sTrack('ViewContent', {
-      content_name: 'Bundles Shop',
-      content_type: 'product_group',
-      page: '/bundles',
-      currency: 'USD'
-    });
-  } else {
-    console.warn('h2sTrack not found for ViewContent');
+// Fire ViewContent after bundles.js loads and h2sTrack is available
+(function waitForTracking() {
+  let attempts = 0;
+  const maxAttempts = 50; // 50 * 200ms = 10 seconds max wait
+  
+  function tryTrack() {
+    if (typeof h2sTrack === 'function') {
+      h2sTrack('ViewContent', {
+        content_name: 'Bundles Shop',
+        content_type: 'product_group',
+        page: '/bundles',
+        currency: 'USD'
+      });
+    } else if (attempts < maxAttempts) {
+      attempts++;
+      setTimeout(tryTrack, 200);
+    }
   }
-}, 3000);
+  
+  setTimeout(tryTrack, 1000); // Start checking after 1s
+})();
 </script>
 
 <!-- === TEXT / GLYPH FIXES (Bundles Page) === -->

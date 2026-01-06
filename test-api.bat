@@ -1,0 +1,3 @@
+@echo off
+echo Testing Backend API...
+curl "https://h2s-backend.vercel.app/api/v1?action=meta_pixel_events&exclude_test=1" 2>nul
