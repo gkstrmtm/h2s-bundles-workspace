@@ -14,6 +14,16 @@
       "destination": "/portal.html"
     },
     {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/bundles.html"
+    },
+    {
       "source": "/bundles",
       "destination": "/bundles.html"
     },
