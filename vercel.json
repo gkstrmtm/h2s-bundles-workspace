@@ -12,6 +12,12 @@
       "destination": "/bundles.html"
     }
   ],
+  "routes": [
+    {
+      "src": "^/portal/?$",
+      "dest": "/portal.html"
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
