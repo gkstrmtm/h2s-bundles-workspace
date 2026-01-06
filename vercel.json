@@ -5,6 +5,16 @@
   "rewrites": [
     {
       "source": "/",
+      "destination": "/portal.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ]
+    },
+    {
+      "source": "/",
       "destination": "/bundles.html"
     },
     {
