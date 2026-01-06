@@ -1079,42 +1079,77 @@ export async function POST(request: Request) {
           try {
             const dispatch = getSupabaseDispatch() || client;
             if (dispatch) {
-              // Known Good IDs (from User/Schema)
-              // We use these as defaults if we can't find them in the DB.
-              const DEFAULT_RECIPIENT_ID = '2ddbb40b-5587-4bd9-b78d-e7ff8754968f';
-              const DEFAULT_SEQUENCE_ID = '88297425-c134-4a51-8450-93cb35b1b3cb';
-              const DEFAULT_STEP_ID = 'd30da333-3a54-4598-8ac1-f3b276185ea1';
+                  const DEFAULT_SEQUENCE_ID = '88297425-c134-4a51-8450-93cb35b1b3cb';
+                  const DEFAULT_STEP_ID = 'd30da333-3a54-4598-8ac1-f3b276185ea1'; // Start of Bundle flow
 
-              // Since we don't have order_id in dispatch_jobs, checking for "exists" via order_id is impossible.
-              // We just blindly create a new job for now, assuming the queue system handles dedup or ignores it.
-              
-              const computedSequenceId = await (async () => {
-                try {
-                  const { data } = await dispatch.from('h2s_dispatch_jobs').select('sequence_id').limit(1);
-                  if (data && data.length > 0) return data[0].sequence_id;
-                } catch {}
-                return DEFAULT_SEQUENCE_ID;
-              })();
+                  // 1. Resolve Recipient (Dynamic per Customer) to avoid Unique Constraint collision on (recipient_id, step_id)
+                  let recipientId = null;
+                  const customerEmail = customer.email;
 
-              const computedRecipientId = await (async () => {
-                 try {
-                  const { data } = await dispatch.from('h2s_dispatch_jobs').select('recipient_id').limit(1);
-                  if (data && data.length > 0) return data[0].recipient_id;
-                 } catch {}
-                 return DEFAULT_RECIPIENT_ID;
-              })();
+                  // A. Check if recipient exists
+                  try {
+                    const { data: existingRecipient } = await dispatch
+                      .from('h2s_recipients')
+                      .select('recipient_id')
+                      .eq('email_normalized', customerEmail)
+                      .maybeSingle();
 
-              const insertJob: any = {
-                status: 'pending',
-                created_at: new Date().toISOString(),
-                due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                
-                // CRITICAL: Provide the required foreign keys
-                recipient_id: computedRecipientId || DEFAULT_RECIPIENT_ID,
-                sequence_id: computedSequenceId || DEFAULT_SEQUENCE_ID,
-                step_id: DEFAULT_STEP_ID,
-              };
+                    if (existingRecipient) {
+                      recipientId = existingRecipient.recipient_id;
+                      console.log('[Checkout] Found existing recipient:', recipientId);
+                    }
+                  } catch (findErr) {
+                     console.warn('[Checkout] Failed to finding recipient, ignoring:', findErr); 
+                  }
 
+                  // B. Create if not exists
+                  if (!recipientId) {
+                    try {
+                        const { data: newRecipient, error: createRecipErr } = await dispatch
+                        .from('h2s_recipients')
+                        .insert({
+                            email_normalized: customerEmail,
+                            first_name: customer.name || 'New Customer', 
+                            recipient_key: `customer-${crypto.randomUUID()}` // Ensure uniqueness
+                        })
+                        .select('recipient_id')
+                        .single();
+
+                        if (createRecipErr) {
+                            console.error('[Checkout] Failed to create new recipient:', createRecipErr.message);
+                            // Emergency fallback: If we can't create a user, we might fail job creation or use the fallback (risking collision)
+                            // We will try the global fallback but it will likely fail on 2nd order.
+                        } else {
+                            recipientId = newRecipient.recipient_id;
+                            console.log('[Checkout] Created new recipient:', recipientId);
+                        }
+                    } catch (createErr) {
+                         console.error('[Checkout] Exception creating recipient:', createErr);
+                    }
+                  }
+
+                  // Fallback ID (The system "Default" user) - Only use if absolutely necessary
+                  if (!recipientId) recipientId = '2ddbb40b-5587-4bd9-b78d-e7ff8754968f'; 
+
+                  // 2. Resolve Sequence
+                  const computedSequenceId = await (async () => {
+                    try {
+                      // Attempt to verify the default sequence exists
+                      const { data } = await dispatch.from('h2s_dispatch_jobs').select('sequence_id').eq('sequence_id', DEFAULT_SEQUENCE_ID).limit(1);
+                      if (data && data.length > 0) return data[0].sequence_id;
+                    } catch {}
+                    return DEFAULT_SEQUENCE_ID;
+                  })();
+
+                  const insertJob: any = {
+                    status: 'queued', // CORRECT STATUS (not pending)
+                    created_at: new Date().toISOString(),
+                    due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                    
+                    recipient_id: recipientId,
+                    sequence_id: computedSequenceId || DEFAULT_SEQUENCE_ID,
+                    step_id: DEFAULT_STEP_ID,
+                  };
               console.log('[Checkout] Creating dispatch job with payload:', JSON.stringify(insertJob));
 
               const { data: jobData, error: jobError } = await dispatch

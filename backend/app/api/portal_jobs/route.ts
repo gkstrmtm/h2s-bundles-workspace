@@ -369,7 +369,7 @@ function groupByState(rows: any[]) {
       completed.push(r);
     } else if (isOneOf(state, UPCOMING) || state.includes('accept') || state.includes('scheduled')) {
       upcoming.push(r);
-    } else if (isOneOf(state, OFFER)) {
+    } else if (isOneOf(state, OFFER) || state === 'queued') {
       offers.push(r);
     } else {
       offers.push(r);
