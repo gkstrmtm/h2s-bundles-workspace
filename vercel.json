@@ -4,6 +4,16 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/portal.html"
+    },
+    {
       "source": "/bundles",
       "destination": "/bundles.html"
     },
@@ -13,7 +23,7 @@
     },
     {
       "source": "/",
-      "destination": "/portal.html"
+      "destination": "/bundles.html"
     }
   ],
   "headers": [
