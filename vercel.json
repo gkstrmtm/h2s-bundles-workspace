@@ -2,6 +2,24 @@
   "public": true,
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/bundles",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/portal.html",
+      "permanent": false
+    },
+    {
+      "source": "/bundles",
+      "destination": "/bundles.html",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/",
