@@ -4,22 +4,16 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/:path((?!bundles|api|_next|static).*)",
-      "destination": "/portal.html",
-      "has": [
-        {
-          "type": "host",
-          "value": "portal.home2smart.com"
-        }
-      ]
+      "source": "/bundles",
+      "destination": "/bundles.html"
+    },
+    {
+      "source": "/shop",
+      "destination": "/bundles.html"
     },
     {
       "source": "/",
-      "destination": "/bundles.html"
-    },
-    {
-      "source": "/bundles",
-      "destination": "/bundles.html"
+      "destination": "/portal.html"
     }
   ],
   "headers": [
