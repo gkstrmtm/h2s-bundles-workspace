@@ -4,24 +4,8 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "portal.home2smart.com"
-        }
-      ],
-      "destination": "/portal.html"
-    },
-    {
-      "source": "/:path*",
-      "has": [
-        {
-          "type": "host",
-          "value": "shop.home2smart.com"
-        }
-      ],
-      "destination": "/bundles.html"
+      "source": "/",
+      "destination": "/index.html"
     },
     {
       "source": "/bundles",
@@ -29,10 +13,6 @@
     },
     {
       "source": "/shop",
-      "destination": "/bundles.html"
-    },
-    {
-      "source": "/",
       "destination": "/bundles.html"
     }
   ],
