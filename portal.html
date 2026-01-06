@@ -1044,17 +1044,41 @@ select.input:hover,select.select:hover{
   
   /* Sign-in card: ONE clean card, minimal Apple-standard design */
   .signin-card {
-    max-width: 340px !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 24px 20px !important;
-    padding-bottom: max(24px, env(safe-area-inset-bottom)) !important;
+    max-width: 380px !important;
+    width: calc(100% - 32px) !important;
+    margin: 0 16px !important;
+    padding: 28px 24px !important;
+    padding-bottom: max(28px, env(safe-area-inset-bottom)) !important;
     border-radius: 16px !important;
     background: rgba(11, 25, 41, 0.65) !important;
     backdrop-filter: blur(24px) !important;
     border: none !important;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
     box-sizing: border-box !important;
+  }
+  
+  /* Mobile signup steps - reduce gaps and sizing */
+  #step-info .input,
+  #step-address .input {
+    height: 44px !important;
+    font-size: 15px !important;
+  }
+  
+  #step-info h2,
+  #step-address h2 {
+    font-size: 20px !important;
+    margin-bottom: 20px !important;
+  }
+  
+  #step-info > div:first-of-type,
+  #step-address > div:first-of-type {
+    gap: 16px !important;
+  }
+  
+  #step-info button,
+  #step-address button {
+    height: 44px !important;
+    font-size: 15px !important;
   }
   
   /* #step-signin - Clean form, no wrapper decoration */
@@ -6522,8 +6546,8 @@ a:focus-visible{
         </div>
       </div>
 
-      <div id="step-info" style="display:none">
-        <h2 style="font-size:28px;font-weight:500;margin:0 0 40px 0;text-align:center;color:var(--h2s-text-main);letter-spacing:-0.01em">Your info</h2>
+      <div id="step-info" class="signin-card" style="display:none">
+        <h2 style="font-size:24px;font-weight:600;margin:0 0 24px 0;text-align:center;color:var(--h2s-text-main);letter-spacing:-0.01em">Your info</h2>
         <div style="display:flex;flex-direction:column;gap:24px">
           <div><label class="label" for="piName" style="font-size:13px;font-weight:400;color:var(--h2s-text-muted);margin-bottom:8px;display:block;letter-spacing:0.01em">Full name</label><input id="piName" class="input" placeholder="Jane Doe" autocomplete="name" style="font-size:15px;height:48px;padding:0 16px;border-radius:var(--br);background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);transition:border-color 160ms ease-out,background-color 160ms ease-out,box-shadow 160ms ease-out"></div>
           <div><label class="label" for="piEmail" style="font-size:15px;font-weight:500;color:rgba(255,255,255,0.9);margin-bottom:8px;display:block">Email</label><input id="piEmail" class="input" type="email" placeholder="you@example.com" autocomplete="email" style="font-size:16px;height:52px;padding:0 16px;border-radius:12px"></div>
@@ -6538,8 +6562,8 @@ a:focus-visible{
         <div id="err-info" class="error" role="alert"></div>
       </div>
 
-      <div id="step-address" style="display:none">
-        <h2 style="font-size:32px;font-weight:600;margin:0 0 32px 0;text-align:center">Your address</h2>
+      <div id="step-address" class="signin-card" style="display:none">
+        <h2 style="font-size:24px;font-weight:600;margin:0 0 24px 0;text-align:center;color:var(--h2s-text-main)">Your address</h2>
         <div style="display:flex;flex-direction:column;gap:20px">
           <div style="position:relative">
             <label class="label" for="adStreet" style="font-size:15px;font-weight:500;color:rgba(255,255,255,0.9);margin-bottom:8px;display:block">Address</label>
