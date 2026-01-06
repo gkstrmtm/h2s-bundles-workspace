@@ -138,7 +138,7 @@ async function fetchAvailableOffers(
 
   // NOTE: Some deployments incorrectly store “scheduled” rows without any assignment.
   // In that case we still want them to appear as offers (if unassigned).
-  const OFFER_STATUSES = ['pending_assign', 'pending', 'open', 'unassigned', 'available', 'offered', 'new', 'scheduled'];
+  const OFFER_STATUSES = ['pending_assign', 'pending', 'open', 'unassigned', 'available', 'offered', 'new', 'scheduled', 'queued'];
   const LAT_COLS = ['geo_lat', 'job_geo_lat', 'service_lat', 'lat', 'latitude'];
   const LNG_COLS = ['geo_lng', 'geo_long', 'job_geo_lng', 'service_lng', 'lng', 'longitude', 'long'];
   const ZIP_COLS = ['service_zip', 'zip', 'zip_code', 'postal_code'];
@@ -190,6 +190,62 @@ async function fetchAvailableOffers(
     const { data } = await client.from(jobsTable).select('*').limit(limit).order('created_at', { ascending: false });
     const all = Array.isArray(data) ? data : [];
     jobs = all.filter((j: any) => OFFER_STATUSES.includes(String(j?.status || j?.job_status || j?.state || '').toLowerCase()));
+  }
+
+  // ✅ ENRICHMENT: Backfill missing job details from Orders (Reverse Linkage)
+  try {
+     const jobIds = jobs.map((j: any) => j.job_id).filter((id: any) => id);
+     if (jobIds.length > 0) {
+        const { data: orders } = await client
+          .from('h2s_orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+          
+        if (orders && orders.length > 0) {
+          const orderByJobId = new Map();
+          orders.forEach((o: any) => {
+             const meta = o.metadata_json || o.metadata || {};
+             const jid = meta.dispatch_job_id || meta.job_id;
+             if (jid) orderByJobId.set(jid, o);
+          });
+          
+          jobs = jobs.map((j: any) => {
+             const order = orderByJobId.get(j.job_id);
+             if (!order) return j;
+             
+             const meta = order.metadata_json || order.metadata || {};
+             
+             let items = j.line_items || order.items || meta.items_json || [];
+             if (typeof items === 'string') {
+               try { items = JSON.parse(items); } catch {}
+             }
+             
+             const merged = {
+               ...j,
+               service_name: j.service_name || order.service_name || meta.service_name || "Service",
+               service_address: j.service_address || order.address || meta.service_address || '',
+               service_city: j.service_city || order.city || meta.service_city || '',
+               service_state: j.service_state || order.state || meta.service_state || '',
+               service_zip: j.service_zip || order.zip || meta.service_zip || '',
+               
+               geo_lat: toNum(j.geo_lat) ?? toNum(meta.geo_lat),
+               geo_lng: toNum(j.geo_lng) ?? toNum(meta.geo_lng),
+               
+               payout_estimated: toNum(j.payout_estimated) ?? toNum(meta.estimated_payout) ?? 0,
+               line_items: items,
+               
+               description: j.description || order.special_instructions || meta.description || '',
+               customer_name: j.customer_name || order.customer_name || meta.customer_name || '',
+             };
+             // Normalise zip for filtering
+             if (!merged.service_zip && merged.zip) merged.service_zip = merged.zip;
+             return merged;
+          });
+        }
+     }
+  } catch (err) {
+    console.warn('[Portal Jobs] Enrichment failed:', err);
   }
 
   const proZip5 = first5(opts.zip);

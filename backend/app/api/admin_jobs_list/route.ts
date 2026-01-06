@@ -138,6 +138,69 @@ async function handle(request: Request, body: any) {
 
   const prosIndex = await loadProsIndex(sb, main);
 
+  // ✅ ENRICHMENT: Backfill missing job details from Orders (Reverse Linkage)
+  try {
+     const jobIds = rows.map((j: any) => j.job_id || j[idCol] || j.id).filter((id: any) => id);
+     if (jobIds.length > 0 && main) {
+        const { data: orders } = await main
+          .from('h2s_orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+          
+        if (orders && orders.length > 0) {
+          const orderByJobId = new Map();
+          orders.forEach((o: any) => {
+             const meta = o.metadata_json || o.metadata || {};
+             const jid = meta.dispatch_job_id || meta.job_id;
+             if (jid) orderByJobId.set(jid, o);
+          });
+          
+          rows = rows.map((j: any) => {
+             const jid = j.job_id || j[idCol] || j.id;
+             const order = orderByJobId.get(jid);
+             if (!order) return j;
+             
+             const meta = order.metadata_json || order.metadata || {};
+             
+             let items = j.line_items || order.items || meta.items_json || [];
+             if (typeof items === 'string') {
+               try { items = JSON.parse(items); } catch {}
+             }
+             
+             // Prioritise Job columns, fallback to Order columns
+             // Admin view expects specific keys like: customer_name, address, service_amount, etc.
+             const merged = {
+               ...j,
+               service_name: j.service_name || order.service_name || meta.service_name || "Service",
+               
+               // Contact Info
+               customer_name: j.customer_name || order.customer_name || meta.customer_name || '',
+               customer_email: j.customer_email || order.customer_email || meta.customer_email || '',
+               customer_phone: j.customer_phone || order.customer_phone || meta.customer_phone || '',
+               
+               // Address
+               service_address: j.service_address || order.address || meta.service_address || '',
+               service_city: j.service_city || order.city || meta.service_city || '',
+               service_state: j.service_state || order.state || meta.service_state || '',
+               service_zip: j.service_zip || order.zip || meta.service_zip || '',
+               
+               // Financials
+               payout_estimated: j.payout_estimated ?? order.payout_estimated ?? meta.estimated_payout ?? 0,
+               service_amount: j.service_amount ?? order.total ?? order.total_amount ?? meta.total_amount ?? 0,
+               
+               // Details
+               line_items: items,
+               description: j.description || order.special_instructions || meta.description || '',
+             };
+             return merged;
+          });
+        }
+     }
+  } catch (err) {
+    console.warn('[Admin Jobs] Enrichment failed:', err);
+  }
+
   const jobs = rows.map((j: any) => {
     const jobId = j?.job_id ?? j?.[idCol] ?? j?.id;
     const assignedKey = pickAssignedProValue(j);
