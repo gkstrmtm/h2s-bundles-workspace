@@ -11,8 +11,8 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "/portal.html",
-      "permanent": false
+      "destination": "/portal",
+      "permanent": true
     },
     {
       "source": "/bundles",
@@ -24,6 +24,10 @@
     {
       "source": "/",
       "destination": "/index.html"
+    },
+    {
+      "source": "/portal",
+      "destination": "/portal.html"
     },
     {
       "source": "/shop",
