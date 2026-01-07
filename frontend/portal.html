@@ -1,16 +1,16 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
-<title>Pro Portal � Home2Smart</title>
-<!-- VERSION: 2026-01-06-194622 -->
+<title>Pro Portal ? Home2Smart</title>
+<!-- VERSION: 2026-01-06-201846 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
-console.log('PORTAL VERSION: 2026-01-06-194622');
+console.log('PORTAL VERSION: 2026-01-06-201846');
 console.log('?? Deployed to: portal.home2smart.com');
 console.log('?? Backend: h2s-backend.vercel.app/api');
 /*
@@ -979,7 +979,7 @@ select.input:hover,select.select:hover{
     width: 100%;
   }
 
-  /* 4A. Login screen � Mobile rules: POLISHED CENTERED CARD */
+  /* 4A. Login screen ? Mobile rules: POLISHED CENTERED CARD */
   
   /* Hide entire header on mobile auth screen */
   #view-auth.view:not([aria-hidden="true"]) ~ * .header,
@@ -6473,7 +6473,7 @@ a:focus-visible{
   <div class="menu-sheet" role="dialog" aria-labelledby="menuTitle">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(59,130,246,0.1)">
       <h2 id="menuTitle" style="margin:0;font-size:20px;font-weight:700;color:#e0f2fe;letter-spacing:-0.02em">Menu</h2>
-      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">�</button>
+      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">?</button>
     </div>
     <div class="menu-row" id="menuItems"></div>
   </div>
@@ -6603,7 +6603,7 @@ a:focus-visible{
               </div>
               <p id="teamUpdatesText" style="margin:0;font-size:13px;color:#94a3b8;line-height:1.3">New messages from dispatch</p>
             </div>
-            <div style="color:#64748b;font-size:18px;flex-shrink:0">�</div>
+            <div style="color:#64748b;font-size:18px;flex-shrink:0">?</div>
           </div>
         </div>
 
@@ -7163,7 +7163,7 @@ a:focus-visible{
                 <h3 style="font-size:16px;font-weight:600;color:#e0f2fe;margin:0 0 4px 0">Request Time Off</h3>
                 <p style="font-size:13px;color:#94a3b8;margin:0">Block dates when you can't take jobs</p>
               </div>
-              <div style="color:#1493FF;font-size:20px;flex-shrink:0">�</div>
+              <div style="color:#1493FF;font-size:20px;flex-shrink:0">?</div>
             </div>
           </div>
 
@@ -8092,10 +8092,10 @@ a:focus-visible{
     <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:16px;margin-bottom:20px">
       <p style="margin:0;font-size:14px;line-height:1.6;color:#bfdbfe">
         <strong style="color:#60a5fa;display:block;margin-bottom:8px">Required info:</strong>
-        � Vehicle description<br>
-        � Max service radius (miles)<br>
-        � Max jobs per day<br>
-        � Profile photo & short bio
+        ? Vehicle description<br>
+        ? Max service radius (miles)<br>
+        ? Max jobs per day<br>
+        ? Profile photo & short bio
       </p>
     </div>
     <p class="muted" style="margin-bottom:20px;font-size:14px">
@@ -8542,14 +8542,14 @@ function renderLastUpdateTime() {
   const seconds = Math.floor((Date.now() - lastUpdateTime) / 1000);
   
   if (seconds < 5) {
-    indicator.textContent = '� Just updated';
+    indicator.textContent = '? Just updated';
     indicator.style.color = '#10b981'; // Green
   } else if (seconds < 60) {
-    indicator.textContent = `� ${seconds}s ago`;
+    indicator.textContent = `? ${seconds}s ago`;
     indicator.style.color = '#6b7280'; // Gray
   } else {
     const minutes = Math.floor(seconds / 60);
-    indicator.textContent = `� ${minutes}m ago`;
+    indicator.textContent = `? ${minutes}m ago`;
     indicator.style.color = '#9ca3af'; // Light gray
   }
 }
@@ -9595,7 +9595,7 @@ function renderMenuItems() {
       const b = document.createElement("button");
       b.className = "menu-item";
       b.type = "button";
-      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">�</span>' : ''}`;
+      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">?</span>' : ''}`;
       if (go === "signout") b.id = "signOut";
       else b.dataset.go = go;
       box.appendChild(b);
@@ -9603,18 +9603,18 @@ function renderMenuItems() {
   } else {
     box.innerHTML = `
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px 4px">Main</div>
-      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">�</span></button>
-      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">�</span></button>
-      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">�</span></button>
-      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">?</span></button>
+      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">?</span></button>
+      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">?</span></button>
+      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">?</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">�</span></button>
-      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">?</span></button>
+      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">?</span></button>
       <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">??</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Profile</div>
-      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">?</span></button>
       <button class="menu-item" id="signOut" type="button" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#fca5a5"><span>Sign out</span></button>
     `;
   }
@@ -9727,7 +9727,7 @@ function updateMobilePageTitle(tab) {
   const titleEl = document.getElementById('mobilePageTitle');
   if (!titleEl) return;
 
-  // Keep the center slot, but do not show tab labels like �Dashboard� / �Schedule�.
+  // Keep the center slot, but do not show tab labels like ?Dashboard? / ?Schedule?.
   titleEl.textContent = '';
 }
 
@@ -10170,18 +10170,18 @@ window.showCustomerPhotoLightbox = function(startIndex, photos) {
             <button onclick="event.stopPropagation();window.prevCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">�</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
           ` : ''}
           
           <div style="color:var(--h2s-text-main);font-size:14px;font-weight:600;backdrop-filter:blur(10px);background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);padding:10px 18px;border-radius:12px;">
-            ${currentIndex + 1} / ${photos.length} � ${uploadDate}
+            ${currentIndex + 1} / ${photos.length} ? ${uploadDate}
           </div>
           
           ${photos.length > 1 ? `
             <button onclick="event.stopPropagation();window.nextCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">�</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
           ` : ''}
         </div>
       </div>
@@ -10321,9 +10321,9 @@ function showJobDetails(job) {
     if (d && !isNaN(d)) {
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      $("md-date").textContent = `${dateStr} � ${timeStr}`;
+      $("md-date").textContent = `${dateStr} ? ${timeStr}`;
     } else if (rawWindow) {
-      $("md-date").textContent = `Scheduled � ${rawWindow}`;
+      $("md-date").textContent = `Scheduled ? ${rawWindow}`;
     } else {
       $("md-date").textContent = "Scheduling Pending";
     }
@@ -10351,7 +10351,7 @@ function showJobDetails(job) {
   const phoneEl = $("md-customer-phone");
   const customerName = job.customer_name || job.metadata?.customer_name || "";
   if (customerPhone) {
-    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> � ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
       ${esc(customerPhone)}
     </a>`;
@@ -10438,7 +10438,7 @@ function showJobDetails(job) {
             <span>View ${customerPhotos.length} Customer Photo${customerPhotos.length > 1 ? 's' : ''}</span>
           </button>
           <div style="margin-top:10px;font-size:12px;color:#9BB0CC;line-height:1.5;">
-            ${timingMsg} � Customer shared ${photoContext} to help with installation planning.
+            ${timingMsg} ? Customer shared ${photoContext} to help with installation planning.
           </div>
         `;
       } else {
@@ -10670,9 +10670,9 @@ function showOfferDetails(job) {
     if (d && !isNaN(d)) {
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      $("md-date").textContent = `${dateStr} � ${timeStr}`;
+      $("md-date").textContent = `${dateStr} ? ${timeStr}`;
     } else if (rawWindow) {
-      $("md-date").textContent = `Scheduled � ${rawWindow}`;
+      $("md-date").textContent = `Scheduled ? ${rawWindow}`;
     } else {
       $("md-date").textContent = "Scheduling Pending";
     }
@@ -10706,7 +10706,7 @@ function showOfferDetails(job) {
     console.log('[OFFER MODAL] Setting customer - name:', customerName, 'phone:', customerPhone);
     console.log('[OFFER MODAL] Phone element:', phoneEl, 'parent:', phoneEl.parentElement);
     if (customerPhone) {
-      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> � ` : ''}` +
+      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}` +
         `<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
            ${esc(customerPhone)}
@@ -10734,7 +10734,7 @@ function showOfferDetails(job) {
   })();
   
   // ? INTELLIGENCE: Show Included Tech Source if available
-  const techSource = job.included_tech_source || job.metadata?.included_tech_source || "�";
+  const techSource = job.included_tech_source || job.metadata?.included_tech_source || "?";
   $("md-tech").textContent = techSource;
   
   // ? INTELLIGENCE: Show Teammate if available (Team Jobs)
@@ -10848,7 +10848,7 @@ function showOfferDetails(job) {
       } else {
         share = 0.5;
       }
-      payoutLabel = `Your share � ${splitStr || '50/50'}`;
+      payoutLabel = `Your share ? ${splitStr || '50/50'}`;
     } else if (p && p.label) {
       payoutLabel = p.label;
     }
@@ -11178,7 +11178,7 @@ async function renderPhotoGallery(jobId) {
             style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;background:rgba(239,68,68,.95);border:1px solid rgba(255,255,255,.2);color:white;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:0;transition:all 0.2s ease;font-weight:300"
             onmouseover="this.style.background='rgba(220,38,38,1)';this.style.transform='scale(1.1)'"
             onmouseout="this.style.background='rgba(239,68,68,.95)';this.style.transform='scale(1)'"
-            title="Delete photo">�</button>
+            title="Delete photo">?</button>
         </div>
       `;}).join('')}
     </div>
@@ -11475,7 +11475,7 @@ async function showPhotoUploadPreview(files, jobId) {
               <span style="font-size:20px">??</span>
               <span>${invalidPreviews.length} file${invalidPreviews.length > 1 ? 's' : ''} cannot be uploaded:</span>
             </div>
-            ${invalidPreviews.map(p => `<div style="font-size:13px;opacity:.9;margin-left:28px;margin-top:4px;color:#ffd7db">� <strong>${esc(p.file.name)}</strong>: ${esc(p.error)}</div>`).join('')}
+            ${invalidPreviews.map(p => `<div style="font-size:13px;opacity:.9;margin-left:28px;margin-top:4px;color:#ffd7db">? <strong>${esc(p.file.name)}</strong>: ${esc(p.error)}</div>`).join('')}
           </div>
         ` : ''}
         
@@ -11491,7 +11491,7 @@ async function showPhotoUploadPreview(files, jobId) {
                   style="position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;background:rgba(239,68,68,.96);border:1px solid rgba(255,255,255,.4);color:white;font-size:20px;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all 0.2s ease;font-weight:300"
                   onmouseover="this.style.background='rgba(220,38,38,1)';this.style.transform='scale(1.15)'"
                   onmouseout="this.style.background='rgba(239,68,68,.96)';this.style.transform='scale(1)'"
-                  title="Remove this photo">�</button>
+                  title="Remove this photo">?</button>
                 <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top, rgba(10,42,90,.95) 0%, transparent 100%);padding:6px 8px 4px;font-size:10px;color:#9bc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(p.file.name)}">${esc(p.file.name)}</div>
               </div>
             `).join('')}
@@ -12026,7 +12026,7 @@ function renderOffersSync(list, box) {
           }
         }
         payoutAmount = payoutAmount * share;
-        payoutLabel = `Your share � ${splitStr || '50/50'}`;
+        payoutLabel = `Your share ? ${splitStr || '50/50'}`;
       }
     } catch (e) {
       console.warn('[Offers] payout compute failed for job', j.job_id, e);
@@ -12093,9 +12093,9 @@ function renderOffersSync(list, box) {
     const metaHtml = `
         <div style="color:var(--h2s-text-secondary);font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span>${esc(j.service_city||j.city||"Location")}</span>
-            <span style="color:var(--h2s-border-subtle)">�</span>
+            <span style="color:var(--h2s-border-subtle)">?</span>
             <span>${distanceText}</span>
-            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">�</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
+            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">?</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
         </div>
     `;
 
@@ -12307,7 +12307,7 @@ async function renderUpcoming(list) {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1493FF" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
         <div style="flex:1">
           <div style="font-weight:600;color:#1493FF;font-size:14px">Optimized Route</div>
-          <div style="font-size:13px;color:#64748b;margin-top:2px">${routeData.routeCount} stops � ${routeData.totalMiles} miles total</div>
+          <div style="font-size:13px;color:#64748b;margin-top:2px">${routeData.routeCount} stops ? ${routeData.totalMiles} miles total</div>
         </div>
       </div>
     `;
@@ -12333,7 +12333,7 @@ async function renderUpcoming(list) {
   // ? PERFORMANCE: Use DocumentFragment for batch DOM updates
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
-    const sigLabel = signatureOnFile[j.job_id] ? "Signature � saved" : "Signature";
+    const sigLabel = signatureOnFile[j.job_id] ? "Signature ? saved" : "Signature";
     const statusLabel = (j.status || "").toLowerCase();
     const isOpen = statusLabel === "open";
     
@@ -12380,7 +12380,7 @@ async function renderUpcoming(list) {
       const teammateName = j.teammate_name || 'Partner';
       const split = j.payout_split || '50/50';
       teamIndicator = `<div style="margin-top:8px;padding:8px;background:rgba(139,92,246,.1);border-left:3px solid #8b5cf6;border-radius:6px;font-size:13px">
-        <strong>Team Job</strong> � Working with: ${esc(teammateName)} � Split: ${esc(split)}
+        <strong>Team Job</strong> ? Working with: ${esc(teammateName)} ? Split: ${esc(split)}
       </div>`;
     }
     
@@ -12434,11 +12434,11 @@ async function renderUpcoming(list) {
         const timeDisplay = rawWindow || timeStr;
         
         dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          ${dateStr} � ${timeDisplay}
+          ${dateStr} ? ${timeDisplay}
         </div>`;
     } else if (rawWindow) {
          dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          Scheduled � ${esc(rawWindow)}
+          Scheduled ? ${esc(rawWindow)}
         </div>`;
     }
 
@@ -12457,7 +12457,7 @@ async function renderUpcoming(list) {
     if (targetDate && !isNaN(targetDate)) {
         const dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = rawWindow || targetDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} � ${timeStr}</div>`;
+        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} ? ${timeStr}</div>`;
     } else if (rawWindow) {
         dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${esc(rawWindow)}</div>`;
     }
@@ -13638,7 +13638,7 @@ async function loadCustomers() {
 
       // ? INTELLIGENCE: Prompt to verify equipment
       if (c.included_tech_source && c.included_tech_source !== 'None') {
-          talkingPoints += ' � <strong>Verify equipment landed</strong>';
+          talkingPoints += ' ? <strong>Verify equipment landed</strong>';
       }
 
       // ? INTELLIGENCE: Enhanced Service Title
@@ -14044,7 +14044,7 @@ async function loadReviews() {
       el.className = "item";
       el.innerHTML = `
         <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-        <div class="meta">${esc(r.display_name)} � ${r.verified ? "? Verified" : ""} � ${new Date(r.created_at).toLocaleDateString()}</div>
+        <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
         ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
         ${r.comment_service ? `<div style="margin-top:8px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
         ${r.tags.length ? `<div style="margin-top:8px;font-size:13px;opacity:.8">${r.tags.map(t => "#" + esc(t)).join(" ")}</div>` : ""}
@@ -14107,7 +14107,7 @@ function renderReviews(reviews) {
     el.className = "item";
     el.innerHTML = `
       <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-      <div class="meta">${esc(r.display_name)} � ${r.verified ? "? Verified" : ""} � ${new Date(r.created_at).toLocaleDateString()}</div>
+      <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
       ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
       ${r.comment_service ? `<div style="margin-top:4px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
       <div id="replies-${esc(r.review_id)}" style="margin-top:8px"></div>
@@ -15209,7 +15209,7 @@ function renderContactSubmissions(list) {
         <div class="meta">${esc(sub.customer_email || '')}</div>
         ${sub.message ? `<div class="meta" style="margin-top:4px;font-size:12px;opacity:0.8">${esc(sub.message.substring(0, 60))}${sub.message.length > 60 ? '...' : ''}</div>` : ''}
       </div>
-      <div class="td">${sub.customer_phone ? esc(sub.customer_phone) : '�'}</div>
+      <div class="td">${sub.customer_phone ? esc(sub.customer_phone) : '?'}</div>
       <div class="td">${sub.service_interest ? esc(sub.service_interest) : 'General'}</div>
       <div class="td">
         <span style="padding:4px 8px;border-radius:6px;font-size:12px;font-weight:600;background:${statusColor}20;color:${statusColor};border:1px solid ${statusColor}40">
@@ -15285,8 +15285,8 @@ function renderAdminJobs(list) {
     row.innerHTML = `
       <div class="td"><strong>${esc(J.service_name||J.service_id||"Service")}</strong><div class="meta">${esc(J.customer_name||"")}</div></div>
       <div class="td">${esc(J.start_iso||"")}</div>
-      <div class="td">${esc(J.address||"")} ${J.city ? ("� "+esc(J.city)+" "+esc(J.state||"")+" "+esc(J.zip||"")) : ""}</div>
-      <div class="td">${esc(J.variant_code||"�")}</div>
+      <div class="td">${esc(J.address||"")} ${J.city ? ("? "+esc(J.city)+" "+esc(J.state||"")+" "+esc(J.zip||"")) : ""}</div>
+      <div class="td">${esc(J.variant_code||"?")}</div>
       <div class="td">${statusBadge}${offerIndicator}${acceptedInfo}</div>
       <div class="td actions-sm">
         <button class="admin-btn admin-btn--secondary admin-btn--sm" data-open="${esc(J.job_id)}" type="button">Open</button>
@@ -15361,7 +15361,7 @@ async function adminOpenJob(jobId) {
                           a.state === "offered" ? "Pending offer" : 
                           a.state === "declined" ? "Declined" : a.state;
         el.innerHTML = `
-          <div><strong>${esc(a.pro_id)}</strong> � ${stateLabel} ${a.distance_miles ? ("� " + a.distance_miles + " mi") : ""}</div>
+          <div><strong>${esc(a.pro_id)}</strong> ? ${stateLabel} ${a.distance_miles ? ("? " + a.distance_miles + " mi") : ""}</div>
           <div>
             ${a.state === "offered" ? `<button class="btn warn" data-cancel-offer="${esc(a.pro_id)}" type="button">Cancel offer</button>` : ""}
           </div>
@@ -15427,7 +15427,7 @@ async function adminFindAvailableTechs() {
       el.className = "cand";
       el.innerHTML = `
         <div>
-          <strong>${esc(pro.name)}</strong> � ${esc(pro.email)}
+          <strong>${esc(pro.name)}</strong> ? ${esc(pro.email)}
           ${pro.distance_miles ? `<br><span class="meta">?? ${pro.distance_miles} miles away (max: ${pro.max_radius} mi)</span>` : ''}
           ${pro.city && pro.state ? `<br><span class="meta">${esc(pro.city)}, ${esc(pro.state)}</span>` : ''}
         </div>
@@ -15525,7 +15525,7 @@ async function adminLoadPros() {
       el.innerHTML = `
         <div>
           <strong>${esc(c.name || c.pro_id)}</strong><br>
-          <span class="meta">${esc(c.email)} � ${distLabel} � ${ratingLabel}</span>
+          <span class="meta">${esc(c.email)} ? ${distLabel} ? ${ratingLabel}</span>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn secondary" data-offer="${esc(c.pro_id)}" type="button">Assign (offer)</button>
@@ -15893,10 +15893,10 @@ async function generateBuyList(jobId) {
           <div style="margin-top: 8px; font-size: 13px; opacity: 0.9;">
             <strong>Troubleshooting:</strong><br>
             ${resp.error_code === 'unknown_action' ? 
-              '� Router did not recognize this action<br>� Confirm you are signed in as admin (admin token present)<br>� Try again now that caching is off (this call is uncached)' :
+              '? Router did not recognize this action<br>? Confirm you are signed in as admin (admin token present)<br>? Try again now that caching is off (this call is uncached)' :
               resp.error_code === 'exception' ?
-              '� Server-side exception � check Apps Script execution logs<br>� Verify Buy List sheet ID and tabs (Catalog, Service_BOM)' :
-              '� Check that Buy List sheet has Catalog and Service_BOM tabs<br>� Verify service_code in Jobs tab matches Service_BOM entries'
+              '? Server-side exception ? check Apps Script execution logs<br>? Verify Buy List sheet ID and tabs (Catalog, Service_BOM)' :
+              '? Check that Buy List sheet has Catalog and Service_BOM tabs<br>? Verify service_code in Jobs tab matches Service_BOM entries'
             }
           </div>
         </div>
@@ -15913,10 +15913,10 @@ async function generateBuyList(jobId) {
           <span style="opacity: 0.9; font-size: 14px; margin-top: 6px; display: block;"><strong>What to do:</strong> ${esc(resp.recommendation)}</span>
           <div style="margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 6px; font-size: 13px;">
             <strong>Why this happened:</strong><br>
-            � Job date: ${esc(resp.job_date || 'Unknown')}<br>
-            � Current time: ${new Date().toLocaleString()}<br>
-            � This job ${resp.reason.includes('past') ? 'has already happened' : 'is less than 48 hours away'}<br>
-            � Materials need 48+ hours for guaranteed delivery
+            ? Job date: ${esc(resp.job_date || 'Unknown')}<br>
+            ? Current time: ${new Date().toLocaleString()}<br>
+            ? This job ${resp.reason.includes('past') ? 'has already happened' : 'is less than 48 hours away'}<br>
+            ? Materials need 48+ hours for guaranteed delivery
           </div>
         </div>
       `;
@@ -15933,7 +15933,7 @@ async function generateBuyList(jobId) {
     $("adBuyListStatus").innerHTML = `
       <div style="padding: 12px; background: rgba(16,185,129,0.15); border-left: 4px solid #10b981; border-radius: 8px;">
         <strong style="color: #10b981;">Buy list generated for job ${esc(jobId)}</strong><br>
-        <span style="opacity: 0.9; font-size: 13px;">Service: ${esc(currentAdminJob?.service_id || 'N/A')} � ${resp.buy_list?.items?.length || 0} items</span>
+        <span style="opacity: 0.9; font-size: 13px;">Service: ${esc(currentAdminJob?.service_id || 'N/A')} ? ${resp.buy_list?.items?.length || 0} items</span>
       </div>
     `;
     
@@ -15947,9 +15947,9 @@ async function generateBuyList(jobId) {
         <strong>Error:</strong> ${esc(err.message || "Unknown error")}
         <div style="margin-top: 8px; font-size: 13px; opacity: 0.9;">
           <strong>Common causes:</strong><br>
-          � Network connection issue<br>
-          � API endpoint not responding<br>
-          � Admin token expired (try signing out and back in)
+          ? Network connection issue<br>
+          ? API endpoint not responding<br>
+          ? Admin token expired (try signing out and back in)
         </div>
       </div>
     `;
@@ -16499,8 +16499,8 @@ function renderBuyList(buyList, jobId) {
       </div>
       <div style="font-size: 13px; opacity: 0.9;">
         <strong>Service:</strong> ${esc(buyList.service_code || currentAdminJob?.service_id || 'N/A')} 
-        ${buyList.option_code ? `� <strong>Option:</strong> ${esc(buyList.option_code)}` : ''}
-        ${currentAdminJob?.units > 1 ? `� <strong>Qty:</strong> ${currentAdminJob.units}` : ''}
+        ${buyList.option_code ? `? <strong>Option:</strong> ${esc(buyList.option_code)}` : ''}
+        ${currentAdminJob?.units > 1 ? `? <strong>Qty:</strong> ${currentAdminJob.units}` : ''}
       </div>
     </div>`;
   
@@ -16604,7 +16604,7 @@ function renderBuyList(buyList, jobId) {
     // Ordering checklist (dispatch-focused: what to ORDER, not how to INSTALL)
     if (aiNotes && aiNotes.length > 0) {
       aiNotes.forEach(note => {
-        html += `<div style="font-size: 13px; margin-bottom: 8px; opacity: 0.95; line-height: 1.6; padding-left: 4px;">� ${esc(note)}</div>`;
+        html += `<div style="font-size: 13px; margin-bottom: 8px; opacity: 0.95; line-height: 1.6; padding-left: 4px;">? ${esc(note)}</div>`;
       });
     }
     
@@ -16733,13 +16733,13 @@ function renderBuyList(buyList, jobId) {
     
     let actionButton = buyLink 
       ? `<a href="${buyLink}" target="_blank" rel="noopener" class="btn" style="padding: 8px 16px; min-width: auto; font-size: 13px; text-decoration: none; display: inline-block;">?? Buy Now</a>`
-      : '<span style="opacity: 0.5; font-size: 12px;">�</span>';
+      : '<span style="opacity: 0.5; font-size: 12px;">?</span>';
     
     let requiredFlag = item.required ? '<span style="color: #fbbf24; font-weight: 700; margin-right: 6px;">?</span>' : '';
     
     html += `<tr style="border-bottom: 1px solid rgba(255,255,255,0.06); ${idx % 2 === 0 ? 'background: rgba(255,255,255,0.02);' : ''}">`;
     html += `<td data-label="Item" style="padding: 12px;">${requiredFlag}${esc(item.item_name)}</td>`;
-    html += `<td data-label="Brand/Model" style="padding: 12px; opacity: 0.85;">${esc(item.brand_model || '�')}</td>`;
+    html += `<td data-label="Brand/Model" style="padding: 12px; opacity: 0.85;">${esc(item.brand_model || '?')}</td>`;
     html += `<td data-label="Qty" style="padding: 12px; text-align: center; font-weight: 700; font-size: 15px;">${item.qty}</td>`;
     html += `<td data-label="Retailer" style="padding: 12px; text-align: center;">${retailerBadge}</td>`;
     html += `<td data-label="Action" style="padding: 12px; text-align: right;">${actionButton}</td>`;
@@ -16774,7 +16774,7 @@ async function sendOrderToAgent(jobId) {
     return;
   }
   
-  if (!confirm("Send this order to the automated ordering agent?\n\nThe agent will:\n� Purchase all items from preferred retailers\n� Route delivery to the customer address\n� Track order confirmations\n� Report back with status")) {
+  if (!confirm("Send this order to the automated ordering agent?\n\nThe agent will:\n? Purchase all items from preferred retailers\n? Route delivery to the customer address\n? Track order confirmations\n? Report back with status")) {
     return;
   }
   
@@ -17110,7 +17110,7 @@ async function autoFindLinks(dryRun = false) {
     return;
   }
   
-  if (!dryRun && !confirm("?? Start AI link search?\n\nThe AI will:\n� Search for missing product URLs\n� Validate links exist\n� Auto-populate Catalog\n\nThis may take a few minutes and will use OpenAI API credits.")) {
+  if (!dryRun && !confirm("?? Start AI link search?\n\nThe AI will:\n? Search for missing product URLs\n? Validate links exist\n? Auto-populate Catalog\n\nThis may take a few minutes and will use OpenAI API credits.")) {
     return;
   }
   
@@ -17191,14 +17191,14 @@ async function loadBOMImprovements() {
               <div class="improvement-item-title">${esc(item.item_id || 'Unknown Item')}</div>
               <div class="improvement-item-service">
                 For service: <strong>${esc(item.service_code || 'N/A')}</strong>
-                ${item.condition_tags ? ' � Conditions: ' + esc(item.condition_tags) : ''}
+                ${item.condition_tags ? ' ? Conditions: ' + esc(item.condition_tags) : ''}
               </div>
             </div>
             <span class="improvement-item-confidence ${confidenceClass}">${confidencePercent}%</span>
           </div>
           <div class="improvement-item-stats">
             ?? Suggested ${item.jobs_analyzed || 0} times across recent jobs
-            ${item.qty_rule ? ' � Qty: ' + esc(item.qty_rule) : ''}
+            ${item.qty_rule ? ' ? Qty: ' + esc(item.qty_rule) : ''}
           </div>
           <div class="improvement-item-actions">
             <button class="btn-approve-bom" onclick="approveBOMImprovement('${esc(item.improvement_id)}')">
@@ -18511,7 +18511,7 @@ function handleTrainingLoadMore() {
   
   // Show loading state
   btn.disabled = true;
-  btn.textContent = "Loading�";
+  btn.textContent = "Loading?";
   
   // Get next batch from the stored list
   const allVideosList = trainingBatchState.allVideosList;
@@ -18668,7 +18668,7 @@ function computePriorityScore(video, progress) {
 
   // Duration buckets
   const dur = video.duration_sec || 0;
-  if (dur >= 300 && dur <= 900) score += 2; // 5�15 min
+  if (dur >= 300 && dur <= 900) score += 2; // 5?15 min
   else if (dur && dur < 60) score -= 2; // too short
   else if (dur > 1500) score -= 1; // >25 min slightly penalize
 
@@ -19500,7 +19500,7 @@ function updateVideoProgressUI(position, duration) {
   const durMins = Math.floor(duration / 60);
   const durSecs = duration % 60;
   
-  $("videoWatchTime").textContent = `${percentage}% complete � ${mins}:${secs.toString().padStart(2,'0')} / ${durMins}:${durSecs.toString().padStart(2,'0')}`;
+  $("videoWatchTime").textContent = `${percentage}% complete ? ${mins}:${secs.toString().padStart(2,'0')} / ${durMins}:${durSecs.toString().padStart(2,'0')}`;
 }
 
 $("videoMarkComplete").addEventListener("click", async () => {
@@ -20360,7 +20360,7 @@ function openAnnouncementsModal() {
               <h3 style="margin:0;font-size:18px;font-weight:700;color:#e0f2fe">${a.title}</h3>
               ${isUnread?'<span style="background:#3b82f6;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600">NEW</span>':''}
             </div>
-            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' � By '+a.created_by:''}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' ? By '+a.created_by:''}</div>
           </div>
         </div>
         
@@ -20853,31 +20853,31 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     
     // Camera count
     if (cameraDetails.camera_count > 0) {
-      bullets.push(`� ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
+      bullets.push(`? ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
     }
     
     // Coverage type
     if (cameraDetails.coverage_type && cameraDetails.coverage_type !== 'Unknown') {
-      bullets.push(`� Coverage: ${escHtml(cameraDetails.coverage_type)}`);
+      bullets.push(`? Coverage: ${escHtml(cameraDetails.coverage_type)}`);
     }
     
     // Equipment mode
     if (cameraDetails.equipment_mode && cameraDetails.equipment_mode !== 'Unknown') {
       const equipIcon = cameraDetails.equipment_mode === 'Equipment Provided' ? '??' : 
                         cameraDetails.equipment_mode === 'Customer-Supplied' ? '??' : '?';
-      bullets.push(`� ${equipIcon} ${escHtml(cameraDetails.equipment_mode)}`);
+      bullets.push(`? ${equipIcon} ${escHtml(cameraDetails.equipment_mode)}`);
     }
     
     // Installation requirements
     if (cameraDetails.install_requirements && cameraDetails.install_requirements.length > 0) {
       cameraDetails.install_requirements.forEach(req => {
-        bullets.push(`� ${escHtml(req)}`);
+        bullets.push(`? ${escHtml(req)}`);
       });
     }
     
     // Missing info indicator
     if (cameraDetails.equipment_mode === 'Check with customer') {
-      bullets.push(`� <span style="color:#FFC857;font-weight:600">?? Pre-call required: Confirm equipment and install details</span>`);
+      bullets.push(`? <span style="color:#FFC857;font-weight:600">?? Pre-call required: Confirm equipment and install details</span>`);
     }
     
     out.summary = `${cameraDetails.camera_count} Camera Install - ${cameraDetails.coverage_type}`;
@@ -20889,7 +20889,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     out.summary = description ? description.split('\n')[0].slice(0, 120) : '';
-    out.bulletsHtml = out.summary ? `� ${escHtml(out.summary)}` : '';
+    out.bulletsHtml = out.summary ? `? ${escHtml(out.summary)}` : '';
     console.log('[buildServiceSummary] OUTPUT (fallback):', out);
     return out;
   }
@@ -20936,7 +20936,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
       // Add detailed bullets from tech_details
       if (item.tech_details.length > 0) {
         item.tech_details.forEach(detail => {
-          bullets.push(`� ${detail}`);
+          bullets.push(`? ${detail}`);
         });
       }
     });
@@ -20988,7 +20988,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   const bullets = [];
   const push = (g, suffix = '') => {
     if (g.count > 0) parts.push(`${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
-    if (g.count > 0) bullets.push(`� ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
+    if (g.count > 0) bullets.push(`? ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
   };
   if (groups.tv.count) {
     const sizes = groups.tv.sizes.length ? ` (${[...new Set(groups.tv.sizes)].join('", ')}")` : '';
@@ -20996,7 +20996,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   }
   ['mount','soundbar','camera','doorbell','thermostat','outlet','wiring'].forEach(k => push(groups[k]));
 
-  out.summary = parts.join(' � ');
+  out.summary = parts.join(' ? ');
   out.bulletsHtml = bullets.map(escHtml).join('<br>');
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
@@ -21469,7 +21469,7 @@ function openFeedbackModal() {
     <div style="background:linear-gradient(135deg,rgba(10,42,90,.98),rgba(8,32,68,.95));border:2px solid rgba(20,147,255,.4);border-radius:16px;padding:32px;max-width:500px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.5)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <h2 style="margin:0;font-size:22px;color:#e0f2fe">?? Submit Feedback</h2>
-        <button onclick="this.closest('.modal').remove()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.15)';this.style.borderColor='rgba(239,68,68,0.3)';this.style.color='#f87171'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#94a3b8'">�</button>
+        <button onclick="this.closest('.modal').remove()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.15)';this.style.borderColor='rgba(239,68,68,0.3)';this.style.color='#f87171'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#94a3b8'">?</button>
       </div>
       <p style="margin:0 0 20px;color:#cbd5e1;font-size:14px;line-height:1.6">
         Found a bug or have a suggestion? Let us know! Your feedback helps us improve the platform.
