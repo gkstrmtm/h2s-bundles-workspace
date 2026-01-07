@@ -516,7 +516,17 @@ async function handle(request: Request, token: string, jobId?: string) {
     );
   }
 
-  const payload = verifyPortalToken(token);
+  let payload;
+  try {
+    payload = verifyPortalToken(token);
+  } catch (err: any) {
+    console.error('[portal_jobs] Token verification failed:', err.message);
+    return NextResponse.json(
+      { ok: false, error: 'Invalid or expired token', error_code: 'bad_session', details: err.message },
+      { status: 401, headers: corsHeaders(request) }
+    );
+  }
+
   if (payload.role !== 'pro') {
     return NextResponse.json(
       { ok: false, error: 'Not a pro session', error_code: 'bad_session' },

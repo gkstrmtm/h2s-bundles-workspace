@@ -34,12 +34,19 @@ function base64UrlDecodeToString(input: string): string {
 }
 
 function getSigningSecret(): string {
-  return (
-    process.env.PORTAL_TOKEN_SECRET ||
+  const secret = process.env.PORTAL_TOKEN_SECRET ||
     process.env.SUPABASE_SERVICE_KEY ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    ''
-  );
+    '';
+  
+  console.log('[portalTokens] getSigningSecret called:', {
+    hasPortalSecret: !!process.env.PORTAL_TOKEN_SECRET,
+    hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+    hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    usingSecret: secret ? secret.substring(0, 10) + '...' : 'NONE'
+  });
+  
+  return secret;
 }
 
 export function issuePortalToken(params: { sub: string; role: PortalRole; email?: string; ttlSeconds?: number }): string {
