@@ -1,6 +1,29 @@
 # MANDATORY PRE-WORK CHECKLIST
 # AGENT: READ THIS EVERY TIME BEFORE TOUCHING ANYTHING
 
+## ⚠️ CRITICAL: ENVIRONMENT VARIABLES
+
+**SOURCE OF TRUTH**: `h2s-backend` Vercel project has ALL correct environment variables
+
+**Required Variables** (must be copied from h2s-backend → backend project):
+1. `SUPABASE_URL` - Main database (ulbzmgmxrqyipclrbohi.supabase.co)
+2. `SUPABASE_ANON_KEY` - Public API key
+3. `SUPABASE_SERVICE_KEY` - Admin/service role key  
+4. `SUPABASE_URL_MGMT` - Management database (ngnskohzqijcmyhzmwnm.supabase.co)
+5. `DATABASE_URL` - Direct Postgres connection string
+6. `STRIPE_SECRET_KEY` - Payment processing
+7. `OPENAI_API_KEY` - AI features
+8. `DISPATCH_ADMIN_TOKEN` - Admin authentication
+
+**Validation Command**: `.\validate-env-vars.ps1`
+- Run this BEFORE any backend changes
+- ALL 8 variables must show PASS
+- If any FAIL, copy from h2s-backend Vercel dashboard
+
+**NEVER assume env vars exist in backend project - h2s-backend is the source of truth**
+
+---
+
 ## CRITICAL RULE
 **RUN `.\validate-system.ps1` BEFORE MAKING ANY CHANGES**
 
