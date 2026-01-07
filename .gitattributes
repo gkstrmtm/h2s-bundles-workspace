@@ -1,0 +1,13 @@
+# PROTECTED FILES - DO NOT DELETE OR MODIFY
+# Reference implementation - bundles.html shows the correct way
+frontend/bundles.html
+
+# Core routing configuration
+vercel.json
+
+# Backend is separate - don't touch from frontend project
+backend/
+
+# Documentation that prevents mistakes
+DEPLOYMENT_RULES.md
+ARCHITECTURE_TRUTH.md

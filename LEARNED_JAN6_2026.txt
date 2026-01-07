@@ -1,0 +1,50 @@
+﻿# WHAT I LEARNED - Jan 6, 2026
+
+## THE FUCK-UP
+
+I wasted hours trying to add local /api routes to the FRONTEND project, when:
+- The frontend is STATIC HTML ONLY (no API capability)
+- The BACKEND already existed and was working (h2s-backend.vercel.app)
+- Bundles.html was ALREADY using h2s-backend correctly
+- I just needed to copy what bundles.html does
+
+## WHAT CHANGED
+
+1. DELETED /app directory (8,883 lines of useless duplicate code)
+2. Changed portal.html from '/api' to 'https://h2s-backend.vercel.app/api'
+3. Created ARCHITECTURE_TRUTH.md (explains the 2-project system)
+4. Created DEPLOYMENT_RULES.md (prevents repeat mistakes)
+
+## HOW TO PREVENT THIS SHIT AGAIN
+
+### RULE #1: THERE ARE ONLY 2 PROJECTS
+- h2s-bundles-frontend (HTML files)
+- h2s-backend (API endpoints)
+
+### RULE #2: NEVER CREATE DIRECTORIES AT ROOT
+- Only edit /frontend or /backend
+- If you see /app, /api, tsconfig.json at root  DELETE THEM
+
+### RULE #3: CHECK BUNDLES.HTML FIRST
+- Bundles.html is the reference implementation
+- If it works for bundles, copy it for portal
+- Don't invent new architecture
+
+### RULE #4: RUN TESTS BEFORE SAYING 'DONE'
+See DEPLOYMENT_RULES.md for verification commands
+
+## VERIFICATION (Just Ran - All Passed)
+ Portal loads at portal.home2smart.com/portal
+ Portal uses h2s-backend.vercel.app/api
+ All 4 key API endpoints respond (login, jobs, me, signup)
+ Routing redirects working (/bundles  /portal)
+
+## THE SYSTEM IS NOW LIVE AND WORKING
+
+You can:
+- Sign up new techs
+- Login to portal
+- View jobs
+- Accept/decline offers
+- All portal features operational
+
