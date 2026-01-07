@@ -6448,12 +6448,12 @@ a:focus-visible{
 <!-- ============================================
      ?? ONBOARDING OVERLAY SYSTEM
    ============================================ -->
-<div id="onboardingOverlay" style="position:fixed;inset:0;background:rgba(2,6,23,0.95);z-index:1000000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);">
-  <div style="max-width:500px;background:var(--h2s-bg-card-elevated);border-radius:16px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,0.6);position:relative;">
+<div id="onboardingOverlay" style="position:fixed;inset:0;background:rgba(2,6,23,0.95);z-index:1000000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:20px;">
+  <div style="width:100%;max-width:420px;background:var(--h2s-bg-card-elevated);border-radius:12px;padding:24px 20px;box-shadow:0 20px 60px rgba(0,0,0,0.6);position:relative;">
     <div id="onboardingContent"></div>
-    <div style="display:flex;gap:12px;margin-top:24px;">
-      <button id="onboardingPrev" style="display:none;flex:1;background:rgba(41,47,102,0.4);border:1px solid rgba(255,255,255,0.08);color:var(--h2s-text-main);font-weight:600;font-size:15px;padding:12px 24px;border-radius:9999px;cursor:pointer;">Previous</button>
-      <button id="onboardingNext" style="flex:1;background:#1493ff;border:none;color:#fff;font-weight:600;font-size:15px;padding:12px 24px;border-radius:9999px;cursor:pointer;box-shadow:0 2px 8px rgba(20,147,255,0.3);">Next</button>
+    <div style="display:flex;gap:12px;margin-top:20px;">
+      <button id="onboardingPrev" style="display:none;flex:1;background:rgba(41,47,102,0.4);border:1px solid rgba(255,255,255,0.08);color:var(--h2s-text-main);font-weight:600;font-size:14px;padding:12px 20px;border-radius:9999px;cursor:pointer;">Previous</button>
+      <button id="onboardingNext" style="flex:1;background:#1493ff;border:none;color:#fff;font-weight:600;font-size:14px;padding:12px 20px;border-radius:9999px;cursor:pointer;box-shadow:0 2px 8px rgba(20,147,255,0.3);">Next</button>
     </div>
   </div>
 </div>
@@ -8151,23 +8151,23 @@ if (header && window.innerWidth <= 640) {
 // ===== ?? ONBOARDING SYSTEM =====
 const ONBOARDING_STEPS = [
   {
-    title: "Welcome to Home2Smart Pro Portal! ??",
+    title: "Welcome to Home2Smart Pro Portal",
     content: "This is your command center for managing jobs, tracking earnings, and growing your business. Let's take a quick tour!"
   },
   {
-    title: "Accepting Jobs ??",
+    title: "Accepting Jobs",
     content: "Job offers appear in your dashboard. Tap 'Accept' to claim them. Jobs show service details, location, and your guaranteed payout upfront."
   },
   {
-    title: "Your Payout Structure ??",
+    title: "Your Payout Structure",
     content: "You earn a percentage of each job based on service type. Payouts are calculated automatically and displayed prominently on every offer. Minimum payout is $45."
   },
   {
-    title: "Complete Your Profile ??",
+    title: "Complete Your Profile",
     content: "Set your availability, service areas, and skills in Account Settings. This helps us match you with the right jobs in your area."
   },
   {
-    title: "Ready to Go! ??",
+    title: "Ready to Go!",
     content: "You're all set! Press 'Get Started' to view available jobs. You can re-take this tour anytime from the Account tab."
   }
 ];
@@ -8185,12 +8185,12 @@ function initOnboarding() {
   function renderStep() {
     const step = ONBOARDING_STEPS[currentStep];
     content.innerHTML = `
-      <div style="text-align:center;margin-bottom:16px;">
-        <div style="color:#1493ff;font-size:14px;font-weight:600;margin-bottom:12px;">
+      <div style="text-align:center;margin-bottom:12px;">
+        <div style="color:#1493ff;font-size:12px;font-weight:600;margin-bottom:8px;">
           Step ${currentStep + 1} of ${ONBOARDING_STEPS.length}
         </div>
-        <h2 style="font-size:24px;font-weight:700;color:var(--h2s-text-main);margin:0 0 12px 0;line-height:1.3;">${step.title}</h2>
-        <p style="font-size:15px;color:var(--h2s-text-muted);line-height:1.6;margin:0;">${step.content}</p>
+        <h2 style="font-size:20px;font-weight:700;color:var(--h2s-text-main);margin:0 0 12px 0;line-height:1.3;">${step.title}</h2>
+        <p style="font-size:14px;color:var(--h2s-text-muted);line-height:1.5;margin:0;">${step.content}</p>
       </div>
     `;
     
