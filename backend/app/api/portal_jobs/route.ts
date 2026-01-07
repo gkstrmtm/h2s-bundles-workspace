@@ -509,6 +509,8 @@ async function handleSingleJobFetch(sb: any, jobId: string, proId: string, reque
 }
 
 async function handle(request: Request, token: string, jobId?: string) {
+  console.log('[portal_jobs] handle called with token:', token ? token.substring(0, 50) + '...' : 'NO TOKEN');
+  
   if (!token) {
     return NextResponse.json(
       { ok: false, error: 'Missing token', error_code: 'bad_session' },
@@ -518,7 +520,9 @@ async function handle(request: Request, token: string, jobId?: string) {
 
   let payload;
   try {
+    console.log('[portal_jobs] About to verify token...');
     payload = verifyPortalToken(token);
+    console.log('[portal_jobs] Token verified successfully:', payload);
   } catch (err: any) {
     console.error('[portal_jobs] Token verification failed:', err.message);
     return NextResponse.json(
