@@ -50,6 +50,11 @@ function notImplemented(request: Request, action: string) {
 export async function GET(request: Request, context: { params: Promise<{ action: string }> }) {
   const { action } = await context.params;
 
+  // Don't intercept portal_* routes - they have their own route handlers
+  if (action.startsWith('portal_')) {
+    return notImplemented(request, action);
+  }
+
   if (action === 'customer_photos') {
     return customerPhotos.GET(request);
   }
@@ -67,6 +72,15 @@ export async function GET(request: Request, context: { params: Promise<{ action:
 
 export async function POST(request: Request, context: { params: Promise<{ action: string }> }) {
   const { action } = await context.params;
+
+  // Portal routes have their own folders - this catch-all should not handle them
+  // If we're here for a portal_ route, something is wrong with routing priority
+  if (action.startsWith('portal_') || action.startsWith('admin_')) {
+    return NextResponse.json(
+      { ok: false, error: `Route /api/${action} should be handled by its dedicated folder, not catch-all` },
+      { status: 500, headers: corsHeaders(request) }
+    );
+  }
 
   if (action === 'customer_photos') {
     return customerPhotos.POST(request);
