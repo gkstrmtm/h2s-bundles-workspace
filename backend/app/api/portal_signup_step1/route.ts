@@ -95,16 +95,17 @@ export async function POST(request: Request) {
       email: normalizedEmail,
       name: name,
       phone: phone || null,
-      address: address || null,
-      city: city || null,
-      state: state || null,
+      home_address: address || null,
+      home_city: city || null,
+      home_state: state || null,
       home_zip: zip || null,
-      zip: zip || null, // Some schemas use 'zip' instead of 'home_zip'
-      company_name: company_name || null,
       is_active: false, // Inactive until admin approves
       is_available_now: false,
       service_radius_miles: 35, // Default service radius
-      created_at: new Date().toISOString(),
+      status: 'pending', // Pending approval
+      rating: 0,
+      total_jobs: 0,
+      total_earned: 0,
     };
 
     const { data: newPro, error: insertError } = await client
