@@ -173,15 +173,15 @@ export async function POST(request: Request) {
 
     // Minimal fallbacks.
     patches.push({ ...(photo_url !== null ? { photo_url } : {}) });
-    patches.push({ ...(bio_short !== null ? { bio_short }
-    patches.push({ ...(geo_lat !== null ? { geo_lat } : {}) });
-    patches.push({ ...(geo_lng !== null ? { geo_lng } : {}) }); : {}) });
+    patches.push({ ...(bio_short !== null ? { bio_short } : {}) });
     patches.push({ ...(phone !== null ? { phone } : {}) });
     patches.push({ ...(home_address !== null ? { home_address } : {}) });
     patches.push({ ...(home_city !== null ? { home_city } : {}) });
     patches.push({ ...(home_state !== null ? { home_state } : {}) });
     patches.push({ ...(home_zip !== null ? { home_zip } : {}) });
     patches.push({ ...(name !== null ? { name } : {}) });
+    patches.push({ ...(geo_lat !== null ? { geo_lat } : {}) });
+    patches.push({ ...(geo_lng !== null ? { geo_lng } : {}) });
 
     const res = await bestEffortUpdateProRow(dispatch, proId, patches);
 
