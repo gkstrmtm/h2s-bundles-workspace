@@ -5,11 +5,35 @@
   "rewrites": [
     {
       "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/bundles.html"
+    },
+    {
+      "source": "/",
       "destination": "/bundles.html"
     },
     {
       "source": "/bundles",
       "destination": "/bundles.html"
+    },
+    {
+      "source": "/portal",
+      "destination": "/portal.html"
     }
   ],
   "headers": [
