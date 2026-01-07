@@ -13,11 +13,6 @@
       ],
       "destination": "/portal",
       "permanent": true
-    },
-    {
-      "source": "/bundles",
-      "destination": "/bundles.html",
-      "permanent": false
     }
   ],
   "rewrites": [
@@ -28,6 +23,10 @@
     {
       "source": "/portal",
       "destination": "/portal.html"
+    },
+    {
+      "source": "/bundles",
+      "destination": "/bundles.html"
     },
     {
       "source": "/shop",
