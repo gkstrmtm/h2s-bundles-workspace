@@ -61,6 +61,14 @@ export async function POST(request: Request) {
     const normalizedEmail = normalizeEmail(email);
     const client = getSupabaseDispatch();
 
+    if (!client) {
+      console.error('[portal_signup_step1] Failed to get Supabase client');
+      return NextResponse.json(
+        { ok: false, error: 'Database connection failed' },
+        { status: 500, headers: corsHeaders(request) }
+      );
+    }
+
     // Check if pro already exists
     const { data: existing } = await client
       .from('h2s_pros')
@@ -114,7 +122,7 @@ export async function POST(request: Request) {
     }
 
     // Issue JWT token for the new pro
-    const token = issuePortalToken(proId, normalizedEmail);
+    const token = issuePortalToken({ sub: proId, role: 'pro', email: normalizedEmail });
 
     return NextResponse.json(
       {
