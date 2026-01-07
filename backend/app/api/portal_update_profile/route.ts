@@ -64,6 +64,14 @@ export async function POST(request: Request) {
     const max_jobs_per_day = asNumOrNull(body?.max_jobs_per_day);
     const photo_url = body?.photo_url !== undefined ? String(body.photo_url || '').trim() : null;
     const bio_short = body?.bio_short !== undefined ? String(body.bio_short || '').trim() : null;
+    
+    // Contact & Address fields
+    const phone = body?.phone !== undefined ? String(body.phone || '').trim() : null;
+    const home_address = body?.address !== undefined ? String(body.address || '').trim() : null;
+    const home_city = body?.city !== undefined ? String(body.city || '').trim() : null;
+    const home_state = body?.state !== undefined ? String(body.state || '').trim() : null;
+    const home_zip = body?.zip !== undefined ? String(body.zip || '').trim() : null;
+    const name = body?.name !== undefined ? String(body.name || '').trim() : null;
 
     const dispatch = getSupabaseDispatch();
     if (!dispatch) {
@@ -86,6 +94,12 @@ export async function POST(request: Request) {
       ...(max_jobs_per_day !== null ? { max_jobs_per_day } : {}),
       ...(photo_url !== null ? { photo_url } : {}),
       ...(bio_short !== null ? { bio_short } : {}),
+      ...(phone !== null ? { phone } : {}),
+      ...(home_address !== null ? { home_address } : {}),
+      ...(home_city !== null ? { home_city } : {}),
+      ...(home_state !== null ? { home_state } : {}),
+      ...(home_zip !== null ? { home_zip } : {}),
+      ...(name !== null ? { name } : {}),
     });
 
     // Common alternates.
@@ -99,11 +113,30 @@ export async function POST(request: Request) {
       ...(photo_url !== null ? { avatar_url: photo_url } : {}),
       ...(bio_short !== null ? { bio: bio_short } : {}),
       ...(bio_short !== null ? { about: bio_short } : {}),
+      ...(phone !== null ? { phone } : {}),
+      ...(phone !== null ? { mobile: phone } : {}),
+      ...(phone !== null ? { pro_phone: phone } : {}),
+      ...(home_address !== null ? { address: home_address } : {}),
+      ...(home_address !== null ? { street_address: home_address } : {}),
+      ...(home_city !== null ? { city: home_city } : {}),
+      ...(home_state !== null ? { state: home_state } : {}),
+      ...(home_zip !== null ? { zip: home_zip } : {}),
+      ...(home_zip !== null ? { zipcode: home_zip } : {}),
+      ...(home_zip !== null ? { postal_code: home_zip } : {}),
+      ...(name !== null ? { name } : {}),
+      ...(name !== null ? { full_name: name } : {}),
+      ...(name !== null ? { pro_name: name } : {}),
     });
 
     // Minimal fallbacks.
     patches.push({ ...(photo_url !== null ? { photo_url } : {}) });
     patches.push({ ...(bio_short !== null ? { bio_short } : {}) });
+    patches.push({ ...(phone !== null ? { phone } : {}) });
+    patches.push({ ...(home_address !== null ? { home_address } : {}) });
+    patches.push({ ...(home_city !== null ? { home_city } : {}) });
+    patches.push({ ...(home_state !== null ? { home_state } : {}) });
+    patches.push({ ...(home_zip !== null ? { home_zip } : {}) });
+    patches.push({ ...(name !== null ? { name } : {}) });
 
     const res = await bestEffortUpdateProRow(dispatch, proId, patches);
 

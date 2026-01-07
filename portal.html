@@ -6847,8 +6847,48 @@ a:focus-visible{
                 </div>
               </div>
             </div>
-            <!-- Vehicle Description -->
+            
+            <!-- Contact Information -->
             <div>
+              <label class="label" for="pfName" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Full Name</label>
+              <input id="pfName" class="input" placeholder="John Smith" style="width:100%;max-width:100%;box-sizing:border-box">
+            </div>
+            <div>
+              <label class="label" for="pfPhone" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Phone Number</label>
+              <input id="pfPhone" class="input" type="tel" placeholder="(555) 123-4567" style="width:100%;max-width:100%;box-sizing:border-box">
+              <p class="muted" style="margin:var(--gap-sm) 0 0;font-size:13px;color:var(--text-muted);line-height:1.4">For customers and dispatch to reach you</p>
+            </div>
+            
+            <!-- Home Address -->
+            <div style="border-top:1px solid rgba(255,255,255,.06);margin-top:var(--gap-lg);padding-top:var(--gap-lg)">
+              <h4 style="font-size:14px;font-weight:600;margin:0 0 var(--gap-md);color:#cbd5e1">Home Address</h4>
+              <p class="muted" style="margin:0 0 var(--gap-md);font-size:13px;color:var(--text-muted);line-height:1.4">
+                Your service radius is calculated from this location
+              </p>
+              <div style="display:grid;gap:var(--gap-md)">
+                <div>
+                  <label class="label" for="pfAddress" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Street Address</label>
+                  <input id="pfAddress" class="input" placeholder="123 Main St" style="width:100%;max-width:100%;box-sizing:border-box">
+                </div>
+                <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:var(--gap-md)">
+                  <div>
+                    <label class="label" for="pfCity" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">City</label>
+                    <input id="pfCity" class="input" placeholder="Greenville" style="width:100%;max-width:100%;box-sizing:border-box">
+                  </div>
+                  <div>
+                    <label class="label" for="pfState" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">State</label>
+                    <input id="pfState" class="input" placeholder="SC" maxlength="2" style="width:100%;max-width:100%;box-sizing:border-box;text-transform:uppercase">
+                  </div>
+                  <div>
+                    <label class="label" for="pfZip" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">ZIP</label>
+                    <input id="pfZip" class="input" placeholder="29601" maxlength="5" style="width:100%;max-width:100%;box-sizing:border-box">
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Vehicle Description -->
+            <div style="border-top:1px solid rgba(255,255,255,.06);margin-top:var(--gap-lg);padding-top:var(--gap-lg)">
               <label class="label" for="pfVehicle" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Vehicle Description</label>
               <input id="pfVehicle" class="input" placeholder="2018 blue Ford F-150" style="width:100%;max-width:100%;box-sizing:border-box">
               <p class="muted" style="margin:var(--gap-sm) 0 0;font-size:13px;color:var(--text-muted);line-height:1.4">Helps customers identify you on arrival</p>
@@ -9655,6 +9695,12 @@ async function hydrateMe() {
   if (cachedMe) {
     me = cachedMe;
     document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    document.getElementById("pfName").value = me.name || "";
+    document.getElementById("pfPhone").value = me.phone || "";
+    document.getElementById("pfAddress").value = me.home_address || me.address || "";
+    document.getElementById("pfCity").value = me.home_city || me.city || "";
+    document.getElementById("pfState").value = me.home_state || me.state || "";
+    document.getElementById("pfZip").value = me.home_zip || me.zip || "";
     document.getElementById("pfVehicle").value = me.vehicle_text || "";
     document.getElementById("pfMiles").value = me.service_radius_miles || "";
     document.getElementById("pfMax").value = me.max_jobs_per_day || "";
@@ -9688,6 +9734,12 @@ async function hydrateMe() {
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
     
     document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    document.getElementById("pfName").value = me.name || "";
+    document.getElementById("pfPhone").value = me.phone || "";
+    document.getElementById("pfAddress").value = me.home_address || me.address || "";
+    document.getElementById("pfCity").value = me.home_city || me.city || "";
+    document.getElementById("pfState").value = me.home_state || me.state || "";
+    document.getElementById("pfZip").value = me.home_zip || me.zip || "";
     document.getElementById("pfVehicle").value = me.vehicle_text || "";
     document.getElementById("pfMiles").value = me.service_radius_miles || "";
     document.getElementById("pfMax").value = me.max_jobs_per_day || "";
@@ -14867,6 +14919,12 @@ $("btnSaveProfile").addEventListener("click", async () => {
     loading(true);
     const out = await POST("portal_update_profile", {
       token,
+      name: $("pfName").value.trim(),
+      phone: $("pfPhone").value.trim(),
+      address: $("pfAddress").value.trim(),
+      city: $("pfCity").value.trim(),
+      state: $("pfState").value.trim().toUpperCase(),
+      zip: $("pfZip").value.trim(),
       vehicle_text: $("pfVehicle").value.trim(),
       service_radius_miles: $("pfMiles").value.trim(),
       max_jobs_per_day: $("pfMax").value.trim(),
@@ -14876,6 +14934,12 @@ $("btnSaveProfile").addEventListener("click", async () => {
     if (!out.ok) { $("pf-err").textContent = out.error || "Save failed"; $("pf-err").style.display = "block"; return; }
     
     // Update me object with new data
+    me.name = $("pfName").value.trim();
+    me.phone = $("pfPhone").value.trim();
+    me.home_address = $("pfAddress").value.trim();
+    me.home_city = $("pfCity").value.trim();
+    me.home_state = $("pfState").value.trim().toUpperCase();
+    me.home_zip = $("pfZip").value.trim();
     me.vehicle_text = $("pfVehicle").value.trim();
     me.service_radius_miles = $("pfMiles").value.trim();
     me.max_jobs_per_day = $("pfMax").value.trim();
@@ -14885,6 +14949,9 @@ $("btnSaveProfile").addEventListener("click", async () => {
     // Update cache immediately
     setCache('me', me);
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
+    
+    // Update portal title if name changed
+    document.getElementById("portalTitle").textContent = me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
     
     $("pf-ok").textContent = "Saved!"; $("pf-ok").style.display = "block";
     setTimeout(() => $("pf-ok").style.display = "none", 2000);
