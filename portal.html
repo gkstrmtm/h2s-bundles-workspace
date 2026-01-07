@@ -8046,7 +8046,7 @@ a:focus-visible{
       <div>
         <h3 id="videoTitle" style="font-size:24px;margin-bottom:8px">Training Video</h3>
         <div class="video-stats">
-          <span class="video-stat">?? <span id="videoModule"></span></span>
+          <span class="video-stat" id="videoModule"></span>
           <span class="video-stat" id="videoLevel"></span>
           <span class="video-stat" id="videoDuration"></span>
           <span class="video-stat" id="videoProgressStatus"></span>
@@ -11878,15 +11878,15 @@ function renderOffers(list) {
     let emptyMessage = 'No pending offers at the moment';
     
     if (hour < 8) {
-      emptyMessage = '?? Check back at 8am for morning jobs';
+      emptyMessage = 'Check back at 8am for morning jobs';
     } else if (hour < 12) {
-      emptyMessage = '?? New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
+      emptyMessage = 'New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
     } else if (hour < 15) {
-      emptyMessage = '?? Check back at 3pm for afternoon and evening jobs';
+      emptyMessage = 'Check back at 3pm for afternoon and evening jobs';
     } else if (hour < 18) {
-      emptyMessage = '?? Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
+      emptyMessage = 'Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
     } else {
-      emptyMessage = '?? Jobs for tomorrow typically post between 8am-10am. Rest up!';
+      emptyMessage = 'Jobs for tomorrow typically post between 8am-10am. Rest up!';
     }
     
     emptyEl.innerHTML = emptyMessage;
@@ -17609,7 +17609,7 @@ window.openTimeOffModal = function() {
   }
   
   if (reasonSelect) reasonSelect.value = "Vacation";
-  if (hintEl) hintEl.innerHTML = `?? You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
+  if (hintEl) hintEl.innerHTML = `You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
   if (dateDisplay) dateDisplay.textContent = 'Choose a date';
   
   // Render quick-pick chips
@@ -18771,7 +18771,6 @@ function createTrainingCard(v, progressPct, status) {
   
   el.innerHTML = `
     <div class="training-thumb">
-      ??
     </div>
     <div class="training-body">
       <h3 class="training-title">${esc(v.title)}</h3>
@@ -18783,7 +18782,7 @@ function createTrainingCard(v, progressPct, status) {
       </div>
       ${v.description ? `<div class="training-desc">${esc(v.description)}</div>` : ""}
         <button class="btn" data-play="${esc(v.id)}" type="button">
-        ? Watch
+        Watch
         </button>
     </div>
   `;
