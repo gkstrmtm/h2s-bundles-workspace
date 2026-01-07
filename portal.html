@@ -9595,15 +9595,15 @@ function renderMenuItems() {
   if (isAdmin) {
     $("portalTitle").textContent = "Management Portal";
     const items = [
-      ["Jobs Overview", "ad-jobs", "📋"],
-      ["Announcements", "ad-announcements", "📢"],
-      ["Sign out", "signout", ""]
+      ["Jobs Overview", "ad-jobs"],
+      ["Announcements", "ad-announcements"],
+      ["Sign out", "signout"]
     ];
-    items.forEach(([label, go, icon]) => {
+    items.forEach(([label, go]) => {
       const b = document.createElement("button");
       b.className = "menu-item";
       b.type = "button";
-      b.innerHTML = `<span>${label}</span>${icon ? `<span style="color:#64748b;font-size:18px">${icon}</span>` : ''}`;
+      b.innerHTML = `<span>${label}</span>`;
       if (go === "signout") b.id = "signOut";
       else b.dataset.go = go;
       box.appendChild(b);
@@ -9611,18 +9611,18 @@ function renderMenuItems() {
   } else {
     box.innerHTML = `
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px 4px">Main</div>
-      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">📊</span></button>
-      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">👥</span></button>
-      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">📅</span></button>
-      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">💰</span></button>
+      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span></button>
+      <button class="menu-item" data-go="customers" type="button"><span>Customers</span></button>
+      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span></button>
+      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">⭐</span></button>
-      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">🎓</span></button>
-      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">💬</span></button>
+      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span></button>
+      <button class="menu-item" data-go="training" type="button"><span>Training</span></button>
+      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Profile</div>
-      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">👤</span></button>
+      <button class="menu-item" data-go="profile" type="button"><span>Account</span></button>
       <button class="menu-item" id="signOut" type="button" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#fca5a5"><span>Sign out</span></button>
     `;
   }
