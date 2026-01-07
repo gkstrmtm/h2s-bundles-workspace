@@ -14953,6 +14953,12 @@ $("btnSaveProfile").addEventListener("click", async () => {
     // Update portal title if name changed
     document.getElementById("portalTitle").textContent = me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
     
+    // Reload dashboard to clear geo warning banner if address was added
+    if ($("pfAddress").value.trim() && $("pfCity").value.trim() && $("pfState").value.trim() && $("pfZip").value.trim()) {
+      console.log('[Profile Save] Address updated - reloading dashboard to refresh geo status');
+      setTimeout(() => loadDashboard(), 500);
+    }
+    
     $("pf-ok").textContent = "Saved!"; $("pf-ok").style.display = "block";
     setTimeout(() => $("pf-ok").style.display = "none", 2000);
   } catch(err) { $("pf-err").textContent = err.message || "Error"; $("pf-err").style.display = "block"; }

@@ -3,6 +3,29 @@ import { getSupabaseDispatch } from '@/lib/supabase';
 import { verifyPortalToken } from '@/lib/portalTokens';
 import { bestEffortUpdateProRow } from '@/lib/portalProProfile';
 
+// Helper to geocode a full address (address, city, state, zip)
+async function geocodeAddress(address: string, city: string, state: string, zip: string): Promise<{ lat: number | null; lng: number | null }> {
+  if (!address || !city || !state) return { lat: null, lng: null };
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return { lat: null, lng: null };
+  
+  const fullAddress = `${address}, ${city}, ${state} ${zip || ''}`.trim();
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(fullAddress)}&key=${encodeURIComponent(key)}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data?.status === 'OK' && Array.isArray(data?.results) && data.results.length > 0) {
+      const loc = data.results[0]?.geometry?.location;
+      if (typeof loc?.lat === 'number' && typeof loc?.lng === 'number') {
+        return { lat: loc.lat, lng: loc.lng };
+      }
+    }
+  } catch {
+    // non-fatal
+  }
+  return { lat: null, lng: null };
+}
+
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
   const allowedOrigins = [
@@ -85,6 +108,18 @@ export async function POST(request: Request) {
       );
     }
 
+    // Geocode address if provided (for service radius calculation)
+    let geo_lat: number | null = null;
+    let geo_lng: number | null = null;
+    if (home_address && home_city && home_state && home_zip) {
+      const geo = await geocodeAddress(home_address, home_city, home_state, home_zip);
+      geo_lat = geo.lat;
+      geo_lng = geo.lng;
+      if (geo_lat !== null && geo_lng !== null) {
+        console.log(`[Profile Update] Geocoded address for pro ${proId}: ${geo_lat}, ${geo_lng}`);
+      }
+    }
+
     const patches: Array<Record<string, any>> = [];
 
     // Most likely schema.
@@ -100,6 +135,8 @@ export async function POST(request: Request) {
       ...(home_state !== null ? { home_state } : {}),
       ...(home_zip !== null ? { home_zip } : {}),
       ...(name !== null ? { name } : {}),
+      ...(geo_lat !== null ? { geo_lat } : {}),
+      ...(geo_lng !== null ? { geo_lng } : {}),
     });
 
     // Common alternates.
@@ -112,6 +149,12 @@ export async function POST(request: Request) {
       ...(photo_url !== null ? { profile_photo_url: photo_url } : {}),
       ...(photo_url !== null ? { avatar_url: photo_url } : {}),
       ...(bio_short !== null ? { bio: bio_short } : {}),
+      ...(geo_lat !== null ? { geo_lat } : {}),
+      ...(geo_lat !== null ? { lat: geo_lat } : {}),
+      ...(geo_lat !== null ? { latitude: geo_lat } : {}),
+      ...(geo_lng !== null ? { geo_lng } : {}),
+      ...(geo_lng !== null ? { lng: geo_lng } : {}),
+      ...(geo_lng !== null ? { longitude: geo_lng } : {}),
       ...(bio_short !== null ? { about: bio_short } : {}),
       ...(phone !== null ? { phone } : {}),
       ...(phone !== null ? { mobile: phone } : {}),
@@ -130,7 +173,9 @@ export async function POST(request: Request) {
 
     // Minimal fallbacks.
     patches.push({ ...(photo_url !== null ? { photo_url } : {}) });
-    patches.push({ ...(bio_short !== null ? { bio_short } : {}) });
+    patches.push({ ...(bio_short !== null ? { bio_short }
+    patches.push({ ...(geo_lat !== null ? { geo_lat } : {}) });
+    patches.push({ ...(geo_lng !== null ? { geo_lng } : {}) }); : {}) });
     patches.push({ ...(phone !== null ? { phone } : {}) });
     patches.push({ ...(home_address !== null ? { home_address } : {}) });
     patches.push({ ...(home_city !== null ? { home_city } : {}) });
