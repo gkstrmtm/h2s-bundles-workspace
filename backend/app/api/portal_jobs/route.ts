@@ -33,6 +33,12 @@ export async function OPTIONS(request: Request) {
   return NextResponse.json({}, { headers: corsHeaders(request) });
 }
 
+console.log('[portal_jobs] Module loaded - env vars:', {
+  hasSupabaseUrl: !!process.env.SUPABASE_URL,
+  hasServiceKey: !!process.env.SUPABASE_SERVICE_KEY,
+  hasPortalSecret: !!process.env.PORTAL_TOKEN_SECRET
+});
+
 const JOB_TABLE_CANDIDATES = ['h2s_dispatch_jobs'];
 const ASSIGN_TABLE_CANDIDATES = ['h2s_dispatch_job_assignments'];
 
