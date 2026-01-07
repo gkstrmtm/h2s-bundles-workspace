@@ -1,5 +1,6 @@
 # DEPLOYMENT RULES - NEVER BREAK THESE
-**Created:** January 6, 2026
+**Created:** January 6, 2026  
+**Updated:** January 6, 2026 - Added deployment verification system  
 **Purpose:** Prevent confusion and ensure clean deployments
 
 ## 🚨 THE ONE RULE TO RULE THEM ALL
@@ -10,6 +11,25 @@
 2. **h2s-backend** - Serves API endpoints
 
 If you see any other Vercel project mentioned, DELETE IT or IGNORE IT.
+
+---
+
+## ⚠️ CRITICAL: ALWAYS USE THE VERIFICATION SCRIPT
+
+**NEVER deploy manually. ALWAYS use:**
+
+```powershell
+.\deploy-and-verify.ps1
+```
+
+**This script prevents deployment confusion by:**
+1. ✅ Stamping unique versions on both portal.html and bundles.html
+2. ✅ Deploying to Vercel automatically
+3. ✅ Verifying correct files are on correct URLs
+4. ✅ Showing console log versions for confirmation
+5. ✅ Catching deployment mistakes in 30 seconds
+
+**See [DEPLOYMENT_VERIFICATION.md](DEPLOYMENT_VERIFICATION.md) for complete documentation.**
 
 ---
 
@@ -27,8 +47,11 @@ h2s-bundles-workspace/
 │
 ├── portal.html            ← DEPLOYED VERSION (copied from frontend/)
 ├── bundles.html           ← DEPLOYED VERSION (copied from frontend/)
-└── vercel.json            ← Routing rules
-```
+├── vercel.json            ← Routing rules
+│
+├── deploy-and-verify.ps1  ← DEPLOYMENT SCRIPT (use this!)
+└── verify-live-deployment.ps1  ← Quick check what's live
+````
 
 **FORBIDDEN DIRECTORIES:**
 - ❌ `/app` - DELETE IT if it exists
