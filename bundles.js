@@ -406,108 +406,34 @@ function renderShopView() {
 
 
 async function renderShopSuccessView() {
-  // START TELEMETRY
   const t0 = performance.now();
   performance.mark('ss_route_start');
-  performance.mark('shopsuccess_start');
-  performance.mark('renderer_start');
-  console.log('🔵 [renderShopSuccessView] START - Immediate Skeleton & Yield v10 - OVERLAY FIX');
+  console.log('🔵 [renderShopSuccessView] START - Immediate Full Shell Paint');
 
-  // 0. LONG TASK OBSERVER (Debug blocking tasks)
-  try {
-     const observer = new PerformanceObserver((list) => {
-       for (const entry of list.getEntries()) {
-         if (entry.duration > 50) {
-            // Only log long tasks in the first 10 seconds
-            if (entry.startTime < 10000) {
-              console.warn(`⚠️ [LongTask] ${entry.name} (${Math.round(entry.duration)}ms) - Start: ${Math.round(entry.startTime)}ms`, entry);
-            }
-         }
-       }
-     });
-     observer.observe({type: 'longtask', buffered: true});
-  } catch(e) {}
-
-  // 1. OVERLAY AUDIT & NUKE (CRITICAL STEP 1: PRE-INJECTION)
+  // 1. REMOVE OVERLAYS INSTANTLY
   const hider = document.getElementById('hide-content-temp');
   if(hider) hider.remove();
   
   const overlay = document.getElementById('success-pre-overlay');
-  const logOverlayDiff = (label) => {
-      if(!overlay) return;
-      const c = window.getComputedStyle(overlay);
-      console.log(`⚡ [Overlay Audit] ${label}:`, { 
-          opacity: c.opacity, 
-          display: c.display, 
-          pointerEvents: c.pointerEvents, 
-          zIndex: c.zIndex 
-      });
-  };
-  
   if(overlay) {
-    logOverlayDiff('Start');
-    // Force neutralize immediately
     overlay.style.opacity = '0';
     overlay.style.pointerEvents = 'none'; 
     overlay.style.visibility = 'hidden';
-    // Remove from DOM shortly after to be safe
-    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 200);
-  } else {
-    console.log('⚡ [Overlay Audit] No overlay found at start.');
+    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 100);
   }
 
-  // 2. IMMEDIATE SKELETON (Synchronous Frame 1)
+  // 2. PAINT COMPLETE SHELL IMMEDIATELY (Frame 1) - NO SKELETON INTERMEDIATE
   const outlet = byId('outlet');
   if(!outlet) return;
 
-  const skeletonStyles = `
-    <style>
-      .ss-skel-wrap { padding-top: max(env(safe-area-inset-top), 80px); max-width: 600px; margin: 0 auto; padding-left:20px; padding-right:20px; text-align:center; font-family: sans-serif; }
-      .ss-skel-badge { width: 72px; height: 72px; background: #e2e8f0; border-radius: 50%; margin: 0 auto 16px; }
-      .ss-skel-h1 { height: 32px; width: 60%; background: #f1f5f9; margin: 0 auto 10px; border-radius: 8px; }
-      .ss-skel-p { height: 20px; width: 40%; background: #f1f5f9; margin: 0 auto 30px; border-radius: 6px; }
-      .ss-skel-card { height: 200px; background: white; border-radius: 20px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
-      @keyframes valPulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }
-      .ss-skel-anim > div { animation: valPulse 1.5s infinite ease-in-out; }
-    </style>`;
-     
-  outlet.innerHTML = `
-    ${skeletonStyles}
-    <div class="ss-skel-wrap ss-skel-anim">
-       <div class="ss-skel-badge"></div>
-       <div class="ss-skel-h1"></div>
-       <div class="ss-skel-p"></div>
-       <div class="ss-skel-card"></div>
-    </div>`;
-  
-  performance.mark('ss_skeleton_painted');
-  performance.mark('ss_skeleton_inserted'); // Legacy mark
-  const tSkeleton = performance.now();
-  
-  if(overlay) logOverlayDiff('After Skeleton Insert');
-
-  console.log('⚡ [Time to Skeleton]', (tSkeleton - t0).toFixed(1) + 'ms');
-
-  // 3. YIELD TO BROWSER (CRITICAL: Allow paint)
-  performance.mark('ss_before_yield');
-  await new Promise(requestAnimationFrame);
-  performance.mark('ss_after_yield');
-  
-  if(overlay) logOverlayDiff('After Paint (rAF)');
-
-  // 4. FULL RENDER (Frame 2+)
-  // We do not re-insert params until needed to save time
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id') || params.get('stripe_session_id');
 
   window.scrollTo(0, 0);
   document.documentElement.style.overflow = 'auto'; 
-  document.documentElement.style.height = '100%';
   document.body.style.overflow = 'auto'; 
-  document.body.style.height = '100%';
   document.body.style.backgroundColor = '#f8fafc';
   
-  // RE-INJECT STYLES + CONTENT
   const styles = `
     <style>
       .ss-wrapper {
@@ -517,10 +443,8 @@ async function renderShopSuccessView() {
         background: #f8fafc;
         font-family: 'Archivo', system-ui, -apple-system, sans-serif;
       }
-      .ss-container {
-        max-width: 600px; margin: 0 auto; padding: 0 20px;
-      }
-      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.5s ease-out; }
+      .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
+      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.3s ease-out; }
       .ss-badge {
         width: 72px; height: 72px; margin: 0 auto 16px;
         background: #10b981; color: white; border-radius: 50%;
@@ -529,25 +453,46 @@ async function renderShopSuccessView() {
       }
       .ss-title { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0 0 8px; letter-spacing: -0.02em; }
       .ss-subtitle { font-size: 16px; color: #64748b; margin: 0; }
-
       .ss-card {
         background: white; border-radius: 20px;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02);
         border: 1px solid #e2e8f0;
         padding: 24px; margin-bottom: 24px;
-        overflow: hidden;
       }
       .ss-label { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
       .ss-value { font-size: 16px; font-weight: 600; color: #1e293b; }
+      .loading-shimmer { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; display: inline-block; border-radius: 4px; }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       
-      .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-      .cal-grid { 
-         display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center;
-         width: 100%; box-sizing: border-box; /* Fix Horizontal Scroll */
-      }
-      /* FIXED: Class name to match JS (cal-day-cell) */
+      .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; width: 100%; box-sizing: border-box; }
       .cal-day-cell {
         aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+        border-radius: 12px; font-weight: 600; font-size: 15px;
+        cursor: pointer; color: #334155; transition: all 0.1s ease;
+        border: 2px solid transparent;
+      }
+      .cal-day-cell.selected { background: #2563eb !important; color: white !important; border-color: #1e40af !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); transform: scale(1.05); }
+      .cal-day-cell.disabled { color: #e2e8f0; cursor: not-allowed; }
+      
+      .time-btn {
+        width: 100%; padding: 12px; border-radius: 12px;
+        border: 1px solid #e2e8f0; background: white;
+        color: #475569; font-weight: 600; font-size: 14px;
+        transition: all 0.2s;
+      }
+      .time-btn.selected { border-color: #2563eb !important; background: #2563eb !important; color: white !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+      
+      .cta-btn {
+        width: 100%; padding: 18px; border-radius: 14px;
+        background: #10b981; color: white; font-weight: 800; font-size: 16px;
+        border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        transition: all 0.2s; cursor: pointer; opacity: 0.5; pointer-events: none;
+      }
+      .cta-btn.active { opacity: 1; pointer-events: auto; }
+      .cta-btn:active { transform: scale(0.98); }
+    </style>
+  `;
         border-radius: 12px; font-weight: 600; font-size: 15px;
         cursor: pointer; color: #334155; transition: all 0.1s ease;
         border: 2px solid transparent; /* Reserve space for border */
@@ -589,12 +534,12 @@ async function renderShopSuccessView() {
     </style>
   `;
 
-  // === FALLBACK FOR NO SESSION ID ===
-  let contentHtml = '';
+  
+  // PAINT COMPLETE SHELL WITH LOADING PLACEHOLDERS (no intermediate skeleton)
   const isFallback = !sessionId;
-
+  
+  let contentHtml = '';
   if (isFallback) {
-      console.warn('⚠️ [ShopSuccess] Missing session_id. Showing fallback state.');
       contentHtml = `
             <div class="ss-header">
               <div class="ss-badge" style="background:#e2e8f0; color:#64748b;">
@@ -605,10 +550,10 @@ async function renderShopSuccessView() {
             </div>
             <div class="ss-card" style="text-align:center; padding:40px;">
                 <p style="margin-bottom:10px;">Missing Session ID</p>
-                <div style="font-size:13px; color:#64748b;">If you just completed checkout, please check your email for confirmation.</div>
+                <div style="font-size:13px; color:#64748b;">If you just completed checkout, please check your email.</div>
             </div>
             <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none; padding: 12px;">Return to Shop</a>
+               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
             </div>
       `;
   } else {
@@ -625,19 +570,17 @@ async function renderShopSuccessView() {
                <div style="display: flex; justify-content: space-between; border-bottom: 2px dashed #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
                   <div>
                      <div class="ss-label">Order #</div>
-                     <div class="ss-value" id="orderId" style="font-family: monospace; font-size: 17px;">
-                        ${sessionId ? sessionId.slice(0,8).toUpperCase() : '...'}
-                     </div>
+                     <div class="ss-value" id="orderId"><span class="loading-shimmer" style="width:120px;height:20px;">&nbsp;</span></div>
                   </div>
                   <div style="text-align: right;">
                      <div class="ss-label">Total</div>
-                     <div class="ss-value" id="orderTotal" style="color:#059669;">...</div>
+                     <div class="ss-value" id="orderTotal"><span class="loading-shimmer" style="width:80px;height:20px;">&nbsp;</span></div>
                   </div>
                </div>
                <div>
                   <div class="ss-label">Includes</div>
                   <div id="orderItems" style="font-weight: 500; color: #334155; line-height: 1.5;">
-                     Loading details...
+                     <span class="loading-shimmer" style="width:200px;height:18px;display:block;">&nbsp;</span>
                   </div>
                </div>
             </div>
@@ -649,14 +592,11 @@ async function renderShopSuccessView() {
                   </div>
                   <div>
                     <h3 style="margin:0; font-size:18px; font-weight:800; color:#0f172a;">Schedule Install</h3>
-                    <!-- Dynamic Selection Summary -->
                     <p id="selectionSummary" style="margin:2px 0 0; font-size:13px; color:#64748b;">Pick a date & time for your pro.</p>
                   </div>
                </div>
 
-               <div id="calendarWidget">
-                  <div style="padding: 40px; text-align: center; color: #94a3b8;">Loading calendar...</div>
-               </div>
+               <div id="calendarWidget"></div>
                
                <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9;">
                   <div class="ss-label" style="text-align:center; margin-bottom:12px;">Select Arrival Window</div>
@@ -672,37 +612,36 @@ async function renderShopSuccessView() {
             </div>
             
             <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none; padding: 12px;">Return to Shop</a>
+               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
             </div>
       `;
   }
 
-  performance.mark('ss_before_shell_insert');
+  // SINGLE PAINT - Complete shell with placeholders
   outlet.innerHTML = `${styles}
     <div class="ss-wrapper">
       <div class="ss-container">
         ${contentHtml}
       </div>
     </div>`;
-  performance.mark('ss_after_shell_insert');
-  performance.mark('ss_ui_shell_inserted'); // New Strict Mark
-  performance.mark('ss_success_ui_mounted'); // Legacy Compat
-  const tUI = performance.now();
-  console.log('⚡ [Time to Shell]', (tUI - t0).toFixed(1) + 'ms');
   
-  // 3. FETCH DATA (Only if session present) - OPTIMIZED: Cache + parallel fetch
+  const tPainted = performance.now();
+  console.log('⚡ [Complete Shell Painted]', (tPainted - t0).toFixed(1) + 'ms');
+  
+  // 3. START DATA FETCH (Only if session present) - runs in background
+  // 3. START DATA FETCH (Only if session present) - runs in background
   let fetchDurationMs = 0;
-  let orderDataPromise = null;
   
   if (isFallback) {
       console.log('⚡ [Fetch] Skipped (No valid session_id)');
   } else {
-    // START FETCH IMMEDIATELY (parallel with UI render)
+    // Build calendar immediately (visible interaction while data loads)
+    loadCalendarInteractive(params, sessionId);
+    
+    // Fetch data in parallel - silently updates placeholders
     const fetchOrder = async () => {
         const fStart = performance.now();
-        performance.mark('ss_fetch_start');
         
-        // Check sessionStorage cache for instant reuse
         const cacheKey = `h2s_order_${sessionId}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
@@ -720,9 +659,7 @@ async function renderShopSuccessView() {
           const c = new AbortController();
           setTimeout(()=>c.abort(), 6000);
           const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
-          const fEnd = performance.now();
-          fetchDurationMs = fEnd - fStart;
-          performance.mark('ss_fetch_end');
+          fetchDurationMs = performance.now() - fStart;
           
           if(!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -731,54 +668,37 @@ async function renderShopSuccessView() {
           sessionStorage.setItem(cacheKey, JSON.stringify(order));
           return order;
         } catch(err) {
-          console.warn('⚠️ [ShopSuccess] Using Offline Mode:', err);
+          console.warn('⚠️ [ShopSuccess] Fetch error:', err);
           fetchDurationMs = performance.now() - fStart;
-          return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Essentials Bundle + Smart Install' };
+          return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Home2Smart Service' };
         }
     };
     
-    orderDataPromise = fetchOrder();
-    
-    const tInteractiveStart = performance.now();
-    performance.mark('ss_before_calendar_build');
-    loadCalendarInteractive(params, sessionId);
-    performance.mark('ss_after_calendar_build');
-    
-    orderDataPromise.then(order => {
-         if(byId('orderTotal')) byId('orderTotal').innerText = order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0));
-         if(byId('orderId')) byId('orderId').innerText = order.order_id ? order.order_id.slice(0,18) : 'CONFIRMED';
-         if(byId('orderItems')) {
-            const text = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
-            byId('orderItems').innerText = text;
-         }
-         window.__currentOrderData = order;
-    
-         performance.mark('ss_data_patched');
-         performance.mark('ss_ui_content_ready');
-         const tPatched = performance.now();
+    // Silently hydrate data when it arrives (no flash, just content swap)
+    fetchOrder().then(order => {
+         // Replace loading shimmers with actual data
+         const orderIdEl = byId('orderId');
+         if(orderIdEl) orderIdEl.innerHTML = `<span style="font-family:monospace;font-size:17px;">${order.order_id ? order.order_id.slice(0,18) : sessionId.slice(0,18).toUpperCase()}</span>`;
          
+         const totalEl = byId('orderTotal');
+         if(totalEl) totalEl.innerHTML = `<span style="color:#059669;">${order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0))}</span>`;
+         
+         const itemsEl = byId('orderItems');
+         if(itemsEl) {
+            const text = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
+            itemsEl.textContent = text;
+         }
+         
+         window.__currentOrderData = order;
+         
+         const tPatched = performance.now();
          const timing = {
-             bundles_exec_to_skeleton: (tSkeleton - t0).toFixed(1),
-             bundles_exec_to_ui_mounted: (tUI - t0).toFixed(1),
-             bundles_exec_to_interactive: (performance.now() - t0).toFixed(1),
-             fetch_duration: fetchDurationMs.toFixed(1),
-             bundles_exec_to_data_patched: (tPatched - t0).toFixed(1)
+             shell_painted: (tPainted - t0).toFixed(1),
+             data_loaded: (tPatched - t0).toFixed(1),
+             fetch_duration: fetchDurationMs.toFixed(1)
          };
-         console.log('⚡ [PERF REPORT]', timing);
+         console.log('⚡ [PERF]', timing);
     });
-  }
-
-  // Report logic if fallback
-  if (isFallback) {
-      const timing = {
-         bundles_exec_to_skeleton: (tSkeleton - t0).toFixed(1),
-         bundles_exec_to_ui_mounted: (tUI - t0).toFixed(1),
-         bundles_exec_to_interactive: (performance.now() - t0).toFixed(1),
-         fetch_duration: 0.0,
-         bundles_exec_to_data_patched: 0.0,
-         status: 'fallback_no_session'
-      };
-      console.log('⚡ [PERF REPORT]', timing);
   }
 }
 
