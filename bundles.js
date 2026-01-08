@@ -690,15 +690,32 @@ async function renderShopSuccessView() {
   const tUI = performance.now();
   console.log('⚡ [Time to Shell]', (tUI - t0).toFixed(1) + 'ms');
   
-  // 3. FETCH DATA (Only if session present)
+  // 3. FETCH DATA (Only if session present) - OPTIMIZED: Cache + parallel fetch
   let fetchDurationMs = 0;
+  let orderDataPromise = null;
   
   if (isFallback) {
       console.log('⚡ [Fetch] Skipped (No valid session_id)');
   } else {
+    // START FETCH IMMEDIATELY (parallel with UI render)
     const fetchOrder = async () => {
         const fStart = performance.now();
         performance.mark('ss_fetch_start');
+        
+        // Check sessionStorage cache for instant reuse
+        const cacheKey = `h2s_order_${sessionId}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          try {
+            const cachedData = JSON.parse(cached);
+            if (cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) {
+              console.log('⚡ [Fetch] Using cached order');
+              fetchDurationMs = performance.now() - fStart;
+              return cachedData;
+            }
+          } catch(e) {}
+        }
+        
         try {
           const c = new AbortController();
           setTimeout(()=>c.abort(), 6000);
@@ -708,34 +725,33 @@ async function renderShopSuccessView() {
           performance.mark('ss_fetch_end');
           
           if(!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json(); return data.order || data;
+          const data = await res.json();
+          const order = data.order || data;
+          order._timestamp = Date.now();
+          sessionStorage.setItem(cacheKey, JSON.stringify(order));
+          return order;
         } catch(err) {
           console.warn('⚠️ [ShopSuccess] Using Offline Mode:', err);
-          // Measure time even if error
-          const fErr = performance.now();
-          fetchDurationMs = fErr - fStart;
-          return { 
-            fallback: true, 
-            order_id: sessionId, 
-            order_total: 'PAID', 
-            order_summary: 'Essentials Bundle + Smart Install' 
-          };
+          fetchDurationMs = performance.now() - fStart;
+          return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Essentials Bundle + Smart Install' };
         }
     };
     
-    // Only hydrate if NOT fallback
+    orderDataPromise = fetchOrder();
+    
     const tInteractiveStart = performance.now();
     performance.mark('ss_before_calendar_build');
-    loadCalendarInteractive(params); // New Function Name for Clarity
+    loadCalendarInteractive(params, sessionId);
     performance.mark('ss_after_calendar_build');
     
-    fetchOrder().then(order => {
+    orderDataPromise.then(order => {
          if(byId('orderTotal')) byId('orderTotal').innerText = order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0));
          if(byId('orderId')) byId('orderId').innerText = order.order_id ? order.order_id.slice(0,18) : 'CONFIRMED';
          if(byId('orderItems')) {
-            const text = order.order_summary || 'Home2Smart Bundle Service';
+            const text = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
             byId('orderItems').innerText = text;
          }
+         window.__currentOrderData = order;
     
          performance.mark('ss_data_patched');
          performance.mark('ss_ui_content_ready');
@@ -766,13 +782,14 @@ async function renderShopSuccessView() {
   }
 }
 
-function loadCalendarInteractive(params) {
+function loadCalendarInteractive(params, sessionId) {
   const widget = byId('calendarWidget');
   if(!widget) return;
   
   // Reset Global State for Fresh Selection
   window.selectedDate = null;
   window.selectedWindow = null;
+  window.__sessionId = sessionId;
 
   const mockAvail = [];
   const today = new Date();
@@ -885,24 +902,75 @@ function checkSubmit() {
     if(!btn) return;
     
     if(window.selectedDate && window.selectedWindow) {
-        btn.classList.add('active'); // CSS based enable
+        btn.classList.add('active');
         btn.disabled = false;
         
-        // Ensure Clean Listener
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
         newBtn.onclick = async () => {
-            newBtn.innerText = 'Confirmed ✓';
-            newBtn.style.background = '#059669';
+            newBtn.innerText = 'Saving...';
             newBtn.disabled = true;
             newBtn.classList.remove('active');
-            if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#059669; font-weight:700;">Success! You are all set.</span>';
             
-            try { 
-                if(typeof h2sTrack === 'function') {
-                    h2sTrack('ScheduleAppointment', { date: window.selectedDate, time: window.selectedWindow });
+            try {
+                const orderData = window.__currentOrderData || {};
+                const payload = {
+                    session_id: window.__sessionId,
+                    order_id: orderData.order_id,
+                    delivery_date: window.selectedDate,
+                    delivery_time: window.selectedWindow,
+                    customer_name: orderData.customer_name,
+                    customer_email: orderData.customer_email,
+                    customer_phone: orderData.customer_phone,
+                    service_address: orderData.service_address,
+                    service_city: orderData.service_city,
+                    service_state: orderData.service_state,
+                    service_zip: orderData.service_zip,
+                    service_name: orderData.service_name,
+                    order_total: orderData.order_total,
+                    order_subtotal: orderData.order_subtotal,
+                    items_json: orderData.items_json,
+                    metadata: orderData.metadata
+                };
+                
+                console.log('[Schedule] Sending payload:', payload);
+                
+                const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.ok) {
+                    newBtn.innerText = 'Confirmed ✓';
+                    newBtn.style.background = '#059669';
+                    if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
+                    
+                    if(typeof h2sTrack === 'function') {
+                        h2sTrack('ScheduleAppointment', { 
+                            date: window.selectedDate, 
+                            time: window.selectedWindow,
+                            job_id: result.job_id,
+                            order_id: orderData.order_id
+                        });
+                    }
+                    
+                    if (window.__sessionId) {
+                        sessionStorage.removeItem(`h2s_order_${window.__sessionId}`);
+                    }
+                } else {
+                    throw new Error(result.error || 'Failed to schedule');
                 }
-            } catch(e){}
+            } catch(err) {
+                console.error('[Schedule] Error:', err);
+                newBtn.innerText = 'Try Again';
+                newBtn.style.background = '#ef4444';
+                newBtn.disabled = false;
+                newBtn.classList.add('active');
+                if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
+            }
         };
     } else {
         btn.classList.remove('active');
