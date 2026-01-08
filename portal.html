@@ -9728,18 +9728,45 @@ async function hydrateMe() {
       return false;
     }
     
-    me = out.pro || {};
+    // Extract profile data from nested structure: out.me.profile contains all DB columns
+    const rawMe = out.me || {};
+    const profile = rawMe.profile || {};
+    
+    // Flatten the structure for easy access
+    me = {
+      pro_id: rawMe.pro_id,
+      email: rawMe.email,
+      source_table: rawMe.source_table,
+      // Flatten all profile fields
+      ...profile,
+      // Extract with fallbacks for various column name variants
+      name: profile.name || profile.full_name || profile.pro_name || "",
+      phone: profile.phone || profile.mobile || profile.pro_phone || "",
+      home_address: profile.home_address || profile.address || profile.street_address || "",
+      home_city: profile.home_city || profile.city || "",
+      home_state: profile.home_state || profile.state || "",
+      home_zip: profile.home_zip || profile.zip || profile.zipcode || profile.postal_code || "",
+      geo_lat: profile.geo_lat || profile.lat || profile.latitude || null,
+      geo_lng: profile.geo_lng || profile.lng || profile.longitude || null,
+      vehicle_text: profile.vehicle_text || profile.vehicle || "",
+      service_radius_miles: profile.service_radius_miles || profile.service_radius || profile.radius_miles || "",
+      max_jobs_per_day: profile.max_jobs_per_day || profile.daily_job_cap || "",
+      photo_url: profile.photo_url || profile.profile_photo_url || profile.avatar_url || "",
+      bio_short: profile.bio_short || profile.bio || profile.about || "",
+      w9_file_url: profile.w9_file_url || "",
+      w9_uploaded_at: profile.w9_uploaded_at || ""
+    };
     
     setCache('me', me);
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
     
-    document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    document.getElementById("portalTitle").textContent = me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
     document.getElementById("pfName").value = me.name || "";
     document.getElementById("pfPhone").value = me.phone || "";
-    document.getElementById("pfAddress").value = me.home_address || me.address || "";
-    document.getElementById("pfCity").value = me.home_city || me.city || "";
-    document.getElementById("pfState").value = me.home_state || me.state || "";
-    document.getElementById("pfZip").value = me.home_zip || me.zip || "";
+    document.getElementById("pfAddress").value = me.home_address || "";
+    document.getElementById("pfCity").value = me.home_city || "";
+    document.getElementById("pfState").value = me.home_state || "";
+    document.getElementById("pfZip").value = me.home_zip || "";
     document.getElementById("pfVehicle").value = me.vehicle_text || "";
     document.getElementById("pfMiles").value = me.service_radius_miles || "";
     document.getElementById("pfMax").value = me.max_jobs_per_day || "";
