@@ -12145,9 +12145,9 @@ function renderOffersSync(list, box) {
     const metaHtml = `
         <div style="color:var(--h2s-text-secondary);font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span>${esc(j.service_city||j.city||"Location")}</span>
-            <span style="color:var(--h2s-border-subtle)">?</span>
+            <span style="color:var(--h2s-border-subtle)">•</span>
             <span>${distanceText}</span>
-            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">?</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
+            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">•</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
         </div>
     `;
 
