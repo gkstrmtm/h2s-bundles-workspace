@@ -3542,7 +3542,7 @@ body.modal-open {
     <!-- Multi-Room -->
     <article class="package">
       <div class="package-header">
-        <h3 class="package-name">3–4 TVs</h3>
+        <h3 class="package-name">3ï¿½4 TVs</h3>
         <div class="package-price">From $699</div>
       </div>
       <p class="package-promise">Whole-home entertainment in one visit.</p>
@@ -3561,7 +3561,7 @@ body.modal-open {
           90-Day Workmanship Warranty
         </div>
       </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3–4 TVs', 699)">
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3ï¿½4 TVs', 699)">
         Schedule Installation
       </button>
       <div class="urgency-text">4 Slots Left This Week</div>
@@ -3594,7 +3594,7 @@ body.modal-open {
 <section class="section" id="security">
   <div class="section-header">
     <h2>Cameras: pick by coverage level</h2>
-    <p>Choose coverage by outcome — faces at the door, plates in the driveway, or full perimeter protection.</p>
+    <p>Choose coverage by outcome ï¿½ faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
   <div class="package-grid">
@@ -3632,7 +3632,7 @@ body.modal-open {
         <h3 class="package-name">Standard Perimeter</h3>
         <div class="package-price">$1,199</div>
       </div>
-      <p class="package-promise">Front, driveway, backyard — practical coverage for most homes.</p>
+      <p class="package-promise">Front, driveway, backyard ï¿½ practical coverage for most homes.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3651,7 +3651,7 @@ body.modal-open {
       <button class="btn btn-primary" onclick="selectPackage('cam_standard', 'Standard Perimeter', 1199)">
         Schedule Installation
       </button>
-      <div class="urgency-text">Most Popular — Book Now</div>
+      <div class="urgency-text">Most Popular ï¿½ Book Now</div>
     </article>
 
     <!-- Full Perimeter -->
@@ -3688,7 +3688,7 @@ body.modal-open {
         <h3 class="package-name">Custom (quote)</h3>
         <div class="package-price">Quote</div>
       </div>
-      <p class="package-promise">Unique property? We’ll design a coverage plan with you.</p>
+      <p class="package-promise">Unique property? Weï¿½ll design a coverage plan with you.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3805,7 +3805,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Cancel or reschedule anytime before 24 hours of your appointment—no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+          <p>Cancel or reschedule anytime before 24 hours of your appointmentï¿½no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
         </div>
       </div>
       
@@ -3817,7 +3817,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Yes—in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+          <p>Yesï¿½in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
         </div>
       </div>
       
@@ -3829,7 +3829,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking—nothing due at installation.</p>
+          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when bookingï¿½nothing due at installation.</p>
         </div>
       </div>
       
@@ -3892,7 +3892,7 @@ body.modal-open {
 <!-- FINAL CTA SECTION -->
 <section class="final-cta-section">
   <div class="final-cta-inner">
-    <h2>Book your installation today—Next available slots filling fast</h2>
+    <h2>Book your installation todayï¿½Next available slots filling fast</h2>
     <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
     <div class="final-cta-buttons">
       <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
@@ -4211,10 +4211,11 @@ window.scrollReviews = function(direction) {
 </script>
 
 
-<script defer src="bundles.js?v=PERF_V13_DEFERRED_PATH_FIX"></script>
+<script defer src="bundles.js?v=CHECKOUT_FIX_JAN11_V3_FORCE"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
+console.log('ðŸ›’ Bundles.html loaded - Version: CHECKOUT_FIX_JAN11_V3_FORCE', new Date().toISOString());
 window.toggleCart = function() {
   if (typeof window.__toggleCart === 'function') {
     window.__toggleCart();
@@ -4290,8 +4291,8 @@ window.toggleCart = function() {
         try {
           if (typeof out === 'string') {
             out = out
-              .replace(/\?&mdash;|\?\u2014|\?—/g, '—')
-              .replace(/&mdash;/g, '—');
+              .replace(/\?&mdash;|\?\u2014|\?ï¿½/g, 'ï¿½')
+              .replace(/&mdash;/g, 'ï¿½');
           }
         } catch (_) {}
         return out;
