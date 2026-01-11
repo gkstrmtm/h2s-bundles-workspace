@@ -659,7 +659,6 @@ async function renderShopSuccessView() {
     });
   }
 }
-}
 
 function loadCalendarInteractive(params, sessionId) {
   const widget = byId('calendarWidget');

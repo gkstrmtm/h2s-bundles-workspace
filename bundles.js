@@ -22,25 +22,22 @@ performance.mark('ss_init_start');
 
 // === FAST RENDER START ===
 // Detect success view immediately and render skeleton before heavy init
-performance.mark('ss_check_start');
 if (typeof URLSearchParams !== 'undefined' && (new URLSearchParams(window.location.search).has('shopsuccess') || window.location.search.includes('view=shopsuccess'))) {
-    performance.mark('ss_success_view_detected');
+    console.log('[DEBUG] Success page detected in URL');
     window.__H2S_EARLY_RENDER = true;
     
     // Attempt synchronous render (function is hoisted)
     try {
         if (typeof renderShopSuccessView === 'function') {
-             performance.mark('ss_render_invoked');
-             console.log('⚡ [FastRender] Invoking renderShopSuccessView immediately');
+             console.log('[DEBUG] Calling renderShopSuccessView immediately');
              renderShopSuccessView();
         } else {
-             console.warn('[FastRender] renderShopSuccessView not hoisted?');
+             console.warn('[DEBUG] renderShopSuccessView not available yet');
         }
     } catch(e) {
-        console.error('[FastRender] Failed:', e);
+        console.error('[DEBUG] Early render failed:', e);
     }
 }
-performance.mark('ss_check_end');
 // === FAST RENDER END ===
 
 function byId(id){ return document.getElementById(id); }
@@ -406,13 +403,14 @@ function renderShopView() {
 
 
 async function renderShopSuccessView() {
-  const t0 = performance.now();
-  performance.mark('ss_route_start');
-  console.log('🔵 [renderShopSuccessView] START - Immediate Full Shell Paint');
-
+  console.log('[DEBUG] renderShopSuccessView() called');
+  
   // 1. REMOVE OVERLAYS INSTANTLY
   const hider = document.getElementById('hide-content-temp');
-  if(hider) hider.remove();
+  if(hider) {
+    console.log('[DEBUG] Removing hide-content-temp overlay');
+    hider.remove();
+  }
   
   const overlay = document.getElementById('success-pre-overlay');
   if(overlay) {
@@ -424,10 +422,15 @@ async function renderShopSuccessView() {
 
   // 2. PAINT COMPLETE SHELL IMMEDIATELY (Frame 1) - NO SKELETON INTERMEDIATE
   const outlet = byId('outlet');
-  if(!outlet) return;
+  if(!outlet) {
+    console.error('[DEBUG] outlet element not found!');
+    return;
+  }
+  console.log('[DEBUG] outlet found, preparing to render');
 
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id') || params.get('stripe_session_id');
+  console.log('[DEBUG] sessionId:', sessionId);
 
   window.scrollTo(0, 0);
   document.documentElement.style.overflow = 'auto'; 
@@ -491,46 +494,6 @@ async function renderShopSuccessView() {
       }
       .cta-btn.active { opacity: 1; pointer-events: auto; }
       .cta-btn:active { transform: scale(0.98); }
-    </style>
-  `;
-        border-radius: 12px; font-weight: 600; font-size: 15px;
-        cursor: pointer; color: #334155; transition: all 0.1s ease;
-        border: 2px solid transparent; /* Reserve space for border */
-      }
-      /* Contrast Fixes for Selection - TARGETING cal-day-cell */
-      .cal-day-cell.selected { 
-          background: #2563eb !important; 
-          color: white !important; 
-          border-color: #1e40af !important;
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); 
-          transform: scale(1.05);
-      }
-      .cal-day-cell.disabled { color: #e2e8f0; cursor: not-allowed; }
-      
-      .time-btn {
-        width: 100%; padding: 12px; border-radius: 12px;
-        border: 1px solid #e2e8f0; background: white;
-        color: #475569; font-weight: 600; font-size: 14px;
-        transition: all 0.2s;
-      }
-      /* Contrast Fixes for Time Selection */
-      .time-btn.selected {
-        border-color: #2563eb !important; 
-        background: #2563eb !important; 
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
-      }
-      
-      .cta-btn {
-        width: 100%; padding: 18px; border-radius: 14px;
-        background: #10b981; color: white; font-weight: 800; font-size: 16px;
-        border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
-        transition: all 0.2s; cursor: pointer; opacity: 0.5; pointer-events: none;
-      }
-      .cta-btn.active { opacity: 1; pointer-events: auto; }
-      .cta-btn:active { transform: scale(0.98); }
-      
-      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
   `;
 
@@ -625,31 +588,36 @@ async function renderShopSuccessView() {
       </div>
     </div>`;
   
-  const tPainted = performance.now();
-  console.log('⚡ [Complete Shell Painted]', (tPainted - t0).toFixed(1) + 'ms');
+  console.log('[DEBUG] Success page HTML painted');
+  
+  // Check for submission failure flag
+  const submitFailed = localStorage.getItem('strike_submit_failed');
+  if (submitFailed) {
+    localStorage.removeItem('strike_submit_failed');
+    const banner = document.createElement('div');
+    banner.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;padding:12px 16px;border-radius:8px;margin:16px 0;font-size:14px">
+      ⚠️ <strong>Note:</strong> Your payment completed successfully, but we couldn't save all details. Our team will contact you shortly to confirm your order.
+    </div>`;
+    const container = outlet.querySelector('.ss-container');
+    if (container) container.insertBefore(banner, container.firstChild);
+  }
   
   // 3. START DATA FETCH (Only if session present) - runs in background
-  // 3. START DATA FETCH (Only if session present) - runs in background
-  let fetchDurationMs = 0;
-  
   if (isFallback) {
-      console.log('⚡ [Fetch] Skipped (No valid session_id)');
+      console.warn('[DEBUG] Fallback mode - no session ID');
   } else {
+    console.log('[DEBUG] Starting calendar load and data fetch');
     // Build calendar immediately (visible interaction while data loads)
     loadCalendarInteractive(params, sessionId);
     
     // Fetch data in parallel - silently updates placeholders
     const fetchOrder = async () => {
-        const fStart = performance.now();
-        
         const cacheKey = `h2s_order_${sessionId}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
           try {
             const cachedData = JSON.parse(cached);
             if (cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) {
-              console.log('⚡ [Fetch] Using cached order');
-              fetchDurationMs = performance.now() - fStart;
               return cachedData;
             }
           } catch(e) {}
@@ -659,7 +627,6 @@ async function renderShopSuccessView() {
           const c = new AbortController();
           setTimeout(()=>c.abort(), 6000);
           const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
-          fetchDurationMs = performance.now() - fStart;
           
           if(!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
@@ -668,14 +635,13 @@ async function renderShopSuccessView() {
           sessionStorage.setItem(cacheKey, JSON.stringify(order));
           return order;
         } catch(err) {
-          console.warn('⚠️ [ShopSuccess] Fetch error:', err);
-          fetchDurationMs = performance.now() - fStart;
           return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Home2Smart Service' };
         }
     };
     
     // Silently hydrate data when it arrives (no flash, just content swap)
     fetchOrder().then(order => {
+         console.log('[DEBUG] Order data received:', order);
          // Replace loading shimmers with actual data
          const orderIdEl = byId('orderId');
          if(orderIdEl) orderIdEl.innerHTML = `<span style="font-family:monospace;font-size:17px;">${order.order_id ? order.order_id.slice(0,18) : sessionId.slice(0,18).toUpperCase()}</span>`;
@@ -690,14 +656,6 @@ async function renderShopSuccessView() {
          }
          
          window.__currentOrderData = order;
-         
-         const tPatched = performance.now();
-         const timing = {
-             shell_painted: (tPainted - t0).toFixed(1),
-             data_loaded: (tPatched - t0).toFixed(1),
-             fetch_duration: fetchDurationMs.toFixed(1)
-         };
-         console.log('⚡ [PERF]', timing);
     });
   }
 }
@@ -1087,34 +1045,45 @@ async function init(){
   // Using addEventListener (not onclick) to maintain proper event control for tracking
   const checkoutBtn = byId('checkoutBtn');
   if(checkoutBtn) {
-    // Safeguard: Only attach if not already attached
-    if(!checkoutBtn.hasAttribute('data-listener-attached')) {
-      checkoutBtn.setAttribute('data-listener-attached', 'true');
+    // Remove any existing listeners to prevent double-firing
+    const newCheckoutBtn = checkoutBtn.cloneNode(true);
+    checkoutBtn.parentNode.replaceChild(newCheckoutBtn, checkoutBtn);
+    
+    newCheckoutBtn.addEventListener('click', function(e) {
+      logger.log('[Checkout] Button clicked');
+      e.preventDefault();
+      e.stopPropagation();
       
-      checkoutBtn.addEventListener('click', function(e) {
-        logger.log('[Checkout] Button clicked');
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Error boundary: Ensure checkout always attempts to run
-        try {
-          checkout();
-        } catch(err) {
-          logger.error('[Checkout] Critical error:', err);
-          // Fallback: Show modal anyway
-          try {
-            showCheckoutModal();
-          } catch(err2) {
-            logger.error('[Checkout] Fallback failed:', err2);
-            alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
-          }
+      // Debounce: Prevent rapid double-clicks
+      if(newCheckoutBtn.disabled) {
+        logger.log('[Checkout] Button click ignored (already processing)');
+        return;
+      }
+      
+      newCheckoutBtn.disabled = true;
+      setTimeout(() => { newCheckoutBtn.disabled = false; }, 1000);
+      
+      // Call checkout function
+      try {
+        if(typeof window.checkout === 'function') {
+          window.checkout();
+        } else {
+          logger.error('[Checkout] window.checkout not defined, calling showCheckoutModal directly');
+          showCheckoutModal();
         }
-      }, { passive: false }); // passive: false ensures preventDefault works
-      
-      logger.log('[Init] Checkout button event listener attached');
-    } else {
-      logger.log('[Init] Checkout button listener already attached');
-    }
+      } catch(err) {
+        logger.error('[Checkout] Critical error:', err);
+        // Fallback: Show modal anyway
+        try {
+          showCheckoutModal();
+        } catch(err2) {
+          logger.error('[Checkout] Fallback failed:', err2);
+          alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
+        }
+      }
+    }, { passive: false });
+    
+    logger.log('[Init] Checkout button event listener attached (clean)');
   } else {
     logger.error('[Init] Checkout button not found!');
   }
@@ -3977,19 +3946,24 @@ window.handleCheckoutSubmit = async function(e) {
         logger.warn('[Checkout] Could not persist session (non-blocking):', e);
       }
 
-      // SUCCESS: Cleanup UI state before redirect
+      // SUCCESS: Extract session_id for instant navigation
+      const sessionId = data.pay.session_id || data.pay.session_url.split('session_id=')[1]?.split('&')[0] || '';
+      
+      // Cleanup UI state before redirect
       H2S_unlockScroll();
       document.documentElement.classList.remove('modal-open');
       document.body.classList.remove('modal-open');
       
-      logger.log('[Checkout] ✅ Success! Redirecting to:', data.pay.session_url);
+      logger.log('[Checkout] ✅ Success! Session:', sessionId);
       
-      // Use multiple redirect methods for reliability
+      // INSTANT NAVIGATION - Go to success page immediately
+      // (Stripe webhook will handle backend order creation)
+      const successUrl = `https://shop.home2smart.com/bundles?view=shopsuccess&session_id=${sessionId}`;
+      
       try {
-        window.location.href = data.pay.session_url;
+        window.location.href = successUrl;
       } catch(e) {
-        // Fallback: Force navigation
-        window.location.assign(data.pay.session_url);
+        window.location.assign(successUrl);
       }
       
       // Exit retry loop on success
