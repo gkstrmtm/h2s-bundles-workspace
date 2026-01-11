@@ -4400,10 +4400,11 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
-<script defer src="bundles.js?v=CHECKOUT_FIX_JAN11_V2"></script>
+<script defer src="bundles.js?v=CHECKOUT_FIX_JAN11_V3_FORCE"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
+console.log('🛒 Bundles.html loaded - Version: CHECKOUT_FIX_JAN11_V3_FORCE', new Date().toISOString());
 window.toggleCart = function() {
   if (typeof window.__toggleCart === 'function') {
     window.__toggleCart();
