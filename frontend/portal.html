@@ -858,9 +858,12 @@ h3,.h3{
   outline:none;
   border-color:var(--h2s-brand-azure);
   box-shadow:0 0 0 3px rgba(20,147,255,0.12);
+  background:var(--h2s-bg-input);
+  color:var(--h2s-text-main);
 }
 .input::placeholder,.textarea::placeholder{
-  color:var(--h2s-text-soft)
+  color:var(--h2s-text-soft);
+  opacity:0.6;
 }
 .input{min-height:var(--control-h)}
 .textarea{min-height:120px;resize:vertical}
@@ -6405,28 +6408,42 @@ a:focus-visible{
         };
       }
       
-      // Fallback: Calculate from line items if no backend estimate
+      // Calculate from line items (preferred)
       const lines = job?.line_items || job?.lines || [];
       let lineTotal = 0;
-      lines.forEach(ln => {
-        lineTotal += _computeProPayoutForLine(ln.customer_total, ln.variant_code);
-      });
+      if (lines.length > 0) {
+        lines.forEach(ln => {
+          const customerTotal = Number(ln.customer_total || ln.price || ln.amount || 0);
+          const variant = ln.variant_code || ln.tier || 'BASE';
+          lineTotal += _computeProPayoutForLine(customerTotal, variant);
+        });
+        
+        return { 
+          base: lineTotal, 
+          extras: 0, 
+          deductions: 0, 
+          lineTotal, 
+          total: lineTotal, 
+          label: fmtMoney(lineTotal) 
+        };
+      }
       
-      // Legacy fallback: use direct payout fields
+      // Legacy fallback: use direct payout fields (NOT $45 minimum unless explicitly set)
       const base = Number(job?.base_pay || job?.payout_base || 0);
       const extras = Number(job?.extras_total || job?.payout_extras || 0);
       const deductions = Number(job?.deductions_total || job?.payout_deductions || 0);
-      const directTotal = base + extras - deductions;
+      const directTotal = Math.max(0, base + extras - deductions);
       
-      const total = lines.length > 0 ? lineTotal : Math.max(0, directTotal);
+      // Only apply minimum if we have a computed value
+      const total = directTotal > 0 ? directTotal : 0;
 
       return { 
         base, 
         extras, 
         deductions, 
-        lineTotal, 
+        lineTotal: total, 
         total, 
-        label: fmtMoney(total) 
+        label: total > 0 ? fmtMoney(total) : 'TBD' 
       };
     };
     
@@ -6478,7 +6495,7 @@ a:focus-visible{
   <div class="menu-sheet" role="dialog" aria-labelledby="menuTitle">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(59,130,246,0.1)">
       <h2 id="menuTitle" style="margin:0;font-size:20px;font-weight:700;color:#e0f2fe;letter-spacing:-0.02em">Menu</h2>
-      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">?</button>
+      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">×</button>
     </div>
     <div class="menu-row" id="menuItems"></div>
   </div>
@@ -6799,6 +6816,22 @@ a:focus-visible{
           <p class="muted" style="margin:0;font-size:15px">Manage your professional profile and service preferences</p>
         </div>
 
+        <!-- Welcome Banner -->
+        <div id="welcomeBanner" style="background:linear-gradient(135deg, rgba(26,155,255,0.15), rgba(16,155,103,0.1));border:1px solid rgba(26,155,255,0.3);border-radius:16px;padding:24px;margin-bottom:24px;width:100%;max-width:100%;box-sizing:border-box">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="width:56px;height:56px;border-radius:50%;background:rgba(26,155,255,0.2);border:2px solid rgba(26,155,255,0.4);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1A9BFF" stroke-width="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+            <div style="flex:1">
+              <h3 id="welcomeName" style="font-size:20px;font-weight:700;color:var(--h2s-text-main);margin:0 0 4px 0">Welcome back!</h3>
+              <p style="margin:0;font-size:14px;color:var(--h2s-text-secondary);line-height:1.5">You're logged in and ready to accept jobs</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Personal Info Section -->
         <div style="background:linear-gradient(155deg, #0f172a, #020617);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:28px;margin-bottom:24px;width:100%;max-width:100%;box-sizing:border-box">
           <h3 style="font-size:16px;font-weight:600;margin:0 0 20px;color:#cbd5e1;display:flex;align-items:center;gap:10px">
@@ -6809,6 +6842,12 @@ a:focus-visible{
             Professional Profile
           </h3>
           <div style="display:grid;gap:20px">
+            <!-- Name Field (readonly) -->
+            <div>
+              <label class="label" for="pfName" style="display:block;margin-bottom:8px;font-weight:600;color:var(--text);font-size:14px">Full Name</label>
+              <input id="pfName" class="input" readonly style="width:100%;max-width:100%;box-sizing:border-box;background:rgba(148,163,184,0.05);border-color:rgba(148,163,184,0.15);cursor:not-allowed;opacity:0.8">
+              <p class="muted" style="margin:4px 0 0;font-size:13px;color:var(--text-muted)">This name is from your account registration and cannot be changed here</p>
+            </div>
             <!-- Profile Photo Upload -->
             <div>
               <label class="label" style="display:block;margin-bottom:var(--control-gap);font-weight:600;color:var(--text);font-size:14px">
@@ -7197,7 +7236,7 @@ a:focus-visible{
                 <h3 style="font-size:16px;font-weight:600;color:#e0f2fe;margin:0 0 4px 0">Request Time Off</h3>
                 <p style="font-size:13px;color:#94a3b8;margin:0">Block dates when you can't take jobs</p>
               </div>
-              <div style="color:#1493FF;font-size:20px;flex-shrink:0">?</div>
+              <div style="color:#1493FF;font-size:20px;flex-shrink:0">›</div>
             </div>
           </div>
 
@@ -7685,7 +7724,7 @@ a:focus-visible{
       <div>Address</div><div id="md-addr"></div>
       <div>Customer</div><div id="md-customer" style="display:flex;align-items:center;gap:8px"><span id="md-customer-phone"></span></div>
       <div>Job Details</div><div id="md-res"></div>
-      <div>Equipment Provided?</div><div id="md-tech"></div>
+      <div>Customer Has Equipment</div><div id="md-tech"></div>
       <div style="display:none">Teammate</div><div id="md-teammate" style="color:#8b5cf6;font-weight:600"></div>
       <div style="display:none">Notes</div><div id="md-notes" style="font-style:italic;color:#fbbf24"></div>
       <div style="display:none">Customer Photos</div><div id="md-customer-photos" style="color:#64748b;font-size:13px"></div>
@@ -8307,7 +8346,7 @@ initOnboarding();
 // ===== EXISTING CODE CONTINUES ===== 
 /* ===== CONFIG ===== */
 // API Configuration - Using latest backend deployment with env vars
-const VERCEL_API = "https://backend-37b7ktigj-tabari-ropers-projects-6f2e090b.vercel.app/api";
+const VERCEL_API = "https://backend-98bukfrv3-tabari-ropers-projects-6f2e090b.vercel.app/api";
 
 // Unified API Endpoint
 const API = VERCEL_API;
@@ -9639,7 +9678,7 @@ function renderMenuItems() {
       const b = document.createElement("button");
       b.className = "menu-item";
       b.type = "button";
-      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">?</span>' : ''}`;
+      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">›</span>' : ''}`;
       if (go === "signout") b.id = "signOut";
       else b.dataset.go = go;
       box.appendChild(b);
@@ -9710,6 +9749,8 @@ async function hydrateMe() {
   if (cachedMe) {
     me = cachedMe;
     document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    const pfNameEl = document.getElementById("pfName");
+    if (pfNameEl) pfNameEl.value = me.name || me.full_name || "";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9747,6 +9788,8 @@ async function hydrateMe() {
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
     
     document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    const pfNameEl = document.getElementById("pfName");
+    if (pfNameEl) pfNameEl.value = me.name || me.full_name || "";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9877,7 +9920,7 @@ function renderPaginationControls(type, totalItems, container) {
   const prevBtn = document.createElement('button');
   prevBtn.className = 'btn secondary';
   prevBtn.style.padding = '8px 16px';
-  prevBtn.textContent = '? Prev';
+  prevBtn.textContent = '← Prev';
   prevBtn.disabled = state.page === 1;
   if (state.page === 1) prevBtn.style.opacity = '0.5';
   
@@ -9896,7 +9939,7 @@ function renderPaginationControls(type, totalItems, container) {
   const nextBtn = document.createElement('button');
   nextBtn.className = 'btn secondary';
   nextBtn.style.padding = '8px 16px';
-  nextBtn.textContent = 'Next ?';
+  nextBtn.textContent = 'Next →';
   nextBtn.disabled = state.page === totalPages;
   if (state.page === totalPages) nextBtn.style.opacity = '0.5';
   
@@ -10222,18 +10265,18 @@ window.showCustomerPhotoLightbox = function(startIndex, photos) {
             <button onclick="event.stopPropagation();window.prevCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">‹</button>
           ` : ''}
           
           <div style="color:var(--h2s-text-main);font-size:14px;font-weight:600;backdrop-filter:blur(10px);background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);padding:10px 18px;border-radius:12px;">
-            ${currentIndex + 1} / ${photos.length} ? ${uploadDate}
+            ${currentIndex + 1} / ${photos.length} • ${uploadDate}
           </div>
           
           ${photos.length > 1 ? `
             <button onclick="event.stopPropagation();window.nextCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">›</button>
           ` : ''}
         </div>
       </div>
@@ -10403,7 +10446,7 @@ function showJobDetails(job) {
   const phoneEl = $("md-customer-phone");
   const customerName = job.customer_name || job.metadata?.customer_name || "";
   if (customerPhone) {
-    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> • ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
       ${esc(customerPhone)}
     </a>`;
@@ -10428,12 +10471,12 @@ function showJobDetails(job) {
     p.style.marginTop = '6px';
   })();
   
-  // ? INTELLIGENCE: Included Tech Clarity
+  // ? INTELLIGENCE: Equipment Clarity (Bring your own = Customer HAS equipment = YES)
   const techSource = job.included_tech_source || job.metadata?.included_tech_source;
-  const hasTech = techSource && techSource !== 'None';
-  $("md-tech").innerHTML = hasTech 
-      ? `<strong style="color:#10b981">Yes</strong> <span style="font-size:12px;opacity:.8">(Customer's equipment on-site)</span>` 
-      : `<strong style="color:#f59e0b">No</strong> <span style="font-size:12px;opacity:.8">(Bring your own or quote separately)</span>`;
+  const isBYO = techSource && (techSource.toLowerCase().includes('bring') || techSource.toLowerCase().includes('customer'));
+  $("md-tech").innerHTML = isBYO
+      ? `<strong style="color:#10b981">Yes</strong> <span style="font-size:12px;opacity:.8">(Customer provides equipment)</span>` 
+      : `<strong style="color:#f59e0b">No</strong> <span style="font-size:12px;opacity:.8">(We provide equipment)</span>`;
   
   // ? INTELLIGENCE: Show Teammate if available (Team Jobs)
   const teammateEl = $("md-teammate");
@@ -10490,7 +10533,7 @@ function showJobDetails(job) {
             <span>View ${customerPhotos.length} Customer Photo${customerPhotos.length > 1 ? 's' : ''}</span>
           </button>
           <div style="margin-top:10px;font-size:12px;color:#9BB0CC;line-height:1.5;">
-            ${timingMsg} ? Customer shared ${photoContext} to help with installation planning.
+            ${timingMsg} • Customer shared ${photoContext} to help with installation planning.
           </div>
         `;
       } else {
@@ -10758,7 +10801,7 @@ function showOfferDetails(job) {
     console.log('[OFFER MODAL] Setting customer - name:', customerName, 'phone:', customerPhone);
     console.log('[OFFER MODAL] Phone element:', phoneEl, 'parent:', phoneEl.parentElement);
     if (customerPhone) {
-      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}` +
+      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> \u2022 ` : ''}` +
         `<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
            ${esc(customerPhone)}
@@ -10785,9 +10828,12 @@ function showOfferDetails(job) {
     p.style.marginTop = '6px';
   })();
   
-  // ? INTELLIGENCE: Show Included Tech Source if available
-  const techSource = job.included_tech_source || job.metadata?.included_tech_source || "?";
-  $("md-tech").textContent = techSource;
+  // ? INTELLIGENCE: Equipment display (same logic as above)
+  const techSource = job.included_tech_source || job.metadata?.included_tech_source || 'None specified';
+  const isBYO = techSource && (techSource.toLowerCase().includes('bring') || techSource.toLowerCase().includes('customer'));
+  $("md-tech").innerHTML = isBYO
+      ? `<strong style="color:#10b981">Yes</strong> <span style="font-size:12px;opacity:.8">(Customer provides)</span>` 
+      : `<strong style="color:#f59e0b">No</strong> <span style="font-size:12px;opacity:.8">(We provide)</span>`;
   
   // ? INTELLIGENCE: Show Teammate if available (Team Jobs)
   const teammateEl = $("md-teammate");
@@ -12509,7 +12555,7 @@ async function renderUpcoming(list) {
     if (targetDate && !isNaN(targetDate)) {
         const dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = rawWindow || targetDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} ? ${timeStr}</div>`;
+        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} • ${timeStr}</div>`;
     } else if (rawWindow) {
         dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${esc(rawWindow)}</div>`;
     }
@@ -12577,7 +12623,7 @@ async function renderUpcoming(list) {
       ${secondaryRowHtml}
       <div style="text-align:center;margin-top:6px">
         <button class="btn ghost" data-details="${esc(j.job_id)}" type="button" style="background:transparent;border:none;color:var(--h2s-text-muted);font-size:12px;font-weight:500;padding:4px 0;cursor:pointer">
-          View details ?
+          View details →
         </button>
       </div>
     `;
@@ -14925,6 +14971,15 @@ function loadProfilePhotoPreview() {
   
   // Load all profile fields
   if (me) {
+    const userName = me.name || me.full_name || 'Pro';
+    $("pfName").value = userName;
+    
+    // Update welcome banner
+    const welcomeNameEl = $("welcomeName");
+    if (welcomeNameEl) {
+      welcomeNameEl.textContent = `Welcome back, ${userName}!`;
+    }
+    
     $("pfHomeAddress").value = me.home_address || '';
     $("pfHomeCity").value = me.home_city || '';
     $("pfHomeState").value = me.home_state || '';
@@ -14962,6 +15017,20 @@ $("btnSaveProfile").addEventListener("click", async () => {
     me.max_jobs_per_day = $("pfMax").value.trim();
     me.photo_url = $("pfPhoto").value.trim();
     me.bio_short = $("pfBio").value.trim();
+    
+    // Persist to localStorage for session continuity
+    try {
+      localStorage.setItem('h2s_pro_profile', JSON.stringify({
+        home_address: me.home_address,
+        home_city: me.home_city,
+        home_state: me.home_state,
+        home_zip: me.home_zip,
+        vehicle_text: me.vehicle_text,
+        bio_short: me.bio_short,
+        photo_url: me.photo_url,
+        timestamp: Date.now()
+      }));
+    } catch (e) { console.warn('Failed to persist profile:', e); }
     
     // Update cache immediately
     setCache('me', me);
@@ -18858,7 +18927,7 @@ function createTrainingCard(v, progressPct, status) {
   
   el.innerHTML = `
     <div class="training-thumb">
-      ??
+      📹
     </div>
     <div class="training-body">
       <h3 class="training-title">${esc(v.title)}</h3>
@@ -19486,7 +19555,7 @@ function startVideoHeartbeat(videoId, videoDuration) {
   let position = trainingProgress[videoId]?.position_sec || 0;
   let lastHeartbeat = Date.now();
   
-  console.log("?? Starting heartbeat for video:", videoId, "Resume position:", position + "s");
+  console.log("[VIDEO] Starting heartbeat for video:", videoId, "Resume position:", position + "s");
   logTraining("Heartbeat started", {videoId, position, duration: videoDuration});
   
   // ? UPDATE UI: Show progress bar if video has duration
@@ -19510,7 +19579,7 @@ function startVideoHeartbeat(videoId, videoDuration) {
       updateVideoProgressUI(position, videoDuration);
     }
     
-    console.log("?? Heartbeat - Position:", position + "s", "Duration:", videoDuration + "s", "Delta:", watchTimeDelta + "s");
+    console.log("[VIDEO] Heartbeat - Position:", position + "s", "Duration:", videoDuration + "s", "Delta:", watchTimeDelta + "s");
     logTraining("Heartbeat", {videoId, position, duration: videoDuration, delta: watchTimeDelta});
     
     // Local-only: update progress + persist.
@@ -19623,7 +19692,7 @@ $("videoModal").addEventListener("click", e => {
 });
 
 function closeVideoModal() {
-  console.log("?? Closing video modal");
+  console.log("[VIDEO] Closing video modal");
   
   // ? SAFEGUARD: Save progress one final time before closing
   if (currentVideo && heartbeatInterval) {
@@ -19658,7 +19727,7 @@ async function saveFinalProgress() {
   const videoDuration = currentVideo.duration_sec || 0;
   const position = trainingProgress[videoId]?.position_sec || 0;
   
-  console.log("?? Saving final progress:", videoId, position + "s");
+  console.log("[VIDEO] Saving final progress:", videoId, position + "s");
   
   try {
     // Local-only persist.
@@ -19691,7 +19760,7 @@ window.addEventListener("beforeunload", () => {
 
 /* ===== INIT ===== */
 (async function init() {
-  console.log("?? Initializing portal...");
+  console.log("[INIT] Initializing portal...");
   console.log("Admin token:", adminToken ? "present" : "none");
   console.log("Pro token:", token ? "present" : "none");
   
@@ -19700,7 +19769,7 @@ window.addEventListener("beforeunload", () => {
   
   try {
     if (adminToken) {
-      console.log("?? Attempting admin session...");
+      console.log("[AUTH] Attempting admin session...");
       loading(true);
       isAdmin = true;
       renderMenuItems();
@@ -19713,7 +19782,7 @@ window.addEventListener("beforeunload", () => {
     renderMenuItems();
     
     if (token) {
-      console.log("?? Attempting pro session with existing token...");
+      console.log("[AUTH] Attempting pro session with existing token...");
       console.log(`?? Token found in storage: ${token.substring(0, 20)}...`);
       const perfStart = performance.now();
       
@@ -19774,7 +19843,7 @@ window.addEventListener("beforeunload", () => {
             loadJobs(); // Only load if we didn't show cache
           } else {
             // Soft refresh in background to update cache
-            console.log("?? Soft refresh: updating cache in background");
+            console.log("[CACHE] Soft refresh: updating cache in background");
             loadJobs();
           }
           
@@ -19813,7 +19882,7 @@ window.addEventListener("beforeunload", () => {
         }
       });
     } else {
-      console.log("?? No token, showing auth");
+      console.log("[AUTH] No token, showing auth");
       showAuth();
       loading(false); // Ensure loading is off
     }
@@ -20402,11 +20471,11 @@ function openAnnouncementsModal() {
     return;
   }
   
-  const icons = {info:'??', update:'??', warning:'??', urgent:'??'};
+  const icons = {info:'📢', update:'✨', warning:'⚠️', urgent:'🚨'};
   const colors = {info:'#3b82f6', update:'#10b981', warning:'#f59e0b', urgent:'#ef4444'};
   
   listBox.innerHTML = proAnnouncementsCache.map(a => {
-    const icon = icons[a.type] || '??';
+    const icon = icons[a.type] || '📢';
     const color = colors[a.type] || '#3b82f6';
     const isUnread = !viewedAnnouncementIds.has(String(a.announcement_id));
     const createdDate = new Date(a.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
@@ -20436,7 +20505,7 @@ function openAnnouncementsModal() {
               <h3 style="margin:0;font-size:18px;font-weight:700;color:#e0f2fe">${a.title}</h3>
               ${isUnread?'<span style="background:#3b82f6;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600">NEW</span>':''}
             </div>
-            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' ? By '+a.created_by:''}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' • By '+a.created_by:''}</div>
           </div>
         </div>
         
@@ -20444,7 +20513,7 @@ function openAnnouncementsModal() {
         
         ${videoEmbed}
         
-        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">? Read</div>'}
+        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">✓ Read</div>'}
       </div>
     `;
   }).join('');
@@ -20476,7 +20545,7 @@ async function markAnnouncementAsViewed(announcementId) {
       // Show subtle success feedback
       const toastEl = document.createElement('div');
       toastEl.style.cssText = 'position:fixed;bottom:24px;right:24px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(16,185,129,0.4);z-index:99999;font-size:14px;font-weight:600;animation:slideInUp 0.3s ease';
-      toastEl.textContent = '? Marked as read';
+      toastEl.textContent = '✓ Marked as read';
       document.body.appendChild(toastEl);
       setTimeout(() => {
         toastEl.style.animation = 'slideOutDown 0.3s ease';

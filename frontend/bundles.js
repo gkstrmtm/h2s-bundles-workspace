@@ -4,6 +4,44 @@ performance.mark('ss_entry');
 // Script executes after DOM is ready but doesn't block initial paint
 'use strict';
 
+// ========== PAINT PROBE #1: CAPTURE INITIAL STATE ==========
+(function paintProbe1() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get('debug')) return; // Only run with ?debug=1
+  
+  console.log('🔍 [PROBE #1] Initial paint state (before any render)');
+  
+  // Background colors
+  const htmlBg = getComputedStyle(document.documentElement).backgroundColor;
+  const bodyBg = document.body ? getComputedStyle(document.body).backgroundColor : 'BODY_NOT_READY';
+  console.log('  html background:', htmlBg);
+  console.log('  body background:', bodyBg);
+  
+  // Outlet state
+  const outlet = document.getElementById('outlet');
+  if (outlet) {
+    const outletStyle = getComputedStyle(outlet);
+    console.log('  outlet background:', outletStyle.backgroundColor);
+    console.log('  outlet display:', outletStyle.display);
+    console.log('  outlet visibility:', outletStyle.visibility);
+    console.log('  outlet opacity:', outletStyle.opacity);
+    console.log('  outlet children:', outlet.children.length);
+  } else {
+    console.log('  outlet: NOT FOUND');
+  }
+  
+  // What's visible at viewport center?
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const centerEl = document.elementFromPoint(centerX, centerY);
+  if (centerEl) {
+    const centerBg = getComputedStyle(centerEl).backgroundColor;
+    console.log('  Center element:', centerEl.tagName, centerEl.id || '', centerEl.className || '');
+    console.log('  Center element background:', centerBg);
+    console.log('  Center element zIndex:', getComputedStyle(centerEl).zIndex);
+  }
+})();
+
 // BUILD FINGERPRINT - Always logs to prove which version is running
 window.__H2S_BUNDLES_BUILD = "🚀🚀🚀 PERF_V10_OVERLAY_FIX_FINAL 🚀🚀🚀";
 console.log('[BUILD]', window.__H2S_BUNDLES_BUILD);
@@ -22,25 +60,23 @@ performance.mark('ss_init_start');
 
 // === FAST RENDER START ===
 // Detect success view immediately and render skeleton before heavy init
-performance.mark('ss_check_start');
 if (typeof URLSearchParams !== 'undefined' && (new URLSearchParams(window.location.search).has('shopsuccess') || window.location.search.includes('view=shopsuccess'))) {
-    performance.mark('ss_success_view_detected');
+    console.log('[DEBUG] Success page detected in URL');
     window.__H2S_EARLY_RENDER = true;
+    window.__H2S_SUCCESS_ACTIVE__ = true; // Lock success mode
     
     // Attempt synchronous render (function is hoisted)
     try {
         if (typeof renderShopSuccessView === 'function') {
-             performance.mark('ss_render_invoked');
-             console.log('⚡ [FastRender] Invoking renderShopSuccessView immediately');
+             console.log('[DEBUG] Calling renderShopSuccessView immediately');
              renderShopSuccessView();
         } else {
-             console.warn('[FastRender] renderShopSuccessView not hoisted?');
+             console.warn('[DEBUG] renderShopSuccessView not available yet');
         }
     } catch(e) {
-        console.error('[FastRender] Failed:', e);
+        console.error('[DEBUG] Early render failed:', e);
     }
 }
-performance.mark('ss_check_end');
 // === FAST RENDER END ===
 
 function byId(id){ return document.getElementById(id); }
@@ -385,6 +421,17 @@ function renderFatal(message) {
 }
 
 function renderShopView() {
+  // Guard: Don't render shop if success page is active
+  if(window.__H2S_SUCCESS_ACTIVE__) {
+    console.log('[DEBUG] Skipping renderShopView - success page active');
+    return;
+  }
+
+  // Ensure shop content is rendered (restores static HTML if missing)
+  if (typeof renderShop === 'function') {
+    renderShop();
+  }
+  
   const outlet = byId('outlet');
   if(!outlet) return;
   
@@ -406,121 +453,57 @@ function renderShopView() {
 
 
 async function renderShopSuccessView() {
-  // START TELEMETRY
-  const t0 = performance.now();
-  performance.mark('ss_route_start');
-  performance.mark('shopsuccess_start');
-  performance.mark('renderer_start');
-  console.log('🔵 [renderShopSuccessView] START - Immediate Skeleton & Yield v10 - OVERLAY FIX');
-
-  // 0. LONG TASK OBSERVER (Debug blocking tasks)
-  try {
-     const observer = new PerformanceObserver((list) => {
-       for (const entry of list.getEntries()) {
-         if (entry.duration > 50) {
-            // Only log long tasks in the first 10 seconds
-            if (entry.startTime < 10000) {
-              console.warn(`⚠️ [LongTask] ${entry.name} (${Math.round(entry.duration)}ms) - Start: ${Math.round(entry.startTime)}ms`, entry);
-            }
-         }
-       }
-     });
-     observer.observe({type: 'longtask', buffered: true});
-  } catch(e) {}
-
-  // 1. OVERLAY AUDIT & NUKE (CRITICAL STEP 1: PRE-INJECTION)
-  const hider = document.getElementById('hide-content-temp');
-  if(hider) hider.remove();
+  const now = performance.now();
+  console.log(`⚡ [CRITICAL PATH] renderShopSuccessView() called at T+${now.toFixed(0)}ms`);
   
-  const overlay = document.getElementById('success-pre-overlay');
-  const logOverlayDiff = (label) => {
-      if(!overlay) return;
-      const c = window.getComputedStyle(overlay);
-      console.log(`⚡ [Overlay Audit] ${label}:`, { 
-          opacity: c.opacity, 
-          display: c.display, 
-          pointerEvents: c.pointerEvents, 
-          zIndex: c.zIndex 
-      });
-  };
+  // Lock success mode
+  window.__H2S_SUCCESS_ACTIVE__ = true;
   
-  if(overlay) {
-    logOverlayDiff('Start');
-    // Force neutralize immediately
-    overlay.style.opacity = '0';
-    overlay.style.pointerEvents = 'none'; 
-    overlay.style.visibility = 'hidden';
-    // Remove from DOM shortly after to be safe
-    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 200);
-  } else {
-    console.log('⚡ [Overlay Audit] No overlay found at start.');
+  // CRITICAL: Force-close cart drawer & backdrop immediately (before any rendering)
+  const cartDrawer = document.getElementById('cartDrawer');
+  const backdrop = document.getElementById('backdrop');
+  if (cartDrawer) {
+    cartDrawer.classList.remove('open');
+    cartDrawer.style.display = 'none';
   }
-
-  // 2. IMMEDIATE SKELETON (Synchronous Frame 1)
+  if (backdrop) {
+    backdrop.classList.remove('show');
+    backdrop.style.display = 'none';
+  }
+  
   const outlet = byId('outlet');
-  if(!outlet) return;
-
-  const skeletonStyles = `
-    <style>
-      .ss-skel-wrap { padding-top: max(env(safe-area-inset-top), 80px); max-width: 600px; margin: 0 auto; padding-left:20px; padding-right:20px; text-align:center; font-family: sans-serif; }
-      .ss-skel-badge { width: 72px; height: 72px; background: #e2e8f0; border-radius: 50%; margin: 0 auto 16px; }
-      .ss-skel-h1 { height: 32px; width: 60%; background: #f1f5f9; margin: 0 auto 10px; border-radius: 8px; }
-      .ss-skel-p { height: 20px; width: 40%; background: #f1f5f9; margin: 0 auto 30px; border-radius: 6px; }
-      .ss-skel-card { height: 200px; background: white; border-radius: 20px; border: 1px solid #e2e8f0; margin-bottom: 20px; }
-      @keyframes valPulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }
-      .ss-skel-anim > div { animation: valPulse 1.5s infinite ease-in-out; }
-    </style>`;
-     
-  outlet.innerHTML = `
-    ${skeletonStyles}
-    <div class="ss-skel-wrap ss-skel-anim">
-       <div class="ss-skel-badge"></div>
-       <div class="ss-skel-h1"></div>
-       <div class="ss-skel-p"></div>
-       <div class="ss-skel-card"></div>
-    </div>`;
+  if(!outlet) {
+    console.error('[DEBUG] outlet element not found!');
+    return;
+  }
   
-  performance.mark('ss_skeleton_painted');
-  performance.mark('ss_skeleton_inserted'); // Legacy mark
-  const tSkeleton = performance.now();
-  
-  if(overlay) logOverlayDiff('After Skeleton Insert');
+  console.log('[DEBUG] outlet found, preparing to render');
 
-  console.log('⚡ [Time to Skeleton]', (tSkeleton - t0).toFixed(1) + 'ms');
-
-  // 3. YIELD TO BROWSER (CRITICAL: Allow paint)
-  performance.mark('ss_before_yield');
-  await new Promise(requestAnimationFrame);
-  performance.mark('ss_after_yield');
-  
-  if(overlay) logOverlayDiff('After Paint (rAF)');
-
-  // 4. FULL RENDER (Frame 2+)
-  // We do not re-insert params until needed to save time
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id') || params.get('stripe_session_id');
+  console.log('[DEBUG] sessionId:', sessionId);
 
   window.scrollTo(0, 0);
   document.documentElement.style.overflow = 'auto'; 
-  document.documentElement.style.height = '100%';
   document.body.style.overflow = 'auto'; 
-  document.body.style.height = '100%';
-  document.body.style.backgroundColor = '#f8fafc';
+  document.body.style.backgroundColor = '#f8fafc'; // Match outlet background
   
-  // RE-INJECT STYLES + CONTENT
+  // Remove critical CSS now that we're rendering real content
+  const criticalCSS = document.getElementById('h2s-success-critical');
+  if(criticalCSS) criticalCSS.remove();
+  
   const styles = `
     <style>
       .ss-wrapper {
         min-height: 100vh; width: 100%; 
         padding-top: max(env(safe-area-inset-top), 60px);
         padding-bottom: 80px;
-        background: #f8fafc;
+        background: transparent; /* Allow dark outlet to show through */
         font-family: 'Archivo', system-ui, -apple-system, sans-serif;
       }
-      .ss-container {
-        max-width: 600px; margin: 0 auto; padding: 0 20px;
-      }
-      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.5s ease-out; }
+
+      .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
+      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.3s ease-out; }
       .ss-badge {
         width: 72px; height: 72px; margin: 0 auto 16px;
         background: #10b981; color: white; border-radius: 50%;
@@ -529,72 +512,115 @@ async function renderShopSuccessView() {
       }
       .ss-title { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0 0 8px; letter-spacing: -0.02em; }
       .ss-subtitle { font-size: 16px; color: #64748b; margin: 0; }
-
       .ss-card {
         background: white; border-radius: 20px;
         box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02);
         border: 1px solid #e2e8f0;
         padding: 24px; margin-bottom: 24px;
-        overflow: hidden;
       }
       .ss-label { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
       .ss-value { font-size: 16px; font-weight: 600; color: #1e293b; }
+      .loading-shimmer { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; display: inline-block; border-radius: 4px; }
+      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
       
-      .cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-      .cal-grid { 
-         display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center;
-         width: 100%; box-sizing: border-box; /* Fix Horizontal Scroll */
-      }
-      /* FIXED: Class name to match JS (cal-day-cell) */
+      .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; width: 100%; box-sizing: border-box; }
       .cal-day-cell {
         aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
         border-radius: 12px; font-weight: 600; font-size: 15px;
-        cursor: pointer; color: #334155; transition: all 0.1s ease;
-        border: 2px solid transparent; /* Reserve space for border */
+        cursor: pointer; color: #334155; transition: all 0.2s ease;
+        border: 2px solid #e2e8f0; background: white;
       }
-      /* Contrast Fixes for Selection - TARGETING cal-day-cell */
-      .cal-day-cell.selected { 
-          background: #2563eb !important; 
-          color: white !important; 
-          border-color: #1e40af !important;
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); 
-          transform: scale(1.05);
+      .cal-day-cell:not(.disabled):hover { 
+        background: #eff6ff; 
+        border-color: #93c5fd; 
+        transform: translateY(-2px);
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
       }
-      .cal-day-cell.disabled { color: #e2e8f0; cursor: not-allowed; }
+      .cal-day-cell.selected, .cal-day-cell.is-selected { 
+        background: #2563eb !important; 
+        color: white !important; 
+        border-color: #1e40af !important; 
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important; 
+        transform: scale(1.08) !important;
+        font-weight: 700 !important;
+      }
+      .cal-day-cell.disabled, .cal-day-cell.is-disabled { 
+        color: #cbd5e1 !important; 
+        background: #f8fafc !important;
+        cursor: not-allowed !important; 
+        border: 1px solid #f1f5f9 !important;
+        opacity: 0.35 !important;
+        pointer-events: none !important;
+        filter: grayscale(100%);
+      }
       
       .time-btn {
-        width: 100%; padding: 12px; border-radius: 12px;
-        border: 1px solid #e2e8f0; background: white;
-        color: #475569; font-weight: 600; font-size: 14px;
-        transition: all 0.2s;
+        width: 100%; padding: 14px; border-radius: 12px;
+        border: 2px solid #e2e8f0; background: white;
+        color: #475569; font-weight: 600; font-size: 15px;
+        transition: all 0.2s ease; cursor: pointer;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: relative !important;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
       }
-      /* Contrast Fixes for Time Selection */
-      .time-btn.selected {
+      .time-btn:hover:not(.selected) { 
+        border-color: #93c5fd; 
+        background: #eff6ff; 
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(37, 99, 235, 0.15);
+      }
+      .time-btn:active:not(.selected) {
+        transform: translateY(0);
+        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1);
+      }
+      .time-btn.selected, .time-btn.is-selected { 
         border-color: #2563eb !important; 
         background: #2563eb !important; 
-        color: white !important;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+        color: white !important; 
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+        transform: scale(1.05) !important;
+        font-weight: 700 !important;
+        min-height: 48px !important;
       }
       
-      .cta-btn {
+      .cta-btn, .cta-btn.is-disabled {
         width: 100%; padding: 18px; border-radius: 14px;
-        background: #10b981; color: white; font-weight: 800; font-size: 16px;
-        border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
-        transition: all 0.2s; cursor: pointer; opacity: 0.5; pointer-events: none;
+        background: #d1d5db !important; color: #9ca3af !important; font-weight: 800; font-size: 16px;
+        border: none !important; box-shadow: none !important;
+        transition: all 0.3s ease; cursor: not-allowed !important;
+        position: relative; overflow: hidden;
+        opacity: 0.5 !important;
       }
-      .cta-btn.active { opacity: 1; pointer-events: auto; }
-      .cta-btn:active { transform: scale(0.98); }
-      
-      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      .cta-btn.active, .cta-btn.is-enabled { 
+        background: #16a34a !important; 
+        color: white !important; 
+        cursor: pointer !important;
+        box-shadow: 0 4px 16px rgba(22, 163, 74, 0.5) !important;
+        opacity: 1 !important;
+        font-weight: 800 !important;
+      }
+      .cta-btn.active:hover, .cta-btn.is-enabled:hover {
+        background: #15803d !important;
+        box-shadow: 0 6px 20px rgba(22, 163, 74, 0.6) !important;
+        transform: translateY(-2px) !important;
+      }
+      .cta-btn.active:active, .cta-btn.is-enabled:active { 
+        transform: scale(0.98) translateY(0) !important; 
+        box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3) !important;
+      }
     </style>
   `;
 
-  // === FALLBACK FOR NO SESSION ID ===
-  let contentHtml = '';
+  
+  // PAINT COMPLETE SHELL WITH LOADING PLACEHOLDERS (no intermediate skeleton)
   const isFallback = !sessionId;
-
+  
+  let contentHtml = '';
   if (isFallback) {
-      console.warn('⚠️ [ShopSuccess] Missing session_id. Showing fallback state.');
       contentHtml = `
             <div class="ss-header">
               <div class="ss-badge" style="background:#e2e8f0; color:#64748b;">
@@ -605,10 +631,10 @@ async function renderShopSuccessView() {
             </div>
             <div class="ss-card" style="text-align:center; padding:40px;">
                 <p style="margin-bottom:10px;">Missing Session ID</p>
-                <div style="font-size:13px; color:#64748b;">If you just completed checkout, please check your email for confirmation.</div>
+                <div style="font-size:13px; color:#64748b;">If you just completed checkout, please check your email.</div>
             </div>
             <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none; padding: 12px;">Return to Shop</a>
+               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
             </div>
       `;
   } else {
@@ -625,19 +651,17 @@ async function renderShopSuccessView() {
                <div style="display: flex; justify-content: space-between; border-bottom: 2px dashed #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
                   <div>
                      <div class="ss-label">Order #</div>
-                     <div class="ss-value" id="orderId" style="font-family: monospace; font-size: 17px;">
-                        ${sessionId ? sessionId.slice(0,8).toUpperCase() : '...'}
-                     </div>
+                     <div class="ss-value" id="orderId"><span class="loading-shimmer" style="width:120px;height:20px;">&nbsp;</span></div>
                   </div>
                   <div style="text-align: right;">
                      <div class="ss-label">Total</div>
-                     <div class="ss-value" id="orderTotal" style="color:#059669;">...</div>
+                     <div class="ss-value" id="orderTotal"><span class="loading-shimmer" style="width:80px;height:20px;">&nbsp;</span></div>
                   </div>
                </div>
                <div>
                   <div class="ss-label">Includes</div>
                   <div id="orderItems" style="font-weight: 500; color: #334155; line-height: 1.5;">
-                     Loading details...
+                     <span class="loading-shimmer" style="width:200px;height:18px;display:block;">&nbsp;</span>
                   </div>
                </div>
             </div>
@@ -649,21 +673,18 @@ async function renderShopSuccessView() {
                   </div>
                   <div>
                     <h3 style="margin:0; font-size:18px; font-weight:800; color:#0f172a;">Schedule Install</h3>
-                    <!-- Dynamic Selection Summary -->
                     <p id="selectionSummary" style="margin:2px 0 0; font-size:13px; color:#64748b;">Pick a date & time for your pro.</p>
                   </div>
                </div>
 
-               <div id="calendarWidget">
-                  <div style="padding: 40px; text-align: center; color: #94a3b8;">Loading calendar...</div>
-               </div>
+               <div id="calendarWidget"></div>
                
-               <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9;">
-                  <div class="ss-label" style="text-align:center; margin-bottom:12px;">Select Arrival Window</div>
-                  <div id="timeSlotsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-                     <button class="time-btn" data-window="9am - 12pm">9-12</button>
-                     <button class="time-btn" data-window="12pm - 3pm">12-3</button>
-                     <button class="time-btn" data-window="3pm - 6pm">3-6</button>
+               <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9; width:100%; max-width:100%;">
+                  <div style="text-align:center; margin-bottom:16px; font-weight:700; color:#0f172a; font-size:16px;">Select Arrival Window</div>
+                  <div id="timeSlotsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width:100%;">
+                     <button class="time-btn" data-window="9am - 12pm" style="min-height:48px;">9am-12pm</button>
+                     <button class="time-btn" data-window="12pm - 3pm" style="min-height:48px;">12pm-3pm</button>
+                     <button class="time-btn" data-window="3pm - 6pm" style="min-height:48px;">3pm-6pm</button>
                   </div>
                </div>
 
@@ -672,107 +693,135 @@ async function renderShopSuccessView() {
             </div>
             
             <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none; padding: 12px;">Return to Shop</a>
+               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
             </div>
       `;
   }
 
-  performance.mark('ss_before_shell_insert');
-  outlet.innerHTML = `${styles}
-    <div class="ss-wrapper">
-      <div class="ss-container">
-        ${contentHtml}
-      </div>
-    </div>`;
-  performance.mark('ss_after_shell_insert');
-  performance.mark('ss_ui_shell_inserted'); // New Strict Mark
-  performance.mark('ss_success_ui_mounted'); // Legacy Compat
-  const tUI = performance.now();
-  console.log('⚡ [Time to Shell]', (tUI - t0).toFixed(1) + 'ms');
+  // SINGLE PAINT - Complete shell with placeholders
+  // OPTIMIZATION: If shell already exists (from document.write), DO NOT REPAINT
+  // This prevents the "white flash" caused by nuking the DOM only to rebuild it identical.
+  const existingShell = outlet.querySelector('.ss-wrapper');
   
-  // 3. FETCH DATA (Only if session present)
-  let fetchDurationMs = 0;
-  
-  if (isFallback) {
-      console.log('⚡ [Fetch] Skipped (No valid session_id)');
+  if (!existingShell) {
+      outlet.innerHTML = `${styles}
+        <div class="ss-wrapper">
+          <div class="ss-container">
+            ${contentHtml}
+          </div>
+        </div>`;
+      
+      const t1 = performance.now();
+      console.log(`[PAINT] T1 - HTML Written to DOM at ${t1.toFixed(1)}ms. Outlet children: ${outlet.childElementCount}`);
+      // if (typeof h2sTrack === 'function') h2sTrack('DebugFlash', { type: 'T1_HTML_WRITTEN', time: t1 });
   } else {
+      console.log(`[PAINT] T1 - Skipped visual repaint (Shell already matched) at ${performance.now().toFixed(1)}ms`);
+      // We still ensure styles are injected if missing, but usually document.write handled it.
+      // If we need to patch anything, do it here manually, but better to leave untouched.
+  }
+  
+  // Debug probe - after render
+  if(location.search.includes('debug=1')) {
+    console.log('🔍 [PAINT PROBE - After Render]');
+    console.log('  html bg:', getComputedStyle(document.documentElement).backgroundColor);
+    console.log('  body bg:', getComputedStyle(document.body).backgroundColor);
+    console.log('  outlet bg:', getComputedStyle(outlet).backgroundColor);
+    console.log('  outlet children:', outlet.childElementCount);
+    const centerEl = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
+    if(centerEl) {
+      console.log('  Center element:', centerEl.tagName, centerEl.id || '', centerEl.className || '');
+      console.log('  Center bg:', getComputedStyle(centerEl).backgroundColor);
+    }
+    
+    // Probe again after 500ms
+    setTimeout(() => {
+      console.log('🔍 [PAINT PROBE - 500ms Later]');
+      const centerEl2 = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
+      if(centerEl2) {
+        console.log('  Center element:', centerEl2.tagName, centerEl2.id || '', centerEl2.className || '');
+        console.log('  Center bg:', getComputedStyle(centerEl2).backgroundColor);
+      }
+    }, 500);
+  }
+  
+  // Check for submission failure flag
+  const submitFailed = localStorage.getItem('strike_submit_failed');
+  if (submitFailed) {
+    localStorage.removeItem('strike_submit_failed');
+    const banner = document.createElement('div');
+    banner.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;padding:12px 16px;border-radius:8px;margin:16px 0;font-size:14px">
+      ⚠️ <strong>Note:</strong> Your payment completed successfully, but we couldn't save all details. Our team will contact you shortly to confirm your order.
+    </div>`;
+    const container = outlet.querySelector('.ss-container');
+    if (container) container.insertBefore(banner, container.firstChild);
+  }
+  
+  // 3. START DATA FETCH (Only if session present) - runs in background
+  if (isFallback) {
+      console.warn('[DEBUG] Fallback mode - no session ID');
+  } else {
+    console.log('[DEBUG] Starting calendar load and data fetch');
+    // Build calendar immediately (visible interaction while data loads)
+    loadCalendarInteractive(params, sessionId);
+    
+    // Fetch data in parallel - silently updates placeholders
     const fetchOrder = async () => {
-        const fStart = performance.now();
-        performance.mark('ss_fetch_start');
+        const cacheKey = `h2s_order_${sessionId}`;
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          try {
+            const cachedData = JSON.parse(cached);
+            if (cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) {
+              return cachedData;
+            }
+          } catch(e) {}
+        }
+        
         try {
           const c = new AbortController();
           setTimeout(()=>c.abort(), 6000);
           const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
-          const fEnd = performance.now();
-          fetchDurationMs = fEnd - fStart;
-          performance.mark('ss_fetch_end');
           
           if(!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json(); return data.order || data;
+          const data = await res.json();
+          const order = data.order || data;
+          order._timestamp = Date.now();
+          sessionStorage.setItem(cacheKey, JSON.stringify(order));
+          return order;
         } catch(err) {
-          console.warn('⚠️ [ShopSuccess] Using Offline Mode:', err);
-          // Measure time even if error
-          const fErr = performance.now();
-          fetchDurationMs = fErr - fStart;
-          return { 
-            fallback: true, 
-            order_id: sessionId, 
-            order_total: 'PAID', 
-            order_summary: 'Essentials Bundle + Smart Install' 
-          };
+          return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Home2Smart Service' };
         }
     };
     
-    // Only hydrate if NOT fallback
-    const tInteractiveStart = performance.now();
-    performance.mark('ss_before_calendar_build');
-    loadCalendarInteractive(params); // New Function Name for Clarity
-    performance.mark('ss_after_calendar_build');
-    
+    // Silently hydrate data when it arrives (no flash, just content swap)
     fetchOrder().then(order => {
-         if(byId('orderTotal')) byId('orderTotal').innerText = order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0));
-         if(byId('orderId')) byId('orderId').innerText = order.order_id ? order.order_id.slice(0,18) : 'CONFIRMED';
-         if(byId('orderItems')) {
-            const text = order.order_summary || 'Home2Smart Bundle Service';
-            byId('orderItems').innerText = text;
-         }
-    
-         performance.mark('ss_data_patched');
-         performance.mark('ss_ui_content_ready');
-         const tPatched = performance.now();
+         console.log('[DEBUG] Order data received:', order);
+         // Replace loading shimmers with actual data
+         const orderIdEl = byId('orderId');
+         if(orderIdEl) orderIdEl.innerHTML = `<span style="font-family:monospace;font-size:17px;">${order.order_id ? order.order_id.slice(0,18) : sessionId.slice(0,18).toUpperCase()}</span>`;
          
-         const timing = {
-             bundles_exec_to_skeleton: (tSkeleton - t0).toFixed(1),
-             bundles_exec_to_ui_mounted: (tUI - t0).toFixed(1),
-             bundles_exec_to_interactive: (performance.now() - t0).toFixed(1),
-             fetch_duration: fetchDurationMs.toFixed(1),
-             bundles_exec_to_data_patched: (tPatched - t0).toFixed(1)
-         };
-         console.log('⚡ [PERF REPORT]', timing);
+         const totalEl = byId('orderTotal');
+         if(totalEl) totalEl.innerHTML = `<span style="color:#059669;">${order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0))}</span>`;
+         
+         const itemsEl = byId('orderItems');
+         if(itemsEl) {
+            const text = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
+            itemsEl.textContent = text;
+         }
+         
+         window.__currentOrderData = order;
     });
-  }
-
-  // Report logic if fallback
-  if (isFallback) {
-      const timing = {
-         bundles_exec_to_skeleton: (tSkeleton - t0).toFixed(1),
-         bundles_exec_to_ui_mounted: (tUI - t0).toFixed(1),
-         bundles_exec_to_interactive: (performance.now() - t0).toFixed(1),
-         fetch_duration: 0.0,
-         bundles_exec_to_data_patched: 0.0,
-         status: 'fallback_no_session'
-      };
-      console.log('⚡ [PERF REPORT]', timing);
   }
 }
 
-function loadCalendarInteractive(params) {
+function loadCalendarInteractive(params, sessionId) {
   const widget = byId('calendarWidget');
   if(!widget) return;
   
   // Reset Global State for Fresh Selection
   window.selectedDate = null;
   window.selectedWindow = null;
+  window.__sessionId = sessionId;
 
   const mockAvail = [];
   const today = new Date();
@@ -783,8 +832,11 @@ function loadCalendarInteractive(params) {
   }
 
   const render = (offset=0) => {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    // Define "today" in LOCAL TIME at midnight
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const target = new Date(today.getFullYear(), today.getMonth()+offset, 1);
     const monthName = target.toLocaleString('default',{month:'long'});
     const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
     const startDay = target.getDay(); 
@@ -801,40 +853,120 @@ function loadCalendarInteractive(params) {
       <div class="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; text-align:center;">
     `;
     
+    let disabledCount = 0;
+    let pastDatesList = [];
+    
     for(let i=0; i<startDay; i++) html+='<div></div>';
     for(let d=1; d<=daysInMonth; d++){
-       const iso = new Date(target.getFullYear(), target.getMonth(), d).toISOString().split('T')[0];
-       const isPast = new Date(iso) < new Date(now.toISOString().split('T')[0]);
+       const cellDate = new Date(target.getFullYear(), target.getMonth(), d);
+       cellDate.setHours(0, 0, 0, 0);
+       const iso = cellDate.toISOString().split('T')[0];
+       const isPast = cellDate < today;
        const isAvail = mockAvail.find(x=>x.date===iso) && !isPast;
        
        if(!isAvail) {
-           html+=`<div class="cal-day-cell disabled">${d}</div>`;
+           html+=`<div class="cal-day-cell is-disabled" aria-disabled="true">${d}</div>`;
+           disabledCount++;
+           if(isPast) pastDatesList.push(iso);
        } else {
            const isSel = window.selectedDate === iso;
-           html+=`<div class="cal-day-cell ${isSel ? 'selected' : ''}" data-date="${iso}">${d}</div>`;
+           const selectedStyle = isSel ? 'background:#2563eb;color:white;border-color:#1e40af;box-shadow:0 4px 12px rgba(37,99,235,0.4);transform:scale(1.08);font-weight:700;' : '';
+           html+=`<div class="cal-day-cell ${isSel ? 'is-selected' : ''}" data-date="${iso}" style="${selectedStyle}">${d}</div>`;
        }
     }
     html+='</div>';
     widget.innerHTML = html;
     
+    console.log('[Calendar] ========== RENDER COMPLETE ==========');
+    console.log('[Calendar] Month:', monthName, target.getFullYear());
+    console.log('[Calendar] Total disabled cells:', disabledCount);
+    console.log('[Calendar] Past dates (should be grayed):', pastDatesList);
+    console.log('[Calendar] Today is:', today.toISOString().split('T')[0]);
+    
+    // Verify classes were applied
+    setTimeout(() => {
+        const disabledInDOM = widget.querySelectorAll('.cal-day-cell.is-disabled');
+        console.log('[Calendar] DOM Check - Found', disabledInDOM.length, 'cells with .is-disabled class');
+        if(disabledInDOM.length > 0) {
+            const firstDisabled = disabledInDOM[0];
+            const styles = window.getComputedStyle(firstDisabled);
+            console.log('[Calendar] First disabled cell computed styles:');
+            console.log('  - opacity:', styles.opacity);
+            console.log('  - background:', styles.backgroundColor);
+            console.log('  - color:', styles.color);
+            console.log('  - pointer-events:', styles.pointerEvents);
+            console.log('  - filter:', styles.filter);
+        }
+    }, 100);
+    
     // Bind Calendar Controls
     if(byId('prevCal')) byId('prevCal').onclick = () => render(offset-1);
     if(byId('nextCal')) byId('nextCal').onclick = () => render(offset+1);
     
-    // Bind Date Cells
-    widget.querySelectorAll('.cal-day-cell:not(.disabled)').forEach(el => {
+    // Bind Date Cells (exclude .is-disabled)
+    const availableCells = widget.querySelectorAll('.cal-day-cell:not(.is-disabled)');
+    console.log('[Calendar] Binding', availableCells.length, 'available day cells');
+    
+    // Also bind click handlers to disabled cells to log blocked attempts
+    const disabledCells = widget.querySelectorAll('.cal-day-cell.is-disabled');
+    disabledCells.forEach(el => {
       el.onclick = () => {
+         console.log('[Calendar] Blocked click on past date (disabled cell)');
+      };
+    });
+    
+    availableCells.forEach(el => {
+      el.onclick = () => {
+         const clickedDate = el.dataset.date;
+         
+         // Double-check: prevent past date selection
+         const clickedDateObj = new Date(clickedDate + 'T00:00:00');
+         const today = new Date();
+         today.setHours(0, 0, 0, 0);
+         
+         if (clickedDateObj < today) {
+           console.log('[Calendar] Blocked click on past date:', clickedDate);
+           return;
+         }
+         
+         console.log('[Calendar] Date selected:', clickedDate);
+         
          // Update State
-         window.selectedDate = el.dataset.date;
+         const previousDate = window.selectedDate;
+         window.selectedDate = clickedDate;
+         
+         // If changing dates, clear time selection
+         if (previousDate && previousDate !== window.selectedDate) {
+           window.selectedWindow = null;
+         }
          
          // Update UI immediately (re-render to show selection)
          render(offset);
          
-         // Show Time Slots
-         byId('timeWindowSection').style.display = 'block';
-         
-         // Scroll slightly to show slots if tight
-         byId('timeWindowSection').scrollIntoView({behavior:'smooth', block:'center'});
+         // Show Time Slots - must happen after render completes
+         const timeSection = byId('timeWindowSection');
+         if (timeSection) {
+           console.log('[Calendar] Showing time slots');
+           timeSection.style.display = 'block';
+           
+           // Clear any previous time slot selections when changing dates
+           if (previousDate && previousDate !== window.selectedDate) {
+             const slotButtons = timeSection.querySelectorAll('.time-btn');
+             slotButtons.forEach(b => {
+               b.classList.remove('is-selected');
+             });
+           }
+           
+           // Rebind time slot clicks to ensure they work
+           bindTimeSlots();
+           
+           // Scroll into view
+           setTimeout(() => {
+             timeSection.scrollIntoView({behavior:'smooth', block:'nearest'});
+           }, 100);
+         } else {
+           console.error('[Calendar] timeWindowSection not found!');
+         }
          
          updateSummary();
          checkSubmit();
@@ -845,22 +977,92 @@ function loadCalendarInteractive(params) {
   // Initial Render
   render(0);
   
-  // Bind Time Slots
-  const slotContainer = byId('timeSlotsGrid');
-  if(slotContainer) {
-      slotContainer.querySelectorAll('.time-btn').forEach(btn => {
-          btn.onclick = () => {
-              // Clear previous
-              slotContainer.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
-              // Select new
-              btn.classList.add('selected');
-              window.selectedWindow = btn.dataset.window;
+  // Bind Time Slots with enhanced click feedback
+  window.bindTimeSlots = function() {
+      const slotContainer = byId('timeSlotsGrid');
+      if(slotContainer) {
+          const buttons = slotContainer.querySelectorAll('.time-btn');
+          console.log('[Calendar] Binding', buttons.length, 'time slot buttons');
+          
+          buttons.forEach(btn => {
+              // Remove old handler
+              btn.onclick = null;
               
-              updateSummary();
-              checkSubmit();
-          };
-      });
-  }
+              // Initialize aria-pressed
+              btn.setAttribute('aria-pressed', 'false');
+              
+              // Add new handler
+              btn.onclick = () => {
+                  const clickedWindow = btn.dataset.window;
+                  console.log('\n[Calendar] ========== TIME SLOT CLICKED ==========')
+                  console.log('[Calendar] Time slot clicked:', clickedWindow);
+                  console.log('[Calendar] Current selected date:', window.selectedDate);
+                  
+                  // Clear previous selection from ALL buttons
+                  buttons.forEach(b => {
+                      b.classList.remove('is-selected');
+                      b.classList.remove('selected');
+                      b.setAttribute('aria-pressed', 'false');
+                  });
+                  
+                  // Apply selected state to THIS button
+                  btn.classList.add('is-selected');
+                  btn.setAttribute('aria-pressed', 'true');
+                  
+                  window.selectedWindow = clickedWindow;
+                  console.log('[Calendar] Window selected:', clickedWindow);
+                  console.log('[Calendar] Applied .is-selected to button:', btn);
+                  
+                  // Log DOM truth immediately after class change
+                  logDOMTruth('After Time Window Click');
+                  
+                  updateSummary();
+                  checkSubmit();
+              };
+          });
+      } else {
+          console.error('[Calendar] timeSlotsGrid not found!');
+      }
+  };
+  
+  bindTimeSlots();
+}
+
+// DOM TRUTH LOGGER - logs actual DOM state, not just our assumptions
+function logDOMTruth(label) {
+    console.log(`\n[DOM TRUTH: ${label}] ==================`);
+    
+    // Log time window buttons
+    const timeButtons = document.querySelectorAll('.time-btn');
+    console.log('[DOM] Time window buttons:', timeButtons.length);
+    timeButtons.forEach((btn, idx) => {
+        const styles = window.getComputedStyle(btn);
+        console.log(`  Button ${idx} [${btn.dataset.window}]:`);
+        console.log(`    - className: "${btn.className}"`);
+        console.log(`    - aria-pressed: ${btn.getAttribute('aria-pressed')}`);
+        console.log(`    - background-color: ${styles.backgroundColor}`);
+        console.log(`    - color: ${styles.color}`);
+        console.log(`    - border-color: ${styles.borderColor}`);
+        console.log(`    - box-shadow: ${styles.boxShadow}`);
+        console.log(`    - opacity: ${styles.opacity}`);
+    });
+    
+    // Log confirm button
+    const confirmBtn = document.getElementById('confirmApptBtn');
+    if (confirmBtn) {
+        const styles = window.getComputedStyle(confirmBtn);
+        console.log('[DOM] Confirm button:');
+        console.log(`  - disabled (property): ${confirmBtn.disabled}`);
+        console.log(`  - disabled (attribute): ${confirmBtn.getAttribute('disabled')}`);
+        console.log(`  - aria-disabled: ${confirmBtn.getAttribute('aria-disabled')}`);
+        console.log(`  - className: "${confirmBtn.className}"`);
+        console.log(`  - opacity: ${styles.opacity}`);
+        console.log(`  - background-color: ${styles.backgroundColor}`);
+        console.log(`  - cursor: ${styles.cursor}`);
+        console.log(`  - pointer-events: ${styles.pointerEvents}`);
+    }
+    
+    console.log('[DOM TRUTH END] ==================\n');
 }
 
 function updateSummary() {
@@ -882,31 +1084,147 @@ function updateSummary() {
 
 function checkSubmit() {
     const btn = byId('confirmApptBtn');
-    if(!btn) return;
+    if(!btn) {
+        console.error('[Calendar] confirmApptBtn NOT FOUND in DOM!');
+        return;
+    }
     
-    if(window.selectedDate && window.selectedWindow) {
-        btn.classList.add('active'); // CSS based enable
-        btn.disabled = false;
+    const hasValidDate = !!window.selectedDate;
+    const hasWindow = !!window.selectedWindow;
+    const shouldEnable = hasValidDate && hasWindow;
+    
+    console.log('\n[Calendar] ========== CHECK SUBMIT ==========')
+    console.log('[Calendar] CheckSubmit - Date:', window.selectedDate, 'Window:', window.selectedWindow);
+    console.log('[Calendar] Confirm enabled?', shouldEnable, '(date=' + hasValidDate + ', window=' + hasWindow + ')');
+    
+    if(shouldEnable) {
+        console.log('[Calendar] ENABLING confirm button...');
         
-        // Ensure Clean Listener
+        // Remove disabled state completely
+        btn.disabled = false;
+        btn.removeAttribute('disabled');
+        btn.removeAttribute('aria-disabled');
+        
+        // Update classes
+        btn.classList.add('is-enabled');
+        btn.classList.remove('is-disabled');
+        
+        // Update visual properties
+        btn.style.cursor = 'pointer';
+        btn.style.pointerEvents = 'auto';
+        btn.innerText = 'Confirm Appointment';
+        
+        console.log('[Calendar] Button state after enable:');
+        console.log('  - btn.disabled:', btn.disabled);
+        console.log('  - btn.className:', btn.className);
+        console.log('  - btn.getAttribute("disabled"):', btn.getAttribute('disabled'));
+        
+        
+        // Clone and replace to clear old handlers (but keep our state)
         const newBtn = btn.cloneNode(true);
+        newBtn.disabled = false;
+        newBtn.removeAttribute('disabled');
+        newBtn.removeAttribute('aria-disabled');
+        newBtn.classList.add('is-enabled');
+        newBtn.classList.remove('is-disabled');
+        newBtn.style.pointerEvents = 'auto';
         btn.parentNode.replaceChild(newBtn, btn);
+        
+        // Log DOM truth after button enable
+        logDOMTruth('After Enable Button');
+        
         newBtn.onclick = async () => {
-            newBtn.innerText = 'Confirmed ✓';
-            newBtn.style.background = '#059669';
+            newBtn.innerText = 'Saving...';
             newBtn.disabled = true;
             newBtn.classList.remove('active');
-            if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#059669; font-weight:700;">Success! You are all set.</span>';
             
-            try { 
-                if(typeof h2sTrack === 'function') {
-                    h2sTrack('ScheduleAppointment', { date: window.selectedDate, time: window.selectedWindow });
+            try {
+                const orderData = window.__currentOrderData || {};
+                const payload = {
+                    session_id: window.__sessionId,
+                    order_id: orderData.order_id,
+                    delivery_date: window.selectedDate,
+                    delivery_time: window.selectedWindow,
+                    customer_name: orderData.customer_name,
+                    customer_email: orderData.customer_email,
+                    customer_phone: orderData.customer_phone,
+                    service_address: orderData.service_address,
+                    service_city: orderData.service_city,
+                    service_state: orderData.service_state,
+                    service_zip: orderData.service_zip,
+                    service_name: orderData.service_name,
+                    order_total: orderData.order_total,
+                    order_subtotal: orderData.order_subtotal,
+                    items_json: orderData.items_json,
+                    metadata: orderData.metadata
+                };
+                
+                console.log('\\n[Schedule] ========== SENDING APPOINTMENT ==========');
+                console.log('[Schedule] Selected Date:', window.selectedDate);
+                console.log('[Schedule] Selected Window:', window.selectedWindow);
+                console.log('[Schedule] Order ID:', orderData.order_id);
+                console.log('[Schedule] Full payload:', JSON.stringify(payload, null, 2));
+                
+                const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.ok) {
+                    newBtn.innerText = 'Confirmed ✓';
+                    newBtn.style.background = '#059669';
+                    if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
+                    
+                    if(typeof h2sTrack === 'function') {
+                        h2sTrack('ScheduleAppointment', { 
+                            date: window.selectedDate, 
+                            time: window.selectedWindow,
+                            job_id: result.job_id,
+                            order_id: orderData.order_id
+                        });
+                    }
+                    
+                    if (window.__sessionId) {
+                        sessionStorage.removeItem(`h2s_order_${window.__sessionId}`);
+                    }
+                } else {
+                    throw new Error(result.error || 'Failed to schedule');
                 }
-            } catch(e){}
+            } catch(err) {
+                console.error('[Schedule] Error:', err);
+                newBtn.innerText = 'Try Again';
+                newBtn.style.background = '#ef4444';
+                newBtn.disabled = false;
+                newBtn.classList.add('is-enabled');
+                if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
+            }
         };
     } else {
-        btn.classList.remove('active');
+        console.log('[Calendar] DISABLING confirm button...');
+        
+        // Set disabled state
         btn.disabled = true;
+        btn.setAttribute('disabled', 'disabled');
+        btn.setAttribute('aria-disabled', 'true');
+        
+        // Update classes
+        btn.classList.remove('is-enabled');
+        btn.classList.add('is-disabled');
+        
+        // Update visual properties
+        btn.style.cursor = 'not-allowed';
+        btn.style.pointerEvents = 'none';
+        btn.innerText = 'Select Date & Time';
+        
+        console.log('[Calendar] Button disabled - waiting for selections');
+        console.log('  - btn.disabled:', btn.disabled);
+        console.log('  - btn.className:', btn.className);
+        
+        // Log DOM truth after button disable
+        logDOMTruth('After Disable Button');
     }
 }
 
@@ -1110,7 +1428,12 @@ async function init(){
         
         // Error boundary: Ensure checkout always attempts to run
         try {
-          checkout();
+          if (typeof window.checkout === 'function') {
+            window.checkout();
+          } else {
+            logger.error('[Checkout] window.checkout not defined, calling showCheckoutModal directly');
+            showCheckoutModal();
+          }
         } catch(err) {
           logger.error('[Checkout] Critical error:', err);
           // Fallback: Show modal anyway
@@ -3989,19 +4312,24 @@ window.handleCheckoutSubmit = async function(e) {
         logger.warn('[Checkout] Could not persist session (non-blocking):', e);
       }
 
-      // SUCCESS: Cleanup UI state before redirect
+      // SUCCESS: Extract session_id for instant navigation
+      const sessionId = data.pay.session_id || data.pay.session_url.split('session_id=')[1]?.split('&')[0] || '';
+      
+      // Cleanup UI state before redirect
       H2S_unlockScroll();
       document.documentElement.classList.remove('modal-open');
       document.body.classList.remove('modal-open');
       
-      logger.log('[Checkout] ✅ Success! Redirecting to:', data.pay.session_url);
+      logger.log('[Checkout] ✅ Success! Session:', sessionId);
       
-      // Use multiple redirect methods for reliability
+      // INSTANT NAVIGATION - Go to success page immediately
+      // (Stripe webhook will handle backend order creation)
+      const successUrl = `https://shop.home2smart.com/bundles?view=shopsuccess&session_id=${sessionId}`;
+      
       try {
-        window.location.href = data.pay.session_url;
+        window.location.href = successUrl;
       } catch(e) {
-        // Fallback: Force navigation
-        window.location.assign(data.pay.session_url);
+        window.location.assign(successUrl);
       }
       
       // Exit retry loop on success

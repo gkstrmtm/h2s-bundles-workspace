@@ -1155,13 +1155,118 @@ body {
     </div>
 </div>
 
+<!-- PRO DETAIL MODAL -->
+<div id="pro-modal" class="modal-overlay" style="display:none">
+    <div class="modal" style="max-width:700px">
+        <div class="modal-header">
+            <div>
+                <h2 id="pro-modal-name" style="font-size:20px; font-weight:700; color:#fff; margin-bottom:4px">Pro Details</h2>
+                <span id="pro-modal-email" class="job-id" style="color:var(--text-muted); font-size:13px"></span>
+            </div>
+            <button class="modal-close" onclick="closeProModal()">&times;</button>
+        </div>
+        
+        <!-- Pro Photo -->
+        <div id="pro-modal-photo-container" style="text-align:center; margin-bottom:24px; display:none">
+            <img id="pro-modal-photo" src="" alt="Pro photo" style="width:120px; height:120px; border-radius:50%; object-fit:cover; border:3px solid var(--brand-azure)">
+        </div>
+        
+        <!-- Basic Info Grid -->
+        <div class="info-grid" style="margin-bottom:24px">
+            <div class="info-item">
+                <label>Phone</label>
+                <div id="pro-modal-phone">N/A</div>
+            </div>
+            <div class="info-item">
+                <label>Company</label>
+                <div id="pro-modal-company">N/A</div>
+            </div>
+            <div class="info-item">
+                <label>Status</label>
+                <div id="pro-modal-status">
+                    <span id="pro-modal-status-badge" style="display:inline-block; padding:4px 12px; border-radius:12px; font-size:12px; font-weight:600">Active</span>
+                </div>
+            </div>
+            <div class="info-item">
+                <label>Service Radius</label>
+                <div id="pro-modal-radius">35 mi</div>
+            </div>
+        </div>
+        
+        <!-- Address -->
+        <div style="margin-bottom:24px">
+            <div style="font-weight:600; color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:8px">Home Address</div>
+            <div id="pro-modal-address" style="padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:#fff; font-size:14px">
+                N/A
+            </div>
+        </div>
+        
+        <!-- Vehicle Info -->
+        <div style="margin-bottom:24px">
+            <div style="font-weight:600; color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:8px">Vehicle Information</div>
+            <div style="padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:14px">
+                    <div>
+                        <div style="color:var(--text-muted); font-size:12px; margin-bottom:4px">Make & Model</div>
+                        <div id="pro-modal-vehicle-make" style="color:#fff">N/A</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-muted); font-size:12px; margin-bottom:4px">Year</div>
+                        <div id="pro-modal-vehicle-year" style="color:#fff">N/A</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-muted); font-size:12px; margin-bottom:4px">License Plate</div>
+                        <div id="pro-modal-vehicle-plate" style="color:#fff">N/A</div>
+                    </div>
+                    <div>
+                        <div style="color:var(--text-muted); font-size:12px; margin-bottom:4px">Color</div>
+                        <div id="pro-modal-vehicle-color" style="color:#fff">N/A</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stats -->
+        <div style="margin-bottom:24px">
+            <div style="font-weight:600; color:var(--text-muted); font-size:12px; text-transform:uppercase; margin-bottom:8px">Performance</div>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:12px">
+                <div style="padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center">
+                    <div id="pro-modal-jobs-week" style="font-size:24px; font-weight:700; color:var(--brand-azure)">0</div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top:4px">Jobs This Week</div>
+                </div>
+                <div style="padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center">
+                    <div id="pro-modal-jobs-total" style="font-size:24px; font-weight:700; color:var(--brand-green)">0</div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top:4px">Total Jobs</div>
+                </div>
+                <div style="padding:12px; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; text-align:center">
+                    <div id="pro-modal-rating" style="font-size:24px; font-weight:700; color:var(--brand-gold)">N/A</div>
+                    <div style="font-size:11px; color:var(--text-muted); margin-top:4px">Rating</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Actions -->
+        <div style="display:flex; gap:12px; justify-content:flex-end">
+            <button id="pro-modal-toggle-btn" onclick="toggleProStatusFromModal()" class="btn" style="flex:1">Toggle Status</button>
+            <button class="btn btn-ghost" onclick="closeProModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <script>
-    // DISPATCH_BUILD_ID: 2025-12-24
-    window.__DISPATCH_BUILD_ID = '2025-12-24';
+    // DISPATCH_BUILD_ID: 2026-01-09
+    window.__DISPATCH_BUILD_ID = '2026-01-09';
     console.log('[DISPATCH] Loaded build', window.__DISPATCH_BUILD_ID);
     // --- CONFIGURATION ---
     let API_BASE = localStorage.getItem('h2s_api_base') || 'https://h2s-backend.vercel.app/api';
-    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || '';
+    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+    
+    // Clear invalid tokens (empty strings from old sessions)
+    if (ADMIN_TOKEN === '' || ADMIN_TOKEN === 'null' || ADMIN_TOKEN === 'undefined') {
+        console.warn('[DISPATCH] Clearing invalid stored token, using default');
+        localStorage.removeItem('h2s_admin_token');
+        ADMIN_TOKEN = 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+    }
     
     let currentJobs = [];
     let currentPayouts = []; // Store enriched payout data
@@ -1405,7 +1510,7 @@ body {
             const actionColor = pro.is_active ? 'var(--error)' : 'var(--brand-green)';
             
             html += `
-                <tr style="border-bottom:1px solid var(--border)">
+                <tr style="border-bottom:1px solid var(--border); cursor:pointer; transition: background 0.2s" onmouseover="this.style.background='rgba(55, 65, 81, 0.3)'" onmouseout="this.style.background='transparent'" onclick="showProDetails('${pro.pro_id}')">
                     <td style="padding:12px">
                         <div style="font-weight:600; color:#fff">${escapeHtml(pro.name || 'N/A')}</div>
                         <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.company_name || '')}</div>
@@ -1429,7 +1534,7 @@ body {
                             ${statusText}
                         </span>
                     </td>
-                    <td style="padding:12px; text-align:center">
+                    <td style="padding:12px; text-align:center" onclick="event.stopPropagation()">
                         <button onclick="toggleProStatus('${pro.pro_id}', ${!pro.is_active})" style="padding:6px 14px; border:none; border-radius:6px; background:${actionColor}; color:white; font-size:12px; font-weight:600; cursor:pointer">
                             ${actionText}
                         </button>
@@ -1500,6 +1605,97 @@ body {
             console.error('[toggleProStatus] Error:', err);
             alert(`Error: ${err.message}`);
         }
+    }
+    
+    // Pro Detail Modal Functions
+    let currentProId = null;
+    
+    function showProDetails(proId) {
+        const pro = allPros.find(p => p.pro_id === proId);
+        if (!pro) {
+            alert('Pro not found');
+            return;
+        }
+        
+        currentProId = proId;
+        
+        // Populate modal fields
+        document.getElementById('pro-modal-name').textContent = pro.name || 'N/A';
+        document.getElementById('pro-modal-email').textContent = pro.email || 'N/A';
+        document.getElementById('pro-modal-phone').textContent = pro.phone || 'N/A';
+        document.getElementById('pro-modal-company').textContent = pro.company_name || 'N/A';
+        document.getElementById('pro-modal-radius').textContent = `${pro.service_radius_miles || 35} mi`;
+        
+        // Status badge
+        const statusBadge = document.getElementById('pro-modal-status-badge');
+        if (pro.is_active) {
+            statusBadge.textContent = 'Active';
+            statusBadge.style.background = 'rgba(16, 185, 129, 0.1)';
+            statusBadge.style.color = 'var(--brand-green)';
+        } else {
+            statusBadge.textContent = 'Inactive';
+            statusBadge.style.background = 'rgba(148, 163, 184, 0.1)';
+            statusBadge.style.color = 'var(--text-muted)';
+        }
+        
+        // Address
+        const addressParts = [];
+        if (pro.home_address) addressParts.push(pro.home_address);
+        if (pro.city) addressParts.push(pro.city);
+        if (pro.state) addressParts.push(pro.state);
+        if (pro.home_zip || pro.zip) addressParts.push(pro.home_zip || pro.zip);
+        document.getElementById('pro-modal-address').textContent = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
+        
+        // Vehicle info
+        document.getElementById('pro-modal-vehicle-make').textContent = pro.vehicle_make_model || 'N/A';
+        document.getElementById('pro-modal-vehicle-year').textContent = pro.vehicle_year || 'N/A';
+        document.getElementById('pro-modal-vehicle-plate').textContent = pro.vehicle_license_plate || 'N/A';
+        document.getElementById('pro-modal-vehicle-color').textContent = pro.vehicle_color || 'N/A';
+        
+        // Stats
+        document.getElementById('pro-modal-jobs-week').textContent = pro.jobs_count_week || 0;
+        document.getElementById('pro-modal-jobs-total').textContent = pro.total_jobs_completed || 0;
+        document.getElementById('pro-modal-rating').textContent = pro.rating ? `${pro.rating.toFixed(1)}★` : 'N/A';
+        
+        // Photo (if available)
+        const photoContainer = document.getElementById('pro-modal-photo-container');
+        const photoImg = document.getElementById('pro-modal-photo');
+        if (pro.photo_url) {
+            photoImg.src = pro.photo_url;
+            photoContainer.style.display = 'block';
+        } else {
+            photoContainer.style.display = 'none';
+        }
+        
+        // Update toggle button
+        const toggleBtn = document.getElementById('pro-modal-toggle-btn');
+        toggleBtn.textContent = pro.is_active ? 'Deactivate Pro' : 'Activate Pro';
+        toggleBtn.className = pro.is_active ? 'btn' : 'btn btn-success';
+        toggleBtn.style.background = pro.is_active ? 'var(--error)' : 'var(--brand-green)';
+        toggleBtn.style.color = 'white';
+        
+        // Show modal
+        document.getElementById('pro-modal').style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeProModal() {
+        document.getElementById('pro-modal').style.display = 'none';
+        document.body.style.overflow = 'auto';
+        currentProId = null;
+    }
+    
+    async function toggleProStatusFromModal() {
+        if (!currentProId) return;
+        
+        const pro = allPros.find(p => p.pro_id === currentProId);
+        if (!pro) return;
+        
+        const newStatus = !pro.is_active;
+        await toggleProStatus(currentProId, newStatus);
+        
+        // Refresh modal with updated data
+        showProDetails(currentProId);
     }
 
     // --- DASHBOARD METRICS ---
@@ -4677,7 +4873,7 @@ body {
     }
 
 </script>
-<!-- DISPATCH_EOF_MARKER: 2025-12-24 -->
+<!-- DISPATCH_EOF_MARKER: 2026-01-09 -->
 </div>
 </body>
 </html>
