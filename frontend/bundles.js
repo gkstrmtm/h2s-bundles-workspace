@@ -4,44 +4,6 @@ performance.mark('ss_entry');
 // Script executes after DOM is ready but doesn't block initial paint
 'use strict';
 
-// ========== PAINT PROBE #1: CAPTURE INITIAL STATE ==========
-(function paintProbe1() {
-  const params = new URLSearchParams(window.location.search);
-  if (!params.get('debug')) return; // Only run with ?debug=1
-  
-  console.log('🔍 [PROBE #1] Initial paint state (before any render)');
-  
-  // Background colors
-  const htmlBg = getComputedStyle(document.documentElement).backgroundColor;
-  const bodyBg = document.body ? getComputedStyle(document.body).backgroundColor : 'BODY_NOT_READY';
-  console.log('  html background:', htmlBg);
-  console.log('  body background:', bodyBg);
-  
-  // Outlet state
-  const outlet = document.getElementById('outlet');
-  if (outlet) {
-    const outletStyle = getComputedStyle(outlet);
-    console.log('  outlet background:', outletStyle.backgroundColor);
-    console.log('  outlet display:', outletStyle.display);
-    console.log('  outlet visibility:', outletStyle.visibility);
-    console.log('  outlet opacity:', outletStyle.opacity);
-    console.log('  outlet children:', outlet.children.length);
-  } else {
-    console.log('  outlet: NOT FOUND');
-  }
-  
-  // What's visible at viewport center?
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  const centerEl = document.elementFromPoint(centerX, centerY);
-  if (centerEl) {
-    const centerBg = getComputedStyle(centerEl).backgroundColor;
-    console.log('  Center element:', centerEl.tagName, centerEl.id || '', centerEl.className || '');
-    console.log('  Center element background:', centerBg);
-    console.log('  Center element zIndex:', getComputedStyle(centerEl).zIndex);
-  }
-})();
-
 // BUILD FINGERPRINT - Always logs to prove which version is running
 window.__H2S_BUNDLES_BUILD = "🚀🚀🚀 PERF_V10_OVERLAY_FIX_FINAL 🚀🚀🚀";
 console.log('[BUILD]', window.__H2S_BUNDLES_BUILD);
@@ -63,7 +25,6 @@ performance.mark('ss_init_start');
 if (typeof URLSearchParams !== 'undefined' && (new URLSearchParams(window.location.search).has('shopsuccess') || window.location.search.includes('view=shopsuccess'))) {
     console.log('[DEBUG] Success page detected in URL');
     window.__H2S_EARLY_RENDER = true;
-    window.__H2S_SUCCESS_ACTIVE__ = true; // Lock success mode
     
     // Attempt synchronous render (function is hoisted)
     try {
@@ -421,17 +382,6 @@ function renderFatal(message) {
 }
 
 function renderShopView() {
-  // Guard: Don't render shop if success page is active
-  if(window.__H2S_SUCCESS_ACTIVE__) {
-    console.log('[DEBUG] Skipping renderShopView - success page active');
-    return;
-  }
-
-  // Ensure shop content is rendered (restores static HTML if missing)
-  if (typeof renderShop === 'function') {
-    renderShop();
-  }
-  
   const outlet = byId('outlet');
   if(!outlet) return;
   
@@ -453,30 +403,29 @@ function renderShopView() {
 
 
 async function renderShopSuccessView() {
-  const now = performance.now();
-  console.log(`⚡ [CRITICAL PATH] renderShopSuccessView() called at T+${now.toFixed(0)}ms`);
+  console.log('[DEBUG] renderShopSuccessView() called');
   
-  // Lock success mode
-  window.__H2S_SUCCESS_ACTIVE__ = true;
-  
-  // CRITICAL: Force-close cart drawer & backdrop immediately (before any rendering)
-  const cartDrawer = document.getElementById('cartDrawer');
-  const backdrop = document.getElementById('backdrop');
-  if (cartDrawer) {
-    cartDrawer.classList.remove('open');
-    cartDrawer.style.display = 'none';
-  }
-  if (backdrop) {
-    backdrop.classList.remove('show');
-    backdrop.style.display = 'none';
+  // 1. REMOVE OVERLAYS INSTANTLY
+  const hider = document.getElementById('hide-content-temp');
+  if(hider) {
+    console.log('[DEBUG] Removing hide-content-temp overlay');
+    hider.remove();
   }
   
+  const overlay = document.getElementById('success-pre-overlay');
+  if(overlay) {
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'none'; 
+    overlay.style.visibility = 'hidden';
+    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 100);
+  }
+
+  // 2. PAINT COMPLETE SHELL IMMEDIATELY (Frame 1) - NO SKELETON INTERMEDIATE
   const outlet = byId('outlet');
   if(!outlet) {
     console.error('[DEBUG] outlet element not found!');
     return;
   }
-  
   console.log('[DEBUG] outlet found, preparing to render');
 
   const params = new URLSearchParams(window.location.search);
@@ -486,11 +435,7 @@ async function renderShopSuccessView() {
   window.scrollTo(0, 0);
   document.documentElement.style.overflow = 'auto'; 
   document.body.style.overflow = 'auto'; 
-  document.body.style.backgroundColor = '#f8fafc'; // Match outlet background
-  
-  // Remove critical CSS now that we're rendering real content
-  const criticalCSS = document.getElementById('h2s-success-critical');
-  if(criticalCSS) criticalCSS.remove();
+  document.body.style.backgroundColor = '#f8fafc';
   
   const styles = `
     <style>
@@ -498,10 +443,9 @@ async function renderShopSuccessView() {
         min-height: 100vh; width: 100%; 
         padding-top: max(env(safe-area-inset-top), 60px);
         padding-bottom: 80px;
-        background: transparent; /* Allow dark outlet to show through */
+        background: #f8fafc;
         font-family: 'Archivo', system-ui, -apple-system, sans-serif;
       }
-
       .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
       .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.3s ease-out; }
       .ss-badge {
@@ -528,90 +472,28 @@ async function renderShopSuccessView() {
       .cal-day-cell {
         aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
         border-radius: 12px; font-weight: 600; font-size: 15px;
-        cursor: pointer; color: #334155; transition: all 0.2s ease;
-        border: 2px solid #e2e8f0; background: white;
+        cursor: pointer; color: #334155; transition: all 0.1s ease;
+        border: 2px solid transparent;
       }
-      .cal-day-cell:not(.disabled):hover { 
-        background: #eff6ff; 
-        border-color: #93c5fd; 
-        transform: translateY(-2px);
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
-      }
-      .cal-day-cell.selected, .cal-day-cell.is-selected { 
-        background: #2563eb !important; 
-        color: white !important; 
-        border-color: #1e40af !important; 
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important; 
-        transform: scale(1.08) !important;
-        font-weight: 700 !important;
-      }
-      .cal-day-cell.disabled, .cal-day-cell.is-disabled { 
-        color: #cbd5e1 !important; 
-        background: #f8fafc !important;
-        cursor: not-allowed !important; 
-        border: 1px solid #f1f5f9 !important;
-        opacity: 0.35 !important;
-        pointer-events: none !important;
-        filter: grayscale(100%);
-      }
+      .cal-day-cell.selected { background: #2563eb !important; color: white !important; border-color: #1e40af !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); transform: scale(1.05); }
+      .cal-day-cell.disabled { color: #e2e8f0; cursor: not-allowed; }
       
       .time-btn {
-        width: 100%; padding: 14px; border-radius: 12px;
-        border: 2px solid #e2e8f0; background: white;
-        color: #475569; font-weight: 600; font-size: 15px;
-        transition: all 0.2s ease; cursor: pointer;
-        display: block !important;
-        visibility: visible !important;
-        opacity: 1 !important;
-        position: relative !important;
-        user-select: none;
-        -webkit-tap-highlight-color: transparent;
+        width: 100%; padding: 12px; border-radius: 12px;
+        border: 1px solid #e2e8f0; background: white;
+        color: #475569; font-weight: 600; font-size: 14px;
+        transition: all 0.2s;
       }
-      .time-btn:hover:not(.selected) { 
-        border-color: #93c5fd; 
-        background: #eff6ff; 
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(37, 99, 235, 0.15);
-      }
-      .time-btn:active:not(.selected) {
-        transform: translateY(0);
-        box-shadow: 0 1px 3px rgba(37, 99, 235, 0.1);
-      }
-      .time-btn.selected, .time-btn.is-selected { 
-        border-color: #2563eb !important; 
-        background: #2563eb !important; 
-        color: white !important; 
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
-        transform: scale(1.05) !important;
-        font-weight: 700 !important;
-        min-height: 48px !important;
-      }
+      .time-btn.selected { border-color: #2563eb !important; background: #2563eb !important; color: white !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
       
-      .cta-btn, .cta-btn.is-disabled {
+      .cta-btn {
         width: 100%; padding: 18px; border-radius: 14px;
-        background: #d1d5db !important; color: #9ca3af !important; font-weight: 800; font-size: 16px;
-        border: none !important; box-shadow: none !important;
-        transition: all 0.3s ease; cursor: not-allowed !important;
-        position: relative; overflow: hidden;
-        opacity: 0.5 !important;
+        background: #10b981; color: white; font-weight: 800; font-size: 16px;
+        border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        transition: all 0.2s; cursor: pointer; opacity: 0.5; pointer-events: none;
       }
-      .cta-btn.active, .cta-btn.is-enabled { 
-        background: #16a34a !important; 
-        color: white !important; 
-        cursor: pointer !important;
-        box-shadow: 0 4px 16px rgba(22, 163, 74, 0.5) !important;
-        opacity: 1 !important;
-        font-weight: 800 !important;
-      }
-      .cta-btn.active:hover, .cta-btn.is-enabled:hover {
-        background: #15803d !important;
-        box-shadow: 0 6px 20px rgba(22, 163, 74, 0.6) !important;
-        transform: translateY(-2px) !important;
-      }
-      .cta-btn.active:active, .cta-btn.is-enabled:active { 
-        transform: scale(0.98) translateY(0) !important; 
-        box-shadow: 0 2px 8px rgba(22, 163, 74, 0.3) !important;
-      }
+      .cta-btn.active { opacity: 1; pointer-events: auto; }
+      .cta-btn:active { transform: scale(0.98); }
     </style>
   `;
 
@@ -679,12 +561,12 @@ async function renderShopSuccessView() {
 
                <div id="calendarWidget"></div>
                
-               <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9; width:100%; max-width:100%;">
-                  <div style="text-align:center; margin-bottom:16px; font-weight:700; color:#0f172a; font-size:16px;">Select Arrival Window</div>
-                  <div id="timeSlotsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; width:100%;">
-                     <button class="time-btn" data-window="9am - 12pm" style="min-height:48px;">9am-12pm</button>
-                     <button class="time-btn" data-window="12pm - 3pm" style="min-height:48px;">12pm-3pm</button>
-                     <button class="time-btn" data-window="3pm - 6pm" style="min-height:48px;">3pm-6pm</button>
+               <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9;">
+                  <div class="ss-label" style="text-align:center; margin-bottom:12px;">Select Arrival Window</div>
+                  <div id="timeSlotsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                     <button class="time-btn" data-window="9am - 12pm">9-12</button>
+                     <button class="time-btn" data-window="12pm - 3pm">12-3</button>
+                     <button class="time-btn" data-window="3pm - 6pm">3-6</button>
                   </div>
                </div>
 
@@ -699,50 +581,14 @@ async function renderShopSuccessView() {
   }
 
   // SINGLE PAINT - Complete shell with placeholders
-  // OPTIMIZATION: If shell already exists (from document.write), DO NOT REPAINT
-  // This prevents the "white flash" caused by nuking the DOM only to rebuild it identical.
-  const existingShell = outlet.querySelector('.ss-wrapper');
+  outlet.innerHTML = `${styles}
+    <div class="ss-wrapper">
+      <div class="ss-container">
+        ${contentHtml}
+      </div>
+    </div>`;
   
-  if (!existingShell) {
-      outlet.innerHTML = `${styles}
-        <div class="ss-wrapper">
-          <div class="ss-container">
-            ${contentHtml}
-          </div>
-        </div>`;
-      
-      const t1 = performance.now();
-      console.log(`[PAINT] T1 - HTML Written to DOM at ${t1.toFixed(1)}ms. Outlet children: ${outlet.childElementCount}`);
-      // if (typeof h2sTrack === 'function') h2sTrack('DebugFlash', { type: 'T1_HTML_WRITTEN', time: t1 });
-  } else {
-      console.log(`[PAINT] T1 - Skipped visual repaint (Shell already matched) at ${performance.now().toFixed(1)}ms`);
-      // We still ensure styles are injected if missing, but usually document.write handled it.
-      // If we need to patch anything, do it here manually, but better to leave untouched.
-  }
-  
-  // Debug probe - after render
-  if(location.search.includes('debug=1')) {
-    console.log('🔍 [PAINT PROBE - After Render]');
-    console.log('  html bg:', getComputedStyle(document.documentElement).backgroundColor);
-    console.log('  body bg:', getComputedStyle(document.body).backgroundColor);
-    console.log('  outlet bg:', getComputedStyle(outlet).backgroundColor);
-    console.log('  outlet children:', outlet.childElementCount);
-    const centerEl = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
-    if(centerEl) {
-      console.log('  Center element:', centerEl.tagName, centerEl.id || '', centerEl.className || '');
-      console.log('  Center bg:', getComputedStyle(centerEl).backgroundColor);
-    }
-    
-    // Probe again after 500ms
-    setTimeout(() => {
-      console.log('🔍 [PAINT PROBE - 500ms Later]');
-      const centerEl2 = document.elementFromPoint(window.innerWidth/2, window.innerHeight/2);
-      if(centerEl2) {
-        console.log('  Center element:', centerEl2.tagName, centerEl2.id || '', centerEl2.className || '');
-        console.log('  Center bg:', getComputedStyle(centerEl2).backgroundColor);
-      }
-    }, 500);
-  }
+  console.log('[DEBUG] Success page HTML painted');
   
   // Check for submission failure flag
   const submitFailed = localStorage.getItem('strike_submit_failed');
@@ -813,6 +659,7 @@ async function renderShopSuccessView() {
     });
   }
 }
+}
 
 function loadCalendarInteractive(params, sessionId) {
   const widget = byId('calendarWidget');
@@ -832,11 +679,8 @@ function loadCalendarInteractive(params, sessionId) {
   }
 
   const render = (offset=0) => {
-    // Define "today" in LOCAL TIME at midnight
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const target = new Date(today.getFullYear(), today.getMonth()+offset, 1);
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth()+offset, 1);
     const monthName = target.toLocaleString('default',{month:'long'});
     const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
     const startDay = target.getDay(); 
@@ -853,120 +697,40 @@ function loadCalendarInteractive(params, sessionId) {
       <div class="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; text-align:center;">
     `;
     
-    let disabledCount = 0;
-    let pastDatesList = [];
-    
     for(let i=0; i<startDay; i++) html+='<div></div>';
     for(let d=1; d<=daysInMonth; d++){
-       const cellDate = new Date(target.getFullYear(), target.getMonth(), d);
-       cellDate.setHours(0, 0, 0, 0);
-       const iso = cellDate.toISOString().split('T')[0];
-       const isPast = cellDate < today;
+       const iso = new Date(target.getFullYear(), target.getMonth(), d).toISOString().split('T')[0];
+       const isPast = new Date(iso) < new Date(now.toISOString().split('T')[0]);
        const isAvail = mockAvail.find(x=>x.date===iso) && !isPast;
        
        if(!isAvail) {
-           html+=`<div class="cal-day-cell is-disabled" aria-disabled="true">${d}</div>`;
-           disabledCount++;
-           if(isPast) pastDatesList.push(iso);
+           html+=`<div class="cal-day-cell disabled">${d}</div>`;
        } else {
            const isSel = window.selectedDate === iso;
-           const selectedStyle = isSel ? 'background:#2563eb;color:white;border-color:#1e40af;box-shadow:0 4px 12px rgba(37,99,235,0.4);transform:scale(1.08);font-weight:700;' : '';
-           html+=`<div class="cal-day-cell ${isSel ? 'is-selected' : ''}" data-date="${iso}" style="${selectedStyle}">${d}</div>`;
+           html+=`<div class="cal-day-cell ${isSel ? 'selected' : ''}" data-date="${iso}">${d}</div>`;
        }
     }
     html+='</div>';
     widget.innerHTML = html;
     
-    console.log('[Calendar] ========== RENDER COMPLETE ==========');
-    console.log('[Calendar] Month:', monthName, target.getFullYear());
-    console.log('[Calendar] Total disabled cells:', disabledCount);
-    console.log('[Calendar] Past dates (should be grayed):', pastDatesList);
-    console.log('[Calendar] Today is:', today.toISOString().split('T')[0]);
-    
-    // Verify classes were applied
-    setTimeout(() => {
-        const disabledInDOM = widget.querySelectorAll('.cal-day-cell.is-disabled');
-        console.log('[Calendar] DOM Check - Found', disabledInDOM.length, 'cells with .is-disabled class');
-        if(disabledInDOM.length > 0) {
-            const firstDisabled = disabledInDOM[0];
-            const styles = window.getComputedStyle(firstDisabled);
-            console.log('[Calendar] First disabled cell computed styles:');
-            console.log('  - opacity:', styles.opacity);
-            console.log('  - background:', styles.backgroundColor);
-            console.log('  - color:', styles.color);
-            console.log('  - pointer-events:', styles.pointerEvents);
-            console.log('  - filter:', styles.filter);
-        }
-    }, 100);
-    
     // Bind Calendar Controls
     if(byId('prevCal')) byId('prevCal').onclick = () => render(offset-1);
     if(byId('nextCal')) byId('nextCal').onclick = () => render(offset+1);
     
-    // Bind Date Cells (exclude .is-disabled)
-    const availableCells = widget.querySelectorAll('.cal-day-cell:not(.is-disabled)');
-    console.log('[Calendar] Binding', availableCells.length, 'available day cells');
-    
-    // Also bind click handlers to disabled cells to log blocked attempts
-    const disabledCells = widget.querySelectorAll('.cal-day-cell.is-disabled');
-    disabledCells.forEach(el => {
+    // Bind Date Cells
+    widget.querySelectorAll('.cal-day-cell:not(.disabled)').forEach(el => {
       el.onclick = () => {
-         console.log('[Calendar] Blocked click on past date (disabled cell)');
-      };
-    });
-    
-    availableCells.forEach(el => {
-      el.onclick = () => {
-         const clickedDate = el.dataset.date;
-         
-         // Double-check: prevent past date selection
-         const clickedDateObj = new Date(clickedDate + 'T00:00:00');
-         const today = new Date();
-         today.setHours(0, 0, 0, 0);
-         
-         if (clickedDateObj < today) {
-           console.log('[Calendar] Blocked click on past date:', clickedDate);
-           return;
-         }
-         
-         console.log('[Calendar] Date selected:', clickedDate);
-         
          // Update State
-         const previousDate = window.selectedDate;
-         window.selectedDate = clickedDate;
-         
-         // If changing dates, clear time selection
-         if (previousDate && previousDate !== window.selectedDate) {
-           window.selectedWindow = null;
-         }
+         window.selectedDate = el.dataset.date;
          
          // Update UI immediately (re-render to show selection)
          render(offset);
          
-         // Show Time Slots - must happen after render completes
-         const timeSection = byId('timeWindowSection');
-         if (timeSection) {
-           console.log('[Calendar] Showing time slots');
-           timeSection.style.display = 'block';
-           
-           // Clear any previous time slot selections when changing dates
-           if (previousDate && previousDate !== window.selectedDate) {
-             const slotButtons = timeSection.querySelectorAll('.time-btn');
-             slotButtons.forEach(b => {
-               b.classList.remove('is-selected');
-             });
-           }
-           
-           // Rebind time slot clicks to ensure they work
-           bindTimeSlots();
-           
-           // Scroll into view
-           setTimeout(() => {
-             timeSection.scrollIntoView({behavior:'smooth', block:'nearest'});
-           }, 100);
-         } else {
-           console.error('[Calendar] timeWindowSection not found!');
-         }
+         // Show Time Slots
+         byId('timeWindowSection').style.display = 'block';
+         
+         // Scroll slightly to show slots if tight
+         byId('timeWindowSection').scrollIntoView({behavior:'smooth', block:'center'});
          
          updateSummary();
          checkSubmit();
@@ -977,92 +741,22 @@ function loadCalendarInteractive(params, sessionId) {
   // Initial Render
   render(0);
   
-  // Bind Time Slots with enhanced click feedback
-  window.bindTimeSlots = function() {
-      const slotContainer = byId('timeSlotsGrid');
-      if(slotContainer) {
-          const buttons = slotContainer.querySelectorAll('.time-btn');
-          console.log('[Calendar] Binding', buttons.length, 'time slot buttons');
-          
-          buttons.forEach(btn => {
-              // Remove old handler
-              btn.onclick = null;
+  // Bind Time Slots
+  const slotContainer = byId('timeSlotsGrid');
+  if(slotContainer) {
+      slotContainer.querySelectorAll('.time-btn').forEach(btn => {
+          btn.onclick = () => {
+              // Clear previous
+              slotContainer.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+              // Select new
+              btn.classList.add('selected');
+              window.selectedWindow = btn.dataset.window;
               
-              // Initialize aria-pressed
-              btn.setAttribute('aria-pressed', 'false');
-              
-              // Add new handler
-              btn.onclick = () => {
-                  const clickedWindow = btn.dataset.window;
-                  console.log('\n[Calendar] ========== TIME SLOT CLICKED ==========')
-                  console.log('[Calendar] Time slot clicked:', clickedWindow);
-                  console.log('[Calendar] Current selected date:', window.selectedDate);
-                  
-                  // Clear previous selection from ALL buttons
-                  buttons.forEach(b => {
-                      b.classList.remove('is-selected');
-                      b.classList.remove('selected');
-                      b.setAttribute('aria-pressed', 'false');
-                  });
-                  
-                  // Apply selected state to THIS button
-                  btn.classList.add('is-selected');
-                  btn.setAttribute('aria-pressed', 'true');
-                  
-                  window.selectedWindow = clickedWindow;
-                  console.log('[Calendar] Window selected:', clickedWindow);
-                  console.log('[Calendar] Applied .is-selected to button:', btn);
-                  
-                  // Log DOM truth immediately after class change
-                  logDOMTruth('After Time Window Click');
-                  
-                  updateSummary();
-                  checkSubmit();
-              };
-          });
-      } else {
-          console.error('[Calendar] timeSlotsGrid not found!');
-      }
-  };
-  
-  bindTimeSlots();
-}
-
-// DOM TRUTH LOGGER - logs actual DOM state, not just our assumptions
-function logDOMTruth(label) {
-    console.log(`\n[DOM TRUTH: ${label}] ==================`);
-    
-    // Log time window buttons
-    const timeButtons = document.querySelectorAll('.time-btn');
-    console.log('[DOM] Time window buttons:', timeButtons.length);
-    timeButtons.forEach((btn, idx) => {
-        const styles = window.getComputedStyle(btn);
-        console.log(`  Button ${idx} [${btn.dataset.window}]:`);
-        console.log(`    - className: "${btn.className}"`);
-        console.log(`    - aria-pressed: ${btn.getAttribute('aria-pressed')}`);
-        console.log(`    - background-color: ${styles.backgroundColor}`);
-        console.log(`    - color: ${styles.color}`);
-        console.log(`    - border-color: ${styles.borderColor}`);
-        console.log(`    - box-shadow: ${styles.boxShadow}`);
-        console.log(`    - opacity: ${styles.opacity}`);
-    });
-    
-    // Log confirm button
-    const confirmBtn = document.getElementById('confirmApptBtn');
-    if (confirmBtn) {
-        const styles = window.getComputedStyle(confirmBtn);
-        console.log('[DOM] Confirm button:');
-        console.log(`  - disabled (property): ${confirmBtn.disabled}`);
-        console.log(`  - disabled (attribute): ${confirmBtn.getAttribute('disabled')}`);
-        console.log(`  - aria-disabled: ${confirmBtn.getAttribute('aria-disabled')}`);
-        console.log(`  - className: "${confirmBtn.className}"`);
-        console.log(`  - opacity: ${styles.opacity}`);
-        console.log(`  - background-color: ${styles.backgroundColor}`);
-        console.log(`  - cursor: ${styles.cursor}`);
-        console.log(`  - pointer-events: ${styles.pointerEvents}`);
-    }
-    
-    console.log('[DOM TRUTH END] ==================\n');
+              updateSummary();
+              checkSubmit();
+          };
+      });
+  }
 }
 
 function updateSummary() {
@@ -1084,55 +778,14 @@ function updateSummary() {
 
 function checkSubmit() {
     const btn = byId('confirmApptBtn');
-    if(!btn) {
-        console.error('[Calendar] confirmApptBtn NOT FOUND in DOM!');
-        return;
-    }
+    if(!btn) return;
     
-    const hasValidDate = !!window.selectedDate;
-    const hasWindow = !!window.selectedWindow;
-    const shouldEnable = hasValidDate && hasWindow;
-    
-    console.log('\n[Calendar] ========== CHECK SUBMIT ==========')
-    console.log('[Calendar] CheckSubmit - Date:', window.selectedDate, 'Window:', window.selectedWindow);
-    console.log('[Calendar] Confirm enabled?', shouldEnable, '(date=' + hasValidDate + ', window=' + hasWindow + ')');
-    
-    if(shouldEnable) {
-        console.log('[Calendar] ENABLING confirm button...');
-        
-        // Remove disabled state completely
+    if(window.selectedDate && window.selectedWindow) {
+        btn.classList.add('active');
         btn.disabled = false;
-        btn.removeAttribute('disabled');
-        btn.removeAttribute('aria-disabled');
         
-        // Update classes
-        btn.classList.add('is-enabled');
-        btn.classList.remove('is-disabled');
-        
-        // Update visual properties
-        btn.style.cursor = 'pointer';
-        btn.style.pointerEvents = 'auto';
-        btn.innerText = 'Confirm Appointment';
-        
-        console.log('[Calendar] Button state after enable:');
-        console.log('  - btn.disabled:', btn.disabled);
-        console.log('  - btn.className:', btn.className);
-        console.log('  - btn.getAttribute("disabled"):', btn.getAttribute('disabled'));
-        
-        
-        // Clone and replace to clear old handlers (but keep our state)
         const newBtn = btn.cloneNode(true);
-        newBtn.disabled = false;
-        newBtn.removeAttribute('disabled');
-        newBtn.removeAttribute('aria-disabled');
-        newBtn.classList.add('is-enabled');
-        newBtn.classList.remove('is-disabled');
-        newBtn.style.pointerEvents = 'auto';
         btn.parentNode.replaceChild(newBtn, btn);
-        
-        // Log DOM truth after button enable
-        logDOMTruth('After Enable Button');
-        
         newBtn.onclick = async () => {
             newBtn.innerText = 'Saving...';
             newBtn.disabled = true;
@@ -1159,11 +812,7 @@ function checkSubmit() {
                     metadata: orderData.metadata
                 };
                 
-                console.log('\\n[Schedule] ========== SENDING APPOINTMENT ==========');
-                console.log('[Schedule] Selected Date:', window.selectedDate);
-                console.log('[Schedule] Selected Window:', window.selectedWindow);
-                console.log('[Schedule] Order ID:', orderData.order_id);
-                console.log('[Schedule] Full payload:', JSON.stringify(payload, null, 2));
+                console.log('[Schedule] Sending payload:', payload);
                 
                 const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
                     method: 'POST',
@@ -1198,33 +847,13 @@ function checkSubmit() {
                 newBtn.innerText = 'Try Again';
                 newBtn.style.background = '#ef4444';
                 newBtn.disabled = false;
-                newBtn.classList.add('is-enabled');
+                newBtn.classList.add('active');
                 if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
             }
         };
     } else {
-        console.log('[Calendar] DISABLING confirm button...');
-        
-        // Set disabled state
+        btn.classList.remove('active');
         btn.disabled = true;
-        btn.setAttribute('disabled', 'disabled');
-        btn.setAttribute('aria-disabled', 'true');
-        
-        // Update classes
-        btn.classList.remove('is-enabled');
-        btn.classList.add('is-disabled');
-        
-        // Update visual properties
-        btn.style.cursor = 'not-allowed';
-        btn.style.pointerEvents = 'none';
-        btn.innerText = 'Select Date & Time';
-        
-        console.log('[Calendar] Button disabled - waiting for selections');
-        console.log('  - btn.disabled:', btn.disabled);
-        console.log('  - btn.className:', btn.className);
-        
-        // Log DOM truth after button disable
-        logDOMTruth('After Disable Button');
     }
 }
 
@@ -1417,39 +1046,45 @@ async function init(){
   // Using addEventListener (not onclick) to maintain proper event control for tracking
   const checkoutBtn = byId('checkoutBtn');
   if(checkoutBtn) {
-    // Safeguard: Only attach if not already attached
-    if(!checkoutBtn.hasAttribute('data-listener-attached')) {
-      checkoutBtn.setAttribute('data-listener-attached', 'true');
+    // Remove any existing listeners to prevent double-firing
+    const newCheckoutBtn = checkoutBtn.cloneNode(true);
+    checkoutBtn.parentNode.replaceChild(newCheckoutBtn, checkoutBtn);
+    
+    newCheckoutBtn.addEventListener('click', function(e) {
+      logger.log('[Checkout] Button clicked');
+      e.preventDefault();
+      e.stopPropagation();
       
-      checkoutBtn.addEventListener('click', function(e) {
-        logger.log('[Checkout] Button clicked');
-        e.preventDefault();
-        e.stopPropagation();
-        
-        // Error boundary: Ensure checkout always attempts to run
-        try {
-          if (typeof window.checkout === 'function') {
-            window.checkout();
-          } else {
-            logger.error('[Checkout] window.checkout not defined, calling showCheckoutModal directly');
-            showCheckoutModal();
-          }
-        } catch(err) {
-          logger.error('[Checkout] Critical error:', err);
-          // Fallback: Show modal anyway
-          try {
-            showCheckoutModal();
-          } catch(err2) {
-            logger.error('[Checkout] Fallback failed:', err2);
-            alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
-          }
+      // Debounce: Prevent rapid double-clicks
+      if(newCheckoutBtn.disabled) {
+        logger.log('[Checkout] Button click ignored (already processing)');
+        return;
+      }
+      
+      newCheckoutBtn.disabled = true;
+      setTimeout(() => { newCheckoutBtn.disabled = false; }, 1000);
+      
+      // Call checkout function
+      try {
+        if(typeof window.checkout === 'function') {
+          window.checkout();
+        } else {
+          logger.error('[Checkout] window.checkout not defined, calling showCheckoutModal directly');
+          showCheckoutModal();
         }
-      }, { passive: false }); // passive: false ensures preventDefault works
-      
-      logger.log('[Init] Checkout button event listener attached');
-    } else {
-      logger.log('[Init] Checkout button listener already attached');
-    }
+      } catch(err) {
+        logger.error('[Checkout] Critical error:', err);
+        // Fallback: Show modal anyway
+        try {
+          showCheckoutModal();
+        } catch(err2) {
+          logger.error('[Checkout] Fallback failed:', err2);
+          alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
+        }
+      }
+    }, { passive: false });
+    
+    logger.log('[Init] Checkout button event listener attached (clean)');
   } else {
     logger.error('[Init] Checkout button not found!');
   }
