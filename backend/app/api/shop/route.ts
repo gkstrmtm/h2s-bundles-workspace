@@ -1414,7 +1414,7 @@ export async function POST(request: Request) {
         // The migration should have dropped it and added order_id uniqueness instead
         const insertJob: any = {
           order_id: orderId,
-          status: 'queued',
+          status: 'pending_payment', // Wait for payment before showing to technicians
           created_at: new Date().toISOString(),
           due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
           recipient_id: recipientId,

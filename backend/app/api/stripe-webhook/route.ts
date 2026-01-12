@@ -102,6 +102,30 @@ export async function POST(req: NextRequest) {
            console.error('[Stripe Webhook] Failed to update order:', updateError);
          } else {
            console.log('[Stripe Webhook] Updated existing order:', updated?.order_id);
+           
+           // CRITICAL: Activate the dispatch job (change from pending_payment to queued)
+           const orderId = existingOrder.order_id;
+           const dispatchClient = getSupabaseDispatch() || supabase;
+           
+           try {
+             const { data: jobData, error: jobUpdateError } = await dispatchClient
+               .from('h2s_dispatch_jobs')
+               .update({ status: 'queued' })
+               .eq('order_id', orderId)
+               .eq('status', 'pending_payment')
+               .select('job_id')
+               .maybeSingle();
+             
+             if (jobUpdateError) {
+               console.error('[Stripe Webhook] Failed to activate job:', jobUpdateError);
+             } else if (jobData) {
+               console.log('[Stripe Webhook] ✅ Activated dispatch job:', jobData.job_id);
+             } else {
+               console.log('[Stripe Webhook] No pending job found to activate');
+             }
+           } catch (jobErr: any) {
+             console.error('[Stripe Webhook] Job activation exception:', jobErr);
+           }
          }
          
          order = updated || existingOrder;
