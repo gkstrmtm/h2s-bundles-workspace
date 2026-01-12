@@ -21,6 +21,13 @@ html,body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.
 body{background:#fff;}
 /* Success page override - prevent white flash */
 html[data-success-mode],html[data-success-mode] body{background:#f8fafc !important;}
+/* Hide all shop content when success mode is active */
+html[data-success-mode] .header,
+html[data-success-mode] .urgency-banner,
+html[data-success-mode] .hero,
+html[data-success-mode] .section,
+html[data-success-mode] .footer,
+html[data-success-mode] #outlet > *:not(.ss-wrapper){display:none !important;}
 .hero{background:linear-gradient(135deg,#0a2a5a 0%,#1a4d8f 100%);color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
 .hero h1{font-size:clamp(32px,7vw,56px);font-weight:900;margin:0 0 20px;letter-spacing:-0.03em;line-height:1.1;}
 .hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
