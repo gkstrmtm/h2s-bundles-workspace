@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDb1, getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { resolveDispatchRequiredIds } from '@/lib/dispatchRequiredIds';
+import { KNOWN_PROMO_CODES } from '@/lib/promoCache';
+import { generateJobDetailsSummary, generateEquipmentProvided, getScheduleStatus } from '@/lib/dataCompleteness';
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import crypto from 'crypto';
@@ -10,7 +12,11 @@ const openai = process.env.OPENAI_API_KEY
   : null;
 
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' as any })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { 
+      apiVersion: '2024-06-20' as any,
+      timeout: 25000, // 25 second timeout
+      maxNetworkRetries: 3 // Retry 3 times on network errors
+    })
   : null;
 
 // Password hashing utilities - supports BOTH old (pbkdf2) and new (SHA256) formats
@@ -67,6 +73,108 @@ function corsHeaders(request?: Request) {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
     'Access-Control-Allow-Credentials': 'true',
+  };
+}
+
+// ✅ BUILD CANONICAL JOB DETAILS PAYLOAD
+function buildJobDetailsPayload(cart: any[], customer: any, metadata: any): any {
+  // Parse cart items to build explicit service breakdown
+  const services: any[] = [];
+  const bonuses: any[] = [];
+  let totalItems = 0;
+  
+  for (const item of cart) {
+    totalItems += item.qty || 1;
+    const itemName = item.name || item.title || 'Unknown Service';
+    const itemId = item.id || '';
+    
+    // Detect service type
+    let serviceCategory = 'general';
+    let scopeDetails: any = {};
+    
+    if (itemName.toLowerCase().includes('tv') || itemName.toLowerCase().includes('mount')) {
+      serviceCategory = 'tv_mount';
+      scopeDetails = {
+        tv_count: item.qty || 1,
+        mount_type: item.mount_type || 'Standard Wall Mount',
+        above_fireplace: item.above_fireplace || false,
+        soundbar: item.soundbar || false,
+        wall_type: item.wall_type || 'Drywall',
+      };
+    } else if (itemName.toLowerCase().includes('camera') || itemName.toLowerCase().includes('security')) {
+      serviceCategory = 'cameras';
+      scopeDetails = {
+        camera_count: item.qty || 1,
+        locations: item.locations || ['Front Door'],
+        power_type: item.power_type || 'Existing Outlet',
+        front_door_only: itemName.toLowerCase().includes('front door only'),
+      };
+    } else if (itemName.toLowerCase().includes('smart home') || itemName.toLowerCase().includes('bundle')) {
+      serviceCategory = 'smart_home_bundle';
+      scopeDetails = {
+        bundle_type: itemName,
+        includes: item.includes || [],
+      };
+    }
+    
+    services.push({
+      service_id: itemId,
+      service_name: itemName,
+      service_category: serviceCategory,
+      qty: item.qty || 1,
+      price: item.price || 0,
+      scope: scopeDetails,
+    });
+    
+    // Check for promotional bonuses (like Free Roku)
+    if (item.bonus || item.promotional) {
+      bonuses.push({
+        bonus_type: item.bonus_type || 'Promotional Gift',
+        bonus_name: item.bonus_name || 'Free Roku Streaming Device',
+        qty: item.qty || 1,
+        fulfillment: 'Company provides separately',
+        note: 'One per TV - will be mailed to customer',
+      });
+    }
+  }
+  
+  // Build job summary
+  let jobSummary = '';
+  if (services.length === 1) {
+    const svc = services[0];
+    jobSummary = `${svc.qty > 1 ? svc.qty + 'x ' : ''}${svc.service_name}`;
+  } else {
+    jobSummary = `${totalItems} Services: ${services.map(s => s.service_name).join(', ')}`;
+  }
+  
+  // Build technician tasks
+  const technicianTasks: string[] = [];
+  for (const svc of services) {
+    if (svc.service_category === 'tv_mount') {
+      technicianTasks.push(`Mount ${svc.qty} TV${svc.qty > 1 ? 's' : ''} to ${svc.scope.wall_type || 'wall'}`);
+      if (svc.scope.soundbar) technicianTasks.push('Install soundbar');
+      if (svc.scope.above_fireplace) technicianTasks.push('Above-fireplace installation (special care required)');
+    } else if (svc.service_category === 'cameras') {
+      technicianTasks.push(`Install ${svc.qty} security camera${svc.qty > 1 ? 's' : ''}`);
+      technicianTasks.push(`Locations: ${(svc.scope.locations || []).join(', ')}`);
+    } else {
+      technicianTasks.push(`Complete ${svc.service_name}`);
+    }
+  }
+  
+  return {
+    job_title: jobSummary,
+    job_summary: `Installation service for ${jobSummary.toLowerCase()}`,
+    service_category: services[0]?.service_category || 'general',
+    services: services,
+    bonuses: bonuses,
+    total_items: totalItems,
+    customer_provides: ['Wi-Fi network name and password', 'Access to installation areas'],
+    included_items: ['All mounting hardware', 'Professional installation', 'Testing and setup'],
+    technician_tasks: technicianTasks,
+    customer_notes: metadata?.customer_notes || metadata?.notes || '',
+    customer_photos: [],
+    created_at: new Date().toISOString(),
   };
 }
 
@@ -412,44 +520,45 @@ export async function GET(request: Request) {
         }
 
       case 'ai_sales':
-        const email = searchParams.get('email');
-        const mode = searchParams.get('mode') || 'recommendations';
+        try {
+          const email = searchParams.get('email');
+          const mode = searchParams.get('mode') || 'recommendations';
 
-        if (!email) {
-          return NextResponse.json({
-            success: false,
-            error: 'Email parameter required'
-          }, { status: 400, headers: corsHeaders(request) });
-        }
-
-        if (!openai) {
-          return NextResponse.json({
-            success: false,
-            error: 'AI service not configured'
-          }, { status: 503, headers: corsHeaders(request) });
-        }
-
-        // Get user's purchase history and preferences
-        const trackingClient = getSupabaseDb1() || getSupabase();
-        let userHistory: any[] = [];
-        
-        if (trackingClient) {
-          try {
-            const { data: events } = await trackingClient
-              .from('h2s_tracking_events')
-              .select('event_type, page_path, metadata, event_ts')
-              .eq('customer_email', email)
-              .order('event_ts', { ascending: false })
-              .limit(50);
-
-            userHistory = events || [];
-          } catch (err) {
-            console.warn('[Shop API] Failed to fetch user history:', err);
+          if (!email) {
+            return NextResponse.json({
+              success: false,
+              error: 'Email parameter required'
+            }, { status: 400, headers: corsHeaders(request) });
           }
-        }
 
-        // Generate AI recommendations
-        const prompt = `You are a smart home services sales assistant. Based on the user's browsing history and preferences, provide personalized product recommendations.
+          if (!openai) {
+            return NextResponse.json({
+              success: false,
+              error: 'AI service not configured'
+            }, { status: 503, headers: corsHeaders(request) });
+          }
+
+          // Get user's purchase history and preferences
+          const trackingClient = getSupabaseDb1() || getSupabase();
+          let userHistory: any[] = [];
+          
+          if (trackingClient) {
+            try {
+              const { data: events } = await trackingClient
+                .from('h2s_tracking_events')
+                .select('event_type, page_path, metadata, event_ts')
+                .eq('customer_email', email)
+                .order('event_ts', { ascending: false })
+                .limit(50);
+
+              userHistory = events || [];
+            } catch (err) {
+              console.warn('[Shop API] Failed to fetch user history:', err);
+            }
+          }
+
+          // Generate AI recommendations
+          const prompt = `You are a smart home services sales assistant. Based on the user's browsing history and preferences, provide personalized product recommendations.
 
 User Email: ${email}
 Browsing History: ${JSON.stringify(userHistory.slice(0, 10))}
@@ -467,32 +576,40 @@ Provide 3-5 product recommendations in JSON format:
   "reasoning": "Brief explanation of recommendations"
 }`;
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a smart home services sales assistant. Always return valid JSON only.'
-            },
-            {
-              role: 'user',
-              content: prompt
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a smart home services sales assistant. Always return valid JSON only.'
+              },
+              {
+                role: 'user',
+                content: prompt
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 500,
+            response_format: { type: 'json_object' }
+          });
+
+          const aiResponse = JSON.parse(completion.choices[0].message.content || '{}');
+
+          return NextResponse.json({
+            success: true,
+            ai_analysis: {
+              recommendations: aiResponse.recommendations || [],
+              reasoning: aiResponse.reasoning || ''
             }
-          ],
-          temperature: 0.7,
-          max_tokens: 500,
-          response_format: { type: 'json_object' }
-        });
-
-        const aiResponse = JSON.parse(completion.choices[0].message.content || '{}');
-
-        return NextResponse.json({
-          success: true,
-          ai_analysis: {
-            recommendations: aiResponse.recommendations || [],
-            reasoning: aiResponse.reasoning || ''
-          }
-        }, { headers: corsHeaders(request) });
+          }, { headers: corsHeaders(request) });
+        } catch (aiError: any) {
+          console.error('[Shop API] AI Sales error:', aiError);
+          return NextResponse.json({
+            success: false,
+            error: 'AI recommendations temporarily unavailable',
+            details: aiError.message
+          }, { status: 500, headers: corsHeaders(request) });
+        }
 
       default:
         return NextResponse.json({
@@ -514,7 +631,10 @@ Provide 3-5 product recommendations in JSON format:
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { __action, customer, cart, promotion_code, success_url, cancel_url, metadata } = body;
+    // Support both 'action' and '__action' for backwards compatibility
+    const action = body.action || body.__action;
+    const { customer, cart, promotion_code, success_url, cancel_url, metadata } = body;
+    const __action = action; // Keep __action variable for existing code
 
     // ===== SIGNIN =====
     if (__action === 'signin') {
@@ -831,8 +951,91 @@ export async function POST(request: Request) {
     }
 
     if (__action === 'create_checkout_session') {
+      // Generate unique request ID for tracing
+      const reqId = crypto.randomUUID();
+      const debugMode = body.debug === 1 || body.debug === '1' || body.debug === true;
+      
+      const diagnostics = {
+        request_id: reqId,
+        steps: {} as Record<string, { ok: boolean; at: string; error_code?: string; error_message?: string; data?: any }>,
+        ids: { order_id: null as string | null, job_id: null as string | null, stripe_session_id: null as string | null }
+      };
+      
+      const recordStep = (step: string, ok: boolean, data?: any, error?: any) => {
+        diagnostics.steps[step] = {
+          ok,
+          at: new Date().toISOString(),
+          error_code: error?.code || error?.name,
+          error_message: error?.message,
+          data
+        };
+        console.log(`[CHECKOUT][${reqId}][${step}]`, ok ? '✅' : '❌', data || error?.message || '');
+      };
+      
+      const classifySupabaseError = (err: any): { code: string; message: string; classified: string } => {
+        const msg = String(err?.message || err || '').toLowerCase();
+        const code = String(err?.code || '');
+        
+        if (code === '42501' || msg.includes('permission denied') || msg.includes('insufficient privilege')) {
+          return { code: 'DISPATCH_JOB_PERMISSION_DENIED', message: 'Database permission denied', classified: 'RLS' };
+        }
+        if (code === '23505' || msg.includes('unique') || msg.includes('duplicate')) {
+          return { code: 'DISPATCH_JOB_DUPLICATE', message: 'Duplicate job constraint violation', classified: 'UNIQUE_VIOLATION' };
+        }
+        if (msg.includes('relation') && msg.includes('does not exist')) {
+          return { code: 'DISPATCH_JOB_TABLE_MISSING', message: 'Dispatch jobs table not found', classified: 'TABLE_MISSING' };
+        }
+        if (msg.includes('column') && msg.includes('does not exist')) {
+          return { code: 'DISPATCH_JOB_SCHEMA_MISMATCH', message: 'Table schema mismatch', classified: 'SCHEMA_ERROR' };
+        }
+        return { code: 'DISPATCH_JOB_UNKNOWN', message: err?.message || String(err), classified: 'UNKNOWN' };
+      };
+      
+      console.log(`[CHECKOUT][${reqId}] ========== START create_checkout_session ==========`);
+      recordStep('REQUEST_START', true, { customer_email: customer?.email, cart_count: cart?.length });
+      
+      // Helper function to log trace stages
+      const logTrace = async (stage: string, context?: any) => {
+        try {
+          const client = getSupabaseDb1() || getSupabase();
+          if (client) {
+            await client.from('h2s_checkout_traces').insert({
+              checkout_trace_id: reqId,
+              stage,
+              order_id: context?.order_id || null,
+              job_id: context?.job_id || null,
+              stripe_session_id: context?.stripe_session_id || null,
+              context_json: context || null
+            });
+          }
+        } catch (err) {
+          console.error('[Checkout] Failed to log trace:', err);
+        }
+      };
+      
+      // Helper function to log failures
+      const logFailure = async (stage: string, error: any, context?: any) => {
+        try {
+          const client = getSupabaseDb1() || getSupabase();
+          if (client) {
+            await client.from('h2s_checkout_failures').insert({
+              checkout_trace_id: reqId,
+              stage,
+              error_message: error?.message || String(error),
+              error_stack: error?.stack || null,
+              context_json: context || null
+            });
+          }
+        } catch (err) {
+          console.error('[Checkout] Failed to log failure:', err);
+        }
+      };
+      
+      await logTrace('REQUEST_START', { customer_email: customer?.email, cart_count: cart?.length });
+      
       // Validate Stripe is configured
       if (!stripe) {
+        await logFailure('REQUEST_START', new Error('Payment processing not configured'));
         return NextResponse.json({
           ok: false,
           error: 'Payment processing not configured'
@@ -938,6 +1141,11 @@ export async function POST(request: Request) {
         set('service_state', offerMeta?.service_state);
         set('service_zip', offerMeta?.service_zip);
 
+        // Job details (stringify nested object for Stripe)
+        if (offerMeta?.job_details) {
+          set('job_details_json', JSON.stringify(offerMeta.job_details));
+        }
+
         // Offer fields (optional)
         set('offer_code', offerMeta?.offer_code);
         set('offer_amount_off_usd', offerMeta?.offer_amount_off_usd);
@@ -988,231 +1196,497 @@ export async function POST(request: Request) {
 
       // Add promotion code if provided
       if (promotion_code) {
-        try {
-          // Search for the promotion code in Stripe (same as promo_check_cart)
-          const promoCodes = await stripe.promotionCodes.list({
-            code: promotion_code,
-            limit: 1,
-            active: true
-          });
-
-          if (promoCodes.data && promoCodes.data.length > 0) {
-            const promoCodeId = promoCodes.data[0].id;
-            console.log('[Checkout] Found promo code ID:', promoCodeId, 'for code:', promotion_code);
-            // Stripe needs the promo code ID, not the code string
-            sessionParams.discounts = [{
-              promotion_code: promoCodeId
-            }];
-          } else {
-            console.warn('[Checkout] Promo code not found:', promotion_code);
-            return NextResponse.json({
-              ok: false,
-              error: `No such promotion code: '${promotion_code}'`
-            }, { status: 500, headers: corsHeaders(request) });
-          }
-        } catch (promoError: any) {
-          console.error('[Checkout] Error looking up promo code:', promoError);
+        console.log('[Checkout] Promo code requested:', promotion_code);
+        
+        // DETERMINISTIC PATH: Check cache first (no Stripe API call)
+        const normalizedCode = promotion_code.toLowerCase();
+        const cachedPromo = KNOWN_PROMO_CODES[normalizedCode];
+        
+        if (cachedPromo && cachedPromo.active && cachedPromo.id) {
+          console.log('[Checkout] Using cached promo ID:', cachedPromo.id, '(checkout_promo_mode: cache_id)');
+          // Direct use of cached Stripe promotion_code ID - no API lookup needed
+          sessionParams.discounts = [{
+            promotion_code: cachedPromo.id // Use cached promo_... ID directly
+          }];
+        } else if (cachedPromo && cachedPromo.active && !cachedPromo.id) {
+          // Code is cached but missing Stripe promotion_code_id
+          console.error('[Checkout] Promo in cache but missing promotion_code_id:', promotion_code);
           return NextResponse.json({
             ok: false,
-            error: `Promotion code error: ${promoError.message}`
+            code: 'PROMO_CACHE_MISSING_ID',
+            error: `Promo code ${promotion_code} is recognized but cannot be applied to checkout. Contact support.`
+          }, { status: 400, headers: corsHeaders(request) });
+        } else {
+          // Code not in cache - reject to avoid Stripe timeout
+          console.warn('[Checkout] Promo code not in cache, rejecting:', promotion_code, '(checkout_promo_mode: rejected)');
+          return NextResponse.json({
+            ok: false,
+            code: 'PROMO_NOT_SUPPORTED',
+            error: `Promo code ${promotion_code} is not currently supported. Please try another code or contact support.`
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+      } else {
+        console.log('[Checkout] No promo code (checkout_promo_mode: none)');
+      }
+
+      // Use client-provided idempotency key if available, otherwise generate deterministic one
+      // This prevents duplicate sessions on frontend retries
+      const clientIdempotencyKey = body.idempotency_key || body.client_request_id;
+      
+      // Generate deterministic idempotency key based on customer email + timestamp bucket (5 min windows)
+      // This ensures retries within 5 minutes use same key, preventing duplicate sessions
+      // Generate GUARANTEED UNIQUE order ID - timestamp + random bytes
+      const timestamp = Date.now().toString(36).toUpperCase(); // Base36 timestamp
+      const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase();
+      const orderId = `ORD-${timestamp}${randomPart}`;
+      
+      // Generate deterministic key for Stripe session idempotency ONLY (5-minute window)
+      const timeBucket = Math.floor(Date.now() / (5 * 60 * 1000));
+      const cartFingerprint = cart.map(i => `${i.id || i.name}:${i.qty}`).join(',');
+      const deterministicKey = clientIdempotencyKey || 
+        crypto.createHash('sha256')
+          .update(`${customer.email}|${cartFingerprint}|${timeBucket}`)
+          .digest('hex')
+          .substring(0, 32);
+      
+      console.log('[Checkout] Order ID (FORCED UNIQUE):', orderId);
+      console.log('[Checkout] Stripe idempotency key (for dedup):', deterministicKey);
+
+      // === CRITICAL CHANGE: Create Order + Job BEFORE Stripe ===
+      // This ensures we ALWAYS have a record, even if Stripe fails
+      // Pattern: Create with "pending_payment" status, update to "paid" via webhook
+      
+      const client = getSupabaseDb1() || getSupabase();
+      if (!client) {
+        await logFailure('DATABASE_UNAVAILABLE', new Error('Database client not available'));
+        return NextResponse.json({
+          ok: false,
+          error: 'Database temporarily unavailable'
+        }, { status: 503, headers: corsHeaders(request) });
+      }
+
+      console.log('[Checkout] ========== STEP 1: CREATE ORDER + JOB ==========');
+      
+      // Calculate totals from cart
+      let subtotal = 0;
+      const items = cart.map(item => {
+        const qty = item.qty || 1;
+        const unitPrice = item.price || 0;
+        const lineTotal = unitPrice * qty;
+        subtotal += lineTotal;
+        return {
+          name: item.name || item.service_name || 'Service',
+          unit_price: unitPrice,
+          quantity: qty,
+          line_total: lineTotal,
+          metadata: item.metadata || {}
+        };
+      });
+      
+      // Generate complete data summaries (no placeholders)
+      const jobDetailsSummary = generateJobDetailsSummary(cart, customer, offerMeta);
+      const equipmentProvided = generateEquipmentProvided(cart, offerMeta);
+      
+      // ✅ BUILD CANONICAL JOB_DETAILS PAYLOAD
+      const jobDetails = buildJobDetailsPayload(cart, customer, offerMeta || {});
+      
+      // Enhanced metadata with computed fields
+      const enhancedMetadata = {
+        ...offerMeta,
+        job_details: jobDetails, // ✅ Canonical job details payload
+        job_details_summary: jobDetailsSummary,
+        equipment_provided: equipmentProvided,
+        schedule_status: 'Scheduling Pending',
+        cart_items_count: cart.length,
+        cart_total_items: cart.reduce((sum, item) => sum + (item.qty || 1), 0),
+      };
+      
+      // Insert order with status "pending_payment"
+      console.log('[Checkout] Creating order:', orderId);
+      await logTrace('ORDER_INSERT_START', { order_id: orderId });
+      
+      const { error: orderInsertError } = await client.from('h2s_orders').insert({
+        order_id: orderId,
+        session_id: null, // Will be updated after Stripe session creation
+        customer_email: customer.email,
+        customer_name: customer.name || '',
+        customer_phone: customer.phone || '',
+        items: items,
+        subtotal: subtotal,
+        total: subtotal,
+        currency: 'usd',
+        status: 'pending_payment', // Critical: shows this order is waiting for payment
+        metadata_json: enhancedMetadata,
+        created_at: new Date().toISOString(),
+        address: offerMeta?.service_address || '',
+        city: offerMeta?.service_city || '',
+        state: offerMeta?.service_state || '',
+        zip: offerMeta?.service_zip || ''
+      });
+      
+      if (orderInsertError) {
+        console.error('[Checkout] ❌ ORDER INSERT FAILED:', {
+          error: orderInsertError.message,
+          code: orderInsertError.code,
+          order_id: orderId
+        });
+        await logFailure('ORDER_INSERT', orderInsertError, { order_id: orderId });
+        
+        // FAIL HARD - No order means no checkout
+        return NextResponse.json({
+          ok: false,
+          error: 'Failed to create order record',
+          code: 'ORDER_INSERT_FAILED',
+          details: orderInsertError.message
+        }, { status: 500, headers: corsHeaders(request) });
+      }
+      
+      console.log('[Checkout] ✅ Order created successfully:', orderId);
+      await logTrace('ORDER_INSERTED', { order_id: orderId });
+
+      // Now create dispatch job
+      console.log('[Checkout] Creating dispatch job for order:', orderId);
+      await logTrace('JOB_CREATE_START', { order_id: orderId });
+      
+      let jobId: string | null = null;
+      
+      try {
+        const dispatch = getSupabaseDispatch() || client;
+        
+        if (!dispatch) {
+          throw new Error('Dispatch database client not available');
+        }
+        
+        const DEFAULT_SEQUENCE_ID = '88297425-c134-4a51-8450-93cb35b1b3cb';
+        const DEFAULT_STEP_ID = 'd30da333-3a54-4598-8ac1-f3b276185ea1';
+
+        // Resolve or create recipient
+        let recipientId = null;
+        const customerEmail = customer.email;
+
+        try {
+          const { data: existingRecipient } = await dispatch
+            .from('h2s_recipients')
+            .select('recipient_id')
+            .eq('email_normalized', customerEmail)
+            .maybeSingle();
+
+          if (existingRecipient) {
+            recipientId = existingRecipient.recipient_id;
+            console.log('[Checkout] Found existing recipient:', recipientId);
+          }
+        } catch (findErr) {
+          console.warn('[Checkout] Error finding recipient:', findErr);
+        }
+
+        if (!recipientId) {
+          console.log('[Checkout] Creating new recipient for:', customerEmail);
+          try {
+            const { data: newRecipient, error: createRecipErr } = await dispatch
+              .from('h2s_recipients')
+              .insert({
+                email_normalized: customerEmail,
+                first_name: customer.name || 'Customer',
+                recipient_key: `customer-${crypto.randomUUID()}`
+              })
+              .select('recipient_id')
+              .single();
+
+            if (createRecipErr) {
+              console.error('[Checkout] Failed to create recipient:', createRecipErr);
+              throw createRecipErr;
+            } else {
+              recipientId = newRecipient.recipient_id;
+              console.log('[Checkout] ✅ Created recipient:', recipientId);
+            }
+          } catch (createErr) {
+            console.error('[Checkout] Exception creating recipient:', createErr);
+            throw createErr;
+          }
+        }
+
+        if (!recipientId) {
+          throw new Error('Failed to resolve or create recipient');
+        }
+
+        // Create dispatch job
+        // NOTE: If constraint h2s_dispatch_jobs_recipient_step_uq still exists, this will fail for repeat customers
+        // The migration should have dropped it and added order_id uniqueness instead
+        const insertJob: any = {
+          order_id: orderId,
+          status: 'queued',
+          created_at: new Date().toISOString(),
+          due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          recipient_id: recipientId,
+          sequence_id: DEFAULT_SEQUENCE_ID,
+          step_id: DEFAULT_STEP_ID,
+        };
+
+        console.log('[Checkout] Creating dispatch job:', JSON.stringify(insertJob));
+
+        const { data: jobData, error: jobError } = await dispatch
+          .from('h2s_dispatch_jobs')
+          .insert(insertJob)
+          .select()
+          .single();
+
+        if (jobError) {
+          console.error('[Checkout] ❌ DISPATCH JOB INSERT FAILED:', {
+            error: jobError.message,
+            code: jobError.code,
+            details: jobError.details,
+            hint: jobError.hint,
+            order_id: orderId,
+            recipient_id: recipientId,
+            full_error: JSON.stringify(jobError)
+          });
+
+          // Check if it's the old constraint blocking us
+          if (jobError.code === '23505') {
+            console.error('[Checkout] ⚠️  UNIQUE CONSTRAINT VIOLATION!');
+            console.error('[Checkout] ⚠️  Message:', jobError.message);
+            console.error('[Checkout] ⚠️  Details:', jobError.details);
+            console.error('[Checkout] ⚠️  This means the constraint STILL EXISTS in the database!');
+          }
+
+          await logFailure('JOB_INSERT', jobError, { order_id: orderId, recipient_id: recipientId });
+          
+          // Return detailed error to client for debugging
+          return NextResponse.json({
+            ok: false,
+            error: 'Failed to create dispatch job',
+            code: 'JOB_INSERT_FAILED',
+            details: jobError.message,
+            supabase_error: {
+              code: jobError.code,
+              details: jobError.details,
+              hint: jobError.hint,
+              message: jobError.message
+            }
           }, { status: 500, headers: corsHeaders(request) });
         }
-      }
 
-      const session = await stripe.checkout.sessions.create(sessionParams);
+        jobId = jobData?.job_id;
+        console.log('[Checkout] ✅ Dispatch job created:', jobId);
+        await logTrace('JOB_CREATED', { order_id: orderId, job_id: jobId, recipient_id: recipientId });
 
-      // Create order in database immediately for schedule-appointment lookup
-      const client = getSupabaseDb1() || getSupabase();
-      if (client) {
-        try {
-          const orderId = `ORD-${crypto.randomUUID().substring(0, 8).toUpperCase()}`;
-          
-          // Calculate totals from cart
-          let subtotal = 0;
-          const items = cart.map(item => {
-            const qty = item.qty || 1;
-            const unitPrice = item.price || 0;
-            const lineTotal = unitPrice * qty;
-            subtotal += lineTotal;
-            return {
-              name: item.name || item.service_name || 'Service',
-              unit_price: unitPrice,
-              quantity: qty,
-              line_total: lineTotal,
-              metadata: item.metadata || {}
-            };
-          });
-          
-          // Insert order
-          await client.from('h2s_orders').insert({
-            order_id: orderId,
-            session_id: session.id,
-            customer_email: customer.email,
-            customer_name: customer.name || '',
-            customer_phone: customer.phone || '',
-            items: items,
-            subtotal: subtotal,
-            total: subtotal, // Will be updated by webhook after payment
-            currency: 'usd',
-            status: 'pending',
-            metadata_json: offerMeta || {},
-            created_at: new Date().toISOString(),
-            address: offerMeta?.service_address || '',
-            city: offerMeta?.service_city || '',
-            state: offerMeta?.service_state || '',
-            zip: offerMeta?.service_zip || ''
-          });
+        // Link job to order metadata - CRITICAL STEP
+        if (jobId) {
+          const { data: orderData, error: fetchErr } = await client
+            .from('h2s_orders')
+            .select('metadata_json')
+            .eq('order_id', orderId)
+            .single();
 
-          // Create a dispatch job immediately (even before scheduling) so ops/portal can see it.
-          // The schedule-appointment API will later find and update this job to `scheduled`.
-          
-          /* 
-             REMOVED: Attempting to write to h2s_dispatch_jobs caused failures because the table schema
-             in Supabase (Queue System) does not match the Job Entity schema expected here.
-             
-             Logic has been disabled until the 'h2s_jobs' or 'h2s_dispatch_jobs' table is properly migrated.
-             The Portal should rely on 'h2s_orders' for now.
-          */
-          
-
-          // Re-enabled with fix for strict schema (recipient/sequence requirements)
-          try {
-            const dispatch = getSupabaseDispatch() || client;
-            if (dispatch) {
-                  const DEFAULT_SEQUENCE_ID = '88297425-c134-4a51-8450-93cb35b1b3cb';
-                  const DEFAULT_STEP_ID = 'd30da333-3a54-4598-8ac1-f3b276185ea1'; // Start of Bundle flow
-
-                  // 1. Resolve Recipient (Dynamic per Customer) to avoid Unique Constraint collision on (recipient_id, step_id)
-                  let recipientId = null;
-                  const customerEmail = customer.email;
-
-                  // A. Check if recipient exists
-                  try {
-                    const { data: existingRecipient } = await dispatch
-                      .from('h2s_recipients')
-                      .select('recipient_id')
-                      .eq('email_normalized', customerEmail)
-                      .maybeSingle();
-
-                    if (existingRecipient) {
-                      recipientId = existingRecipient.recipient_id;
-                      console.log('[Checkout] Found existing recipient:', recipientId);
-                    }
-                  } catch (findErr) {
-                     console.warn('[Checkout] Failed to finding recipient, ignoring:', findErr); 
-                  }
-
-                  // B. Create if not exists
-                  if (!recipientId) {
-                    try {
-                        const { data: newRecipient, error: createRecipErr } = await dispatch
-                        .from('h2s_recipients')
-                        .insert({
-                            email_normalized: customerEmail,
-                            first_name: customer.name || 'New Customer', 
-                            recipient_key: `customer-${crypto.randomUUID()}` // Ensure uniqueness
-                        })
-                        .select('recipient_id')
-                        .single();
-
-                        if (createRecipErr) {
-                            console.error('[Checkout] Failed to create new recipient:', createRecipErr.message);
-                            // Emergency fallback: If we can't create a user, we might fail job creation or use the fallback (risking collision)
-                            // We will try the global fallback but it will likely fail on 2nd order.
-                        } else {
-                            recipientId = newRecipient.recipient_id;
-                            console.log('[Checkout] Created new recipient:', recipientId);
-                        }
-                    } catch (createErr) {
-                         console.error('[Checkout] Exception creating recipient:', createErr);
-                    }
-                  }
-
-                  // Fallback ID (The system "Default" user) - Only use if absolutely necessary
-                  if (!recipientId) recipientId = '2ddbb40b-5587-4bd9-b78d-e7ff8754968f'; 
-
-                  // 2. Resolve Sequence
-                  const computedSequenceId = await (async () => {
-                    try {
-                      // Attempt to verify the default sequence exists
-                      const { data } = await dispatch.from('h2s_dispatch_jobs').select('sequence_id').eq('sequence_id', DEFAULT_SEQUENCE_ID).limit(1);
-                      if (data && data.length > 0) return data[0].sequence_id;
-                    } catch {}
-                    return DEFAULT_SEQUENCE_ID;
-                  })();
-
-                  const insertJob: any = {
-                    status: 'queued', // CORRECT STATUS (not pending)
-                    created_at: new Date().toISOString(),
-                    due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                    
-                    recipient_id: recipientId,
-                    sequence_id: computedSequenceId || DEFAULT_SEQUENCE_ID,
-                    step_id: DEFAULT_STEP_ID,
-                  };
-              console.log('[Checkout] Creating dispatch job with payload:', JSON.stringify(insertJob));
-
-              const { data: jobData, error: jobError } = await dispatch
-                .from('h2s_dispatch_jobs')
-                .insert(insertJob)
-                .select()
-                .single();
-
-              if (jobError) {
-                 console.warn('[Checkout] Dispatch job insert failed:', jobError.message);
-              } else {
-                 const jobId = jobData?.job_id;
-                 console.log('[Checkout] Dispatch job created:', jobId);
-                 
-                 // Link back to Order if possible (store job_id in order metadata)
-                 if (jobId) {
-                    try {
-                      // Fetch current metadata to merge
-                      const { data: orderData } = await client
-                        .from('h2s_orders')
-                        .select('metadata_json')
-                        .eq('order_id', orderId)
-                        .single();
-                        
-                      const currentMeta = (orderData?.metadata_json && typeof orderData.metadata_json === 'object') 
-                        ? orderData.metadata_json 
-                        : {};
-                      
-                      await client
-                        .from('h2s_orders')
-                        .update({
-                           metadata_json: {
-                             ...currentMeta,
-                             dispatch_job_id: jobId,
-                             dispatch_recipient_id: insertJob.recipient_id
-                           }
-                        })
-                        .eq('order_id', orderId);
-                        
-                      console.log('[Checkout] Linked Job to Order Metadata');
-                    } catch (linkErr) {
-                      console.warn('[Checkout] Failed to link job to order:', linkErr);
-                    }
-                 }
-              }
-            }
-          } catch (jobCreateErr) {
-            console.warn('[Checkout] Dispatch job creation exception (non-fatal):', jobCreateErr);
+          if (fetchErr) {
+            console.error('[Checkout] ❌ Failed to fetch order for metadata update:', fetchErr);
+            throw new Error(`Cannot link job to order: ${fetchErr.message}`);
           }
-           
-          
-          console.log('[Checkout] Order created:', orderId, 'for session:', session.id);
-        } catch (dbError) {
-          console.error('[Checkout] Failed to create order:', dbError);
-          // Don't fail checkout if order creation fails
+
+          const currentMeta = (orderData?.metadata_json && typeof orderData.metadata_json === 'object')
+            ? orderData.metadata_json
+            : {};
+
+          const { error: updateErr } = await client
+            .from('h2s_orders')
+            .update({
+              metadata_json: {
+                ...currentMeta,
+                dispatch_job_id: jobId,
+                dispatch_recipient_id: recipientId
+              }
+            })
+            .eq('order_id', orderId);
+
+          if (updateErr) {
+            console.error('[Checkout] ❌ Failed to link job to order metadata:', updateErr);
+            throw new Error(`Metadata update failed: ${updateErr.message}`);
+          }
+
+          console.log('[Checkout] ✅ Linked job to order metadata (VERIFIED)');
+          await logTrace('JOB_LINKED_TO_ORDER', { order_id: orderId, job_id: jobId });
+        } else {
+          console.error('[Checkout] ❌ No jobId to link!');
+          throw new Error('Job creation returned no job_id');
         }
+      } catch (jobCreateErr: any) {
+        console.error('[Checkout] ❌ Job creation failed:', {
+          error: jobCreateErr.message,
+          stack: jobCreateErr.stack,
+          order_id: orderId
+        });
+        await logFailure('JOB_CREATE_EXCEPTION', jobCreateErr, { order_id: orderId });
+        
+        // FAIL HARD - No job means checkout is incomplete
+        // Clean up the order we just created
+        try {
+          await client.from('h2s_orders').delete().eq('order_id', orderId);
+          console.log('[Checkout] Cleaned up order after job creation failure');
+        } catch (cleanupErr) {
+          console.error('[Checkout] Failed to clean up order:', cleanupErr);
+        }
+        
+        return NextResponse.json({
+          ok: false,
+          error: `Failed to create dispatch job: ${jobCreateErr.message}`,
+          code: jobCreateErr.code || 'JOB_CREATE_FAILED',
+          details: jobCreateErr.details || jobCreateErr.message,
+          hint: jobCreateErr.hint || '',
+          supabase_error: {
+            message: jobCreateErr.message,
+            code: jobCreateErr.code,
+            details: jobCreateErr.details,
+            hint: jobCreateErr.hint
+          }
+        }, { status: 500, headers: corsHeaders(request) });
       }
+
+      console.log('[Checkout] ========== STEP 2: CREATE STRIPE SESSION ==========');
+
+      // === CALL STRIPE RELAY (Railway) ===
+      // Direct Stripe API calls from Vercel timeout unreliably.
+      // Relay service provides stable connectivity.
+      const relayUrl = process.env.STRIPE_RELAY_URL;
+      const relaySecret = process.env.STRIPE_RELAY_SECRET;
+
+      if (!relayUrl || !relaySecret) {
+        console.error('[Checkout] STRIPE_RELAY_URL or STRIPE_RELAY_SECRET not configured');
+        
+        // Clean up order and job
+        try {
+          await client.from('h2s_orders').delete().eq('order_id', orderId);
+          if (jobId) {
+            const dispatch = getSupabaseDispatch() || client;
+            await dispatch.from('h2s_dispatch_jobs').delete().eq('job_id', jobId);
+          }
+        } catch (cleanupErr) {
+          console.error('[Checkout] Cleanup failed:', cleanupErr);
+        }
+        
+        return NextResponse.json({
+          ok: false,
+          error: 'Payment system configuration error. Please contact support.',
+          code: 'RELAY_NOT_CONFIGURED'
+        }, { status: 500, headers: corsHeaders(request) });
+      }
+
+      console.log(`[Checkout] Calling relay: ${relayUrl}/stripe/checkout`);
+      console.log(`[Checkout] Using idempotency key: ${deterministicKey}`);
+      await logTrace('SESSION_CREATE_START', { order_id: orderId, idempotency_key: deterministicKey });
+
+      let session;
+      try {
+        // Fetch with timeout control (8 seconds max)
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const relayResponse = await fetch(`${relayUrl}/stripe/checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${relaySecret}`
+          },
+          body: JSON.stringify({
+            sessionParams,
+            idempotencyKey: deterministicKey // Use deterministic key for retry safety
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        const relayData = await relayResponse.json();
+
+        if (!relayResponse.ok || !relayData.ok) {
+          console.error('[Checkout] Relay returned error:', relayData);
+          return NextResponse.json({
+            ok: false,
+            error: relayData.error || 'Payment system error',
+            code: relayData.code || 'RELAY_ERROR'
+          }, { status: relayResponse.status, headers: corsHeaders(request) });
+        }
+
+        session = { id: relayData.session.id, url: relayData.session.url };
+        console.log(`[Checkout] ✓ Session created via relay: ${session.id}`);
+        await logTrace('SESSION_CREATED', { stripe_session_id: session.id, order_id: orderId });
+
+      } catch (relayError: any) {
+        console.error('[Checkout] ❌ Relay call failed:', relayError);
+        await logFailure('RELAY_CALL_FAILED', relayError, { order_id: orderId });
+        
+        // Clean up order and job since Stripe session failed
+        try {
+          await client.from('h2s_orders').delete().eq('order_id', orderId);
+          if (jobId) {
+            const dispatch = getSupabaseDispatch() || client;
+            await dispatch.from('h2s_dispatch_jobs').delete().eq('job_id', jobId);
+          }
+          console.log('[Checkout] Cleaned up order+job after Stripe failure');
+        } catch (cleanupErr) {
+          console.error('[Checkout] Failed to clean up after Stripe failure:', cleanupErr);
+        }
+        
+        // Classify error types and fail the request
+        if (relayError.name === 'AbortError') {
+          return NextResponse.json({
+            ok: false,
+            error: 'Payment system timeout. Please try again.',
+            code: 'RELAY_TIMEOUT'
+          }, { status: 504, headers: corsHeaders(request) });
+        }
+        
+        return NextResponse.json({
+          ok: false,
+          error: 'Unable to connect to payment system. Please try again.',
+          code: 'RELAY_CONNECTION_ERROR',
+          details: relayError.message
+        }, { status: 500, headers: corsHeaders(request) });
+      }
+
+      // Update order and job with Stripe session_id
+      console.log('[Checkout] ========== STEP 3: UPDATE ORDER+JOB WITH SESSION ID ==========');
+      console.log('[Checkout] Updating order with session_id:', session.id);
+      
+      try {
+        const { error: updateError } = await client
+          .from('h2s_orders')
+          .update({
+            session_id: session.id,
+            status: 'pending' // Payment pending (webhook will update to "paid")
+          })
+          .eq('order_id', orderId);
+
+        if (updateError) {
+          console.error('[Checkout] ❌ Failed to update order with session_id:', updateError);
+          await logFailure('ORDER_UPDATE_SESSION', updateError, { order_id: orderId, session_id: session.id });
+          // Continue anyway - order exists, session exists, just not linked perfectly
+        } else {
+          console.log('[Checkout] ✅ Order updated with session_id');
+          await logTrace('ORDER_UPDATED_WITH_SESSION', { order_id: orderId, session_id: session.id });
+        }
+      } catch (updateErr) {
+        console.error('[Checkout] Exception updating order:', updateErr);
+        // Continue anyway
+      }
+
+      console.log('[Checkout] ========== CHECKOUT COMPLETE ==========');
+      console.log('[Checkout] Order ID:', orderId);
+      console.log('[Checkout] Job ID:', jobId);
+      console.log('[Checkout] Session ID:', session.id);
+      console.log('[Checkout] Deployment timestamp:', new Date().toISOString()); // Force cache bust
+      await logTrace('COMPLETE_SUCCESS', { order_id: orderId, job_id: jobId, stripe_session_id: session.id });
 
       return NextResponse.json({
         ok: true,
+        checkout_trace_id: reqId,
+        order_id: orderId,
+        job_id: jobId,
         pay: {
           session_url: session.url,
           session_id: session.id
+        },
+        __debug: {
+          job_created: !!jobId,
+          deployment_timestamp: new Date().toISOString()
         }
       }, { status: 200, headers: corsHeaders(request) });
     }
@@ -1245,36 +1719,59 @@ export async function POST(request: Request) {
       }
 
       try {
+        console.log('[Promo Check] ========================================');
         console.log('[Promo Check] Searching for code:', promotion_code);
+        console.log('[Promo Check] Cart has', line_items.length, 'items');
+        console.log('[Promo Check] Items:', line_items.map(i => `${i.name || 'Unnamed'} x${i.quantity || 1} @ $${(i.unit_amount || 0)/100}`).join(', '));
         
-        // Search for the promotion code in Stripe  
-        const promoCodes = await stripe.promotionCodes.list({
-          code: promotion_code,
-          limit: 1,
-          active: true
-        });
+        // FAST PATH: Check cache first to avoid Stripe API timeout issues
+        const normalizedCode = promotion_code.toLowerCase();
+        const cachedPromo = KNOWN_PROMO_CODES[normalizedCode];
+        let coupon: any;
+        let promoCode: any;
+        
+        if (cachedPromo && cachedPromo.active) {
+          console.log('[Promo Check] Found in cache:', cachedPromo.code);
+          coupon = cachedPromo.coupon;
+          promoCode = cachedPromo;
+        } else {
+          console.log('[Promo Check] Not in cache, trying Stripe API...');
+          const startTime = Date.now();
+          // SLOW PATH: Search for the promotion code in Stripe
+          const promoCodes = await stripe.promotionCodes.list({
+            code: promotion_code,
+            limit: 1,
+            active: true
+          });
 
-        console.log('[Promo Check] Search results:', promoCodes.data.length, 'codes found');
+          console.log('[Promo Check] Stripe response time:', Date.now() - startTime, 'ms');
+          console.log('[Promo Check] Search results:', promoCodes.data?.length || 0, 'codes found');
 
-        if (!promoCodes.data || promoCodes.data.length === 0) {
-          return NextResponse.json({
-            ok: true,
-            applicable: false,
-            error: 'Promotion code not found or inactive'
-          }, { headers: corsHeaders(request) });
+          if (!promoCodes.data || promoCodes.data.length === 0) {
+            return NextResponse.json({
+              ok: true,
+              applicable: false,
+              error: 'Promotion code not found or inactive'
+            }, { headers: corsHeaders(request) });
+          }
+
+          const promoCodeId = promoCodes.data[0].id;
+          promoCode = promoCodes.data[0];
+          console.log('[Promo Check] Found promo code ID:', promoCodeId);
+          console.log('[Promo Check] Active:', promoCode.active);
+          console.log('[Promo Check] Restrictions:', JSON.stringify(promoCode.restrictions || {}));
+          
+          // Use coupon from list response
+          coupon = promoCode.coupon;
         }
-
-        const promoCodeId = promoCodes.data[0].id;
-        console.log('[Promo Check] Found promo code ID:', promoCodeId);
         
-        // Retrieve the full promotion code with expanded coupon
-        const fullPromoCode: any = await stripe.promotionCodes.retrieve(promoCodeId, {
-          expand: ['coupon']
-        });
-        
-        console.log('[Promo Check] Full PromoCode retrieved');
-        
-        const coupon: any = fullPromoCode.coupon;
+        console.log('[Promo Check] Coupon object exists:', !!coupon);
+        if (coupon) {
+          console.log('[Promo Check] Coupon ID:', coupon.id);
+          console.log('[Promo Check] Coupon percent_off:', coupon.percent_off);
+          console.log('[Promo Check] Coupon amount_off:', coupon.amount_off);
+          console.log('[Promo Check] Coupon applies_to:', JSON.stringify(coupon.applies_to || {}));
+        }
         
         if (!coupon) {
           console.log('[Promo Check] ERROR: Coupon not found on promo code');
@@ -1285,7 +1782,7 @@ export async function POST(request: Request) {
           }, { status: 500, headers: corsHeaders(request) });
         }
 
-        console.log('[Promo Check] Coupon found:', coupon.id, coupon.percent_off ? `${coupon.percent_off}%` : `$${coupon.amount_off/100}`);
+        console.log('[Promo Check] SUCCESS: Coupon found:', coupon.id, coupon.percent_off ? `${coupon.percent_off}%` : `$${coupon.amount_off/100}`);
 
         // Calculate subtotal
         let subtotalCents = 0;
@@ -1295,12 +1792,16 @@ export async function POST(request: Request) {
           subtotalCents += unitAmount * quantity;
         }
 
+        console.log('[Promo Check] Subtotal:', subtotalCents, 'cents ($' + (subtotalCents/100).toFixed(2) + ')');
+
         // Calculate discount
         let savingsCents = 0;
         if (coupon.percent_off) {
           savingsCents = Math.round(subtotalCents * (coupon.percent_off / 100));
+          console.log('[Promo Check] Calculated discount:', coupon.percent_off, '% of', subtotalCents, '=', savingsCents, 'cents');
         } else if (coupon.amount_off) {
           savingsCents = coupon.amount_off;
+          console.log('[Promo Check] Fixed discount:', savingsCents, 'cents');
         }
 
         // Ensure discount doesn't exceed subtotal
@@ -1308,10 +1809,16 @@ export async function POST(request: Request) {
 
         const totalCents = subtotalCents - savingsCents;
 
+        console.log('[Promo Check] Final calculation:');
+        console.log('[Promo Check]   Subtotal: $' + (subtotalCents/100).toFixed(2));
+        console.log('[Promo Check]   Savings: -$' + (savingsCents/100).toFixed(2));
+        console.log('[Promo Check]   Total: $' + (totalCents/100).toFixed(2));
+        console.log('[Promo Check] ========================================');
+
         return NextResponse.json({
           ok: true,
           applicable: true,
-          promotion_code: fullPromoCode.code,
+          promotion_code: promoCode.code,
           estimate: {
             subtotal_cents: subtotalCents,
             savings_cents: savingsCents,
@@ -1321,7 +1828,12 @@ export async function POST(request: Request) {
         }, { headers: corsHeaders(request) });
 
       } catch (stripeError: any) {
-        console.error('[Promo Check] Stripe error:', stripeError);
+        console.error('[Promo Check] ERROR: Stripe error occurred!');
+        console.error('[Promo Check] Error type:', stripeError.type);
+        console.error('[Promo Check] Error message:', stripeError.message);
+        console.error('[Promo Check] Error code:', stripeError.code);
+        console.error('[Promo Check] Full error:', JSON.stringify(stripeError, null, 2));
+        console.error('[Promo Check] ========================================');
         return NextResponse.json({
           ok: false,
           applicable: false,
