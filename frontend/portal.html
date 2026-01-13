@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-002001 -->
+<!-- VERSION: 2026-01-13_SAFE_v7-002001 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -6516,7 +6516,7 @@ a:focus-visible{
   <div class="menu-sheet" role="dialog" aria-labelledby="menuTitle">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(59,130,246,0.1)">
       <h2 id="menuTitle" style="margin:0;font-size:20px;font-weight:700;color:#e0f2fe;letter-spacing:-0.02em">Menu</h2>
-      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">?</button>
+      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">&times;</button>
     </div>
     <div class="menu-row" id="menuItems"></div>
   </div>
@@ -6646,7 +6646,7 @@ a:focus-visible{
               </div>
               <p id="teamUpdatesText" style="margin:0;font-size:13px;color:#94a3b8;line-height:1.3">New messages from dispatch</p>
             </div>
-            <div style="color:#64748b;font-size:18px;flex-shrink:0">?</div>
+            <div style="color:#64748b;font-size:18px;flex-shrink:0">&#10095;</div>
           </div>
         </div>
 
@@ -10325,7 +10325,7 @@ window.showCustomerPhotoLightbox = function(startIndex, photos) {
             <button onclick="event.stopPropagation();window.prevCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">&times;</button>
           ` : ''}
           
           <div style="color:var(--h2s-text-main);font-size:14px;font-weight:600;backdrop-filter:blur(10px);background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);padding:10px 18px;border-radius:12px;">
@@ -10336,7 +10336,7 @@ window.showCustomerPhotoLightbox = function(startIndex, photos) {
             <button onclick="event.stopPropagation();window.nextCustomerPhoto()" 
                     style="width:48px;height:48px;border-radius:12px;background:var(--h2s-bg-card);border:1px solid var(--h2s-border-subtle);color:var(--h2s-text-main);font-size:24px;cursor:pointer;backdrop-filter:blur(10px);transition:all 0.2s;font-weight:700;"
                     onmouseover="this.style.background='var(--h2s-brand-azure)';this.style.borderColor='var(--h2s-brand-azure)'"
-                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">?</button>
+                    onmouseout="this.style.background='var(--h2s-bg-card)';this.style.borderColor='var(--h2s-border-subtle)'">&times;</button>
           ` : ''}
         </div>
       </div>
@@ -11379,7 +11379,7 @@ async function renderPhotoGallery(jobId) {
             style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;background:rgba(239,68,68,.95);border:1px solid rgba(255,255,255,.2);color:white;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:0;transition:all 0.2s ease;font-weight:300"
             onmouseover="this.style.background='rgba(220,38,38,1)';this.style.transform='scale(1.1)'"
             onmouseout="this.style.background='rgba(239,68,68,.95)';this.style.transform='scale(1)'"
-            title="Delete photo">?</button>
+            title="Delete photo">&times;</button>
         </div>
       `;}).join('')}
     </div>
@@ -11692,7 +11692,7 @@ async function showPhotoUploadPreview(files, jobId) {
                   style="position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;background:rgba(239,68,68,.96);border:1px solid rgba(255,255,255,.4);color:white;font-size:20px;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.5);transition:all 0.2s ease;font-weight:300"
                   onmouseover="this.style.background='rgba(220,38,38,1)';this.style.transform='scale(1.15)'"
                   onmouseout="this.style.background='rgba(239,68,68,.96)';this.style.transform='scale(1)'"
-                  title="Remove this photo">?</button>
+                  title="Remove this photo">&times;</button>
                 <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top, rgba(10,42,90,.95) 0%, transparent 100%);padding:6px 8px 4px;font-size:10px;color:#9bc8ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(p.file.name)}">${esc(p.file.name)}</div>
               </div>
             `).join('')}
@@ -21772,7 +21772,7 @@ function openFeedbackModal() {
     <div style="background:linear-gradient(135deg,rgba(10,42,90,.98),rgba(8,32,68,.95));border:2px solid rgba(20,147,255,.4);border-radius:16px;padding:32px;max-width:500px;width:100%;box-shadow:0 25px 70px rgba(0,0,0,.5)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
         <h2 style="margin:0;font-size:22px;color:#e0f2fe">&#9993; Submit Feedback</h2>
-        <button onclick="this.closest('.modal').remove()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.15)';this.style.borderColor='rgba(239,68,68,0.3)';this.style.color='#f87171'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#94a3b8'">?</button>
+        <button onclick="this.closest('.modal').remove()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:18px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(239,68,68,0.15)';this.style.borderColor='rgba(239,68,68,0.3)';this.style.color='#f87171'" onmouseout="this.style.background='rgba(255,255,255,0.05)';this.style.borderColor='rgba(255,255,255,0.1)';this.style.color='#94a3b8'">&times;</button>
       </div>
       <p style="margin:0 0 20px;color:#cbd5e1;font-size:14px;line-height:1.6">
         Found a bug or have a suggestion? Let us know! Your feedback helps us improve the platform.
