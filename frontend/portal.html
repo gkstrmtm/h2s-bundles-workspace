@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -10,6 +10,42 @@
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
+console.log('%c STOP AND READ: FORCING CLEANUP ', 'background: #ff0000; color: #ffffff; font-size: 20px');
+
+// 1. FORCE UNREGISTER ALL SERVICE WORKERS
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(registrations => {
+    if (registrations.length > 0) {
+        console.log(`>> Found ${registrations.length} workers - KILLING THEM ALL`);
+        registrations.forEach(reg => {
+            reg.unregister().then(success => {
+                if (success) console.log('>> Worker Unregistered:', reg.scope);
+                window.location.reload(); // Reload immediately after killing one to allow new fetch
+            });
+        });
+    } else {
+        console.log('>> No active Service Workers (Good)');
+    }
+  });
+}
+
+// 2. CLEAR CACHES IF VERSION OLD / MISMATCH
+try {
+   const currentVersion = '2026-01-13_SAFE_v6';
+   const lastVersion = localStorage.getItem('h2s_portal_version_check');
+   if (lastVersion !== currentVersion) {
+       console.log(`>> Version mismatch: ${lastVersion} vs ${currentVersion}. Clearing caches.`);
+       if (caches) {
+           caches.keys().then(names => {
+               for (let name of names) caches.delete(name);
+               console.log('>> All caches deleted');
+           });
+       }
+       localStorage.setItem('h2s_portal_version_check', currentVersion);
+       // Optional: clear specific keys? No, let's trust the logic.
+   }
+} catch(e) { console.error(e); }
+
 // Logs removed for clarity
 /*
 if ('serviceWorker' in navigator) {
