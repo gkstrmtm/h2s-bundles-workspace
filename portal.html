@@ -6,18 +6,11 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal � Home2Smart</title>
-<!-- VERSION: 2026-01-12-211549 -->
+<!-- VERSION: 2026-01-13_SAFE_v2-211549 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
-console.log('========================================');
-console.log('PORTAL VERSION: 2026-01-12-211549');
-console.log('?? Deployed to: portal.home2smart.com');
-console.log('?? Backend API: backend-azd9eq7wd...vercel.app/api');
-console.log('? Connected to correct database (ulbzmgmx...)');
-console.log('? Portal signup tested and working');
-console.log('? Git auto-deploy reconnected');
-console.log('========================================');
+// Logs removed for clarity
 /*
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -11016,7 +11009,7 @@ function showOfferDetails(job) {
       } else {
         share = 0.5;
       }
-      payoutLabel = `Your share • ${splitStr || '50/50'}`;
+      payoutLabel = `Your share &bull; ${splitStr || '50/50'}`;
     } else if (p && p.label) {
       payoutLabel = p.label;
     }
@@ -12236,7 +12229,7 @@ function renderOffersSync(list, box) {
           }
         }
         payoutAmount = payoutAmount * share;
-        payoutLabel = `Your share • ${splitStr || '50/50'}`;
+        payoutLabel = `Your share &bull; ${splitStr || '50/50'}`;
       }
     } catch (e) {
       console.warn('[Offers] payout compute failed for job', j.job_id, e);
@@ -12305,9 +12298,9 @@ function renderOffersSync(list, box) {
     const metaHtml = `
         <div style="color:var(--h2s-text-secondary);font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span>${esc(j.service_city||j.city||"Location")}</span>
-            <span style="color:var(--h2s-border-subtle)">•</span>
+            <span style="color:var(--h2s-border-subtle)">&bull;</span>
             <span>${distanceText}</span>
-            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">•</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
+            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">&bull;</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
         </div>
     `;
 
@@ -21141,13 +21134,13 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     // Installation requirements
     if (cameraDetails.install_requirements && cameraDetails.install_requirements.length > 0) {
       cameraDetails.install_requirements.forEach(req => {
-        bullets.push(`• ${escHtml(req)}`);
+        bullets.push(`&bull; ${escHtml(req)}`);
       });
     }
     
     // Missing info indicator
     if (cameraDetails.equipment_mode === 'Check with customer') {
-      bullets.push(`• ⚠️ <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
+      bullets.push(`&bull; ⚠️ <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
     }
     
     out.summary = `${cameraDetails.camera_count} Camera Install - ${cameraDetails.coverage_type}`;
@@ -21206,7 +21199,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
       // Add detailed bullets from tech_details
       if (item.tech_details.length > 0) {
         item.tech_details.forEach(detail => {
-          bullets.push(`• ${detail}`);
+          bullets.push(`&bull; ${detail}`);
         });
       }
     });
@@ -21258,7 +21251,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   const bullets = [];
   const push = (g, suffix = '') => {
     if (g.count > 0) parts.push(`${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
-    if (g.count > 0) bullets.push(`• ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
+    if (g.count > 0) bullets.push(`&bull; ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
   };
   if (groups.tv.count) {
     const sizes = groups.tv.sizes.length ? ` (${[...new Set(groups.tv.sizes)].join('", ')}")` : '';
@@ -21266,7 +21259,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   }
   ['mount','soundbar','camera','doorbell','thermostat','outlet','wiring'].forEach(k => push(groups[k]));
 
-  out.summary = parts.join(' • ');
+  out.summary = parts.join(' &bull; ');
   out.bulletsHtml = bullets.map(escHtml).join('<br>');
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
