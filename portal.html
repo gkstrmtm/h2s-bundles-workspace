@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-012350 -->
+<!-- VERSION: 2026-01-13-013009 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -9781,8 +9781,8 @@ $("menu").addEventListener("click", e => {
       $("dataHealthDashboard").style.display = "none";
       adminLoadJobs();
     } else if (tab === 'ad-announcements') {
-      console.log('[Menu] 📱 Showing Announcements panel');
-      console.log('[Menu] 📢 Calling loadAnnouncements()...');
+      console.log('[Menu] ?? Showing Announcements panel');
+      console.log('[Menu] ?? Calling loadAnnouncements()...');
       $("jobsPanel").style.display = "none";
       $("announcementsPanel").style.display = "block";
       $("dataHealthDashboard").style.display = "none";
@@ -9792,7 +9792,7 @@ $("menu").addEventListener("click", e => {
       console.log('[Menu] ? loadAnnouncements function exists, calling it now...');
         loadAnnouncements();
       } else {
-        console.error('[Menu] ❌ loadAnnouncements is NOT a function!', typeof loadAnnouncements);
+        console.error('[Menu] ? loadAnnouncements is NOT a function!', typeof loadAnnouncements);
       }
     }
   }
@@ -10842,7 +10842,16 @@ function showOfferDetails(job) {
     console.log('[DETAILS DATE] Raw Date:', rawDate);
     console.log('[DETAILS DATE] Raw Window:', rawWindow);
 
-    const d = rawDate ? new Date(rawDate) : null;
+    // FIXED: Force noon to avoid timezone rollback on date-only strings
+    let d = null;
+    if (rawDate) {
+      if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        d = new Date(rawDate + 'T12:00:00');
+      } else {
+        d = new Date(rawDate);
+      }
+    }
+    
     const dateEl = $("md-date");
 
     if (d && !isNaN(d)) {
