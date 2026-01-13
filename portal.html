@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-000104 -->
+<!-- VERSION: 2026-01-13_SAFE_v4-000104 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -25,7 +25,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     registrations.forEach(reg => {
       reg.unregister();
-      console.log('?? Unregistered service worker:', reg.scope);
+      console.log('>> Unregistered service worker:', reg.scope);
     });
   });
 }
@@ -8582,14 +8582,14 @@ function renderLastUpdateTime() {
   const seconds = Math.floor((Date.now() - lastUpdateTime) / 1000);
   
   if (seconds < 5) {
-    indicator.textContent = '?? Just updated';
+    indicator.textContent = 'Updated now';
     indicator.style.color = '#10b981'; // Green
   } else if (seconds < 60) {
-    indicator.textContent = `?? ${seconds}s ago`;
+    indicator.textContent = `Updated ${seconds}s ago`;
     indicator.style.color = '#6b7280'; // Gray
   } else {
     const minutes = Math.floor(seconds / 60);
-    indicator.textContent = `?? ${minutes}m ago`;
+    indicator.textContent = `Updated ${minutes}m ago`;
     indicator.style.color = '#9ca3af'; // Light gray
   }
 }
@@ -12540,7 +12540,7 @@ async function renderUpcoming(list) {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1493FF" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
         <div style="flex:1">
           <div style="font-weight:600;color:#1493FF;font-size:14px">Optimized Route</div>
-          <div style="font-size:13px;color:#64748b;margin-top:2px">${routeData.routeCount} stops • ${routeData.totalMiles} miles total</div>
+          <div style="font-size:13px;color:#64748b;margin-top:2px">${routeData.routeCount} stops &bull; ${routeData.totalMiles} miles total</div>
         </div>
       </div>
     `;
@@ -17871,13 +17871,13 @@ window.openTimeOffModal = function() {
       e.preventDefault();
       e.stopPropagation();
       const dropdown = document.getElementById('customCalendarDropdown');
-      console.log('?? Date display clicked, dropdown element:', dropdown);
+      console.log('>> Date display clicked, dropdown element:', dropdown);
       if (dropdown) {
         const isVisible = dropdown.style.display === 'block';
         dropdown.style.display = isVisible ? 'none' : 'block';
-        console.log('?? Dropdown display set to:', dropdown.style.display);
+        console.log('>> Dropdown display set to:', dropdown.style.display);
         if (!isVisible) {
-          console.log('?? Rendering custom calendar...');
+          console.log('>> Rendering custom calendar...');
           renderCustomCalendar(today, maxDate);
         }
       } else {
@@ -18426,8 +18426,8 @@ async function loadTraining() {
     // ?? LOG: Show categories from backend for debugging
     if (out.videos && out.videos.length > 0) {
       const categories = [...new Set(out.videos.map(v => v.module || v.category || 'uncategorized'))];
-      console.log('?? Training categories found:', categories);
-      console.log('?? Videos by category:', categories.map(cat => ({
+      console.log('>> Training categories found:', categories);
+      console.log('>> Videos by category:', categories.map(cat => ({
         category: cat,
         count: out.videos.filter(v => (v.module || v.category) === cat).length
       })));
@@ -20024,7 +20024,7 @@ window.addEventListener("beforeunload", () => {
 if ($("btnTestAnnouncements")) {
   $("btnTestAnnouncements").addEventListener("click", async () => {
     console.log('========================================');
-    console.log('?? TESTING ANNOUNCEMENTS CONNECTION');
+    console.log('>> TESTING ANNOUNCEMENTS CONNECTION');
     console.log('========================================');
     console.log('API URL:', API);
     console.log('Action: announcements_list');
@@ -20040,8 +20040,8 @@ if ($("btnTestAnnouncements")) {
       if (result && result.ok) {
         const count = (result.announcements || []).length;
         toast(`? Connected! Found ${count} announcements`);
-        console.log('? SUCCESS - Announcements:', result.announcements);
-        console.log('? Viewed IDs:', result.viewed_ids);
+        console.log('> SUCCESS - Announcements:', result.announcements);
+        console.log('> Viewed IDs:', result.viewed_ids);
       } else if (result && result.error) {
         toast(`? Backend Error: ${result.error}`);
         console.error('? BACKEND ERROR:', result);
@@ -20070,7 +20070,7 @@ console.log('[Announcements] Setting up modal event listeners...');
 document.addEventListener('click', function(e) {
   // New Announcement button (robust: allow clicks from child elements)
   if (e.target && (e.target.id === 'btnNewAnnouncement' || e.target.closest && e.target.closest('#btnNewAnnouncement'))) {
-    console.log('[Announcements] ?? New Announcement button clicked');
+    console.log('[Announcements] >> New Announcement button clicked');
     e.preventDefault();
     e.stopPropagation();
     
@@ -20130,7 +20130,7 @@ document.addEventListener('click', function(e) {
   
   // Save announcement button
   if (e.target && (e.target.id === 'btnSaveAnnouncement' || (e.target.closest && e.target.closest('#btnSaveAnnouncement')))) {
-    console.log('[Announcements] ?? Save button clicked');
+    console.log('[Announcements] >> Save button clicked');
     e.preventDefault();
     e.stopPropagation();
     
@@ -20156,7 +20156,7 @@ document.addEventListener('click', function(e) {
     const expires_at = expires_raw ? new Date(expires_raw).toISOString() : '';
     const is_active = $("announcementActive").checked ? 'true' : 'false';
     
-    console.log('[Announcements] ?? Form data captured:');
+    console.log('[Announcements] >> Form data captured:');
     console.log('  - Title:', title);
     console.log('  - Message:', message);
     console.log('  - Type:', type);
@@ -20178,16 +20178,16 @@ document.addEventListener('click', function(e) {
       created_by: 'admin'
     };
     
-    console.log('[Announcements] ?? Params object:', JSON.stringify(params, null, 2));
+    console.log('[Announcements] >> Params object:', JSON.stringify(params, null, 2));
     
     (async () => {
       try {
         let result;
         if (currentEditingAnnouncement) {
           params.announcement_id = currentEditingAnnouncement.announcement_id;
-          console.log('[Announcements] ?? UPDATE mode - ID:', params.announcement_id);
+          console.log('[Announcements] >> UPDATE mode - ID:', params.announcement_id);
           result = await GET("portal_announcements_update", params);
-          console.log('[Announcements] ?? Update response:', result);
+          console.log('[Announcements] >> Update response:', result);
           toast(result.ok ? "Updated!" : (result.error || "Update failed"));
         } else {
           console.log('[Announcements] ? CREATE mode - new announcement');
@@ -20484,12 +20484,12 @@ async function loadProAnnouncements() {
   }
   
   if (!sessionToken) {
-    console.log('[Announcements] ?? Skipping load - no session token');
+    console.log('[Announcements] >> Skipping load - no session token');
     return;
   }
   
   const who = (me && (me.email || me.pro_id)) || 'unknown';
-  console.log('[Announcements] ?? Loading announcements for:', who);
+  console.log('[Announcements] >> Loading announcements for:', who);
   
   // ? FAST LOAD: Check cache first (5-min TTL for announcements)
   const cached = getCache('announcements');
@@ -20497,16 +20497,16 @@ async function loadProAnnouncements() {
     console.log(`[Announcements] ? Using cached data (age: ${Math.round((Date.now() - cached._timestamp)/1000)}s)`);
     proAnnouncementsCache = cached.announcements || [];
     viewedAnnouncementIds = new Set((cached.viewed_ids || []).map(String));
-    console.log(`[Announcements] ?? Cached: ${proAnnouncementsCache.length} announcements`);
+    console.log(`[Announcements] >> Cached: ${proAnnouncementsCache.length} announcements`);
     updateTeamUpdatesBanner();
     return;
   }
   
   try {
-    console.log('[Announcements] ?? Fetching from API...');
+    console.log('[Announcements] >> Fetching from API...');
     const result = await GET("portal_announcements_list", { token: sessionToken });
     
-    console.log('[Announcements] ?? API Response:', result);
+    console.log('[Announcements] >> API Response:', result);
     
     if (!result.ok) throw new Error(result.error || 'Failed to load');
     
@@ -21144,7 +21144,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     
     // Missing info indicator
     if (cameraDetails.equipment_mode === 'Check with customer') {
-      bullets.push(`&bull; ?? <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
+      bullets.push(`&bull; &#9888; <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
     }
     
     out.summary = `${cameraDetails.camera_count} Camera Install - ${cameraDetails.coverage_type}`;
@@ -21156,7 +21156,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     out.summary = description ? description.split('\n')[0].slice(0, 120) : '';
-    out.bulletsHtml = out.summary ? `• ${escHtml(out.summary)}` : '';
+    out.bulletsHtml = out.summary ? `&bull; ${escHtml(out.summary)}` : '';
     console.log('[buildServiceSummary] OUTPUT (fallback):', out);
     return out;
   }
