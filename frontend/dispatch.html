@@ -1180,7 +1180,9 @@ body {
             <div class="info-item">
                 <label>Company</label>
                 <div id="pro-modal-company">N/A</div>
-            </div>
+            </div>Alright, what you need to do for the dispatch is make the prompt that's essentially going to establish continuity in the backend with rev tracking and all the metrics on our frontend for the dashboard area. The pro management is able to click on each name, pull their profile, all the detail of the data points in the database associated with the pro images, all that type of shit. Basically just tell it to audit that this dispatch.html and go deeper on everything, how it could be a little bit better or how I can make more sense.
+
+Make sure the pro payouts details show up in a style card that shows images, other jobs that the payouts were requested for, shit like that. Oh, never mind, it might already work. Let me see if you make sure the view card, you see the actual detail of the job that is relative to the payments, so you can see images and shit associated with it. It has to go down a rabbit hole of doing all that, the jobs being to click those cars, see all the details of jobs, and make sure it's completely connected to the ecosystem now, because it's rendering old data is not really showing any other bullshit. It's definitely some issues, so let's get under that all under control. 
             <div class="info-item">
                 <label>Status</label>
                 <div id="pro-modal-status">
@@ -1358,6 +1360,14 @@ body {
                     connectionStatus = 'online';
                     return res;
                 }
+
+                // Try to parse error message from body
+                let errorMsg = `Server returned ${res.status}`;
+                try {
+                    const clone = res.clone();
+                    const body = await clone.json();
+                    if (body.error) errorMsg = body.error;
+                } catch (e) { /* ignore parse error */ }
                 
                 if (res.status === 404) {
                     console.error(`[FETCH] 404 Not Found: ${url}`);
@@ -1371,12 +1381,12 @@ body {
                 
                 // Server error - retry
                 if (i < retries - 1) {
-                    console.log(`[FETCH] Retry ${i + 1}/${retries} after error ${res.status}`);
+                    console.warn(`[FETCH] Retry ${i + 1}/${retries} after error ${res.status}: ${errorMsg}`);
                     await new Promise(r => setTimeout(r, 1000 * (i + 1)));
                     continue;
                 }
                 
-                throw new Error(`Server returned ${res.status}`);
+                throw new Error(errorMsg);
                 
             } catch (err) {
                 console.error(`[FETCH] Error on attempt ${i + 1}:`, err.message);
@@ -1505,18 +1515,22 @@ body {
         
         filtered.forEach(pro => {
             const statusColor = pro.is_active ? 'var(--brand-green)' : 'var(--text-muted)';
-            const statusText = pro.is_active ? 'Active' : 'Inactive';
+            const statusText = pro.is_active ? 'Active' : 'Archived';
             const actionText = pro.is_active ? 'Deactivate' : 'Activate';
             const actionColor = pro.is_active ? 'var(--error)' : 'var(--brand-green)';
+            const safeProId = String(pro.pro_id).replace(/'/g, "\\'"); // Sanitize for onclick
             
             html += `
-                <tr style="border-bottom:1px solid var(--border); cursor:pointer; transition: background 0.2s" onmouseover="this.style.background='rgba(55, 65, 81, 0.3)'" onmouseout="this.style.background='transparent'" onclick="showProDetails('${pro.pro_id}')">
+                <tr style="border-bottom:1px solid var(--border); cursor:pointer; transition: background 0.2s" 
+                    onmouseover="this.style.background='rgba(55, 65, 81, 0.3)'" 
+                    onmouseout="this.style.background='transparent'" 
+                    onclick="showProDetails('${safeProId}')">
                     <td style="padding:12px">
                         <div style="font-weight:600; color:#fff">${escapeHtml(pro.name || 'N/A')}</div>
                         <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.company_name || '')}</div>
                     </td>
                     <td style="padding:12px">
-                        <div style="color:var(--text-muted)">${escapeHtml(pro.email || 'N/A')}</div>
+                        <div style="color:var(--text-muted); user-select:all">${escapeHtml(pro.email || 'N/A')}</div>
                         <div style="font-size:11px; color:var(--text-muted); margin-top:2px">${escapeHtml(pro.phone || '')}</div>
                     </td>
                     <td style="padding:12px">
@@ -1535,7 +1549,7 @@ body {
                         </span>
                     </td>
                     <td style="padding:12px; text-align:center" onclick="event.stopPropagation()">
-                        <button onclick="toggleProStatus('${pro.pro_id}', ${!pro.is_active})" style="padding:6px 14px; border:none; border-radius:6px; background:${actionColor}; color:white; font-size:12px; font-weight:600; cursor:pointer">
+                        <button onclick="toggleProStatus('${safeProId}', ${!pro.is_active})" style="padding:6px 14px; border:none; border-radius:6px; background:${actionColor}; color:white; font-size:12px; font-weight:600; cursor:pointer">
                             ${actionText}
                         </button>
                     </td>
@@ -1575,7 +1589,7 @@ body {
         if (!confirm(`Are you sure you want to ${action} this pro?`)) return;
         
         try {
-            const res = await fetchWithRetry(`${API_BASE}/admin_seed_pro`, {
+            const res = await fetchWithRetry(`${API_BASE}/admin_toggle_pro_status`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -1610,75 +1624,189 @@ body {
     // Pro Detail Modal Functions
     let currentProId = null;
     
-    function showProDetails(proId) {
-        const pro = allPros.find(p => p.pro_id === proId);
-        if (!pro) {
-            alert('Pro not found');
+    async function showProDetails(proId) {
+        console.log('[ProModal] Opening for ID:', proId);
+        if (!proId) {
+            console.error('[ProModal] No ID provided');
+            return;
+        }
+
+        currentProId = proId;
+        const modal = document.getElementById('pro-modal');
+        const content = modal.querySelector('.modal');
+        
+        if (!modal || !content) {
+            console.error('[ProModal] Modal elements not found in DOM');
+            alert('Error: Modal template missing');
             return;
         }
         
-        currentProId = proId;
+        // Loader
+        modal.classList.add('active'); // Ensure active class for visibility
+        modal.style.display = 'flex';
+        content.innerHTML = '<div style="text-align:center; padding:50px; color:var(--text-muted)"><div class="spinner" style="margin:0 auto 20px"></div>Loading detailed profile...</div>';
         
-        // Populate modal fields
-        document.getElementById('pro-modal-name').textContent = pro.name || 'N/A';
-        document.getElementById('pro-modal-email').textContent = pro.email || 'N/A';
-        document.getElementById('pro-modal-phone').textContent = pro.phone || 'N/A';
-        document.getElementById('pro-modal-company').textContent = pro.company_name || 'N/A';
-        document.getElementById('pro-modal-radius').textContent = `${pro.service_radius_miles || 35} mi`;
-        
-        // Status badge
-        const statusBadge = document.getElementById('pro-modal-status-badge');
-        if (pro.is_active) {
-            statusBadge.textContent = 'Active';
-            statusBadge.style.background = 'rgba(16, 185, 129, 0.1)';
-            statusBadge.style.color = 'var(--brand-green)';
-        } else {
-            statusBadge.textContent = 'Inactive';
-            statusBadge.style.background = 'rgba(148, 163, 184, 0.1)';
-            statusBadge.style.color = 'var(--text-muted)';
+        try {
+            console.log('[ProModal] Fetching details...');
+            // Fetch Rich Details
+            const res = await fetchWithRetry(`${API_BASE}/admin_pro_details`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: ADMIN_TOKEN, pro_id: proId })
+            });
+
+            console.log('[ProModal] Response status:', res.status);
+            const data = await res.json();
+            
+            if (!data.ok || !data.pro) {
+                console.error('[ProModal] API Error:', data.error);
+                content.innerHTML = `<div style="padding:20px; color:red; text-align:center">Failed to load pro: ${data.error || 'Unknown error'} <br><br> <button class="btn" onclick="closeProModal()">Close</button></div>`;
+                return;
+            }
+
+            const pro = data.pro;
+            const stats = data.stats || {};
+            const availability = data.availability || [];
+
+            // Build Rich UI
+            content.innerHTML = `
+                <div class="modal-header">
+                    <div style="display:flex; align-items:center; gap:16px">
+                        ${pro.photo_url ? 
+                            `<img src="${pro.photo_url}" style="width:48px; height:48px; border-radius:50%; object-fit:cover; border:2px solid var(--brand-azure)">` : 
+                            `<div style="width:48px; height:48px; border-radius:50%; background:var(--bg-card); display:flex; align-items:center; justify-content:center; border:1px solid var(--border); font-size:20px">👤</div>`
+                        }
+                        <div>
+                            <h2 style="font-size:20px; font-weight:700; color:#fff; margin-bottom:4px">${escapeHtml(pro.name || 'Unknown Pro')}</h2>
+                            <div style="display:flex; align-items:center; gap:8px">
+                                <span class="job-id" style="color:var(--text-muted); font-size:13px">${pro.pro_id}</span>
+                                <span style="background:${pro.is_active ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)'}; color:${pro.is_active ? '#22c55e' : '#ef4444'}; padding:2px 8px; border-radius:12px; font-size:10px; font-weight:700; text-transform:uppercase">
+                                    ${pro.is_active ? 'Active' : 'Archived'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="modal-close" onclick="closeProModal()">&times;</button>
+                </div>
+
+                <div style="padding:0 4px">
+                    <!-- ACTION BAR -->
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:24px; padding-bottom:16px; border-bottom:1px solid var(--border)">
+                         <button class="btn" onclick="const e = document.getElementById('pro-email-link'); if(e) navigator.clipboard.writeText(e.innerText); showToast('Email copied!');" style="background:var(--bg-card); border:1px solid var(--border); color:var(--text-muted); font-size:12px">
+                            📧 Copy Email
+                        </button>
+                         <button class="btn" onclick="deletePro('${pro.pro_id}', '${escapeHtml(pro.name || 'Pro')}')" style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; color:#ef4444; font-size:12px">
+                            🚫 Delete / Archive
+                        </button>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px">
+                        <!-- LEFT COLUMN: INFO -->
+                        <div>
+                            <div style="font-weight:700; color:var(--text-muted); font-size:11px; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px">Contact & Identity</div>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <label>Email</label>
+                                    <div id="pro-email-link" style="user-select:all">${escapeHtml(pro.email || '-')}</div>
+                                </div>
+                                <div class="info-item">
+                                    <label>Phone</label>
+                                    <div style="user-select:all">${escapeHtml(pro.phone || '-')}</div>
+                                </div>
+                                <div class="info-item" style="grid-column:1/-1">
+                                    <label>Home Address</label>
+                                    <div>${escapeHtml(pro.home_address || '')}</div>
+                                    <div style="color:var(--text-muted); font-size:12px; margin-top:2px">
+                                        ${escapeHtml(pro.city || '')}, ${escapeHtml(pro.state || '')} ${escapeHtml(pro.zip || '')}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="font-weight:700; color:var(--text-muted); font-size:11px; text-transform:uppercase; margin:24px 0 12px 0; letter-spacing:0.5px">Vehicle</div>
+                            <div style="background:var(--bg-card); padding:12px; border-radius:8px; border:1px solid var(--border)">
+                                <div style="font-weight:600; font-size:14px">${escapeHtml(pro.vehicle_make_model || 'No Vehicle Info')}</div>
+                                <div style="display:flex; gap:12px; margin-top:4px; font-size:12px; color:var(--text-muted)">
+                                    <span>${escapeHtml(pro.vehicle_year || '')}</span>
+                                    <span>${escapeHtml(pro.vehicle_color || '')}</span>
+                                    <span style="font-family:monospace; background:rgba(255,255,255,0.1); padding:0 4px; border-radius:4px; color:#fff">${escapeHtml(pro.vehicle_license_plate || '')}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN: STATS & AVAILABILITY -->
+                        <div>
+                            <div style="font-weight:700; color:var(--text-muted); font-size:11px; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px">Performance</div>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:24px">
+                                <div style="background:var(--bg-card); padding:12px; border-radius:8px; border:1px solid var(--border); text-align:center">
+                                    <div style="font-size:20px; font-weight:700; color:#fff">${stats.total_jobs || 0}</div>
+                                    <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase">Lifetime Jobs</div>
+                                </div>
+                                <div style="background:var(--bg-card); padding:12px; border-radius:8px; border:1px solid var(--border); text-align:center">
+                                    <div style="font-size:20px; font-weight:700; color:var(--brand-green)">${stats.recent_jobs || 0}</div>
+                                    <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase">Last 30 Days</div>
+                                </div>
+                                <div style="background:var(--bg-card); padding:12px; border-radius:8px; border:1px solid var(--border); text-align:center">
+                                    <div style="font-size:20px; font-weight:700; color:var(--brand-gold)">${stats.completion_rate}%</div>
+                                    <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase">Completion Rate</div>
+                                </div>
+                                <div style="background:var(--bg-card); padding:12px; border-radius:8px; border:1px solid var(--border); text-align:center">
+                                    <div style="font-size:20px; font-weight:700; color:var(--brand-azure)">4.9★</div>
+                                    <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase">Avg Rating</div>
+                                </div>
+                            </div>
+
+                            <div style="font-weight:700; color:var(--text-muted); font-size:11px; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px">Recent Availability / Time Off</div>
+                            <div style="background:var(--bg-card); border-radius:8px; border:1px solid var(--border); max-height:200px; overflow-y:auto">
+                                ${availability.length > 0 ? 
+                                    availability.map(a => `
+                                        <div style="padding:10px; border-bottom:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center">
+                                            <div>
+                                                <div style="font-size:13px; font-weight:600; color:#fff">${new Date(a.date_local).toLocaleDateString()}</div>
+                                                <div style="font-size:11px; color:var(--text-muted)">${a.reason || 'Requested Off'}</div>
+                                            </div>
+                                            <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.1); color:var(--text-muted)">
+                                                ${a.type || 'VACATION'}
+                                            </span>
+                                        </div>
+                                    `).join('') 
+                                    : `<div style="padding:20px; text-align:center; font-size:12px; color:var(--text-muted); font-style:italic">No recent time off requests</div>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+        } catch (e) {
+            console.error('[ProModal] Failed to load details:', e);
+            content.innerHTML = `<div style="padding:20px; color:red; text-align:center">Error loading profile: ${e.message} <br><br> <button class="btn" onclick="closeProModal()">Close</button></div>`;
         }
         
-        // Address
-        const addressParts = [];
-        if (pro.home_address) addressParts.push(pro.home_address);
-        if (pro.city) addressParts.push(pro.city);
-        if (pro.state) addressParts.push(pro.state);
-        if (pro.home_zip || pro.zip) addressParts.push(pro.home_zip || pro.zip);
-        document.getElementById('pro-modal-address').textContent = addressParts.length > 0 ? addressParts.join(', ') : 'N/A';
-        
-        // Vehicle info
-        document.getElementById('pro-modal-vehicle-make').textContent = pro.vehicle_make_model || 'N/A';
-        document.getElementById('pro-modal-vehicle-year').textContent = pro.vehicle_year || 'N/A';
-        document.getElementById('pro-modal-vehicle-plate').textContent = pro.vehicle_license_plate || 'N/A';
-        document.getElementById('pro-modal-vehicle-color').textContent = pro.vehicle_color || 'N/A';
-        
-        // Stats
-        document.getElementById('pro-modal-jobs-week').textContent = pro.jobs_count_week || 0;
-        document.getElementById('pro-modal-jobs-total').textContent = pro.total_jobs_completed || 0;
-        document.getElementById('pro-modal-rating').textContent = pro.rating ? `${pro.rating.toFixed(1)}★` : 'N/A';
-        
-        // Photo (if available)
-        const photoContainer = document.getElementById('pro-modal-photo-container');
-        const photoImg = document.getElementById('pro-modal-photo');
-        if (pro.photo_url) {
-            photoImg.src = pro.photo_url;
-            photoContainer.style.display = 'block';
-        } else {
-            photoContainer.style.display = 'none';
-        }
-        
-        // Update toggle button
-        const toggleBtn = document.getElementById('pro-modal-toggle-btn');
-        toggleBtn.textContent = pro.is_active ? 'Deactivate Pro' : 'Activate Pro';
-        toggleBtn.className = pro.is_active ? 'btn' : 'btn btn-success';
-        toggleBtn.style.background = pro.is_active ? 'var(--error)' : 'var(--brand-green)';
-        toggleBtn.style.color = 'white';
-        
-        // Show modal
-        document.getElementById('pro-modal').style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
     
+    async function deletePro(proId, name) {
+        if (!confirm(`⚠️ DANGER ZONE ⚠️\n\nAre you sure you want to ARCHIVE pro "${name}"?\n\nThey will be removed from lists and login access restricted.`)) return;
+        
+        try {
+            const res = await fetchWithRetry(`${API_BASE}/admin_pro_delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: ADMIN_TOKEN, pro_id: proId })
+            });
+            const data = await res.json();
+            if (data.ok) {
+                alert('✅ Pro archived/deleted successfully.');
+                closeProModal();
+                loadProsList(); // Refresh list
+            } else {
+                alert('Details: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e) {
+             alert('Error: ' + e.message);
+        }
+    }
+
     function closeProModal() {
         document.getElementById('pro-modal').style.display = 'none';
         document.body.style.overflow = 'auto';
@@ -1686,16 +1814,11 @@ body {
     }
     
     async function toggleProStatusFromModal() {
+        // Legacy - keeping for compat
         if (!currentProId) return;
-        
         const pro = allPros.find(p => p.pro_id === currentProId);
-        if (!pro) return;
-        
-        const newStatus = !pro.is_active;
-        await toggleProStatus(currentProId, newStatus);
-        
-        // Refresh modal with updated data
-        showProDetails(currentProId);
+        if (pro) deletePro(currentProId, pro.name);
+
     }
 
     // --- DASHBOARD METRICS ---
@@ -2280,7 +2403,22 @@ body {
                         </div>
                         <div class="meta-row">
                             <svg class="meta-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                            <span>${new Date(job.start_iso || job.created_at).toLocaleDateString()}</span>
+                            <span>${(()=>{
+                                const start = job.scheduled_start_at || job.start_iso || job.created_at;
+                                const dateObj = new Date(start);
+                                const dateStr = dateObj.toLocaleDateString();
+                                
+                                // Try to find a time window
+                                const win = job.window || job.metadata?.window || job.metadata?.time_window;
+                                if (win) return `${dateStr} &bull; ${win}`;
+                                
+                                // If specific scheduled time exists and it's not just a date-stub
+                                if (job.scheduled_start_at && start.includes('T')) {
+                                    return `${dateStr} &bull; ${dateObj.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}`;
+                                }
+                                
+                                return dateStr;
+                            })()}</span>
                         </div>
                         ${(job.status === 'completed' || job.status === 'pending_payment' || job.status === 'paid') && job.payout_info ? `
                         <div class="meta-row">
@@ -2408,8 +2546,13 @@ body {
             // SMART PARSING: Handle multiple data sources and formats
             let items = [];
             
+            // Priority 0: job.dto (Canonical Source)
+            if (job.dto && job.dto.scope && Array.isArray(job.dto.scope.items)) {
+                items = job.dto.scope.items;
+                console.log('[openJobModal] ✅ Using DTO scope items');
+            }
             // Priority 1: metadata.items_json (shop orders)
-            if (meta.items_json) {
+            else if (meta.items_json) {
                 if (Array.isArray(meta.items_json)) {
                     items = meta.items_json;
                 } else if (typeof meta.items_json === 'string') {
@@ -2741,6 +2884,27 @@ body {
             metadataContainer.innerHTML = `
                 <div class="section-title">Job Details</div>
                 <div class="info-grid">
+                    ${job.dto && job.dto.financials ? `
+                        <div style="grid-column:1/-1; background:rgba(34,201,111,0.1); border:1px solid rgba(34,201,111,0.3); border-radius:8px; padding:16px; margin-bottom:16px">
+                            <div style="font-weight:700; font-size:14px; color:var(--brand-green); margin-bottom:8px">💰 Financials (Deep View)</div>
+                            <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; font-size:13px">
+                                <div>
+                                    <div style="color:var(--text-muted)">Customer Price</div>
+                                    <div style="font-weight:700; font-size:16px">$${(job.dto.financials.total_price/100).toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color:var(--text-muted)">Est. Payout</div>
+                                    <div style="font-weight:700; font-size:16px">$${(job.dto.financials.payout_estimated/100).toFixed(2)}</div>
+                                </div>
+                                <div>
+                                    <div style="color:var(--text-muted)">Status</div>
+                                    <div style="font-weight:700; font-size:16px; text-transform:uppercase; color:${job.dto.financials.payout_status === 'paid' ? '#22c55e' : job.dto.financials.payout_status === 'approved' ? '#fbbf24' : '#9ca3af'}">
+                                        ${job.dto.financials.payout_status}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
                     ${equipmentBreakdown}
                     
                     ${(() => {
