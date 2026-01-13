@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 
-<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) — start -->
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) � start -->
 <script>
 (function(){
   window.__H2S_BOOT = {start: performance.now(), events: []};
@@ -30,7 +30,7 @@
   window.addEventListener('load', function(){
     log('WINDOW_LOAD');
     setTimeout(function(){
-      console.group('📊 BOOT TIMELINE');
+      console.group('?? BOOT TIMELINE');
       window.__H2S_BOOT.events.forEach(function(e){
         console.log(e.t.toFixed(0) + 'ms:', e.msg, e.detail);
       });
@@ -46,7 +46,7 @@
   window.__H2S_BUNDLES_START = function(){ log('BUNDLES_JS_EXEC'); };
 })();
 </script>
-<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION — end -->
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION � end -->
 
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
 <title>Smart Home Packages &bull; Home2Smart</title>
@@ -3244,9 +3244,9 @@ body.modal-open {
 </head>
 <body>
 
-<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS — start -->
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS � start -->
 <!-- No overlay needed - success page exists in DOM and displays via html[data-success-mode="1"] selector -->
-<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS — end -->
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS � end -->
 
 <div id="pageShell">
 
@@ -3299,7 +3299,7 @@ body.modal-open {
 <main id="mainView">
 <div id="outlet">
 
-<!-- ⚡ STATIC SUCCESS PAGE (NO JS GENERATION) ⚡ -->
+<!-- ? STATIC SUCCESS PAGE (NO JS GENERATION) ? -->
 <div id="staticSuccessPage" style="display:none;">
   <style>
     /* Show success page, hide everything else when in success mode */
@@ -3710,7 +3710,7 @@ body.modal-open {
     <!-- Multi-Room -->
     <article class="package">
       <div class="package-header">
-        <h3 class="package-name">3–4 TVs</h3>
+        <h3 class="package-name">3�4 TVs</h3>
         <div class="package-price">From $699</div>
       </div>
       <p class="package-promise">Whole-home entertainment in one visit.</p>
@@ -3729,7 +3729,7 @@ body.modal-open {
           90-Day Workmanship Warranty
         </div>
       </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3–4 TVs', 699)">
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3�4 TVs', 699)">
         Schedule Installation
       </button>
       <div class="urgency-text">4 Slots Left This Week</div>
@@ -3762,7 +3762,7 @@ body.modal-open {
 <section class="section" id="security">
   <div class="section-header">
     <h2>Cameras: pick by coverage level</h2>
-    <p>Choose coverage by outcome — faces at the door, plates in the driveway, or full perimeter protection.</p>
+    <p>Choose coverage by outcome � faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
   <div class="package-grid">
@@ -3800,7 +3800,7 @@ body.modal-open {
         <h3 class="package-name">Standard Perimeter</h3>
         <div class="package-price">$1,199</div>
       </div>
-      <p class="package-promise">Front, driveway, backyard — practical coverage for most homes.</p>
+      <p class="package-promise">Front, driveway, backyard � practical coverage for most homes.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3819,7 +3819,7 @@ body.modal-open {
       <button class="btn btn-primary" onclick="selectPackage('cam_standard', 'Standard Perimeter', 1199)">
         Schedule Installation
       </button>
-      <div class="urgency-text">Most Popular — Book Now</div>
+      <div class="urgency-text">Most Popular � Book Now</div>
     </article>
 
     <!-- Full Perimeter -->
@@ -3856,7 +3856,7 @@ body.modal-open {
         <h3 class="package-name">Custom (quote)</h3>
         <div class="package-price">Quote</div>
       </div>
-      <p class="package-promise">Unique property? We’ll design a coverage plan with you.</p>
+      <p class="package-promise">Unique property? We�ll design a coverage plan with you.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3888,7 +3888,7 @@ body.modal-open {
           <div class="review-avatar">JM</div>
           <div class="review-meta">
             <div class="review-name">John M.</div>
-            <div class="review-stars">★★★★★</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
@@ -3899,7 +3899,7 @@ body.modal-open {
           <div class="review-avatar">SL</div>
           <div class="review-meta">
             <div class="review-name">Sarah L.</div>
-            <div class="review-stars">★★★★★</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
@@ -3910,7 +3910,7 @@ body.modal-open {
           <div class="review-avatar">MT</div>
           <div class="review-meta">
             <div class="review-name">Michael T.</div>
-            <div class="review-stars">★★★★★</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
@@ -3973,7 +3973,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Cancel or reschedule anytime before 24 hours of your appointment—no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+          <p>Cancel or reschedule anytime before 24 hours of your appointment�no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
         </div>
       </div>
       
@@ -3985,7 +3985,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Yes—in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+          <p>Yes�in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
         </div>
       </div>
       
@@ -3997,7 +3997,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking—nothing due at installation.</p>
+          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking�nothing due at installation.</p>
         </div>
       </div>
       
@@ -4060,7 +4060,7 @@ body.modal-open {
 <!-- FINAL CTA SECTION -->
 <section class="final-cta-section">
   <div class="final-cta-inner">
-    <h2>Book your installation today—Next available slots filling fast</h2>
+    <h2>Book your installation today�Next available slots filling fast</h2>
     <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
     <div class="final-cta-buttons">
       <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
@@ -4071,9 +4071,9 @@ body.modal-open {
       </button>
     </div>
     <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-      <span style="margin-right: 20px;">✓ Book instantly online</span>
-      <span style="margin-right: 20px;">✓ 90-day warranty</span>
-      <span>✓ Same-week availability</span>
+      <span style="margin-right: 20px;">? Book instantly online</span>
+      <span style="margin-right: 20px;">? 90-day warranty</span>
+      <span>? Same-week availability</span>
     </div>
   </div>
 </section>
@@ -4258,7 +4258,7 @@ body.modal-open {
       </div>
       
       <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">📞 Prefer to call?</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">?? Prefer to call?</div>
         <a href="tel:864-528-1475" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f9ff; border: 1px solid #d7eafc; border-radius: 8px; text-decoration: none; color: var(--cobalt); font-weight: 600; transition: all 0.2s;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
@@ -4457,8 +4457,8 @@ window.toggleCart = function() {
         try {
           if (typeof out === 'string') {
             out = out
-              .replace(/\?&mdash;|\?\u2014|\?—/g, '—')
-              .replace(/&mdash;/g, '—');
+              .replace(/\?&mdash;|\?\u2014|\?�/g, '�')
+              .replace(/&mdash;/g, '�');
           }
         } catch (_) {}
         return out;

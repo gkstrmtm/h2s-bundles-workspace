@@ -1,22 +1,22 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
-<title>Pro Portal • Home2Smart</title>
-<!-- VERSION: 2026-01-06-204600-BACKEND-FIXED -->
+<title>Pro Portal � Home2Smart</title>
+<!-- VERSION: 2026-01-12-211549 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
 console.log('========================================');
-console.log('🚀 PORTAL VERSION: 2026-01-07-GIT-CONNECTED');
-console.log('📍 Deployed to: portal.home2smart.com');
-console.log('🔗 Backend API: backend-azd9eq7wd...vercel.app/api');
-console.log('✅ Connected to correct database (ulbzmgmx...)');
-console.log('✅ Portal signup tested and working');
-console.log('✅ Git auto-deploy reconnected');
+console.log('PORTAL VERSION: 2026-01-12-211549');
+console.log('?? Deployed to: portal.home2smart.com');
+console.log('?? Backend API: backend-azd9eq7wd...vercel.app/api');
+console.log('? Connected to correct database (ulbzmgmx...)');
+console.log('? Portal signup tested and working');
+console.log('? Git auto-deploy reconnected');
 console.log('========================================');
 /*
 if ('serviceWorker' in navigator) {
@@ -32,7 +32,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     registrations.forEach(reg => {
       reg.unregister();
-      console.log('🔄 Unregistered service worker:', reg.scope);
+      console.log('?? Unregistered service worker:', reg.scope);
     });
   });
 }
@@ -1894,7 +1894,7 @@ select.input:hover,select.select:hover{
   border:1px solid rgba(96,165,250,0.3);
 }
 .admin-badge--offered::before{
-  content:'📋';
+  content:'??';
 }
 .admin-badge--accepted{
   background:rgba(34,201,111,0.15);
@@ -1910,7 +1910,7 @@ select.input:hover,select.select:hover{
   border:1px solid rgba(16,185,129,0.3);
 }
 .admin-badge--completed::before{
-  content:'✓';
+  content:'?';
 }
 .admin-badge--canceled{
   background:rgba(239,68,68,0.15);
@@ -6361,7 +6361,9 @@ a:focus-visible{
     const PAYOUT_POLICY = {
       materials_pct_estimate: { BYO: 0.00, BASE: 0.28, H2S: 0.38 },
       pro_pct_on_labor: { BYO: 0.75, BASE: 0.65, H2S: 0.60 },
-      min_payout_floor: 45,
+      // IMPORTANT: Do NOT default big jobs to $45.
+      // Backend is authoritative for payout_estimated; UI should not force a $45 floor.
+      min_payout_floor: 0,
       max_payout_cap_pct: 0.90
     };
     
@@ -6390,8 +6392,8 @@ a:focus-visible{
     // Compute total payout for a job with multiple lines
     // job.lines: [{ customer_total, variant_code }]
     window.computePayoutForJob = function(job){
-      // ? FIXED: Always prioritize payout_estimated from backend (authoritative source)
-      const estimated = Number(job?.payout_estimated || 0);
+      // ? Prefer backend-enriched payout first.
+      const estimated = Number(job?.payout_estimated ?? job?.tech_payout_dollars ?? 0);
       
       // If we have an estimated payout from the backend, use it (most accurate)
       if (estimated > 0) {
@@ -6403,6 +6405,13 @@ a:focus-visible{
           total: estimated, 
           label: fmtMoney(estimated) 
         };
+      }
+
+      // Strong fallback: compute from order subtotal (matches current business rule: 35% of pre-discount subtotal)
+      const subtotal = Number(job?.order_subtotal ?? job?.job_value_dollars ?? job?.order_total ?? 0);
+      if (subtotal > 0) {
+        const v = Math.round(subtotal * 0.35 * 100) / 100;
+        return { base: v, extras: 0, deductions: 0, lineTotal: v, total: v, label: fmtMoney(v) };
       }
       
       // Fallback: Calculate from line items if no backend estimate
@@ -6426,7 +6435,7 @@ a:focus-visible{
         deductions, 
         lineTotal, 
         total, 
-        label: fmtMoney(total) 
+        label: total > 0 ? fmtMoney(total) : 'TBD' 
       };
     };
     
@@ -6478,7 +6487,7 @@ a:focus-visible{
   <div class="menu-sheet" role="dialog" aria-labelledby="menuTitle">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid rgba(59,130,246,0.1)">
       <h2 id="menuTitle" style="margin:0;font-size:20px;font-weight:700;color:#e0f2fe;letter-spacing:-0.02em">Menu</h2>
-      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">×</button>
+      <button id="closeMenu" type="button" style="width:40px;height:40px;border-radius:50%;background:rgba(15,23,42,0.6);border:1px solid rgba(59,130,246,0.15);color:#94a3b8;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:all 0.2s" onmouseover="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)'" onmouseout="this.style.background='rgba(15,23,42,0.6)';this.style.borderColor='rgba(59,130,246,0.15)'">�</button>
     </div>
     <div class="menu-row" id="menuItems"></div>
   </div>
@@ -6608,7 +6617,7 @@ a:focus-visible{
               </div>
               <p id="teamUpdatesText" style="margin:0;font-size:13px;color:#94a3b8;line-height:1.3">New messages from dispatch</p>
             </div>
-            <div style="color:#64748b;font-size:18px;flex-shrink:0">›</div>
+            <div style="color:#64748b;font-size:18px;flex-shrink:0">�</div>
           </div>
         </div>
 
@@ -7156,7 +7165,7 @@ a:focus-visible{
         <div class="training-section">
           <div class="section-header" style="margin-bottom:20px">
             <div>
-              <h3 class="section-title" style="font-size:20px;font-weight:700;color:#f8fafc">📚 Resources & Downloads</h3>
+              <h3 class="section-title" style="font-size:20px;font-weight:700;color:#f8fafc">?? Resources & Downloads</h3>
               <p class="section-subtitle" style="margin-top:4px;font-size:14px;color:#94a3b8">Guides, checklists, and reference materials</p>
             </div>
           </div>
@@ -7164,7 +7173,7 @@ a:focus-visible{
             <!-- Populated dynamically -->
           </div>
           <div id="training-resources-empty" class="empty-state-modern" style="display:none;text-align:center;padding:60px 24px;background:#0f172a;border-radius:16px;border:2px dashed #1e293b">
-            <div style="font-size:48px;margin-bottom:12px;opacity:.5">📚</div>
+            <div style="font-size:48px;margin-bottom:12px;opacity:.5">??</div>
             <p style="font-size:14px;color:#64748b">No resources available yet</p>
           </div>
         </div>
@@ -7173,7 +7182,7 @@ a:focus-visible{
       <div id="tab-schedule" style="display:none; background:transparent; border:none; box-shadow:none">
         <!-- Intro Block -->
         <div style="text-align:center;margin-bottom:24px">
-          <div style="font-size:48px;margin-bottom:12px">📅</div>
+          <div style="font-size:48px;margin-bottom:12px">??</div>
           <h2 style="font-size:24px;font-weight:700;color:#e0f2fe;margin:0 0 6px 0">Time Off</h2>
           <p style="font-size:14px;color:#94a3b8;margin:0">Request days when you're unavailable to work</p>
         </div>
@@ -7197,7 +7206,7 @@ a:focus-visible{
                 <h3 style="font-size:16px;font-weight:600;color:#e0f2fe;margin:0 0 4px 0">Request Time Off</h3>
                 <p style="font-size:13px;color:#94a3b8;margin:0">Block dates when you can't take jobs</p>
               </div>
-              <div style="color:#1493FF;font-size:20px;flex-shrink:0">›</div>
+              <div style="color:#1493FF;font-size:20px;flex-shrink:0">�</div>
             </div>
           </div>
 
@@ -7275,7 +7284,7 @@ a:focus-visible{
         </div>
         <div id="adList" class="list"></div>
         <div id="adEmpty" class="admin-text-muted" style="display:none;text-align:center;padding:48px 24px;background:rgba(59,130,246,0.05);border:2px dashed rgba(59,130,246,0.2);border-radius:12px;margin-top:16px">
-          <div style="font-size:48px;margin-bottom:12px;opacity:0.6">📋</div>
+          <div style="font-size:48px;margin-bottom:12px;opacity:0.6">??</div>
           <p style="font-size:16px;font-weight:600;color:var(--admin-text-primary);margin:0 0 8px 0">No jobs found</p>
           <p style="font-size:14px;margin:0;opacity:0.8">Try adjusting your filters or check back later</p>
         </div>
@@ -7400,7 +7409,7 @@ a:focus-visible{
       <div class="card" id="dataHealthDashboard" style="display:none;margin-top:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
           <h2>Data Health Dashboard</h2>
-          <button id="btnRefreshDataHealth" class="btn secondary" type="button">🔄 Refresh</button>
+          <button id="btnRefreshDataHealth" class="btn secondary" type="button">?? Refresh</button>
         </div>
         
         <!-- KPI Cards -->
@@ -7430,8 +7439,8 @@ a:focus-visible{
         <!-- Missing Product Links Section -->
         <div style="margin-bottom:32px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="margin:0">🔗 Items Needing Links</h3>
-            <button id="btnAutoFindLinks" class="btn-success" type="button" style="font-size:14px;padding:8px 16px">🔍 Auto-Find Links</button>
+            <h3 style="margin:0">?? Items Needing Links</h3>
+            <button id="btnAutoFindLinks" class="btn-success" type="button" style="font-size:14px;padding:8px 16px">?? Auto-Find Links</button>
           </div>
           <div id="linkTodoList" class="link-todo-list">
             <p class="muted">Loading...</p>
@@ -7442,7 +7451,7 @@ a:focus-visible{
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="margin:0">BOM Improvement Suggestions</h3>
-            <button id="btnRefreshBOMImprovements" class="btn secondary" type="button" style="font-size:14px;padding:8px 16px">🔄 Refresh</button>
+            <button id="btnRefreshBOMImprovements" class="btn secondary" type="button" style="font-size:14px;padding:8px 16px">?? Refresh</button>
           </div>
           <div id="bomImprovementsList" class="bom-improvements-list">
             <p class="muted">Loading...</p>
@@ -7641,7 +7650,7 @@ a:focus-visible{
     <div class="hr"></div>
     <h3>Dispatch - Find Available Techs</h3>
     <div class="row" style="align-items:center;gap:10px;margin-bottom:16px">
-      <button id="btnFindAvailableTechs" class="btn" type="button">🔍 Find Available Techs</button>
+      <button id="btnFindAvailableTechs" class="btn" type="button">?? Find Available Techs</button>
       <p class="muted">Automatically matches techs based on location, radius, and availability</p>
     </div>
     <div id="adAvailableTechs" class="cands" style="display:none"></div>
@@ -7658,7 +7667,7 @@ a:focus-visible{
     <div class="hr"></div>
     <h3 style="display: flex; align-items: center; gap: 8px;">
       Materials Order
-      <span id="buyListLoadingIndicator" class="loading-dots" style="display: none; font-size: 20px; color: var(--azure); margin-left: 8px;">⏳</span>
+      <span id="buyListLoadingIndicator" class="loading-dots" style="display: none; font-size: 20px; color: var(--azure); margin-left: 8px;">?</span>
     </h3>
     <div id="adBuyListStatus" style="margin-bottom: 14px;">
       <span style="opacity: 0.7;">No order generated yet</span>
@@ -8095,7 +8104,7 @@ a:focus-visible{
       <div>
         <h3 id="videoTitle" style="font-size:24px;margin-bottom:8px">Training Video</h3>
         <div class="video-stats">
-          <span class="video-stat">📹 <span id="videoModule"></span></span>
+          <span class="video-stat">?? <span id="videoModule"></span></span>
           <span class="video-stat" id="videoLevel"></span>
           <span class="video-stat" id="videoDuration"></span>
           <span class="video-stat" id="videoProgressStatus"></span>
@@ -8126,10 +8135,10 @@ a:focus-visible{
     <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:16px;margin-bottom:20px">
       <p style="margin:0;font-size:14px;line-height:1.6;color:#bfdbfe">
         <strong style="color:#60a5fa;display:block;margin-bottom:8px">Required info:</strong>
-        • Vehicle description<br>
-        • Max service radius (miles)<br>
-        • Max jobs per day<br>
-        • Profile photo & short bio
+        � Vehicle description<br>
+        � Max service radius (miles)<br>
+        � Max jobs per day<br>
+        � Profile photo & short bio
       </p>
     </div>
     <p class="muted" style="margin-bottom:20px;font-size:14px">
@@ -8181,23 +8190,23 @@ if (header && window.innerWidth <= 640) {
 // ===== ONBOARDING SYSTEM =====
 const ONBOARDING_STEPS = [
   {
-    title: "Welcome to Home2Smart Pro Portal! 👋",
+    title: "Welcome to Home2Smart Pro Portal! ??",
     content: "This is your command center for managing jobs, tracking earnings, and growing your business. Let's take a quick tour!"
   },
   {
-    title: "Accepting Jobs 📋",
+    title: "Accepting Jobs ??",
     content: "Job offers appear in your dashboard. Tap 'Accept' to claim them. Jobs show service details, location, and your guaranteed payout upfront."
   },
   {
-    title: "Your Payout Structure 💰",
-    content: "You earn a percentage of each job based on service type. Payouts are calculated automatically and displayed prominently on every offer. Minimum payout is $45."
+    title: "Your Payout Structure ??",
+    content: "You earn a percentage of each job based on service type. Payouts are calculated automatically and displayed prominently on every offer."
   },
   {
-    title: "Complete Your Profile ⚙️",
+    title: "Complete Your Profile ??",
     content: "Set your availability, service areas, and skills in Account Settings. This helps us match you with the right jobs in your area."
   },
   {
-    title: "Ready to Go! 🚀",
+    title: "Ready to Go! ??",
     content: "You're all set! Press 'Get Started' to view available jobs. You can re-take this tour anytime from the Account tab."
   }
 ];
@@ -8248,7 +8257,7 @@ function initOnboarding() {
   function completeOnboarding() {
     overlay.style.display = 'none';
     localStorage.setItem('h2s_onboarding_completed', 'true');
-    showToast('Welcome to Home2Smart! 🎉', 'success');
+    showToast('Welcome to Home2Smart! ??', 'success');
   }
   
   nextBtn.onclick = nextStep;
@@ -8306,8 +8315,8 @@ initOnboarding();
 
 // ===== EXISTING CODE CONTINUES ===== 
 /* ===== CONFIG ===== */
-// API Configuration - Using latest backend deployment with env vars
-const VERCEL_API = "https://backend-37b7ktigj-tabari-ropers-projects-6f2e090b.vercel.app/api";
+// API Configuration - Canonical backend
+const VERCEL_API = "https://h2s-backend.vercel.app/api";
 
 // Unified API Endpoint
 const API = VERCEL_API;
@@ -9369,32 +9378,93 @@ let locationPermissionAsked = false;
 
 // Get user's current location for distance calculations
 async function getUserLocation() {
-  if (userLocation) return userLocation; // Already have it
-  if (locationPermissionAsked) return null; // Already denied
+  // 1. Check cache
+  if (userLocation) return userLocation; 
+  
+  // 2. Define Profile Location (Strong Fallback & "Truth")
+  let profileLocation = null;
+  
+  // Check 'me' object from backend
+  if (typeof me !== 'undefined' && me) {
+      // Use explicit lat/lng if available
+      if (me.geo_lat && me.geo_lng) {
+          profileLocation = {
+              lat: parseFloat(me.geo_lat),
+              lng: parseFloat(me.geo_lng),
+              source: 'profile'
+          };
+          console.log('[Geo] Found profile coordinates:', profileLocation);
+      } 
+      // Fallback: Geocode address if text exists but coords don't
+      else if (me.address && me.zip) {
+          console.log('[Geo] Profile has address but no coords. Attempting on-the-fly geocode...');
+          try {
+              const geo = await geocodeAddress(`${me.address}, ${me.city || ''}, ${me.state || ''} ${me.zip}`);
+              if (geo) {
+                  profileLocation = { lat: geo.lat, lng: geo.lng, source: 'profile_geocoded' };
+                  console.log('[Geo] Successfully geocoded profile:', profileLocation);
+              }
+          } catch (e) {
+              console.warn('[Geo] Profile geocode failed:', e);
+          }
+      }
+  }
+
+  // 3. If already asked for permission and denied, use Profile immediately
+  if (locationPermissionAsked && !userLocation) {
+      if (profileLocation) {
+        userLocation = profileLocation;
+        return profileLocation;
+      }
+      return null;
+  }
   
   return new Promise((resolve) => {
+    // Browser support check
     if (!navigator.geolocation) {
-      console.log('Geolocation not supported');
-      resolve(null);
+      console.log('Geolocation not supported by browser');
+      if (profileLocation) {
+          userLocation = profileLocation;
+          resolve(profileLocation);
+      } else {
+          resolve(null);
+      }
       return;
     }
     
+    // 4. Request Live Position
     locationPermissionAsked = true;
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        userLocation = {
+        const liveLoc = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
-          accuracy: position.coords.accuracy
+          accuracy: position.coords.accuracy,
+          source: 'live'
         };
-        console.log('Location acquired:', userLocation);
+        
+        // SANITY CHECK: IP-based Location vs Profile
+        // If accuracy is low (>2000m) and we have a high-confidence profile location,
+        // we might want to warn or prefer profile?
+        // For now, we'll log it.
+        console.log('Location acquired (Live):', liveLoc);
+        
+        userLocation = liveLoc;
         resolve(userLocation);
       },
       (error) => {
         console.log('Location denied or error:', error.message);
-        resolve(null);
+        // CRITICAL FALLBACK: Use Profile if Live fails
+        if (profileLocation) {
+            console.log('[Geo] Fallback to Profile Location');
+            userLocation = profileLocation;
+            resolve(profileLocation);
+        } else {
+            resolve(null);
+        }
       },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 } // Cache for 5 min
+      // Increase timeout to 10s, high accuracy
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 } 
     );
   });
 }
@@ -9639,7 +9709,7 @@ function renderMenuItems() {
       const b = document.createElement("button");
       b.className = "menu-item";
       b.type = "button";
-      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">›</span>' : ''}`;
+      b.innerHTML = `<span>${label}</span>${go !== 'signout' ? '<span style="color:#64748b;font-size:18px">�</span>' : ''}`;
       if (go === "signout") b.id = "signOut";
       else b.dataset.go = go;
       box.appendChild(b);
@@ -9647,18 +9717,18 @@ function renderMenuItems() {
   } else {
     box.innerHTML = `
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px 4px">Main</div>
-      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">›</span></button>
-      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">›</span></button>
-      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">›</span></button>
-      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">›</span></button>
+      <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">�</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">›</span></button>
-      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">›</span></button>
-      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">💬</span></button>
+      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">�</span></button>
+      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">??</span></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Profile</div>
-      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">›</span></button>
+      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">�</span></button>
       <button class="menu-item" id="signOut" type="button" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#fca5a5"><span>Sign out</span></button>
     `;
   }
@@ -9682,18 +9752,18 @@ $("menu").addEventListener("click", e => {
       $("dataHealthDashboard").style.display = "none";
       adminLoadJobs();
     } else if (tab === 'ad-announcements') {
-      console.log('[Menu] 📢 Showing Announcements panel');
-      console.log('[Menu] 📢 Calling loadAnnouncements()...');
+      console.log('[Menu] ?? Showing Announcements panel');
+      console.log('[Menu] ?? Calling loadAnnouncements()...');
       $("jobsPanel").style.display = "none";
       $("announcementsPanel").style.display = "block";
       $("dataHealthDashboard").style.display = "none";
       
       // Check if function exists
       if (typeof loadAnnouncements === 'function') {
-      console.log('[Menu] ✅ loadAnnouncements function exists, calling it now...');
+      console.log('[Menu] ? loadAnnouncements function exists, calling it now...');
         loadAnnouncements();
       } else {
-        console.error('[Menu] ⚠️ loadAnnouncements is NOT a function!', typeof loadAnnouncements);
+        console.error('[Menu] ?? loadAnnouncements is NOT a function!', typeof loadAnnouncements);
       }
     }
   }
@@ -9877,7 +9947,7 @@ function renderPaginationControls(type, totalItems, container) {
   const prevBtn = document.createElement('button');
   prevBtn.className = 'btn secondary';
   prevBtn.style.padding = '8px 16px';
-  prevBtn.textContent = '‹ Prev';
+  prevBtn.textContent = '� Prev';
   prevBtn.disabled = state.page === 1;
   if (state.page === 1) prevBtn.style.opacity = '0.5';
   
@@ -9896,7 +9966,7 @@ function renderPaginationControls(type, totalItems, container) {
   const nextBtn = document.createElement('button');
   nextBtn.className = 'btn secondary';
   nextBtn.style.padding = '8px 16px';
-  nextBtn.textContent = 'Next ›';
+  nextBtn.textContent = 'Next �';
   nextBtn.disabled = state.page === totalPages;
   if (state.page === totalPages) nextBtn.style.opacity = '0.5';
   
@@ -10367,18 +10437,38 @@ function showJobDetails(job) {
   
   // ? INTELLIGENCE: Better status for unscheduled jobs + friendly format
   (function(){
-    const rawDate = job.start_iso || job.metadata?.start_iso || job.metadata?.date;
+    /* PS PATCH: alias-bound geo + scheduled date � start */
+    // Explicit priority for scheduled_start_at
+    const rawDate = job.scheduled_start_at || job.start_iso || job.metadata?.start_iso || job.metadata?.date;
     const rawWindow = job.window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
+    
+    // Status Display Logic
+    const status = (job.status || 'Pending').toLowerCase();
+    const isCompleted = status === 'completed' || status === 'done';
+    
+    // Always show scheduled date if we have it, regardless of status
     const d = rawDate ? new Date(rawDate) : null;
+    let timeLabel = '';
+    
     if (d && !isNaN(d)) {
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      $("md-date").textContent = `${dateStr} ? ${timeStr}`;
+      timeLabel = `${dateStr} ? ${timeStr}`;
     } else if (rawWindow) {
-      $("md-date").textContent = `Scheduled ? ${rawWindow}`;
+      timeLabel = `Window: ${rawWindow}`;
     } else {
-      $("md-date").textContent = "Scheduling Pending";
+      timeLabel = "Scheduling Pending";
     }
+
+    // Force "Scheduled" label logic
+    if (isCompleted) {
+        $("md-date").innerHTML = `<span style="color:#10b981">Completed</span> ? <span style="color:#64748b;font-size:0.9em">${timeLabel}</span>`;
+    } else {
+        // Even if status is "pending", show the date
+        const statusBadge = `<span style="text-transform:capitalize;font-weight:600;color:${status === 'scheduled' ? '#10b981' : '#f59e0b'}">${status}</span>`;
+        $("md-date").innerHTML = `${statusBadge} ? ${timeLabel}`;
+    }
+    /* PS PATCH: alias-bound geo + scheduled date � end */
   })();
   
   // ? SERVICE SUMMARY under title
@@ -10714,19 +10804,32 @@ function showOfferDetails(job) {
   title = formatResourceName(title, job);
   $("md-title").textContent = title;
   
-  // ✅ INTELLIGENCE: Read from canonical schedule fields (start_iso / due_at)
+  // ? INTELLIGENCE: Read from canonical schedule fields (start_iso / due_at)
   (function(){
-    const rawDate = job.start_iso || job.due_at || job.metadata?.start_iso || job.metadata?.date || job.metadata?.scheduled_date;
-    const rawWindow = job.window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
+    const rawDate = job.scheduled_start_at || job.start_iso || job.due_at || job.metadata?.start_iso || job.metadata?.date || job.metadata?.scheduled_date;
+    const rawWindow = job.window || job.time_window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
+    
+    // Explicit debug
+    console.log('[DETAILS DATE] Raw Date:', rawDate);
+    console.log('[DETAILS DATE] Raw Window:', rawWindow);
+
     const d = rawDate ? new Date(rawDate) : null;
+    const dateEl = $("md-date");
+
     if (d && !isNaN(d)) {
       const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      $("md-date").textContent = `${dateStr} • ${timeStr}`;
+      
+      // Highlight execution time clearly
+      dateEl.innerHTML = `
+        <span style="font-size:1.1em;font-weight:700;color:var(--h2s-text-main)">${dateStr}</span>
+        <span style="color:var(--h2s-border-subtle);margin:0 6px">�</span>
+        <span style="font-weight:600;color:var(--h2s-brand-azure)">${timeStr}</span>
+      `;
     } else if (rawWindow) {
-      $("md-date").textContent = `Scheduled • ${rawWindow}`;
+      dateEl.innerHTML = `<span style="font-weight:500;color:var(--h2s-text-secondary)">Scheduled Window:</span> <strong>${esc(rawWindow)}</strong>`;
     } else {
-      $("md-date").textContent = "Scheduling Pending";
+      dateEl.innerHTML = `<span style="color:var(--h2s-text-soft);font-style:italic">Scheduling Pending</span>`;
     }
   })();
   
@@ -10758,7 +10861,7 @@ function showOfferDetails(job) {
     console.log('[OFFER MODAL] Setting customer - name:', customerName, 'phone:', customerPhone);
     console.log('[OFFER MODAL] Phone element:', phoneEl, 'parent:', phoneEl.parentElement);
     if (customerPhone) {
-      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> • ` : ''}` +
+      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> � ` : ''}` +
         `<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
            ${esc(customerPhone)}
@@ -10785,9 +10888,22 @@ function showOfferDetails(job) {
     p.style.marginTop = '6px';
   })();
   
-  // ? INTELLIGENCE: Show Included Tech Source if available
-  const techSource = job.included_tech_source || job.metadata?.included_tech_source || "?";
-  $("md-tech").textContent = techSource;
+  // ? INTELLIGENCE: Equipment Clarity (Bring your own = Customer HAS equipment = YES)
+  // Logic: included_tech_source typically says "Equipment Provided" or similar.
+  // If it's effectively "None" or missing, then NO.
+  const techSource = job.included_tech_source || job.metadata?.included_tech_source || job.equipment_mode;
+  let isProvided = false;
+  if (techSource && (
+      techSource.includes('Provided') || 
+      techSource.includes('Customer') || 
+      techSource.includes('Yes') 
+  )) {
+      isProvided = true;
+  }
+
+  $("md-tech").innerHTML = isProvided 
+      ? `<strong style="color:#10b981">Yes</strong> <span style="font-size:12px;opacity:.8">(Customer provides equipment)</span>` 
+      : `<strong style="color:#f59e0b">No</strong> <span style="font-size:12px;opacity:.8">(We provide equipment)</span>`;
   
   // ? INTELLIGENCE: Show Teammate if available (Team Jobs)
   const teammateEl = $("md-teammate");
@@ -11006,13 +11122,13 @@ async function cancelJob() {
   
   // Validate reason
   if (!reason) {
-    errorDiv.textContent = "⚠️ Please provide a reason for cancellation";
+    errorDiv.textContent = "?? Please provide a reason for cancellation";
     errorDiv.style.display = "block";
     return;
   }
   
   if (reason.length < 10) {
-    errorDiv.textContent = "⚠️ Please provide more details (at least 10 characters)";
+    errorDiv.textContent = "?? Please provide more details (at least 10 characters)";
     errorDiv.style.display = "block";
     return;
   }
@@ -11524,7 +11640,7 @@ async function showPhotoUploadPreview(files, jobId) {
         ${invalidPreviews.length > 0 ? `
           <div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:12px;padding:14px;margin-bottom:20px">
             <div style="font-weight:600;color:#fca5a5;margin-bottom:10px;display:flex;align-items:center;gap:8px">
-              <span style="font-size:20px">📋</span>
+              <span style="font-size:20px">??</span>
               <span>${invalidPreviews.length} file${invalidPreviews.length > 1 ? 's' : ''} cannot be uploaded:</span>
             </div>
             ${invalidPreviews.map(p => `<div style="font-size:13px;opacity:.9;margin-left:28px;margin-top:4px;color:#ffd7db">? <strong>${esc(p.file.name)}</strong>: ${esc(p.error)}</div>`).join('')}
@@ -11550,7 +11666,7 @@ async function showPhotoUploadPreview(files, jobId) {
           </div>
           
           <div style="background:rgba(20,147,255,.12);border:1px solid rgba(20,147,255,.3);border-radius:10px;padding:12px;margin-bottom:24px;display:flex;align-items:center;gap:10px">
-            <span style="font-size:24px">📅</span>
+            <span style="font-size:24px">??</span>
             <div style="flex:1;font-size:14px;color:#e7f1ff">
               <strong id="preview-count" style="color:#60b5ff">${validPreviews.length}</strong> photo${validPreviews.length !== 1 ? 's' : ''} ready to upload
               <div style="opacity:.7;font-size:12px;margin-top:2px;color:#9bc8ff">Total size: ${Math.round(validPreviews.reduce((sum, p) => sum + p.file.size, 0) / 1024 / 1024 * 10) / 10}MB</div>
@@ -11558,7 +11674,7 @@ async function showPhotoUploadPreview(files, jobId) {
           </div>
         ` : `
           <div style="text-align:center;padding:40px 20px;opacity:.6;color:#9bc8ff">
-            <div style="font-size:48px;margin-bottom:12px">📜</div>
+            <div style="font-size:48px;margin-bottom:12px">??</div>
             <div>No valid photos to upload</div>
           </div>
         `}
@@ -11566,7 +11682,7 @@ async function showPhotoUploadPreview(files, jobId) {
         <div style="display:flex;gap:12px">
           <button id="cancel-upload" class="btn ghost" style="flex:1;font-size:15px;padding:14px;border-color:rgba(20,147,255,.4);color:#9bc8ff">Cancel</button>
           <button id="confirm-upload" class="btn" style="flex:1;font-size:15px;padding:14px;background:linear-gradient(135deg,#1493ff 0%,#0f7acc 100%);box-shadow:0 4px 14px rgba(20,147,255,.4);border:none;color:#fff;font-weight:600" ${validPreviews.length === 0 ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
-            📤 Upload <span id="confirm-upload-text">${validPreviews.length}</span> Photo${validPreviews.length !== 1 ? 's' : ''}
+            ?? Upload <span id="confirm-upload-text">${validPreviews.length}</span> Photo${validPreviews.length !== 1 ? 's' : ''}
           </button>
         </div>
       </div>
@@ -11714,7 +11830,7 @@ async function uploadPhotos(previews, jobId) {
       if (failed === 0) {
         toast(`? Uploaded ${success} photo${success !== 1 ? 's' : ''} successfully`);
       } else {
-        toast(`📸 Uploaded ${success} photo${success !== 1 ? 's' : ''}, ${failed} failed`);
+        toast(`?? Uploaded ${success} photo${success !== 1 ? 's' : ''}, ${failed} failed`);
       }
     } else {
       toast(`? Upload failed - please try again`);
@@ -11731,7 +11847,7 @@ async function uploadPhotos(previews, jobId) {
    REQUEST TEAMMATE FOR SOLO JOB
    ============================================ */
 async function requestTeammate(jobId) {
-  if (!confirm("Request a second technician for this job?\n\n👥 Your payout will be reduced to 50% (split with teammate), but the job will be safer and faster.\n\nContinue?")) {
+  if (!confirm("Request a second technician for this job?\n\n?? Your payout will be reduced to 50% (split with teammate), but the job will be safer and faster.\n\nContinue?")) {
     return;
   }
   
@@ -11799,9 +11915,29 @@ async function loadJobs() {
   try {
     const apiStart = performance.now();
     console.log('[Dashboard] Loading fresh data from backend...');
+
+    /* PS PATCH: geo source selection � connect to backend priority */
+    let liveLoc = null;
+    try {
+       if (typeof getUserLocation === 'function') {
+           // Enforce strict timeout to avoid hanging the dashboard load
+           liveLoc = await Promise.race([
+               getUserLocation().catch(() => null),
+               new Promise(r => setTimeout(() => r(null), 2000)) 
+           ]);
+       }
+    } catch(e) { console.warn('[JobLoad] Geo fetch warning:', e); }
+
+    const payload = { token };
+    if (liveLoc && liveLoc.lat && liveLoc.lng) {
+        payload.live_lat = liveLoc.lat;
+        payload.live_lng = liveLoc.lng;
+        console.log('[Dashboard] Including live location in fetch:', liveLoc);
+    }
+
     console.log('[DEBUG] Calling GET("portal_jobs") with token:', token ? token.substring(0,15)+'...' : 'MISSING');
     
-    const out = await GET("portal_jobs", {token});
+    const out = await GET("portal_jobs", payload);
     console.log('[DEBUG] API Response:', out);
     console.log('[DEBUG] First offer full object:', out.offers && out.offers[0] ? out.offers[0] : 'NO OFFERS');
     if (out.offers && out.offers[0]) {
@@ -11911,11 +12047,11 @@ async function loadJobs() {
     if (box) {
       box.innerHTML = `
         <div style="padding:48px 24px;text-align:center;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.2);border-radius:12px;">
-          <div style="font-size:48px;margin-bottom:16px;opacity:0.6;">🔄</div>
+          <div style="font-size:48px;margin-bottom:16px;opacity:0.6;">??</div>
           <div style="font-size:16px;font-weight:600;color:var(--h2s-text-main);margin-bottom:8px;">Unable to load jobs</div>
           <div style="font-size:14px;color:var(--h2s-text-muted);margin-bottom:24px;">${errorMessage}</div>
           <button onclick="loadJobs()" style="background:#1493ff;border:none;color:#fff;font-weight:600;font-size:15px;padding:12px 32px;border-radius:9999px;cursor:pointer;box-shadow:0 2px 8px rgba(20,147,255,0.3);">
-            🔄 Retry
+            ?? Retry
           </button>
         </div>
       `;
@@ -11941,15 +12077,15 @@ function renderOffers(list) {
     let emptyMessage = 'No pending offers at the moment';
     
     if (hour < 8) {
-      emptyMessage = '🌅 Check back at 8am for morning jobs';
+      emptyMessage = '?? Check back at 8am for morning jobs';
     } else if (hour < 12) {
-      emptyMessage = '🕒 New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
+      emptyMessage = '?? New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
     } else if (hour < 15) {
-      emptyMessage = '🌆 Check back at 3pm for afternoon and evening jobs';
+      emptyMessage = '?? Check back at 3pm for afternoon and evening jobs';
     } else if (hour < 18) {
-      emptyMessage = '🌙 Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
+      emptyMessage = '?? Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
     } else {
-      emptyMessage = '😴 Jobs for tomorrow typically post between 8am-10am. Rest up!';
+      emptyMessage = '?? Jobs for tomorrow typically post between 8am-10am. Rest up!';
     }
     
     emptyEl.innerHTML = emptyMessage;
@@ -12021,15 +12157,37 @@ function renderOffersSync(list, box) {
     const isOutOfRange = maxRadius > 0 && distance && distance > maxRadius;
     const overBy = isOutOfRange ? Math.round((distance - maxRadius) * 10) / 10 : 0;
     
-    // FIXED: Check if distance is a valid number (including 0), not just truthy
-    const distanceText = (distance !== null && distance !== undefined) ? 
-      `<strong>Distance:</strong> ${distance} mi` : 
-      `<strong>Distance:</strong> N/A`;
+    /* PS PATCH: alias-bound geo + scheduled date � start */
+    // Log explicit debug info for this job if available (from backend)
+    if (j._debug_geo) {
+        console.groupCollapsed(`[DistanceDebug] Job ${j.job_id} (${distance} mi)`);
+        console.log('Alias/Tech:', j._debug_geo.alias_pro_id);
+        console.log('Tech Location:', j._debug_geo.tech_coords);
+        console.log('Job Address:', j._debug_geo.job_address);
+        console.log('Job Location:', j._debug_geo.job_coords);
+        console.log('Calc:', j._debug_geo.dist_calc);
+        console.groupEnd();
+    }
     
-    const rangeWarning = isOutOfRange ? 
-      `<div style="display:inline-block;margin-left:8px;padding:4px 10px;background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);border-radius:6px;font-size:12px;color:#fbbf24">
-        ${overBy} mi outside your range
-      </div>` : '';
+    // FIXED: Check if distance is a valid number (including 0), not just truthy
+    let distDisplay = 'N/A';
+    if (distance !== null && distance !== undefined) {
+        if (distance < 0.25) {
+            distDisplay = '0.0 mi (On-site)';
+        } else {
+            distDisplay = `${distance} mi`;
+        }
+    }
+
+    const distanceText = `<strong>Distance:</strong> ${distDisplay}`;
+    
+    const distanceWarningHtml = isOutOfRange ? 
+        `<span style="color:#ef4444;font-weight:600;display:inline-flex;align-items:center;gap:4px">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            ${overBy} mi outside your range
+         </span>` : '';
+    
+    /* PS PATCH: alias-bound geo + scheduled date � end */
 
     // ? INTELLIGENCE: Enhanced Service Details (Grouped summary)
     let serviceDetails = "";
@@ -12085,10 +12243,12 @@ function renderOffersSync(list, box) {
     }
     
     // ? URGENCY & DATE DISPLAY (ROBUST)
+    // PS PATCH: scheduled date correctness � explicit priority
     console.log('[renderOffersSync] Job data:', { 
       job_id: j.job_id, 
       service_name: j.service_name,
       service_id: j.service_id,
+      scheduled_start_at: j.scheduled_start_at, // Explicit Debug
       start_iso: j.start_iso, 
       window: j.window,
       metadata_start_iso: j.metadata?.start_iso,
@@ -12098,8 +12258,8 @@ function renderOffersSync(list, box) {
     let dateStr = '';
     let badgeHtml = '';
     
-    // Try to get a valid date object
-    let rawDate = j.start_iso || j.metadata?.start_iso || j.metadata?.date;
+    // Try to get a valid date object - Prioritize scheduled_start_at
+    let rawDate = j.scheduled_start_at || j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
     let targetDate = rawDate ? new Date(rawDate) : null;
 
@@ -12139,15 +12299,15 @@ function renderOffersSync(list, box) {
                 <div style="color:var(--h2s-text-soft);font-size:11px;font-weight:500;margin-top:2px;">Payout</div>
             </div>
         </div>
-        <div style="font-size:13px;color:#64748b;margin-bottom:8px;">${badgeHtml}</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:8px;">${badgeHtml} ${distanceWarningHtml}</div>
     `;
 
     const metaHtml = `
         <div style="color:var(--h2s-text-secondary);font-size:13px;margin-bottom:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <span>${esc(j.service_city||j.city||"Location")}</span>
-            <span style="color:var(--h2s-border-subtle)">•</span>
+            <span style="color:var(--h2s-border-subtle)">�</span>
             <span>${distanceText}</span>
-            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">•</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
+            ${j.notes_from_customer||j.notes ? `<span style="color:var(--h2s-border-subtle)">�</span><span style="font-style:italic;opacity:0.8">Note attached</span>` : ''}
         </div>
     `;
 
@@ -12206,19 +12366,28 @@ function renderOffersSync(list, box) {
     }
     
     // Handle Accept/Decline
+    // State snapshots for rollback
+    let prevOffers = [], prevUpcoming = [];
+    let alteredJob = null, originalState = null;
+
     try {
       loading(true);
+      
+      prevOffers = [...currentJobsData.offers];
+      prevUpcoming = [...currentJobsData.upcoming];
       
       // ? OPTIMISTIC UPDATE: Remove from UI immediately
       const offerIndex = currentJobsData.offers.findIndex(j => j.job_id === jobId);
       if (offerIndex !== -1) {
-        const job = currentJobsData.offers[offerIndex];
+        alteredJob = currentJobsData.offers[offerIndex];
+        originalState = alteredJob.assign_state;
+
         currentJobsData.offers.splice(offerIndex, 1); // Remove from offers
         
         if (act === "accept") {
           // Move to upcoming
-          job.assign_state = 'accepted';
-          currentJobsData.upcoming.unshift(job);
+          alteredJob.assign_state = 'accepted';
+          currentJobsData.upcoming.unshift(alteredJob);
         }
         
         // Re-render immediately (feels instant)
@@ -12230,8 +12399,17 @@ function renderOffersSync(list, box) {
       const out = await GET(act === "accept" ? "portal_accept" : "portal_decline", {token, job_id: jobId});
       
       if (!out.ok) { 
-        toast(out.error || "Failed");
-        // ? Rollback on error - reload fresh data
+        console.error("Action failed, rolling back UI", out);
+        toast(out.error || "Failed. Rolling back...");
+        
+        // ? MANUAL ROLLBACK (Immediate fix)
+        if (alteredJob) alteredJob.assign_state = originalState; // Restore state
+        currentJobsData.offers = prevOffers; // Restore list
+        currentJobsData.upcoming = prevUpcoming; // Restore list
+        renderOffers(currentJobsData.offers);
+        renderUpcoming(currentJobsData.upcoming);
+        
+        // Then try reload
         await loadJobs();
         return;
       }
@@ -12255,8 +12433,14 @@ function renderOffersSync(list, box) {
       setTimeout(() => loadJobs(), 1000);
       
     } catch(err) { 
+      // Manual Rollback on Exception
+      if (alteredJob) alteredJob.assign_state = originalState;
+      currentJobsData.offers = prevOffers;
+      currentJobsData.upcoming = prevUpcoming;
+      renderOffers(currentJobsData.offers);
+      renderUpcoming(currentJobsData.upcoming);
+
       toast(err.message || "Failed");
-      // Rollback - reload fresh data
       await loadJobs();
     }
     finally { loading(false); }
@@ -12449,7 +12633,8 @@ async function renderUpcoming(list) {
     }
     
     // ? DATE/TIME PARSING: Extract date and window from job data
-    let rawDate = j.start_iso || j.metadata?.start_iso || j.metadata?.date;
+    // PS PATCH: scheduled date correctness � explicit priority
+    let rawDate = j.scheduled_start_at || j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
     let targetDate = rawDate ? new Date(rawDate) : null;
     
@@ -12486,11 +12671,11 @@ async function renderUpcoming(list) {
         const timeDisplay = rawWindow || timeStr;
         
         dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          ${dateStr} • ${timeDisplay}
+          ${dateStr} � ${timeDisplay}
         </div>`;
     } else if (rawWindow) {
          dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          Scheduled • ${esc(rawWindow)}
+          Scheduled � ${esc(rawWindow)}
         </div>`;
     }
 
@@ -13343,7 +13528,7 @@ function renderPayoutsDashboard(data) {
       } else if (String(r.state).toLowerCase() === 'pending') {
         stateBadge = '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">? Pending</span>';
       } else if (String(r.state).toLowerCase() === 'paid') {
-        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">💰 Paid</span>';
+        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">?? Paid</span>';
       }
       
       const row = document.createElement("div");
@@ -13551,7 +13736,7 @@ function renderPayouts(data) {
   periods.forEach(p => {
     const periodHeader = document.createElement("div");
     periodHeader.className = "period-header";
-    periodHeader.innerHTML = `<strong>${esc(p.start)} → ${esc(p.end)}</strong> <span>${fmtMoney(p.total)}</span>`;
+    periodHeader.innerHTML = `<strong>${esc(p.start)} ? ${esc(p.end)}</strong> <span>${fmtMoney(p.total)}</span>`;
     periodList.appendChild(periodHeader);
     
     p.rows.forEach(r => {
@@ -13583,7 +13768,7 @@ async function loadCustomers() {
     customersList.style.display = 'none';
     customersEmpty.style.display = 'block';
     customersEmpty.innerHTML = `
-      <div style="font-size:64px;margin-bottom:16px;opacity:.4">🔒</div>
+      <div style="font-size:64px;margin-bottom:16px;opacity:.4">??</div>
       <div style="font-size:18px;font-weight:600;margin-bottom:8px">Please log in</div>
       <div style="font-size:14px;opacity:.8">You need to be logged in to view customers</div>
     `;
@@ -13741,10 +13926,10 @@ async function loadCustomers() {
         
         <div class="appointment-actions">
           <button class="appointment-action appointment-action--primary" onclick="handleCustomerCallClick(event, '${esc(c.order_id)}', '${esc(c.customer_phone)}', '${esc(c.customer_name || 'Customer')}')">
-            📞 Call
+            ?? Call
           </button>
           <button class="appointment-action appointment-action--secondary" onclick="handleCustomerRescheduleClick(event, '${esc(c.order_id)}', '${esc(c.customer_name || 'Customer')}')">
-            📅 Reschedule
+            ?? Reschedule
           </button>
         </div>
       `;
@@ -13762,7 +13947,7 @@ async function loadCustomers() {
     customersList.style.display = 'none';
     customersEmpty.style.display = 'block';
     customersEmpty.innerHTML = `
-      <div style="font-size:64px;margin-bottom:16px;opacity:.4">⚠️</div>
+      <div style="font-size:64px;margin-bottom:16px;opacity:.4">??</div>
       <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:#e0f2fe">Application Error</div>
       <div style="font-size:14px;opacity:.8;color:#f87171;margin-bottom:12px">${esc(e.message || 'Unknown error')}</div>
       <div style="font-size:13px;opacity:.6">Please refresh the page.</div>
@@ -14047,7 +14232,7 @@ async function loadCustomerHistory() {
         </div>
         
         <button onclick="handleCustomerCallClick(event, '${esc(c.order_id || '')}', '${esc(c.customer_phone)}', '${esc(c.customer_name || 'Customer')}')" style="width:100%;min-height:44px;padding:10px 0;border-radius:12px;background:#1493ff;color:#fff;font-size:15px;font-weight:600;border:none;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(20,147,255,0.25);cursor:pointer;gap:8px">
-          📞 Call
+          ?? Call
         </button>
       `;
       
@@ -14059,7 +14244,7 @@ async function loadCustomerHistory() {
     historyList.style.display = 'none';
     historyEmpty.style.display = 'block';
     historyEmpty.innerHTML = `
-      <div style="font-size:64px;margin-bottom:16px;opacity:.4">📋</div>
+      <div style="font-size:64px;margin-bottom:16px;opacity:.4">??</div>
       <div style="font-size:18px;font-weight:600;margin-bottom:8px;color:#e0f2fe">No customer history available</div>
       <div style="font-size:14px;opacity:.8">Complete jobs to build your customer base</div>
     `;
@@ -14364,16 +14549,25 @@ $("sigSave").addEventListener("click", async () => {
   try {
     loading(true);
     
-    // Convert canvas to base64 PNG and strip data URL prefix
-    const dataUrl = sigCanvas.toDataURL("image/png");
-    const base64Data = dataUrl.split(",")[1]; // Remove "data:image/png;base64," prefix
+    // Flatten transparency: Composite onto white background
+    const composite = document.createElement('canvas');
+    composite.width = sigCanvas.width;
+    composite.height = sigCanvas.height;
+    const ctx = composite.getContext('2d');
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, composite.width, composite.height);
+    ctx.drawImage(sigCanvas, 0, 0);
+    
+    // Convert to JPEG (smaller, no transparency issues)
+    const dataUrl = composite.toDataURL("image/jpeg", 0.75);
+    const base64Data = dataUrl.split(",")[1];
     
     const out = await POST("portal_upload_signature", {
       token,
       job_id: currentSignatureJobId,
       data: base64Data,
-      filename: `signature_${currentSignatureJobId}.png`,
-      mimetype: "image/png"
+      filename: `signature_${currentSignatureJobId}.jpg`,
+      mimetype: "image/jpeg"
     });
     
     if (!out.ok) {
@@ -15031,7 +15225,7 @@ $("btnMigrateOrders").addEventListener("click", async () => {
     if (result.ok) {
       const msg = `Migration complete!\n\n` +
                   `? Created: ${result.jobs_created} jobs\n` +
-                  `ℹ️ Skipped: ${result.jobs_skipped} (already exist)\n` +
+                  `?? Skipped: ${result.jobs_skipped} (already exist)\n` +
                   `? Failed: ${result.jobs_failed}\n\n` +
                   `Total orders processed: ${result.total_orders}`;
       
@@ -15042,7 +15236,7 @@ $("btnMigrateOrders").addEventListener("click", async () => {
         const failures = result.details.filter(d => d.status === 'failed').slice(0, 3);
         if (failures.length > 0) {
           console.error('[Migration] Sample failures:', failures);
-          alert(msg + '\n\n⚠️ Sample errors:\n' + failures.map(f => 
+          alert(msg + '\n\n?? Sample errors:\n' + failures.map(f => 
             `Order ${f.order_id}: ${f.error || 'Unknown error'}`
           ).join('\n'));
           return;
@@ -15068,7 +15262,7 @@ $("btnMigrateOrders").addEventListener("click", async () => {
 });
 
 $("btnGeocodeAll").addEventListener("click", async () => {
-  if (!confirm('🗺️ Geocode all jobs and techs with missing coordinates?\n\nThis will:\n- Find all jobs without geo_lat/geo_lng\n- Find all techs without geo_lat/geo_lng\n- Call Google Maps API to get coordinates\n- Update database with real locations\n\nThis may take a few minutes. Continue?')) {
+  if (!confirm('??? Geocode all jobs and techs with missing coordinates?\n\nThis will:\n- Find all jobs without geo_lat/geo_lng\n- Find all techs without geo_lat/geo_lng\n- Call Google Maps API to get coordinates\n- Update database with real locations\n\nThis may take a few minutes. Continue?')) {
     return;
   }
 
@@ -15294,8 +15488,8 @@ function renderContactSubmissions(list) {
       </div>
       <div class="td" style="font-size:13px;opacity:0.8">${date.toLocaleDateString()}<br><span style="font-size:11px">${date.toLocaleTimeString()}</span></div>
       <div class="td actions-sm">
-        <button class="btn secondary" onclick="window.open('mailto:${esc(sub.customer_email)}?subject=Re: Your inquiry to Home2Smart', '_blank')" type="button" title="Email">📧</button>
-        ${sub.customer_phone ? `<button class="btn secondary" onclick="window.open('tel:${esc(sub.customer_phone)}', '_blank')" type="button" title="Call" style="margin-left:4px">📞</button>` : ''}
+        <button class="btn secondary" onclick="window.open('mailto:${esc(sub.customer_email)}?subject=Re: Your inquiry to Home2Smart', '_blank')" type="button" title="Email">??</button>
+        ${sub.customer_phone ? `<button class="btn secondary" onclick="window.open('tel:${esc(sub.customer_phone)}', '_blank')" type="button" title="Call" style="margin-left:4px">??</button>` : ''}
       </div>
     `;
     box.appendChild(row);
@@ -15355,7 +15549,7 @@ function renderAdminJobs(list) {
     const row = document.createElement("div");
     row.className = "tr";
     const statusBadge = getStatusBadge(J.status);
-    const offerIndicator = J.has_offer ? ' <span style="color:#60a5fa;font-size:12px">🤝</span>' : '';
+    const offerIndicator = J.has_offer ? ' <span style="color:#60a5fa;font-size:12px">??</span>' : '';
     const acceptedInfo = J.accepted_by ? `<div class="meta" style="margin-top:4px">Accepted by ${esc(J.accepted_by)}</div>` : '';
     
     row.innerHTML = `
@@ -15504,7 +15698,7 @@ async function adminFindAvailableTechs() {
       el.innerHTML = `
         <div>
           <strong>${esc(pro.name)}</strong> ? ${esc(pro.email)}
-          ${pro.distance_miles ? `<br><span class="meta">📍 ${pro.distance_miles} miles away (max: ${pro.max_radius} mi)</span>` : ''}
+          ${pro.distance_miles ? `<br><span class="meta">?? ${pro.distance_miles} miles away (max: ${pro.max_radius} mi)</span>` : ''}
           ${pro.city && pro.state ? `<br><span class="meta">${esc(pro.city)}, ${esc(pro.state)}</span>` : ''}
         </div>
         <button class="btn" data-send-offer="${esc(pro.pro_id)}" data-distance="${pro.distance_miles || 0}" type="button">Send Offer</button>
@@ -15803,7 +15997,7 @@ function clearBuyListUI() {
   if (statusDiv) {
     statusDiv.innerHTML = `
       <span style="color: rgba(255,255,255,0.5); font-size: 14px;">
-        🛒 Click "Generate Buy List" to load materials for this job
+        ?? Click "Generate Buy List" to load materials for this job
       </span>
     `;
   }
@@ -15884,7 +16078,7 @@ async function autoImproveData(jobId, analysis) {
         console.log("[autoImproveData]   Added", resp.improvements.added_to_service_bom, "items to Service_BOM");
       }
       if (resp.improvements.removed_wrong_items > 0) {
-        console.log("[autoImproveData]   ❌ Removed", resp.improvements.removed_wrong_items, "wrong items");
+        console.log("[autoImproveData]   ? Removed", resp.improvements.removed_wrong_items, "wrong items");
       }
       
       return resp;
@@ -15927,7 +16121,7 @@ async function generateBuyList(jobId) {
   console.log("[generateBuyList] ---------------------------------------");
   console.log("[generateBuyList] GENERATING BUY LIST FOR JOB:", jobId);
   console.log("[generateBuyList] Job Service:", currentAdminJob?.service_id || "unknown");
-  console.log("[generateBuyList] ✅ Job Variant:", currentAdminJob?.variant_code || "unknown");
+  console.log("[generateBuyList] ? Job Variant:", currentAdminJob?.variant_code || "unknown");
   console.log("[generateBuyList] ---------------------------------------");
   
   // Show loading states
@@ -15989,10 +16183,10 @@ async function generateBuyList(jobId) {
           <span style="opacity: 0.9; font-size: 14px; margin-top: 6px; display: block;"><strong>What to do:</strong> ${esc(resp.recommendation)}</span>
           <div style="margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 6px; font-size: 13px;">
             <strong>Why this happened:</strong><br>
-            • Job date: ${esc(resp.job_date || 'Unknown')}<br>
-            • Current time: ${new Date().toLocaleString()}<br>
-            • This job ${resp.reason.includes('past') ? 'has already happened' : 'is less than 48 hours away'}<br>
-            • Materials need 48+ hours for guaranteed delivery
+            � Job date: ${esc(resp.job_date || 'Unknown')}<br>
+            � Current time: ${new Date().toLocaleString()}<br>
+            � This job ${resp.reason.includes('past') ? 'has already happened' : 'is less than 48 hours away'}<br>
+            � Materials need 48+ hours for guaranteed delivery
           </div>
         </div>
       `;
@@ -16023,9 +16217,9 @@ async function generateBuyList(jobId) {
         <strong>Error:</strong> ${esc(err.message || "Unknown error")}
         <div style="margin-top: 8px; font-size: 13px; opacity: 0.9;">
           <strong>Common causes:</strong><br>
-          • Network connection issue<br>
-          • API endpoint not responding<br>
-          • Admin token expired (try signing out and back in)
+          � Network connection issue<br>
+          � API endpoint not responding<br>
+          � Admin token expired (try signing out and back in)
         </div>
       </div>
     `;
@@ -16470,32 +16664,32 @@ function generateJobNotes(job, buyList) {
   
   // ? Mesh WiFi / Network Setup - DISPATCH ORDERING CONTEXT
   if (service.includes('mesh') || service.includes('wifi') || service.includes('network') || service.includes('router')) {
-    notes.push("🛒 Order: Mesh WiFi System with 3+ nodes for whole-home coverage");
+    notes.push("?? Order: Mesh WiFi System with 3+ nodes for whole-home coverage");
     
     if (customerNotes.includes('large home') || customerNotes.includes('multi-story') || customerNotes.includes('3 story') || customerNotes.includes('4000')) {
       notes.push("? Large home - consider ordering extra mesh node(s) beyond standard 3-pack");
     }
     if (customerNotes.includes('dead zone') || customerNotes.includes('weak signal') || customerNotes.includes('no signal')) {
-      notes.push("⚠️ Coverage issues mentioned - verify node count is sufficient for property size");
+      notes.push("?? Coverage issues mentioned - verify node count is sufficient for property size");
     }
   }
   
   // ? Smart Home Hub - DISPATCH ORDERING CONTEXT
   if (service.includes('hub') || service.includes('home_automation') || service.includes('smartthings') || service.includes('alexa hub')) {
-    notes.push("🛒 Order: Smart home hub (SmartThings, Hubitat, or customer-specified brand)");
+    notes.push("?? Order: Smart home hub (SmartThings, Hubitat, or customer-specified brand)");
   }
   
   // ? TV Mounting - DISPATCH ORDERING CONTEXT
   if (service.includes('tv') || service.includes('mount')) {
     const tvSize = customerNotes.match(/(\d+)['"]?\s*(inch|in|tv)?/i);
     const size = tvSize ? tvSize[1] + '"' : '32-65"';
-    notes.push(`🛒 Order: TV wall mount bracket for ${size} TV`);
-    notes.push("🛒 Order: Lag bolts & anchor kit for secure mounting");
+    notes.push(`?? Order: TV wall mount bracket for ${size} TV`);
+    notes.push("?? Order: Lag bolts & anchor kit for secure mounting");
   }
   
   // ? Smart Lock - DISPATCH ORDERING CONTEXT
   if (service.includes('lock') || service.includes('smart_lock')) {
-    notes.push("🛒 Order: Smart lock (Yale, August, or Schlage - verify door compatibility)");
+    notes.push("?? Order: Smart lock (Yale, August, or Schlage - verify door compatibility)");
   }
   
   // ? REMOVED: Installation tips - dispatch doesn't install, they ORDER
@@ -16506,11 +16700,11 @@ function generateJobNotes(job, buyList) {
     const hasWired = customerNotes.includes('wired') || customerNotes.includes('existing doorbell');
     
     if (hasBattery) {
-      notes.push("🛒 Order: Battery-powered video doorbell (Ring, Nest, Arlo)");
+      notes.push("?? Order: Battery-powered video doorbell (Ring, Nest, Arlo)");
     } else if (hasWired) {
-      notes.push("🛒 Order: Wired video doorbell + transformer (if existing doorbell is old)");
+      notes.push("?? Order: Wired video doorbell + transformer (if existing doorbell is old)");
     } else {
-      notes.push("🛒 Order: Video doorbell (confirm wired vs battery with customer)");
+      notes.push("?? Order: Video doorbell (confirm wired vs battery with customer)");
     }
   }
   
@@ -16520,9 +16714,9 @@ function generateJobNotes(job, buyList) {
     const cameraQty = items.filter(i => (i.item_name || '').toLowerCase().includes('camera')).reduce((sum, i) => sum + (i.qty || 0), 0);
     
     if (isOutdoor) {
-      notes.push(`🛒 Order: ${cameraQty || 1} outdoor security camera(s) - weatherproof rated`);
+      notes.push(`?? Order: ${cameraQty || 1} outdoor security camera(s) - weatherproof rated`);
     } else {
-      notes.push(`🛒 Order: ${cameraQty || 1} indoor security camera(s)`);
+      notes.push(`?? Order: ${cameraQty || 1} indoor security camera(s)`);
     }
   }
   
@@ -16533,7 +16727,7 @@ function generateJobNotes(job, buyList) {
   // Check for AI-created items needing review
   const needsReview = items.filter(i => i.auto_created === true || i.needs_manual_review === true);
   if (needsReview.length > 0) {
-    notes.push(`⚠️ ${needsReview.length} AI-generated item(s) - verify specifications before ordering`);
+    notes.push(`?? ${needsReview.length} AI-generated item(s) - verify specifications before ordering`);
   }
   
   // Check for urgent delivery
@@ -16808,7 +17002,7 @@ function renderBuyList(buyList, jobId) {
     }
     
     let actionButton = buyLink 
-      ? `<a href="${buyLink}" target="_blank" rel="noopener" class="btn" style="padding: 8px 16px; min-width: auto; font-size: 13px; text-decoration: none; display: inline-block;">🛒 Buy Now</a>`
+      ? `<a href="${buyLink}" target="_blank" rel="noopener" class="btn" style="padding: 8px 16px; min-width: auto; font-size: 13px; text-decoration: none; display: inline-block;">?? Buy Now</a>`
       : '<span style="opacity: 0.5; font-size: 12px;">?</span>';
     
     let requiredFlag = item.required ? '<span style="color: #fbbf24; font-weight: 700; margin-right: 6px;">?</span>' : '';
@@ -17076,10 +17270,10 @@ async function loadLinkTodoList() {
           </div>
           <div class="link-todo-item-actions">
             <button class="btn-search-retailer" onclick="searchLowes('${esc(searchTerms).replace(/'/g, "\\'")}')">
-              🔍 Search Lowe's
+              ?? Search Lowe's
             </button>
             <button class="btn-search-retailer" onclick="searchAmazon('${esc(searchTerms).replace(/'/g, "\\'")}')">
-              🔍 Search Amazon
+              ?? Search Amazon
             </button>
             <input 
               type="text" 
@@ -17089,7 +17283,7 @@ async function loadLinkTodoList() {
               aria-label="Product URL"
             />
             <button class="btn-save-link" onclick="saveLinkManually('${esc(item.item_id)}', '${esc(item.todo_id)}')">
-              🔖 Save Link
+              ?? Save Link
             </button>
           </div>
         </div>
@@ -17186,7 +17380,7 @@ async function autoFindLinks(dryRun = false) {
     return;
   }
   
-  if (!dryRun && !confirm("🔍 Start AI link search?\n\nThe AI will:\n• Search for missing product URLs\n• Validate links exist\n• Auto-populate Catalog\n\nThis may take a few minutes and will use OpenAI API credits.")) {
+  if (!dryRun && !confirm("?? Start AI link search?\n\nThe AI will:\n� Search for missing product URLs\n� Validate links exist\n� Auto-populate Catalog\n\nThis may take a few minutes and will use OpenAI API credits.")) {
     return;
   }
   
@@ -17215,8 +17409,8 @@ async function autoFindLinks(dryRun = false) {
         const msg = `AI Link Search Results:\n\n` +
                    `? Successfully found: ${results.found}\n` +
                    `? Failed to find: ${results.failed}\n` +
-                   `ℹ️ Skipped: ${results.skipped}\n` +
-                   `✅ Total processed: ${results.processed}`;
+                   `?? Skipped: ${results.skipped}\n` +
+                   `? Total processed: ${results.processed}`;
         alert(msg);
       }
       
@@ -17273,15 +17467,15 @@ async function loadBOMImprovements() {
             <span class="improvement-item-confidence ${confidenceClass}">${confidencePercent}%</span>
           </div>
           <div class="improvement-item-stats">
-            💡 Suggested ${item.jobs_analyzed || 0} times across recent jobs
+            ?? Suggested ${item.jobs_analyzed || 0} times across recent jobs
             ${item.qty_rule ? ' ? Qty: ' + esc(item.qty_rule) : ''}
           </div>
           <div class="improvement-item-actions">
             <button class="btn-approve-bom" onclick="approveBOMImprovement('${esc(item.improvement_id)}')">
-              ✓ Approve & Add to BOM
+              ? Approve & Add to BOM
             </button>
             <button class="btn-reject-bom" onclick="rejectBOMImprovement('${esc(item.improvement_id)}')">
-              ✗ Reject
+              ? Reject
             </button>
           </div>
         </div>
@@ -17299,7 +17493,7 @@ async function loadBOMImprovements() {
 // Approve BOM improvement
 async function approveBOMImprovement(improvementId) {
   if (!improvementId) {
-    toast("⚠️ Invalid improvement ID");
+    toast("?? Invalid improvement ID");
     return;
   }
   
@@ -17336,7 +17530,7 @@ async function approveBOMImprovement(improvementId) {
 // Reject BOM improvement
 async function rejectBOMImprovement(improvementId) {
   if (!improvementId) {
-    toast("⚠️ Invalid improvement ID");
+    toast("?? Invalid improvement ID");
     return;
   }
   
@@ -17488,7 +17682,7 @@ async function loadSchedule() {
     });
     
     if (!out.ok) {
-      console.warn("⚠️ Could not load time off requests (non-critical):", out.error);
+      console.warn("?? Could not load time off requests (non-critical):", out.error);
       // Show empty state - don't toast error for empty availability
       displayTimeOffRequests([]);
       return;
@@ -17502,7 +17696,7 @@ async function loadSchedule() {
     
     displayTimeOffRequests(items);
   } catch(e) {
-    console.error("⚠️ Error loading time off requests (non-critical):", e);
+    console.error("?? Error loading time off requests (non-critical):", e);
     // Show empty state - don't toast error
     displayTimeOffRequests([]);
   } finally {
@@ -17623,7 +17817,7 @@ function displayTimeOffRequests(items) {
 // ? Make time off modal functions globally accessible for onclick handlers
 window.openTimeOffModal = function() {
   const $ = (id) => document.getElementById(id);
-  console.log("📅 Opening time off modal");
+  console.log("?? Opening time off modal");
   const modal = $("timeOffModal");
   
   if (!modal) {
@@ -17680,13 +17874,13 @@ window.openTimeOffModal = function() {
       e.preventDefault();
       e.stopPropagation();
       const dropdown = document.getElementById('customCalendarDropdown');
-      console.log('📅 Date display clicked, dropdown element:', dropdown);
+      console.log('?? Date display clicked, dropdown element:', dropdown);
       if (dropdown) {
         const isVisible = dropdown.style.display === 'block';
         dropdown.style.display = isVisible ? 'none' : 'block';
-        console.log('📅 Dropdown display set to:', dropdown.style.display);
+        console.log('?? Dropdown display set to:', dropdown.style.display);
         if (!isVisible) {
-          console.log('📅 Rendering custom calendar...');
+          console.log('?? Rendering custom calendar...');
           renderCustomCalendar(today, maxDate);
         }
       } else {
@@ -17696,7 +17890,7 @@ window.openTimeOffModal = function() {
   }
   
   if (reasonSelect) reasonSelect.value = "Vacation";
-  if (hintEl) hintEl.innerHTML = `📅 You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
+  if (hintEl) hintEl.innerHTML = `?? You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
   if (dateDisplay) dateDisplay.textContent = 'Choose a date';
   
   // Render quick-pick chips
@@ -17707,7 +17901,7 @@ window.openTimeOffModal = function() {
 
 window.closeTimeOffModal = function() {
   const $ = (id) => document.getElementById(id);
-  console.log("📅 Closing time off modal");
+  console.log("?? Closing time off modal");
   const modal = $("timeOffModal");
   
   if (!modal) {
@@ -17763,7 +17957,7 @@ window.submitTimeOffRequest = async function() {
         window.closeTimeOffModal();
         await loadSchedule();
       } else {
-        window.toast(`✅ ${results.length - failures.length} days saved, ${failures.length} failed`);
+        window.toast(`? ${results.length - failures.length} days saved, ${failures.length} failed`);
       }
     } catch(e) {
       window.toast("Error submitting range request");
@@ -18132,8 +18326,8 @@ window.deleteAvailability = async function(avail_id) {
 
 async function loadTraining() {
   try {
-    console.log("📚 TRAINING DEBUG: Starting loadTraining()");
-    console.log("🔑 Current token:", token ? token.substring(0, 20) + '...' : 'MISSING');
+    console.log("?? TRAINING DEBUG: Starting loadTraining()");
+    console.log("?? Current token:", token ? token.substring(0, 20) + '...' : 'MISSING');
     
     // ? FIX: Ensure tab is visible before rendering
     const trainingTab = $("tab-training");
@@ -18176,33 +18370,33 @@ async function loadTraining() {
     $("training-content").innerHTML = '<div style="text-align:center;padding:60px;color:#64748b">Loading training content...</div>';
     $("training-loading").style.display = "grid";
     
-    console.log("📚 Fetching training catalog from backend...");
+    console.log("?? Fetching training catalog from backend...");
     const preferredRegion = (localStorage.getItem('training_region') || '').toLowerCase();
     const useChina = preferredRegion === 'cn' || preferredRegion === 'china';
     let out;
     if (useChina) {
-      console.log("🇨🇳 Using China catalog per region preference");
+      console.log("???? Using China catalog per region preference");
       out = await GET("portal_training", {token, action: "china_catalog"});
     } else {
-      console.log("📚 Calling GET with action: catalog");
+      console.log("?? Calling GET with action: catalog");
       out = await GET("portal_training", {token, action: "catalog"});
       // Fallback: if backend signals region block or no videos and user prefers CN
       if (!out.ok && (out.error_code === 'blocked_region' || out.error_code === 'china_required')) {
-        console.log("🇨🇳 Region blocked or China required; switching to China catalog");
+        console.log("???? Region blocked or China required; switching to China catalog");
         out = await GET("portal_training", {token, action: "china_catalog"});
       } else if (out.ok && (!out.videos || out.videos.length === 0) && (preferredRegion === 'cn' || preferredRegion === 'china')) {
-        console.log("🇨🇳 Global catalog empty for CN preference; trying China catalog");
+        console.log("???? Global catalog empty for CN preference; trying China catalog");
         const cnOut = await GET("portal_training", {token, action: "china_catalog"});
         if (cnOut && cnOut.ok) out = cnOut;
       }
     }
     
-    console.log("📝 Raw response:", out);
+    console.log("?? Raw response:", out);
     
     if (!out.ok) { 
       console.error("? Training catalog failed:", out.error);
-      console.error("⚠️ Error code:", out.error_code);
-      console.error("📝 Full response:", JSON.stringify(out, null, 2));
+      console.error("?? Error code:", out.error_code);
+      console.error("?? Full response:", JSON.stringify(out, null, 2));
       toast(out.error || "Could not load training"); 
       $("training-loading").style.display = "none";
       $("training-content").innerHTML = '<div style="text-align:center;padding:60px;color:#ef4444">Failed to load training content</div>';
@@ -18210,7 +18404,7 @@ async function loadTraining() {
     }
     
     console.log("? Training catalog loaded:", out);
-    console.log("📊 Training meta:", out.meta || null);
+    console.log("?? Training meta:", out.meta || null);
 
     // ? HARD GUARD: Do not render/cache catalogs that don't explicitly confirm h2s_training_videos
     if (!out.meta || String(out.meta.source_table || '') !== 'h2s_training_videos') {
@@ -18218,11 +18412,11 @@ async function loadTraining() {
       toast('Training source mismatch. Clearing cache...');
       invalidateCache('training');
     }
-    console.log("🎥 Videos count:", out.videos?.length || 0);
-    console.log("📚 Resources count:", out.resources?.length || 0);
-    console.log("📦 Modules count:", out.modules?.length || 0);
-    console.log("🎥 Sample videos:", out.videos?.slice(0, 3));
-    console.log("📦 Modules:", out.modules);
+    console.log("?? Videos count:", out.videos?.length || 0);
+    console.log("?? Resources count:", out.resources?.length || 0);
+    console.log("?? Modules count:", out.modules?.length || 0);
+    console.log("?? Sample videos:", out.videos?.slice(0, 3));
+    console.log("?? Modules:", out.modules);
     
     // ? PERFORMANCE: Cache the catalog (1 hour)
     // Only cache if backend confirms correct table; otherwise render once but don't persist.
@@ -18235,8 +18429,8 @@ async function loadTraining() {
     // ?? LOG: Show categories from backend for debugging
     if (out.videos && out.videos.length > 0) {
       const categories = [...new Set(out.videos.map(v => v.module || v.category || 'uncategorized'))];
-      console.log('📊 Training categories found:', categories);
-      console.log('📊 Videos by category:', categories.map(cat => ({
+      console.log('?? Training categories found:', categories);
+      console.log('?? Videos by category:', categories.map(cat => ({
         category: cat,
         count: out.videos.filter(v => (v.module || v.category) === cat).length
       })));
@@ -18267,7 +18461,7 @@ async function loadTraining() {
     
   } catch(err) { 
     console.error("? Training error:", err);
-    console.error("⚠️ Error stack:", err.stack);
+    console.error("?? Error stack:", err.stack);
     toast(err.message || "Failed to load training");
     $("training-loading").style.display = "none";
     $("training-content").innerHTML = `
@@ -18299,7 +18493,7 @@ async function loadTrainingProgress(videoIds) {
       loadLocalTrainingProgress();
       return;
     }
-    console.log("📊 Loading progress for", videoIds.length, "videos");
+    console.log("?? Loading progress for", videoIds.length, "videos");
     logTraining("Starting progress load", {videoCount: videoIds.length});
     
     // Fetch progress for all videos in parallel
@@ -18536,7 +18730,7 @@ function renderTrainingContent() {
   
   // Add click handler
   box.onclick = async e => {
-    console.log("👆 Training content clicked", e.target);
+    console.log("?? Training content clicked", e.target);
     
     // 1. Check for explicit play button
     let videoId = e.target.closest("button[data-play]")?.dataset.play;
@@ -18547,7 +18741,7 @@ function renderTrainingContent() {
         // Ensure we aren't clicking a link or other interactive element inside the card
         if (card && card.dataset.videoId && !e.target.closest("a")) {
             videoId = card.dataset.videoId;
-            console.log("🎥 Card clicked, using ID:", videoId);
+            console.log("?? Card clicked, using ID:", videoId);
         }
     }
 
@@ -18556,7 +18750,7 @@ function renderTrainingContent() {
         return;
     }
     
-    console.log("▶️ Triggering play for ID:", videoId);
+    console.log("?? Triggering play for ID:", videoId);
     
     // Loose equality to handle string/number mismatch
     const video = videos.find(v => String(v.id) === String(videoId));
@@ -18566,7 +18760,7 @@ function renderTrainingContent() {
       try {
         playVideo(video);
       } catch (err) {
-        console.error("⚠️ Error in playVideo:", err);
+        console.error("?? Error in playVideo:", err);
         alert("Error playing video: " + err.message);
       }
     } else {
@@ -18858,7 +19052,7 @@ function createTrainingCard(v, progressPct, status) {
   
   el.innerHTML = `
     <div class="training-thumb">
-      ??
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
     </div>
     <div class="training-body">
       <h3 class="training-title">${esc(v.title)}</h3>
@@ -18870,7 +19064,7 @@ function createTrainingCard(v, progressPct, status) {
       </div>
       ${v.description ? `<div class="training-desc">${esc(v.description)}</div>` : ""}
         <button class="btn" data-play="${esc(v.id)}" type="button">
-        👁️ Watch
+        Watch
         </button>
     </div>
   `;
@@ -18931,7 +19125,7 @@ function renderResources() {
     el.dataset.resourceId = r.id;
     
     // Smart icon detection
-    let icon = '📚';
+    let icon = '??';
     let detectedType = (r.type || '').toLowerCase();
     const titleLower = (r.title || '').toLowerCase();
     
@@ -18948,9 +19142,9 @@ function renderResources() {
     
     // Icon mapping
     if (detectedType === 'checklist') icon = '?';
-    else if (detectedType === 'guide') icon = '📝';
-    else if (detectedType === 'template') icon = '📋';
-    else if (detectedType === 'pdf' || titleLower.includes('pdf')) icon = '📄';
+    else if (detectedType === 'guide') icon = '??';
+    else if (detectedType === 'template') icon = '??';
+    else if (detectedType === 'pdf' || titleLower.includes('pdf')) icon = '??';
     
     // Auto-detect category from title
     let category = r.category || 'General';
@@ -18995,7 +19189,7 @@ function renderResources() {
     const resource = resources.find(r => r.id === resourceId);
     if (resource && resource.download_url) {
       window.open(resource.download_url, '_blank');
-      toast('📥 Downloading...');
+      toast('?? Downloading...');
     }
   };
 }
@@ -19148,7 +19342,7 @@ function setupAskTraining() {
             <p class="recommendation-reason">${esc(rec.reason)}</p>
           </div>
           <button class="btn" data-play="${esc(rec.id)}" type="button">
-            👁️ Watch
+            ??? Watch
           </button>
         </div>
       `;
@@ -19305,11 +19499,11 @@ function renderTrainingResources() {
     const el = document.createElement("div");
     el.className = "resource-card";
     
-    let icon = "📚";
-    if (r.type === "pdf") icon = "📄";
-    else if (r.type === "link") icon = "🔗";
+    let icon = "??";
+    if (r.type === "pdf") icon = "??";
+    else if (r.type === "link") icon = "??";
     else if (r.type === "checklist") icon = "?";
-    else if (r.type === "guide") icon = "📝";
+    else if (r.type === "guide") icon = "??";
     
     el.innerHTML = `
       <div class="resource-icon">${icon}</div>
@@ -19341,12 +19535,12 @@ function playVideo(video) {
   $("videoDuration").textContent = video.duration ? `? ${video.duration}` : "";
   
   const status = getVideoStatus(video.id);
-  const statusText = status === "completed" ? "✅ Completed" : status === "in_progress" ? "📊 In Progress" : "⭐ New";
+  const statusText = status === "completed" ? "? Completed" : status === "in_progress" ? "?? In Progress" : "? New";
   $("videoProgressStatus").textContent = statusText;
   
   $("videoDescription").textContent = video.description || "";
   
-  console.log("🎥 Playing video:", video.title, "Platform:", video.platform, "URL:", video.url);
+  console.log("?? Playing video:", video.title, "Platform:", video.platform, "URL:", video.url);
   
   // Embed video player
   const playerBox = $("videoPlayer");
@@ -19361,7 +19555,7 @@ function playVideo(video) {
     const loomMatch = video.url.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
     if (loomMatch) {
       const loomId = loomMatch[1];
-      console.log("🎥 Loom video ID:", loomId);
+      console.log("?? Loom video ID:", loomId);
       
       const iframe = document.createElement("iframe");
       iframe.src = `https://www.loom.com/embed/${loomId}?hide_owner=true&hide_share=true&hide_title=true&hideEmbedTopBar=true`;
@@ -19382,7 +19576,7 @@ function playVideo(video) {
     const ytMatch = video.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/);
     if (ytMatch) {
       const ytId = ytMatch[1];
-      console.log("🎥 YouTube video ID:", ytId);
+      console.log("?? YouTube video ID:", ytId);
       
       const iframe = document.createElement("iframe");
       iframe.src = `https://www.youtube.com/embed/${ytId}?enablejsapi=1`;
@@ -19400,7 +19594,7 @@ function playVideo(video) {
     }
   } else {
     // Generic iframe embed
-    console.log("🎥 Generic video embed:", video.url);
+    console.log("?? Generic video embed:", video.url);
     const iframe = document.createElement("iframe");
     iframe.src = video.url;
     iframe.style.cssText = "width:100%;height:100%;border:0";
@@ -19430,7 +19624,7 @@ function playVideo(video) {
     markVideoViewed(video.id);
     }
   } catch (err) {
-    console.error("⚠️ playVideo CRITICAL ERROR:", err);
+    console.error("?? playVideo CRITICAL ERROR:", err);
     alert("Failed to play video: " + err.message);
   }
 }
@@ -19444,7 +19638,7 @@ function detectPlatform(url) {
 
 async function markVideoViewed(videoId) {
   try {
-    console.log("✅ Marking video as viewed:", videoId);
+    console.log("? Marking video as viewed:", videoId);
 
     // Local-only UX continuity (no backend).
     const durationSec = currentVideo?.duration_sec || 0;
@@ -19778,7 +19972,7 @@ window.addEventListener("beforeunload", () => {
             loadJobs();
           }
           
-          // 📢 Load announcements now that we have a valid user session
+          // ?? Load announcements now that we have a valid user session
           loadProAnnouncements();
 
           // Keep view state consistent on successful hydration
@@ -19833,7 +20027,7 @@ window.addEventListener("beforeunload", () => {
 if ($("btnTestAnnouncements")) {
   $("btnTestAnnouncements").addEventListener("click", async () => {
     console.log('========================================');
-    console.log('🔌 TESTING ANNOUNCEMENTS CONNECTION');
+    console.log('?? TESTING ANNOUNCEMENTS CONNECTION');
     console.log('========================================');
     console.log('API URL:', API);
     console.log('Action: announcements_list');
@@ -19848,8 +20042,8 @@ if ($("btnTestAnnouncements")) {
       
       if (result && result.ok) {
         const count = (result.announcements || []).length;
-        toast(`✅ Connected! Found ${count} announcements`);
-        console.log('✅ SUCCESS - Announcements:', result.announcements);
+        toast(`? Connected! Found ${count} announcements`);
+        console.log('? SUCCESS - Announcements:', result.announcements);
         console.log('? Viewed IDs:', result.viewed_ids);
       } else if (result && result.error) {
         toast(`? Backend Error: ${result.error}`);
@@ -19879,7 +20073,7 @@ console.log('[Announcements] Setting up modal event listeners...');
 document.addEventListener('click', function(e) {
   // New Announcement button (robust: allow clicks from child elements)
   if (e.target && (e.target.id === 'btnNewAnnouncement' || e.target.closest && e.target.closest('#btnNewAnnouncement'))) {
-    console.log('[Announcements] 📢 New Announcement button clicked');
+    console.log('[Announcements] ?? New Announcement button clicked');
     e.preventDefault();
     e.stopPropagation();
     
@@ -19994,12 +20188,12 @@ document.addEventListener('click', function(e) {
         let result;
         if (currentEditingAnnouncement) {
           params.announcement_id = currentEditingAnnouncement.announcement_id;
-          console.log('[Announcements] ✏️ UPDATE mode - ID:', params.announcement_id);
+          console.log('[Announcements] ?? UPDATE mode - ID:', params.announcement_id);
           result = await GET("portal_announcements_update", params);
           console.log('[Announcements] ?? Update response:', result);
           toast(result.ok ? "Updated!" : (result.error || "Update failed"));
         } else {
-          console.log('[Announcements] ➕ CREATE mode - new announcement');
+          console.log('[Announcements] ? CREATE mode - new announcement');
           result = await GET("portal_announcements_create", params);
           console.log('[Announcements] ? Create response:', result);
           toast(result.ok ? "Created!" : (result.error || "Create failed"));
@@ -20031,7 +20225,7 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-console.log('[Announcements] ✅ Event delegation set up for all announcement buttons');
+console.log('[Announcements] ? Event delegation set up for all announcement buttons');
 
 /* ===== ANNOUNCEMENTS MANAGEMENT (ADMIN) ===== */
 let currentEditingAnnouncement = null;
@@ -20298,15 +20492,15 @@ async function loadProAnnouncements() {
   }
   
   const who = (me && (me.email || me.pro_id)) || 'unknown';
-  console.log('[Announcements] 📢 Loading announcements for:', who);
+  console.log('[Announcements] ?? Loading announcements for:', who);
   
-  // ⚡ FAST LOAD: Check cache first (5-min TTL for announcements)
+  // ? FAST LOAD: Check cache first (5-min TTL for announcements)
   const cached = getCache('announcements');
   if (cached && cached._timestamp && (Date.now() - cached._timestamp) < 5 * 60 * 1000) {
     console.log(`[Announcements] ? Using cached data (age: ${Math.round((Date.now() - cached._timestamp)/1000)}s)`);
     proAnnouncementsCache = cached.announcements || [];
     viewedAnnouncementIds = new Set((cached.viewed_ids || []).map(String));
-    console.log(`[Announcements] 💾 Cached: ${proAnnouncementsCache.length} announcements`);
+    console.log(`[Announcements] ?? Cached: ${proAnnouncementsCache.length} announcements`);
     updateTeamUpdatesBanner();
     return;
   }
@@ -20322,7 +20516,7 @@ async function loadProAnnouncements() {
     proAnnouncementsCache = result.announcements || [];
     viewedAnnouncementIds = new Set((result.viewed_ids || []).map(String));
     
-    console.log(`[Announcements] ✅ Loaded ${proAnnouncementsCache.length} announcements`);
+    console.log(`[Announcements] ? Loaded ${proAnnouncementsCache.length} announcements`);
     
     // ?? CACHE IT: Store for 5 minutes
     setCache('announcements', {
@@ -20342,7 +20536,7 @@ async function loadProAnnouncements() {
       setTimeout(() => openAnnouncementsModal(), 2000); // Delayed 2s to not block initial render
     }
   } catch (err) {
-    console.error('⚠️ Error loading announcements (non-critical):', err);
+    console.error('?? Error loading announcements (non-critical):', err);
   }
 }
 
@@ -20832,7 +21026,7 @@ $("btnViewHistory").addEventListener("click", () => {
     
     <div id="customerCallButtons" class="row" style="flex-direction: column; gap: 10px;">
       <button id="btnCustContacted" class="btn" type="button" style="background:linear-gradient(135deg,#10b981 0%,#059669 100%);border-color:#10b981">
-        ✓ Contacted / Confirmed
+        ? Contacted / Confirmed
       </button>
       <button id="btnCustVM" class="btn secondary" type="button">
         ?? Left Voicemail
@@ -20929,31 +21123,31 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     
     // Camera count
     if (cameraDetails.camera_count > 0) {
-      bullets.push(`✓ ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
+      bullets.push(`? ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
     }
     
     // Coverage type
     if (cameraDetails.coverage_type && cameraDetails.coverage_type !== 'Unknown') {
-      bullets.push(`✓ Coverage: ${escHtml(cameraDetails.coverage_type)}`);
+      bullets.push(`? Coverage: ${escHtml(cameraDetails.coverage_type)}`);
     }
     
     // Equipment mode
     if (cameraDetails.equipment_mode && cameraDetails.equipment_mode !== 'Unknown') {
-      const equipIcon = cameraDetails.equipment_mode === 'Equipment Provided' ? '✓' : 
-                        cameraDetails.equipment_mode === 'Customer-Supplied' ? '✓' : '✓';
-      bullets.push(`✓ ${equipIcon} ${escHtml(cameraDetails.equipment_mode)}`);
+      const equipIcon = cameraDetails.equipment_mode === 'Equipment Provided' ? '?' : 
+                        cameraDetails.equipment_mode === 'Customer-Supplied' ? '?' : '?';
+      bullets.push(`? ${equipIcon} ${escHtml(cameraDetails.equipment_mode)}`);
     }
     
     // Installation requirements
     if (cameraDetails.install_requirements && cameraDetails.install_requirements.length > 0) {
       cameraDetails.install_requirements.forEach(req => {
-        bullets.push(`✓ ${escHtml(req)}`);
+        bullets.push(`? ${escHtml(req)}`);
       });
     }
     
     // Missing info indicator
     if (cameraDetails.equipment_mode === 'Check with customer') {
-      bullets.push(`⚠️ <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
+      bullets.push(`?? <span style="color:#FFC857;font-weight:600">Pre-call required: Confirm equipment and install details</span>`);
     }
     
     out.summary = `${cameraDetails.camera_count} Camera Install - ${cameraDetails.coverage_type}`;
@@ -20965,7 +21159,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     out.summary = description ? description.split('\n')[0].slice(0, 120) : '';
-    out.bulletsHtml = out.summary ? `✓ ${escHtml(out.summary)}` : '';
+    out.bulletsHtml = out.summary ? `? ${escHtml(out.summary)}` : '';
     console.log('[buildServiceSummary] OUTPUT (fallback):', out);
     return out;
   }
@@ -21012,7 +21206,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
       // Add detailed bullets from tech_details
       if (item.tech_details.length > 0) {
         item.tech_details.forEach(detail => {
-          bullets.push(`✓ ${detail}`);
+          bullets.push(`? ${detail}`);
         });
       }
     });
@@ -21064,7 +21258,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   const bullets = [];
   const push = (g, suffix = '') => {
     if (g.count > 0) parts.push(`${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
-    if (g.count > 0) bullets.push(`✓ ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
+    if (g.count > 0) bullets.push(`? ${g.count} ${g.label}${g.count > 1 ? 's' : ''}${suffix}`);
   };
   if (groups.tv.count) {
     const sizes = groups.tv.sizes.length ? ` (${[...new Set(groups.tv.sizes)].join('", ')}")` : '';
@@ -21072,7 +21266,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   }
   ['mount','soundbar','camera','doorbell','thermostat','outlet','wiring'].forEach(k => push(groups[k]));
 
-  out.summary = parts.join(' • ');
+  out.summary = parts.join(' � ');
   out.bulletsHtml = bullets.map(escHtml).join('<br>');
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
