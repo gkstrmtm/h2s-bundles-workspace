@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-002503 -->
+<!-- VERSION: 2026-01-13-003551 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -20629,11 +20629,11 @@ function openAnnouncementsModal() {
     return;
   }
   
-  const icons = {info:'??', update:'??', warning:'??', urgent:'??'};
+  const icons = {info:'&#128227;', update:'&#128227;', warning:'&#9888;', urgent:'&#10071;'};
   const colors = {info:'#3b82f6', update:'#10b981', warning:'#f59e0b', urgent:'#ef4444'};
   
   listBox.innerHTML = proAnnouncementsCache.map(a => {
-    const icon = icons[a.type] || '??';
+    const icon = icons[a.type] || '&#128227;';
     const color = colors[a.type] || '#3b82f6';
     const isUnread = !viewedAnnouncementIds.has(String(a.announcement_id));
     const createdDate = new Date(a.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
@@ -20663,7 +20663,7 @@ function openAnnouncementsModal() {
               <h3 style="margin:0;font-size:18px;font-weight:700;color:#e0f2fe">${a.title}</h3>
               ${isUnread?'<span style="background:#3b82f6;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600">NEW</span>':''}
             </div>
-            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' ? By '+a.created_by:''}</div>
+            <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' &bull; By '+a.created_by:''}</div>
           </div>
         </div>
         
@@ -20671,7 +20671,7 @@ function openAnnouncementsModal() {
         
         ${videoEmbed}
         
-        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">? Read</div>'}
+        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">&#10003; Read</div>'}
       </div>
     `;
   }).join('');
