@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-004509 -->
+<!-- VERSION: 2026-01-13-011826 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -12290,7 +12290,15 @@ function renderOffersSync(list, box) {
     // Try to get a valid date object - Prioritize scheduled_start_at
     let rawDate = j.scheduled_start_at || j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
-    let targetDate = rawDate ? new Date(rawDate) : null;
+    let targetDate = null;
+    if (rawDate) {
+      // Fix for date-only strings (YYYY-MM-DD) shifting to previous day due to UTC conversion
+      if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        targetDate = new Date(rawDate + 'T12:00:00'); 
+      } else {
+        targetDate = new Date(rawDate);
+      }
+    }
 
     if (targetDate && !isNaN(targetDate)) {
         dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -12665,7 +12673,15 @@ async function renderUpcoming(list) {
     // PS PATCH: scheduled date correctness ? explicit priority
     let rawDate = j.scheduled_start_at || j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
-    let targetDate = rawDate ? new Date(rawDate) : null;
+    let targetDate = null;
+    if (rawDate) {
+      // Fix for date-only strings (YYYY-MM-DD) shifting to previous day due to UTC conversion
+      if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        targetDate = new Date(rawDate + 'T12:00:00'); 
+      } else {
+        targetDate = new Date(rawDate);
+      }
+    }
     
     // ? COMPLETION STATUS CHECK
     const hasPhotos = photoOnFile[j.job_id];
@@ -13171,7 +13187,15 @@ function renderCompleted(list) {
     let dateDisplay = '';
     let rawDate = j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
-    let targetDate = rawDate ? new Date(rawDate) : null;
+    let targetDate = null;
+    if (rawDate) {
+      // Fix for date-only strings (YYYY-MM-DD) shifting to previous day due to UTC conversion
+      if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        targetDate = new Date(rawDate + 'T12:00:00'); 
+      } else {
+        targetDate = new Date(rawDate);
+      }
+    }
 
     if (targetDate && !isNaN(targetDate)) {
         const dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
