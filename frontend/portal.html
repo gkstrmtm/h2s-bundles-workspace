@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-003551 -->
+<!-- VERSION: 2026-01-13-004509 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -1922,17 +1922,13 @@ select.input:hover,select.select:hover{
   color:#60a5fa;
   border:1px solid rgba(96,165,250,0.3);
 }
-.admin-badge--offered::before{
-  content:'??';
-}
+.admin-badge--offered::before{content:'\\1F4E9';}
 .admin-badge--accepted{
   background:rgba(34,201,111,0.15);
   color:#22C96F;
   border:1px solid rgba(34,201,111,0.3);
 }
-.admin-badge--accepted::before{
-  content:'?';
-}
+.admin-badge--accepted::before{content:'\\2713';}
 .admin-badge--completed{
   background:rgba(16,185,129,0.15);
   color:#10b981;
@@ -7194,7 +7190,7 @@ a:focus-visible{
         <div class="training-section">
           <div class="section-header" style="margin-bottom:20px">
             <div>
-              <h3 class="section-title" style="font-size:20px;font-weight:700;color:#f8fafc">?? Resources & Downloads</h3>
+              <h3 class="section-title" style="font-size:20px;font-weight:700;color:#f8fafc">&#128194; Resources & Downloads</h3>
               <p class="section-subtitle" style="margin-top:4px;font-size:14px;color:#94a3b8">Guides, checklists, and reference materials</p>
             </div>
           </div>
@@ -7202,7 +7198,7 @@ a:focus-visible{
             <!-- Populated dynamically -->
           </div>
           <div id="training-resources-empty" class="empty-state-modern" style="display:none;text-align:center;padding:60px 24px;background:#0f172a;border-radius:16px;border:2px dashed #1e293b">
-            <div style="font-size:48px;margin-bottom:12px;opacity:.5">??</div>
+            <div style="font-size:48px;margin-bottom:12px;opacity:.5">&#128218;</div>
             <p style="font-size:14px;color:#64748b">No resources available yet</p>
           </div>
         </div>
@@ -7211,7 +7207,7 @@ a:focus-visible{
       <div id="tab-schedule" style="display:none; background:transparent; border:none; box-shadow:none">
         <!-- Intro Block -->
         <div style="text-align:center;margin-bottom:24px">
-          <div style="font-size:48px;margin-bottom:12px">??</div>
+          <div style="font-size:48px;margin-bottom:12px">&#128197;</div>
           <h2 style="font-size:24px;font-weight:700;color:#e0f2fe;margin:0 0 6px 0">Time Off</h2>
           <p style="font-size:14px;color:#94a3b8;margin:0">Request days when you're unavailable to work</p>
         </div>
@@ -7235,7 +7231,7 @@ a:focus-visible{
                 <h3 style="font-size:16px;font-weight:600;color:#e0f2fe;margin:0 0 4px 0">Request Time Off</h3>
                 <p style="font-size:13px;color:#94a3b8;margin:0">Block dates when you can't take jobs</p>
               </div>
-              <div style="color:#1493FF;font-size:20px;flex-shrink:0">?</div>
+              <div style="color:#1493FF;font-size:20px;flex-shrink:0">&#10095;</div>
             </div>
           </div>
 
@@ -7313,7 +7309,7 @@ a:focus-visible{
         </div>
         <div id="adList" class="list"></div>
         <div id="adEmpty" class="admin-text-muted" style="display:none;text-align:center;padding:48px 24px;background:rgba(59,130,246,0.05);border:2px dashed rgba(59,130,246,0.2);border-radius:12px;margin-top:16px">
-          <div style="font-size:48px;margin-bottom:12px;opacity:0.6">??</div>
+          <div style="font-size:48px;margin-bottom:12px;opacity:0.6">&#128237;</div>
           <p style="font-size:16px;font-weight:600;color:var(--admin-text-primary);margin:0 0 8px 0">No jobs found</p>
           <p style="font-size:14px;margin:0;opacity:0.8">Try adjusting your filters or check back later</p>
         </div>
@@ -7438,7 +7434,7 @@ a:focus-visible{
       <div class="card" id="dataHealthDashboard" style="display:none;margin-top:24px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px">
           <h2>Data Health Dashboard</h2>
-          <button id="btnRefreshDataHealth" class="btn secondary" type="button">?? Refresh</button>
+          <button id="btnRefreshDataHealth" class="btn secondary" type="button">&#128260; Refresh</button>
         </div>
         
         <!-- KPI Cards -->
@@ -7468,8 +7464,8 @@ a:focus-visible{
         <!-- Missing Product Links Section -->
         <div style="margin-bottom:32px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-            <h3 style="margin:0">?? Items Needing Links</h3>
-            <button id="btnAutoFindLinks" class="btn-success" type="button" style="font-size:14px;padding:8px 16px">?? Auto-Find Links</button>
+            <h3 style="margin:0">&#128279; Items Needing Links</h3>
+            <button id="btnAutoFindLinks" class="btn-success" type="button" style="font-size:14px;padding:8px 16px">&#129668; Auto-Find Links</button>
           </div>
           <div id="linkTodoList" class="link-todo-list">
             <p class="muted">Loading...</p>
@@ -7480,7 +7476,7 @@ a:focus-visible{
         <div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
             <h3 style="margin:0">BOM Improvement Suggestions</h3>
-            <button id="btnRefreshBOMImprovements" class="btn secondary" type="button" style="font-size:14px;padding:8px 16px">?? Refresh</button>
+            <button id="btnRefreshBOMImprovements" class="btn secondary" type="button" style="font-size:14px;padding:8px 16px">&#128260; Refresh</button>
           </div>
           <div id="bomImprovementsList" class="bom-improvements-list">
             <p class="muted">Loading...</p>
@@ -7679,7 +7675,7 @@ a:focus-visible{
     <div class="hr"></div>
     <h3>Dispatch - Find Available Techs</h3>
     <div class="row" style="align-items:center;gap:10px;margin-bottom:16px">
-      <button id="btnFindAvailableTechs" class="btn" type="button">?? Find Available Techs</button>
+      <button id="btnFindAvailableTechs" class="btn" type="button">&#128269; Find Available Techs</button>
       <p class="muted">Automatically matches techs based on location, radius, and availability</p>
     </div>
     <div id="adAvailableTechs" class="cands" style="display:none"></div>
@@ -8133,7 +8129,7 @@ a:focus-visible{
       <div>
         <h3 id="videoTitle" style="font-size:24px;margin-bottom:8px">Training Video</h3>
         <div class="video-stats">
-          <span class="video-stat">?? <span id="videoModule"></span></span>
+          <span class="video-stat">&#127909; <span id="videoModule"></span></span>
           <span class="video-stat" id="videoLevel"></span>
           <span class="video-stat" id="videoDuration"></span>
           <span class="video-stat" id="videoProgressStatus"></span>
@@ -8219,23 +8215,23 @@ if (header && window.innerWidth <= 640) {
 // ===== ONBOARDING SYSTEM =====
 const ONBOARDING_STEPS = [
   {
-    title: "Welcome to Home2Smart Pro Portal! ??",
+    title: "Welcome to Home2Smart Pro Portal! &#128075;",
     content: "This is your command center for managing jobs, tracking earnings, and growing your business. Let's take a quick tour!"
   },
   {
-    title: "Accepting Jobs ??",
+    title: "Accepting Jobs &#128188;",
     content: "Job offers appear in your dashboard. Tap 'Accept' to claim them. Jobs show service details, location, and your guaranteed payout upfront."
   },
   {
-    title: "Your Payout Structure ??",
+    title: "Your Payout Structure &#128176;",
     content: "You earn a percentage of each job based on service type. Payouts are calculated automatically and displayed prominently on every offer."
   },
   {
-    title: "Complete Your Profile ??",
+    title: "Complete Your Profile &#128100;",
     content: "Set your availability, service areas, and skills in Account Settings. This helps us match you with the right jobs in your area."
   },
   {
-    title: "Ready to Go! ??",
+    title: "Ready to Go! &#128640;",
     content: "You're all set! Press 'Get Started' to view available jobs. You can re-take this tour anytime from the Account tab."
   }
 ];
@@ -8286,7 +8282,7 @@ function initOnboarding() {
   function completeOnboarding() {
     overlay.style.display = 'none';
     localStorage.setItem('h2s_onboarding_completed', 'true');
-    showToast('Welcome to Home2Smart! ??', 'success');
+    showToast('Welcome to Home2Smart! &#128075;', 'success');
   }
   
   nextBtn.onclick = nextStep;
@@ -9785,8 +9781,8 @@ $("menu").addEventListener("click", e => {
       $("dataHealthDashboard").style.display = "none";
       adminLoadJobs();
     } else if (tab === 'ad-announcements') {
-      console.log('[Menu] ?? Showing Announcements panel');
-      console.log('[Menu] ?? Calling loadAnnouncements()...');
+      console.log('[Menu] 📱 Showing Announcements panel');
+      console.log('[Menu] 📢 Calling loadAnnouncements()...');
       $("jobsPanel").style.display = "none";
       $("announcementsPanel").style.display = "block";
       $("dataHealthDashboard").style.display = "none";
@@ -9796,7 +9792,7 @@ $("menu").addEventListener("click", e => {
       console.log('[Menu] ? loadAnnouncements function exists, calling it now...');
         loadAnnouncements();
       } else {
-        console.error('[Menu] ?? loadAnnouncements is NOT a function!', typeof loadAnnouncements);
+        console.error('[Menu] ❌ loadAnnouncements is NOT a function!', typeof loadAnnouncements);
       }
     }
   }
@@ -11155,19 +11151,19 @@ async function cancelJob() {
   
   // Validate reason
   if (!reason) {
-    errorDiv.textContent = "?? Please provide a reason for cancellation";
+    errorDiv.textContent = "&#9888; Please provide a reason for cancellation";
     errorDiv.style.display = "block";
     return;
   }
   
   if (reason.length < 10) {
-    errorDiv.textContent = "?? Please provide more details (at least 10 characters)";
+    errorDiv.textContent = "&#9888; Please provide more details (at least 10 characters)";
     errorDiv.style.display = "block";
     return;
   }
   
   if (!currentCancelJobId) {
-    errorDiv.textContent = "?? Job ID missing - please try again";
+    errorDiv.textContent = "&#10060; Job ID missing - please try again";
     errorDiv.style.display = "block";
     return;
   }
@@ -11265,7 +11261,7 @@ async function loadJobPhotos(jobId) {
         userMessage = out.error;
       }
       
-      toast(`?? ${userMessage}`);
+      toast(`&#9888; ${userMessage}`);
       return [];
     }
     
@@ -11289,7 +11285,7 @@ async function loadJobPhotos(jobId) {
       ? 'Network error - check your connection'
       : `Error loading photos: ${err.message || 'Unknown error'}`;
     
-    toast(`?? ${userMessage}`);
+    toast(`&#9888; ${userMessage}`);
     return [];
   }
 }
@@ -11707,7 +11703,7 @@ async function showPhotoUploadPreview(files, jobId) {
           </div>
         ` : `
           <div style="text-align:center;padding:40px 20px;opacity:.6;color:#9bc8ff">
-            <div style="font-size:48px;margin-bottom:12px">??</div>
+            <div style="font-size:48px;margin-bottom:12px">&#128197;</div>
             <div>No valid photos to upload</div>
           </div>
         `}
@@ -11715,7 +11711,7 @@ async function showPhotoUploadPreview(files, jobId) {
         <div style="display:flex;gap:12px">
           <button id="cancel-upload" class="btn ghost" style="flex:1;font-size:15px;padding:14px;border-color:rgba(20,147,255,.4);color:#9bc8ff">Cancel</button>
           <button id="confirm-upload" class="btn" style="flex:1;font-size:15px;padding:14px;background:linear-gradient(135deg,#1493ff 0%,#0f7acc 100%);box-shadow:0 4px 14px rgba(20,147,255,.4);border:none;color:#fff;font-weight:600" ${validPreviews.length === 0 ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''}>
-            ?? Upload <span id="confirm-upload-text">${validPreviews.length}</span> Photo${validPreviews.length !== 1 ? 's' : ''}
+            &#11014; Upload <span id="confirm-upload-text">${validPreviews.length}</span> Photo${validPreviews.length !== 1 ? 's' : ''}
           </button>
         </div>
       </div>
@@ -21166,8 +21162,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     
     // Equipment mode
     if (cameraDetails.equipment_mode && cameraDetails.equipment_mode !== 'Unknown') {
-      const equipIcon = cameraDetails.equipment_mode === 'Equipment Provided' ? '??' : 
-                        cameraDetails.equipment_mode === 'Customer-Supplied' ? '??' : '?';
+      const equipIcon = cameraDetails.equipment_mode === 'Equipment Provided' ? '&#128230;' : 
+                        cameraDetails.equipment_mode === 'Customer-Supplied' ? '&#128295;' : '&#10067;';
       bullets.push(`&bull; ${equipIcon} ${escHtml(cameraDetails.equipment_mode)}`);
     }
     
