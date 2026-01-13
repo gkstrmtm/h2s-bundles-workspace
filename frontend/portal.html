@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-013009 -->
+<!-- VERSION: 2026-01-13-013534 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -10416,8 +10416,12 @@ function normalizeJobFields(job) {
   }
   
   // State: try service_state, state
-  if (!normalized.state) {
-    normalized.state = job.service_state || null;
+  // FIXED: Ignore 'state' if it looks like an assignment status (e.g. "accepted")
+  normalized.state = null;
+  if (job.service_state) {
+    normalized.state = job.service_state; 
+  } else if (job.state && job.state.length === 2) {
+    normalized.state = job.state;
   }
   
   // ZIP: try service_zip, zip, postal_code
@@ -10467,9 +10471,9 @@ function showJobDetails(job) {
   // ? INTELLIGENCE: Better status for unscheduled jobs + friendly format
   (function(){
     /* PS PATCH: alias-bound geo + scheduled date ? start */
-    // Explicit priority for scheduled_start_at
-    const rawDate = job.scheduled_start_at || job.start_iso || job.metadata?.start_iso || job.metadata?.date;
-    const rawWindow = job.window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
+    // Explicit priority for scheduled_start_at - Robust List (matches showOfferDetails)
+    const rawDate = job.scheduled_start_at || job.start_iso || job.due_at || job.metadata?.start_iso || job.metadata?.date || job.metadata?.scheduled_date;
+    const rawWindow = job.window || job.time_window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
     
     // Status Display Logic
     const status = (job.status || 'Pending').toLowerCase();
