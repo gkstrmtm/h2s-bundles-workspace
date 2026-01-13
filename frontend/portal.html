@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal � Home2Smart</title>
-<!-- VERSION: 2026-01-13_SAFE_v2-211549 -->
+<!-- VERSION: 2026-01-13_SAFE_v3-211549 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -8322,6 +8322,10 @@ const LS_ADMIN_TOKEN = "h2s_admin_token";
 const TRAINING_CATALOG_CACHE_VERSION = "2025-12-25.portal_training.v2";
 
 /* ===== UTIL ===== */
+
+/* FIXED GLOBALS for Announcements */
+window.proAnnouncementsCache = [];
+window.viewedAnnouncementIds = new Set();
 const $ = id => document.getElementById(id);
 
 // ? FIX: Declare timer at top level to avoid hoisting issues
@@ -20465,8 +20469,8 @@ function customConfirm(title, message, confirmText = 'Delete') {
 window.customConfirm = customConfirm;
 
 /* ===== PRO-FACING ANNOUNCEMENTS ===== */
-let proAnnouncementsCache = [];
-let viewedAnnouncementIds = new Set();
+// let proAnnouncementsCache = []; // Handled globals
+// let viewedAnnouncementIds = new Set(); // Handled globals
 // proAnnouncementsRefreshTimer moved to top of file (line ~5283)
 
 async function loadProAnnouncements() {
@@ -21116,7 +21120,7 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     
     // Camera count
     if (cameraDetails.camera_count > 0) {
-      bullets.push(`? ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
+      bullets.push(`&bull; ${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
     }
     
     // Coverage type
