@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-013534 -->
+<!-- VERSION: 2026-01-13-015911 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -12943,7 +12943,20 @@ async function renderUpcoming(list) {
       fetchJobDetails(jobId).then(fullJob => {
         if (fullJob) {
           // Merge full details with summary data (full details take priority)
+          // FIXED: Do not let partial backend response overwrite valid summary fields
           const mergedJob = { ...summaryJob, ...fullJob };
+          
+          // PRESERVE DATES: If backend return null/empty dates, restore from summary
+          if (!mergedJob.scheduled_start_at && summaryJob.scheduled_start_at) {
+              mergedJob.scheduled_start_at = summaryJob.scheduled_start_at;
+          }
+          if (!mergedJob.start_iso && summaryJob.start_iso) {
+              mergedJob.start_iso = summaryJob.start_iso;
+          }
+          if (!mergedJob.window && summaryJob.window) {
+              mergedJob.window = summaryJob.window;
+          }
+          
           console.log('[Upcoming Jobs] Showing full details for:', jobId);
           showJobDetails(mergedJob);
         } else {
