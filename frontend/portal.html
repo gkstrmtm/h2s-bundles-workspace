@@ -6,10 +6,13 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
-<!-- VERSION: 2026-01-13-015911 -->
+<meta name="build-id" content="BUILD-VERIFY-001">
+<!-- VERSION: 2026-01-13-BUILD-001 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
+console.log("[BUILD_ID]", "BUILD-VERIFY-001", new Date().toISOString(), "FILE:", "portal.html");
+
 // CLEANUP: Silent service worker & cache check
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
@@ -21979,6 +21982,9 @@ window.submitFeedback = async function() {
 
 // console.log('[Customer Photos] Tech portal viewer loaded');
 </script>
+<div style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:12px;text-align:center;padding:4px;z-index:99999;pointer-events:none;">
+    BUILD: BUILD-VERIFY-001 (Portal.html)
+</div>
 </body>
 </html>
 
