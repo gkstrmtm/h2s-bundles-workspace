@@ -6,7 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal ? Home2Smart</title>
-<!-- VERSION: 2026-01-13-011826 -->
+<!-- VERSION: 2026-01-13-012350 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -10476,7 +10476,7 @@ function showJobDetails(job) {
     const isCompleted = status === 'completed' || status === 'done';
     
     // Always show scheduled date if we have it, regardless of status
-    const d = rawDate ? new Date(rawDate) : null;
+    const d = rawDate ? ((typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) ? new Date(rawDate + 'T12:00:00') : new Date(rawDate)) : null;
     let timeLabel = '';
     
     if (d && !isNaN(d)) {
