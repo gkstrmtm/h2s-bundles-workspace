@@ -94,20 +94,9 @@ function first5(z: any) {
 
 // ===== Geocoding Helper =====
 async function geocodeJobAddress(address: string, city: string, state: string, zip: string): Promise<{ lat: number | null; lng: number | null }> {
-  // EMERGENCY FALLBACK: Hardcoded coordinates for known test jobs when API key is missing
-  // This ensures the Greenwood, SC test case works immediately for the user.
-  const lowerCity = (city || '').toLowerCase().trim();
-  if (lowerCity === 'greenwood' && (state || '').toLowerCase().includes('sc')) {
-    console.log('[Portal Jobs] Using OFFLINE FALLBACK coordinates for Greenwood, SC');
-    return { lat: 34.1954, lng: -82.1618 };
-  }
-
   if (!address || !city || !state) return { lat: null, lng: null };
   const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) {
-    console.warn('[Portal Jobs] Missing GOOGLE_MAPS_API_KEY. Geocoding disabled.');
-    return { lat: null, lng: null };
-  }
+  if (!key) return { lat: null, lng: null };
   const full = `${address}, ${city}, ${state} ${zip || ''}`.trim();
 
   try {
@@ -259,7 +248,7 @@ function calculatePriorityScore(
 }
 
 async function fetchAvailableOffers(
-  client: any,  ordersClient: any,  opts: { lat: number | null; lng: number | null; zip?: string | null; radius: number; limit: number; proId?: string; source?: string },
+  client: any,  ordersClient: any,  opts: { lat: number | null; lng: number | null; zip?: string | null; radius: number; limit: number },
   schema?: { jobsTable?: string; jobsStatusCol?: string },
   debugMode: boolean = false
 ): Promise<{ offers: any[]; diagnostics: any; debugData?: any }> {
@@ -292,17 +281,8 @@ async function fetchAvailableOffers(
   const timings: any = { total: 0, db: 0, join: 0 };
 
   const limit = Math.min(Math.max(opts.limit || 200, 1), 500);
-  
-  // ---------------------------------------------------------
-  // FIX: HARDCODE THE TRUTH.
-  // We know 'h2s_dispatch_jobs' has 94 rows.
-  // We know 'queued' is the status.
-  // We exclude dynamic resolution to prevent pointing to empty tables.
-  // ---------------------------------------------------------
-  const jobsTable = 'h2s_dispatch_jobs'; 
-  const OFFER_STATUSES = ['queued', 'pending', 'open', 'scheduled']; // Explicitly include 'queued'
-  const statusCol = 'status'; // Hardcoded
-  
+  const jobsTable = schema?.jobsTable || 'h2s_dispatch_jobs';
+  const statusCol = schema?.jobsStatusCol || 'status';
   const proZip5 = first5(opts.zip);
   console.log('[PORTAL_DEBUG_TEMP] fetchAvailableOffers params:', {
     lat: opts.lat,
@@ -315,7 +295,7 @@ async function fetchAvailableOffers(
   });
   // NOTE: Some deployments incorrectly store “scheduled” rows without any assignment.
   // In that case we still want them to appear as offers (if unassigned).
-  // const OFFER_STATUSES = ['pending_assign', 'pending', 'open', 'unassigned', 'available', 'offered', 'new', 'scheduled', 'queued'];
+  const OFFER_STATUSES = ['pending_assign', 'pending', 'open', 'unassigned', 'available', 'offered', 'new', 'scheduled', 'queued'];
   const LAT_COLS = ['geo_lat', 'job_geo_lat', 'service_lat', 'lat', 'latitude'];
   const LNG_COLS = ['geo_lng', 'geo_long', 'job_geo_lng', 'service_lng', 'lng', 'longitude', 'long'];
   const ZIP_COLS = ['service_zip', 'zip', 'zip_code', 'postal_code'];
@@ -497,23 +477,10 @@ async function fetchAvailableOffers(
                try { items = JSON.parse(items); } catch {}
              }
              
-             
-             // Deep dive into metadata for details
-             const metaDetails = meta.job_details || {};
-             const deepTitle = metaDetails.job_title || metaDetails.title;
-             const deepSummary = metaDetails.job_summary || metaDetails.summary || metaDetails.description;
-             const deepInst = typeof metaDetails.technician_tasks === 'string' ? metaDetails.technician_tasks : (Array.isArray(metaDetails.technician_tasks) ? metaDetails.technician_tasks.join('\n') : '');
-             
-             // Construct better description
-             let bestDesc = j.description || order.special_instructions || meta.description || deepSummary || '';
-             if (deepInst && !bestDesc.includes(deepInst)) {
-                bestDesc += (bestDesc ? '\n\n' : '') + 'Tasks: ' + deepInst;
-             }
-             
              const merged = {
                ...j,
                 order_status: order.status || meta.order_status || null,
-               service_name: j.service_name || order.service_name || meta.service_name || deepTitle || "Service",
+               service_name: j.service_name || order.service_name || meta.service_name || "Service",
                service_address: j.service_address || order.address || meta.service_address || '',
                service_city: j.service_city || order.city || meta.service_city || '',
                service_state: j.service_state || order.state || meta.service_state || '',
@@ -531,7 +498,7 @@ async function fetchAvailableOffers(
                delivery_time: order.delivery_time || meta.delivery_time || meta.install_window || null,
                line_items: items,
                
-               description: bestDesc,
+               description: j.description || order.special_instructions || meta.description || '',
                customer_name: j.customer_name || order.customer_name || meta.customer_name || '',
              };
              // Normalise zip for filtering
@@ -747,110 +714,44 @@ async function fetchAvailableOffers(
       return { offers, diagnostics, debugData };
   }
 
-/* PS PATCH: geo source selection + distance — start */
-      // Convert mapping to async to support on-the-fly geocoding
-      const offers = (
-        await Promise.all(
-          jobs.map(async (j: any) => {
-            // Try multiple sources for geo coordinates (Job)
-            // Priority:
-            // 1. Direct properties (j.geo_lat)
-            // 2. Order properties (j.order_geo_lat - via enrichment)
-            // 3. Metadata fallback
-            // 4. Geocode address (new)
-            let jLat = toNum(j?.geo_lat) ?? toNum(j?.[latCol]);
-            let jLng = toNum(j?.geo_lng) ?? toNum(j?.[lngCol]);
-
-            // Final fallback: check metadata for geo coordinates
-            if ((jLat === null || jLng === null) && j?.metadata) {
-              jLat = jLat ?? toNum(j.metadata.geo_lat);
-              jLng = jLng ?? toNum(j.metadata.geo_lng);
-            }
-
-            // GEOCODING FALLBACK (If missing coords but has address)
-            let geocodedSource = false;
-            if (jLat === null || jLng === null) {
-              const addr = j.service_address || j.address;
-              const city = j.service_city || j.city;
-              const state = j.service_state || j.state;
-              const zip = j.service_zip || j.zip;
-
-              if (addr && city && state) {
-                // Check in-memory cache first? (Simulated by ZIP cache for now, but use helper)
-                const geo = await geocodeJobAddress(addr, city, state, zip);
-                if (geo.lat !== null && geo.lng !== null) {
-                  jLat = geo.lat;
-                  jLng = geo.lng;
-                  geocodedSource = true;
-                  // Note: Ideally we would save this back to DB here, but to avoid write-heavy GETs,
-                  // we just return it. The cache in `geocodeJobAddress` helps speed.
-                }
-              }
-            }
-
-            /* PS PATCH: alias-bound geo + scheduled date — start */
-            const dist =
-              jLat != null && jLng != null && opts.lat != null && opts.lng != null
-                ? haversineMiles(opts.lat!, opts.lng!, jLat, jLng)
-                : null;
-
-            // Debug Logging Object (Requested by User)
-            const _debug_geo = {
-                alias_pro_id: opts.proId || 'unknown',
-                tech_coords: { lat: opts.lat, lng: opts.lng, source: opts.source },
-                job_id: j.job_id,
-                job_address: `${j.service_address || j.address}, ${j.service_city || j.city}, ${j.service_state || j.state} ${j.service_zip || j.zip}`,
-                job_coords: { lat: jLat, lng: jLng, source: geocodedSource ? 'geocoded_dynamic' : (j.geo_lat ? 'db_stored' : 'fallback') },
-                dist_calc: dist
-            };
-            if (debugMode) console.log(`[JobDebug ${j.job_id}]`, JSON.stringify(_debug_geo));
-            /* PS PATCH: alias-bound geo + scheduled date — end */
-
-            const jobZip5 = first5(
-              j?.[zipCol] ?? j?.service_zip ?? j?.zip ?? j?.zip_code ?? j?.postal_code ?? j?.metadata?.service_zip
-            );
-            const st = String(j?.[statusCol] ?? j?.status ?? j?.job_status ?? j?.state ?? '')
-              .toLowerCase()
-              .trim();
-            // Extract line_items from metadata if available
-            const lineItems = j?.line_items || j?.metadata?.items_json || null;
-            // CRITICAL: Read payout from column first, then metadata
-            const estimatedPayout = Number(j?.payout_estimated || j?.metadata?.estimated_payout || 0);
-            // CRITICAL: Enrich service name from items if generic
-            const enrichedServiceName = enrichServiceName(j);
-            // ✅ NEW: Extract camera installation details
-            const cameraDetails = extractCameraDetails(j);
-
-            /* PS PATCH: scheduled date correctness — start */
-            // Ensure strict date handling
-            // Priority: scheduled_start_at (DB) > delivery_date (Order) > created_at fallback (Audit only)
-            const scheduledStart = j.scheduled_start_at || j.start_time || j.delivery_date; // delivery_date is often YYYY-MM-DD
-            const scheduledEnd = j.scheduled_end_at || j.end_time;
-            const scheduledTz = j.scheduled_tz || 'UTC'; // Store TZ
-            /* PS PATCH: scheduled date correctness — end */
-
-            return {
-              ...j,
-              // Normalized Date Fields
-              scheduled_start_at: scheduledStart,
-              scheduled_end_at: scheduledEnd,
-              scheduled_tz: scheduledTz,
-              
-              service_name: enrichedServiceName, // Override generic names
-              line_items: lineItems, // Ensure line_items is available for frontend
-              camera_details: cameraDetails, // Add structured camera data
-              distance_miles: dist != null ? Math.round(dist * 10) / 10 : null,
-              _debug_geo: _debug_geo, // Pass debug info to frontend for console log
-              geo_source: geocodedSource ? 'geocoded_dynamic' : 'stored',
-              payout_estimated: estimatedPayout,
-              referral_code: j?.metadata?.referral_code ?? null,
-              _job_zip5: jobZip5,
-              _job_status_norm: st,
-            };
-          })
-        )
-      )
-/* PS PATCH: geo source selection + distance — end */
+  const offers = jobs
+    .map((j: any) => {
+      // Try multiple sources for geo coordinates:
+      // 1. Direct properties from enrichment (j.geo_lat, j.geo_lng)
+      // 2. Column-based access (j[latCol], j[lngCol])
+      // 3. Metadata fallback (j.metadata.geo_lat, j.metadata.geo_lng)
+      let jLat = toNum(j?.geo_lat) ?? toNum(j?.[latCol]);
+      let jLng = toNum(j?.geo_lng) ?? toNum(j?.[lngCol]);
+      
+      // Final fallback: check metadata for geo coordinates
+      if ((jLat === null || jLng === null) && j?.metadata) {
+        jLat = jLat ?? toNum(j.metadata.geo_lat);
+        jLng = jLng ?? toNum(j.metadata.geo_lng);
+      }
+      
+      const dist = jLat != null && jLng != null ? haversineMiles(opts.lat!, opts.lng!, jLat, jLng) : null;
+      const jobZip5 = first5(j?.[zipCol] ?? j?.service_zip ?? j?.zip ?? j?.zip_code ?? j?.postal_code ?? j?.metadata?.service_zip);
+      const st = String(j?.[statusCol] ?? j?.status ?? j?.job_status ?? j?.state ?? '').toLowerCase().trim();
+      // Extract line_items from metadata if available
+      const lineItems = j?.line_items || j?.metadata?.items_json || null;
+      // CRITICAL: Read payout from column first, then metadata (column is authoritative)
+      const estimatedPayout = Number(j?.payout_estimated || j?.metadata?.estimated_payout || 0);
+      // CRITICAL: Enrich service name from items if generic
+      const enrichedServiceName = enrichServiceName(j);
+      // ✅ NEW: Extract camera installation details
+      const cameraDetails = extractCameraDetails(j);
+      return {
+        ...j,
+        service_name: enrichedServiceName, // Override generic names
+        line_items: lineItems, // Ensure line_items is available for frontend
+        camera_details: cameraDetails, // Add structured camera data
+        distance_miles: dist != null ? Math.round(dist * 10) / 10 : null,
+        payout_estimated: estimatedPayout,
+        referral_code: j?.metadata?.referral_code ?? null,
+        _job_zip5: jobZip5,
+        _job_status_norm: st,
+      };
+    })
     .filter((j: any) => {
       if (j._job_status_norm === 'scheduled') {
         if (isProbablyAssigned(j)) {
@@ -894,9 +795,9 @@ async function fetchAvailableOffers(
         return true;
       }
 
-      // 4. Final Fallback: No Geo, No ZIP data -> HIDE IT.
-      console.log(`[Portal Jobs] Job ${j.job_id}: DROPPED fallback (no geo or zip data)`);
-      return false;
+      // 4. Final Fallback: No Geo, No ZIP data -> Show it.
+      console.log(`[Portal Jobs] Job ${j.job_id}: included fallback (no geo or partial zip)`);
+      return true;
     })
     .map((j: any) => {
       // Strip internal helper fields and calculate priority
@@ -1123,13 +1024,6 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
     .filter(Boolean);
 
   enriched = enriched.filter((j: any) => {
-    // SECURITY PATCH: If the pro has ALREADY accepted/scheduled the job, they must be able to see it
-    // regardless of the payment status (avoid vanishing jobs).
-    const assignmentState = String(j.assign_state || '').toLowerCase();
-    if (['accepted', 'scheduled', 'in_progress', 'started', 'en_route'].includes(assignmentState)) {
-        return true;
-    }
-
     const s = String(j?.order_status || '').toLowerCase();
     if (!s) return true;
     return !(s.includes('pending_payment') || s.includes('pending') || s.includes('unpaid'));
@@ -1144,7 +1038,7 @@ function mergeJobAssignment(job: any, assignment: any) {
     ...job,
     ...assignment,
     job_id: job?.job_id ?? assignment?.job_id,
-    assign_state: assignment?.assign_state ?? assignment?.state ?? assignment?.status ?? job?.assign_state ?? job?.status,
+    assign_state: assignment?.assign_state ?? assignment?.state ?? job?.assign_state ?? job?.status,
   };
 }
 
@@ -1295,7 +1189,7 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
   );
 }
 
-async function handle(request: Request, token: string, jobId?: string, debugMode: boolean = false, body: any = null) {
+async function handle(request: Request, token: string, jobId?: string, debugMode: boolean = false) {
   console.log('[portal_jobs] handle called with token:', token ? token.substring(0, 50) + '...' : 'NO TOKEN', 'debug:', debugMode);
   
   if (!token) {
@@ -1375,94 +1269,44 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
     return await handleSingleJobFetch(sb, main, jobId, proId, request);
   }
 
-  // FIX: Use the service role client 'sb' to fetch profile to avoid RLS issues.
-  // The 'sb' client is already configured above with the Master Key in this scope.
   const proProfile = await fetchProProfile(sb, proId);
-  const proGeoProfile = extractProGeo(proProfile);
-
-  /* PS PATCH: geo source selection + distance — start */
-  // TECH LOCATION SOURCE - DETERMINISTIC PRIORITY
-  // Priority 1: Live device location (if fresh)
-  // Priority 2: Address-on-file geocode (cached profile)
-  // Priority 3: None (N/A)
-
-  let effectiveLat: number | null = null;
-  let effectiveLng: number | null = null;
-  let effectiveRadius: number = proGeoProfile.radius || 50;
-  let proGeoSource: 'live' | 'profile' | 'zip_geocode' | 'none' = 'none';
-
-  // 1. Check Live Location
-  // Expecting body keys: live_lat, live_lng, (optional) live_at
-  const liveLat = toNum(body?.live_lat);
-  const liveLng = toNum(body?.live_lng);
-  
-  // Simple freshness check (if client sends timestamp)
-  // Default to accepting it if present (client responsibly).
-  if (liveLat != null && liveLng != null) {
-      effectiveLat = liveLat;
-      effectiveLng = liveLng;
-      proGeoSource = 'live';
-      console.log(`[Portal Jobs] Using LIVE location: ${effectiveLat}, ${effectiveLng}`);
-  }
-
-  // 2. Fallback to Profile
-  if (proGeoSource === 'none' && proGeoProfile.lat != null && proGeoProfile.lng != null) {
-      effectiveLat = proGeoProfile.lat;
-      effectiveLng = proGeoProfile.lng;
-      proGeoSource = 'profile';
-      console.log(`[Portal Jobs] Using PROFILE location: ${effectiveLat}, ${effectiveLng}`);
-  }
-
-  // 3. Last resort: ZIP Geocode (Centroid)
-  const proZip5 = first5(proGeoProfile.zip || (payload as any)?.zip);
-  if (proGeoSource === 'none' && proZip5) {
-      const geo = await geocodeZip(proZip5);
-      if (geo) {
-          effectiveLat = geo.lat;
-          effectiveLng = geo.lng;
-          proGeoSource = 'zip_geocode';
-          console.log(`[Portal Jobs] Using ZIP centroid: ${effectiveLat}, ${effectiveLng}`);
-
-          // Persist best-effort
-          try {
-              await bestEffortUpdateProRow(sb, proId, [
-              { geo_lat: geo.lat, geo_lng: geo.lng },
-              { lat: geo.lat, lng: geo.lng }
-              ]);
-          } catch {}
-      }
-  }
-
-  const proGeo = {
-      proId: proId, // Pass proId for reference
-      source: proGeoSource, // Pass source for debugging
-      lat: effectiveLat,
-      lng: effectiveLng,
-      zip: proGeoProfile.zip,
-      radius: effectiveRadius
-  };
-  /* PS PATCH: geo source selection + distance — end */
+  const proGeo = extractProGeo(proProfile);
   
   console.log('[Portal Jobs] Pro profile:', JSON.stringify(proProfile?.row || {}));
   console.log('[Portal Jobs] Pro geo extracted:', {
     lat: proGeo.lat,
     lng: proGeo.lng,
     zip: proGeo.zip,
-    radius: proGeo.radius,
-    source: proGeoSource
+    radius: proGeo.radius
   });
 
-  const geoWarning = (() => {
-    if (proGeoSource === 'live') return null; // Live location is good!
-    if (proGeoSource === 'profile') return null; // Profile location is good!
-    if (proGeoSource === 'zip_geocode') return 'Using ZIP-based location (centroid). Update your Profile address for more accurate distances.';
-    
-    // Final check: If we have an address but couldn't geocode it, don't say "Missing Location"
-    // Just say "Location initializing" or similar, or nothing.
-    if (proProfile?.row?.address || proProfile?.row?.zip) {
-        return null; // Graceful fallback, don't scare the user
-    }
+  // Make sure we have a usable geo point for distance filtering.
+  // If missing, try to infer from the pro's ZIP (ZIP centroid) if we have a Geocoding API key.
+  let proGeoSource: 'profile' | 'zip_geocode' | 'none' = proGeo.lat != null && proGeo.lng != null ? 'profile' : 'none';
+  const proZip5 = first5(proGeo.zip || (payload as any)?.zip);
+  if (proGeoSource === 'none' && proZip5) {
+    const geo = await geocodeZip(proZip5);
+    if (geo) {
+      proGeo.lat = geo.lat;
+      proGeo.lng = geo.lng;
+      proGeoSource = 'zip_geocode';
 
+      // Best-effort: persist the inferred geo back to the pro profile so future requests don't depend on geocoding.
+      try {
+        await bestEffortUpdateProRow(sb, proId, [
+          { geo_lat: geo.lat, geo_lng: geo.lng },
+          { lat: geo.lat, lng: geo.lng },
+          { latitude: geo.lat, longitude: geo.lng },
+        ]);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const geoWarning = (() => {
+    if (proGeoSource === 'profile') return null;
+    if (proGeoSource === 'zip_geocode') return 'Using ZIP-based location (centroid). Update your Profile address for more accurate distances.';
     return 'Missing location (no geo coordinates and no ZIP). Update your Profile so we can match you to nearby jobs.';
   })();
 
@@ -1473,57 +1317,31 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
 
   // === FORCE FIX v2026-01-07-14:30 ===
   const PORTAL_VERSION = 'assignments-bypass-v3';
-  const debugLogs: string[] = [];
-  debugLogs.push(`[PORTAL_FIX] VERSION: ${PORTAL_VERSION}`);
+  console.log('[PORTAL_FIX] VERSION:', PORTAL_VERSION);
   
   if (schema) {
     // Try by pro_id first, then email (if token has email)
     const proValues = Array.from(new Set([payload.sub, payload.email].filter(Boolean).map((v) => String(v))));
-    debugLogs.push(`[PORTAL_FIX] Checking assignments for: ${JSON.stringify(proValues)}`);
-    
-    // [ROBUSTNESS] Don't trust the schema's single column blindly. Try common variants.
-    const candidateCols = Array.from(new Set([
-        schema.assignmentsProCol, 'pro_id', 'tech_id', 'assigned_pro_id', 'technician_id', 'user_id', 'email', 'pro_email'
-    ].filter(Boolean)));
-    
+    console.log('[PORTAL_FIX] Checking assignments for:', proValues);
     for (const v of proValues) {
-      if (assignmentsHit) break;
-      for (const col of candidateCols) {
-        try {
-            debugLogs.push(`[PORTAL_FIX] Querying ${schema.assignmentsTable}.${col} = ${v}`);
-            const { data, error } = await sb.from(schema.assignmentsTable).select('*').eq(col as any, v).limit(200);
-            if (error) debugLogs.push(`[PORTAL_FIX] Error: ${error.message}`);
-            if (!error && data && data.length > 0) {
-            // Only set assignmentsHit if we actually found assignments
-            if (!assignmentsHit) assignmentsHit = { table: schema.assignmentsTable, rows: [] };
-            assignmentsHit.rows.push(...data);
-            debugLogs.push(`[PORTAL_FIX] Found assignments via col '${col}', count: ${data.length}`);
-            // Continue searching other columns/values to catch everything
-            } else {
-                debugLogs.push(`[PORTAL_FIX] No hits`);
-            }
-        } catch (err: any) { debugLogs.push(`[PORTAL_FIX] Exception: ${err?.message}`); }
+      try {
+        const { data, error } = await sb.from(schema.assignmentsTable).select('*').eq(schema.assignmentsProCol as any, v).limit(500);
+        console.log('[PORTAL_FIX] Query result - error:', !!error, 'rows:', data?.length || 0);
+        if (!error && data && data.length > 0) {
+          // Only set assignmentsHit if we actually found assignments
+          assignmentsHit = { table: schema.assignmentsTable, rows: data };
+          console.log('[PORTAL_FIX] Found assignments, will use them');
+          break;
+        }
+      } catch (err) {
+        console.log('[PORTAL_FIX] Exception:', err);
       }
     }
   }
 
   if (!assignmentsHit) {
-    debugLogs.push(`[PORTAL_FIX] Fallback to legacy findAssignments...`);
     assignmentsHit = await findAssignments(sb, { proId, email: payload.email || null });
-    debugLogs.push(`[PORTAL_FIX] Legacy result: ${assignmentsHit ? assignmentsHit.rows.length : 'null'}`);
-  } else {
-    // Log the first assignment to see what we got
-    try {
-        const first = assignmentsHit.rows[0];
-        debugLogs.push(`[PORTAL_FIX] First assignment: id=${first?.assign_id}, job=${first?.job_id}, state=${first?.state}, status=${first?.status}, assign_state=${first?.assign_state}`);
-    } catch (e) {}
   }
-  
-  // ... existing code ...
-  
-  // EXPOSE DEBUG LOGS IN META if specifically requested
-  const returnDebug = (payload as any)?.email === 'h2sbackend@gmail.com';
-
   
   console.log('[PORTAL_FIX] Final assignmentsHit:', assignmentsHit ? `${assignmentsHit.rows.length} rows` : 'NULL');
   
@@ -1532,83 +1350,30 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
     rowCount: assignmentsHit?.rows?.length || 0
   });
   
-  // =====================================================================================
-  // [ROBUSTNESS FIX] Always check for direct-assigned jobs (legacy/hybrid schema),
-  // even if assignments exist. This prevents "vanishing jobs" where the assignment 
-  // record is missing but the job record has the pro's ID.
-  // =====================================================================================
-  let directJobs: any[] = [];
-  try {
-    if (schema) {
-      const proCols = [
-        schema.assignmentsProCol, 'pro_id', 'tech_id', 'assigned_pro_id', 'technician_id', 
-        'assigned_to', 'Assigned_To', 'pro_email', 'tech_email', 'email'
-      ];
-      const proValues = Array.from(new Set([payload.sub, payload.email].filter(Boolean).map((v) => String(v))));
-      
-      for (const col of proCols) {
-        for (const val of proValues) {
-          try {
-            const { data, error } = await sb.from(schema.jobsTable).select('*').eq(col as any, val).limit(200);
-            if (!error && Array.isArray(data)) {
-               // Normalize and add
-               const found = data.map((j: any) => ({
-                 ...j,
-                 job_id: String(j?.job_id ?? j?.[schema.jobsIdCol] ?? j?.id ?? ''),
-                 // Synthesize an assignment-like object from the job itself
-                 assign_state: j?.status === 'accepted' || j?.status === 'assigned' ? 'accepted' : (j?.status || 'pending')
-               }));
-               directJobs.push(...found);
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[Portal Jobs] Direct job fetch warning:', err);
-  }
-
-  // Filter out direct jobs that are already covered by assignmentsHit to avoid dups
-  const assignmentJobIds = new Set(
-    (assignmentsHit?.rows || []).map((r: any) => String(r?.job_id || r?.job || ''))
-  );
-  
-  // Merge direct jobs into the "assignmentsHit" flow if they are new
-  const uniqueDirectJobs = directJobs.filter(j => j.job_id && !assignmentJobIds.has(j.job_id));
-  
-  if (uniqueDirectJobs.length > 0) {
-     console.log(`[Portal Jobs] Found ${uniqueDirectJobs.length} direct-assigned jobs not in assignments table.`);
-     // We treat these as "assignments" for the purpose of the pipeline
-     if (!assignmentsHit) assignmentsHit = { table: schema?.assignmentsTable || 'virtual', rows: [] };
-     assignmentsHit.rows.push(...uniqueDirectJobs);
-  }
-
   if (!assignmentsHit || !assignmentsHit.rows.length) {
     // Legacy portal behavior: even with no assignments, return nearby available jobs as "offers".
     try {
       console.log('[Portal Jobs] No assignments found, fetching available offers...');
       console.log('[Portal Jobs] Main client status:', main ? 'AVAILABLE' : 'NULL - ENRICHMENT WILL FAIL');
       
-      // ✅ USE REAL PRO GEO: Passing real lat/lng enables the radius filter.
+      // ✅ FORCE ZIP MATCHING: Pass null for lat/lng to use ZIP-only path
       const { offers, diagnostics, debugData } = await fetchAvailableOffers(
         sb,
         main,
         {
-          lat: proGeo.lat,  // Use real lat
-          lng: proGeo.lng,  // Use real lng
+          lat: null,  // Force ZIP matching
+          lng: null,
           zip: proGeo.zip || (payload as any)?.zip,
           radius: proGeo.radius,
           limit: 200,
-          proId: proGeo.proId,
-          source: proGeo.source
         },
         schema ? { jobsTable: schema.jobsTable, jobsStatusCol: schema.jobsStatusCol } : undefined,
         debugMode
       );
 
-      // if (debugMode && debugData) {
-      //   return NextResponse.json(debugData, { headers: corsHeaders(request) });
-      // }
+      if (debugMode && debugData) {
+        return NextResponse.json(debugData, { headers: corsHeaders(request) });
+      }
 
       console.log(`[Portal Jobs] fetchAvailableOffers returned ${offers.length} offers`);
       
@@ -1630,8 +1395,6 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
             upcoming: [],
             completed: [],
             meta: {
-              portal_fix_version: PORTAL_VERSION,
-              portal_fix_logs: returnDebug ? debugLogs : undefined,
               mode: 'available_jobs_radius',
               pro_source_table: proProfile?.table || null,
               has_geo: proGeo.lat != null && proGeo.lng != null,
@@ -1685,8 +1448,6 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
                   upcoming: grouped.upcoming,
                   completed: grouped.completed,
                   meta: {
-                    portal_fix_version: PORTAL_VERSION,
-                    portal_fix_logs: returnDebug ? debugLogs : undefined,
                     mode: 'jobs_direct',
                     jobs_table: schema.jobsTable,
                     jobs_id_col: schema.jobsIdCol,
@@ -1803,18 +1564,12 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
     if (j?.job_id !== undefined && j?.job_id !== null) jobsById.set(String(j.job_id), j);
   }
 
-  // [PORTAL_FIX] Debug merged keys
   let merged = (assignmentsHit.rows || []).map((a: any) => {
     const assignmentJobId =
       a?.[jobIdKey] ?? a?.job_id ?? a?.dispatch_job_id ?? a?.work_order_id ?? a?.ticket_id ?? a?.job ?? null;
     const normalizedAssignment = assignmentJobId ? { ...a, job_id: String(assignmentJobId) } : a;
     const job = assignmentJobId ? jobsById.get(String(assignmentJobId)) || { job_id: String(assignmentJobId) } : { job_id: null };
-    
-    const m = mergeJobAssignment(job, normalizedAssignment);
-    if (debugLogs.length < 40) {
-        debugLogs.push(`[PORTAL_FIX] Merge ${assignmentJobId}: AssignRowState=${a?.state||a?.assign_state} -> ResultState=${m.assign_state} (Upcoming? ${['accepted','scheduled'].includes(m.assign_state)})`);
-    }
-    return m;
+    return mergeJobAssignment(job, normalizedAssignment);
   });
 
   // ✅ SECOND CHANCE ENRICHMENT: Ensure merged assignments get order details
@@ -1844,8 +1599,6 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
         zip: proGeo.zip,
         radius: proGeo.radius,
         limit: 200,
-        proId: proGeo.proId,
-        source: proGeo.source
       },
       schema ? { jobsTable: schema.jobsTable, jobsStatusCol: schema.jobsStatusCol } : undefined,
       debugMode // Pass debugMode correctly
@@ -1898,8 +1651,6 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
       upcoming: grouped.upcoming,
       completed: grouped.completed,
       meta: {
-        portal_fix_version: PORTAL_VERSION,
-        portal_fix_logs: returnDebug ? debugLogs : undefined,
         mode: 'assignments_plus_available_offers',
         assignments_table: assignmentsHit.table,
         jobs_table: jobsHit?.table || null,
@@ -1922,7 +1673,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const token = body?.token || '';
     const debug = body?.debug === true || body?.debug === '1';
-    return await handle(request, token, undefined, debug, body);
+    return await handle(request, token, undefined, debug);
   } catch (error: any) {
     const msg = error?.message || 'Internal error';
     const isAuth = /token/i.test(msg) || /signature/i.test(msg) || /expired/i.test(msg) || /format/i.test(msg);
@@ -1939,15 +1690,7 @@ export async function GET(request: Request) {
     const token = searchParams.get('token') || '';
     const jobId = searchParams.get('job_id') || ''; // ✅ Support single job fetch
     const debug = searchParams.get('debug') === '1';
-    
-    // Construct pseudo-body for GET support of query params
-    const body = {
-        live_lat: searchParams.get('live_lat'),
-        live_lng: searchParams.get('live_lng'),
-        token, debug
-    };
-
-    return await handle(request, token, jobId, debug, body);
+    return await handle(request, token, jobId, debug);
   } catch (error: any) {
     const msg = error?.message || 'Internal error';
     const isAuth = /token/i.test(msg) || /signature/i.test(msg) || /expired/i.test(msg) || /format/i.test(msg);
