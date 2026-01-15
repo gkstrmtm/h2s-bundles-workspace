@@ -798,12 +798,20 @@ async function fetchAvailableOffers(
              if (deepInst && !bestDesc.includes(deepInst)) {
                 bestDesc += (bestDesc ? '\n\n' : '') + 'Tasks: ' + deepInst;
              }
+
+             // FIX: Handle object addresses to prevent [object Object]
+             const resolveAddr = (v: any) => {
+                if (!v) return '';
+                if (typeof v === 'string') return v;
+                if (typeof v === 'object') return v.formatted_address || v.line1 || v.street || '';
+                return '';
+             };
              
              const merged = {
                ...j,
                 order_status: order.status || meta.order_status || null,
                service_name: j.service_name || order.service_name || meta.service_name || deepTitle || "Service",
-               service_address: j.service_address || order.address || meta.service_address || '',
+               service_address: resolveAddr(j.service_address) || resolveAddr(order.address) || resolveAddr(meta.service_address) || '',
                service_city: j.service_city || order.city || meta.service_city || '',
                service_state: j.service_state || order.state || meta.service_state || '',
                service_zip: j.service_zip || order.zip || meta.service_zip || '',
@@ -1075,11 +1083,14 @@ async function fetchAvailableOffers(
         // We already checked strict match above, so this catches mismatches.
         const zipMatch = proZip5 === j._job_zip5;
         
-        // FLOOD GATE OPEN: Even if zip doesn't match perfectly, show the job.
+        // FLOOD GATE CLOSED: Require strict ZIP match if no geo context is available.
         if (!zipMatch) {
-           console.log(`[Portal Jobs] Job ${j.job_id}: allowing despite ZIP mismatch (Flood Gate Open)`);
-           // diagnostics.dropped_reasons.zip_mismatch++; // Would drop if strict
+           console.log(`[Portal Jobs] Job ${j.job_id}: DROPPED zip mismatch (${j._job_zip5} != ${proZip5}) - Flood Gate Closed`);
+           diagnostics.dropped_reasons.zip_mismatch++;
+           return false;
         }
+        
+        console.log(`[Portal Jobs] Job ${j.job_id}: ZIP match (${proZip5}) -> INCLUDED (Fallback)`);
         return true;
       }
 
@@ -1304,11 +1315,19 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
         }
       }
 
+      // FIX: Handle object addresses to prevent [object Object]
+      const resolveAddr = (v: any) => {
+         if (!v) return '';
+         if (typeof v === 'string') return v;
+         if (typeof v === 'object') return v.formatted_address || v.line1 || v.street || '';
+         return '';
+      };
+
       const merged = {
         ...j,
         order_status: order?.status || meta?.order_status || null,
         service_name: j?.service_name || order?.service_name || meta?.service_name || 'Service',
-        service_address: j?.service_address || order?.address || meta?.service_address || '',
+        service_address: resolveAddr(j?.service_address) || resolveAddr(order?.address) || resolveAddr(meta?.service_address) || '',
         service_city: j?.service_city || order?.city || meta?.service_city || '',
         service_state: j?.service_state || order?.state || meta?.service_state || '',
         service_zip: j?.service_zip || order?.zip || meta?.service_zip || '',
