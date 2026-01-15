@@ -12145,6 +12145,10 @@ async function loadJobs() {
     
     const out = await GET("portal_jobs", payload);
     // console.log('[DEBUG] API Response:', out);
+    if (out.ok) {
+       const allJobs = [...(out.offers||[]), ...(out.upcoming||[])];
+       console.log("[JOB_LIST_DEBUG]", allJobs.map(j => ({ id: j.job_id, addressType: typeof j.service_address, address: j.service_address, city: j.service_city, state: j.service_state, zip: j.service_zip })));
+    }
     /* if (out.upcoming) {
         console.log('UPCOMING_LIST_RAW', out.upcoming);
         if (out.upcoming.length > 0) {
