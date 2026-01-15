@@ -414,10 +414,7 @@ async function renderShopSuccessView() {
   
   const overlay = document.getElementById('success-pre-overlay');
   if(overlay) {
-    overlay.style.opacity = '0';
-    overlay.style.pointerEvents = 'none'; 
-    overlay.style.visibility = 'hidden';
-    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 100);
+    overlay.remove();
   }
 
   // 2. PAINT COMPLETE SHELL IMMEDIATELY (Frame 1) - NO SKELETON INTERMEDIATE
@@ -426,6 +423,10 @@ async function renderShopSuccessView() {
     console.error('[DEBUG] outlet element not found!');
     return;
   }
+  // Ensure outlet is actually visible in success mode (some boot paths keep it hidden)
+  outlet.style.display = 'block';
+  outlet.style.opacity = '1';
+  outlet.style.visibility = 'visible';
   console.log('[DEBUG] outlet found, preparing to render');
 
   const params = new URLSearchParams(window.location.search);
@@ -447,7 +448,7 @@ async function renderShopSuccessView() {
         font-family: 'Archivo', system-ui, -apple-system, sans-serif;
       }
       .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
-      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.3s ease-out; }
+      .ss-header { text-align: center; margin-bottom: 32px; }
       .ss-badge {
         width: 72px; height: 72px; margin: 0 auto 16px;
         background: #10b981; color: white; border-radius: 50%;
@@ -464,9 +465,7 @@ async function renderShopSuccessView() {
       }
       .ss-label { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
       .ss-value { font-size: 16px; font-weight: 600; color: #1e293b; }
-      .loading-shimmer { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; display: inline-block; border-radius: 4px; }
-      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      .loading-shimmer { background: #e2e8f0; display: inline-block; border-radius: 4px; }
       
       .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; width: 100%; box-sizing: border-box; }
       .cal-day-cell {
@@ -3955,15 +3954,13 @@ window.handleCheckoutSubmit = async function(e) {
       document.body.classList.remove('modal-open');
       
       logger.log('[Checkout] ✅ Success! Session:', sessionId);
-      
-      // INSTANT NAVIGATION - Go to success page immediately
-      // (Stripe webhook will handle backend order creation)
-      const successUrl = `https://shop.home2smart.com/bundles?view=shopsuccess&session_id=${sessionId}`;
-      
+
+      // Redirect to Stripe Checkout to collect payment.
+      // Stripe will send the customer back to success_url with {CHECKOUT_SESSION_ID}.
       try {
-        window.location.href = successUrl;
+        window.location.href = data.pay.session_url;
       } catch(e) {
-        window.location.assign(successUrl);
+        window.location.assign(data.pay.session_url);
       }
       
       // Exit retry loop on success

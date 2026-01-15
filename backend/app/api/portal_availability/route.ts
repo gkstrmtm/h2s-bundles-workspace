@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -60,7 +60,11 @@ async function handle(request: Request) {
     return jsonError(request, 401, 'Invalid/expired session', 'bad_session');
   }
 
-  const payload = verifyPortalToken(token);
+  const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      const payload = _auth.payload;
   const proId = payload?.sub ? String(payload.sub) : '';
   if (!proId) {
     return jsonError(request, 401, 'Invalid/expired session', 'bad_session');

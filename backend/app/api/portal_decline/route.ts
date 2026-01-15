@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 
 function corsHeaders(request?: Request): Record<string, string> {
@@ -39,7 +39,11 @@ async function handle(request: Request, token: string, jobId: string) {
     return NextResponse.json({ ok: false, error: 'Missing job_id', error_code: 'bad_request' }, { status: 400, headers: corsHeaders(request) });
   }
 
-  const payload = verifyPortalToken(token);
+  const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      const payload = _auth.payload;
   if (payload.role !== 'pro') {
     return NextResponse.json({ ok: false, error: 'Not a pro session', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
   }

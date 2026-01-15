@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
+import { getConfig } from '@/lib/config';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { bestEffortUpdateProRow } from '@/lib/portalProProfile';
 import { enrichServiceName, extractCameraDetails } from '@/lib/dataOrchestration';
@@ -257,6 +258,294 @@ function calculatePriorityScore(
   
   return score;
 }
+
+/**
+ * HARD JOB CONTRACT NORMALIZATION
+ * Guarantees every job has required fields with safe defaults
+ */
+function normalizeJobContract(job: any, opts: { proLat?: number | null; proLng?: number | null } = {}): any {
+  const missingFields: string[] = [];
+  
+  // Status - NEVER undefined
+  const status = String(job?.status || 'queued').toLowerCase().trim();
+  if (!job?.status) {
+    missingFields.push('status');
+    console.warn('[normalizeJobContract] Missing status for job:', job?.job_id, '- defaulting to queued');
+  }
+  
+  // Assign state - From assignment.state (merged), NOT from jobs table
+  // Schema reality: assignments have 'state', jobs do NOT have 'assign_state'
+  const assignState = String(job?.assign_state || job?.state || 'pending').toLowerCase().trim();
+  
+  // Service name - NEVER blank
+  let serviceName = String(job?.service_name || job?.service || '').trim();
+  if (!serviceName || serviceName.toLowerCase() === 'service') {
+    serviceName = 'Service (details pending)';
+    missingFields.push('service_name');
+  }
+  
+  // Line items - GUARANTEE: Always array, never null - Log loudly when missing
+  let lineItems = job?.line_items;
+  if (lineItems && typeof lineItems === 'string') {
+    try {
+      lineItems = JSON.parse(lineItems);
+    } catch {
+      lineItems = [];
+    }
+  }
+  if (!Array.isArray(lineItems)) {
+    lineItems = [];
+    console.warn(`[MISSING_DATA] job_id=${job?.job_id} has no line_items`);
+    missingFields.push('line_items');
+  }
+  
+  // Description - NEVER null, default ''
+  const description = String(job?.description || '').trim();
+  
+  // Camera details - can be null, but check
+  const cameraDetails = job?.camera_details || null;
+  
+  // Service details state
+  const hasServiceDetails = (lineItems.length > 0) || description || cameraDetails;
+  const serviceDetailsState = hasServiceDetails ? 'ready' : 'pending';
+  
+  // Scheduled date - pick best source
+  const scheduledStartAt = 
+    job?.scheduled_start_at || 
+    job?.start_time || 
+    job?.delivery_date || 
+    job?.due_at || 
+    null;
+  if (!scheduledStartAt) missingFields.push('scheduled_start_at');
+  
+  // Display datetime with fallback
+  let displayServiceDatetime = 'Date pending';
+  if (scheduledStartAt) {
+    try {
+      const date = new Date(scheduledStartAt);
+      if (!isNaN(date.getTime())) {
+        const options: Intl.DateTimeFormatOptions = {
+          timeZone: 'America/New_York',
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        };
+        const formatter = new Intl.DateTimeFormat('en-US', options);
+        const parts = formatter.formatToParts(date);
+        const weekday = parts.find(p => p.type === 'weekday')?.value || '';
+        const month = parts.find(p => p.type === 'month')?.value || '';
+        const day = parts.find(p => p.type === 'day')?.value || '';
+        const hour = parts.find(p => p.type === 'hour')?.value || '';
+        const minute = parts.find(p => p.type === 'minute')?.value || '';
+        const dayPeriod = parts.find(p => p.type === 'dayPeriod')?.value || '';
+        displayServiceDatetime = `Scheduled: ${weekday}, ${month} ${day} • ${hour}:${minute} ${dayPeriod}`;
+      }
+    } catch {
+      displayServiceDatetime = 'Date pending';
+    }
+  }
+  
+  // Payout - DISTINGUISH: null (unknown) vs 0 (actually free) - Log loudly when missing
+  // Never coerce unknown to 0 - that hides missing data
+  let payoutEstimated: number | null = toNum(job?.payout_estimated ?? job?.tech_payout_dollars);
+  if (payoutEstimated === null || (payoutEstimated === 0 && !job?.payout_estimated && !job?.tech_payout_dollars)) {
+    payoutEstimated = null; // Unknown, not $0
+    console.warn(`[MISSING_DATA] job_id=${job?.job_id} has no payout_estimated`);
+    missingFields.push('payout_estimated');
+  }
+  const payoutState = payoutEstimated !== null ? 'ready' : 'pending';
+  
+  // Location
+  const jobLat = toNum(job?.geo_lat ?? job?.job_lat ?? job?.latitude);
+  const jobLng = toNum(job?.geo_lng ?? job?.job_lng ?? job?.longitude);
+  if (jobLat === null || jobLng === null) missingFields.push('coordinates');
+  
+  // Distance
+  let distanceMi: number | null = null;
+  let distanceState = 'pending';
+  if (jobLat !== null && jobLng !== null && opts.proLat !== null && opts.proLng !== null && opts.proLat !== undefined && opts.proLng !== undefined) {
+    distanceMi = Math.round(haversineMiles(opts.proLat, opts.proLng, jobLat, jobLng) * 10) / 10;
+    distanceState = 'ready';
+  } else if (jobLat === null || jobLng === null) {
+    distanceState = 'job_location_pending';
+  } else if (opts.proLat === null || opts.proLng === null) {
+    distanceState = 'pro_location_pending';
+  }
+  
+  // Address
+  const address = {
+    line1: String(job?.service_address || job?.address || '').trim() || null,
+    city: String(job?.service_city || job?.city || '').trim() || null,
+    state: String(job?.service_state || job?.state || '').trim() || null,
+    zip: String(job?.service_zip || job?.zip || '').trim() || null,
+  };
+  
+  // Log only if critical fields missing
+  if (missingFields.length > 0) {
+    console.log(`[JOB_ENRICHMENT_MISSING] job_id=${job?.job_id} missing_fields=${missingFields.join(',')}`);
+  }
+  
+  return {
+    ...job,
+    
+    // Guaranteed fields
+    job_id: job?.job_id || job?.id,
+    status,
+    assign_state: assignState,
+    order_id: job?.order_id || null,
+    
+    // Service details
+    service_name: serviceName,
+    service_details_state: serviceDetailsState,
+    line_items: lineItems,
+    description,
+    camera_details: cameraDetails,
+    
+    // Scheduling
+    scheduled_start_at: scheduledStartAt,
+    due_at: job?.due_at || null,
+    display_service_datetime: displayServiceDatetime,
+    
+    // Payout
+    payout_estimated: payoutEstimated,
+    payout_state: payoutState,
+    
+    // Location
+    address,
+    job_lat: jobLat,
+    job_lng: jobLng,
+    distance_mi: distanceMi,
+    distance_state: distanceState,
+    
+    // Metadata
+    updated_at: job?.updated_at || job?.created_at || new Date().toISOString(),
+    _normalized: true
+  };
+}
+
+/* PS PATCH: keep job details after state change — start */
+async function normalizeJobDTO(jobs: any[], opts: { lat: number | null; lng: number | null; proId?: string; source?: string; radius?: number }) {
+  // Common helper to normalize job objects for BOTH Offers and Upcoming lists.
+  // This ensures that when a job moves to "Upcoming", it doesn't lose fields like location, description, or camera details.
+
+  // Best-effort: infer geo columns from first row if possible, but we generally just check properties.
+  const latCol = 'geo_lat'; 
+  const lngCol = 'geo_lng';
+  const zipCol = 'service_zip';
+  const statusCol = 'status';
+
+  return await Promise.all(
+    jobs.map(async (j: any) => {
+      // Priority:
+      // 1. Direct properties (j.geo_lat)
+      // 2. Order properties (j.order_geo_lat - via enrichment)
+      // 3. Metadata fallback
+      // 4. Geocode address (new)
+      let jLat = toNum(j?.geo_lat) ?? toNum(j?.[latCol]);
+      let jLng = toNum(j?.geo_lng) ?? toNum(j?.[lngCol]);
+
+      // Final fallback: check metadata for geo coordinates
+      if ((jLat === null || jLng === null) && j?.metadata) {
+        jLat = jLat ?? toNum(j.metadata.geo_lat);
+        jLng = jLng ?? toNum(j.metadata.geo_lng);
+      }
+
+      // GEOCODING FALLBACK (If missing coords but has address)
+      let geocodedSource = false;
+      if (jLat === null || jLng === null) {
+        const addr = j.service_address || j.address;
+        const city = j.service_city || j.city;
+        const state = j.service_state || j.state;
+        const zip = j.service_zip || j.zip;
+
+        if (addr && city && state) {
+          try {
+            const geo = await geocodeJobAddress(addr, city, state, zip);
+            if (geo.lat !== null && geo.lng !== null) {
+              jLat = geo.lat;
+              jLng = geo.lng;
+              geocodedSource = true;
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+
+      const dist =
+        jLat != null && jLng != null && opts.lat != null && opts.lng != null
+          ? haversineMiles(opts.lat!, opts.lng!, jLat, jLng)
+          : null;
+
+      const _debug_geo = {
+          alias_pro_id: opts.proId || 'unknown',
+          tech_coords: { lat: opts.lat, lng: opts.lng, source: opts.source },
+          job_id: j.job_id,
+          job_address: `${j.service_address || j.address}, ${j.service_city || j.city}, ${j.service_state || j.state} ${j.service_zip || j.zip}`,
+          job_coords: { lat: jLat, lng: jLng, source: geocodedSource ? 'geocoded_dynamic' : (j.geo_lat ? 'db_stored' : 'fallback') },
+          dist_calc: dist
+      };
+
+      const jobZip5 = first5(
+        j?.[zipCol] ?? j?.service_zip ?? j?.zip ?? j?.zip_code ?? j?.postal_code ?? j?.metadata?.service_zip
+      );
+      const st = String(j?.[statusCol] ?? j?.status ?? j?.job_status ?? j?.state ?? '')
+        .toLowerCase()
+        .trim();
+        
+      // Extract line_items from metadata if available and not on root
+      // GUARANTEE: Never null, always array
+      let lineItems = j?.line_items || j?.metadata?.items_json || null;
+      if (lineItems && typeof lineItems === 'string') {
+        try {
+          lineItems = JSON.parse(lineItems);
+        } catch {
+          lineItems = [];
+        }
+      }
+      if (!Array.isArray(lineItems)) lineItems = [];
+      
+      // CRITICAL: Read payout from column first, then metadata
+      const estimatedPayout = Number(j?.payout_estimated || j?.metadata?.estimated_payout || 0);
+
+      // CRITICAL: Enrich service name from items if generic
+      const enrichedServiceName = enrichServiceName(j);
+      
+      // CRITICAL: Extract camera details
+      const cameraDetails = extractCameraDetails(j);
+
+      // Ensure strict date handling
+      const scheduledStart = j.scheduled_start_at || j.start_time || j.delivery_date;
+      const scheduledEnd = j.scheduled_end_at || j.end_time;
+      const scheduledTz = j.scheduled_tz || 'UTC';
+
+      // CRITICAL: Description fallback
+      // Logic borrowed from enrichJobsFromOrders/fetchAvailableOffers to ensure it persists
+      const description = j?.description || j?.special_instructions || j?.metadata?.description || '';
+
+      return {
+        ...j,
+        scheduled_start_at: scheduledStart,
+        scheduled_end_at: scheduledEnd,
+        scheduled_tz: scheduledTz,
+        
+        service_name: enrichedServiceName,
+        line_items: lineItems,
+        camera_details: cameraDetails,
+        distance_miles: dist != null ? Math.round(dist * 10) / 10 : null,
+        _debug_geo: _debug_geo,
+        geo_source: geocodedSource ? 'geocoded_dynamic' : 'stored',
+        payout_estimated: estimatedPayout,
+        referral_code: j?.metadata?.referral_code ?? null,
+        description: description, // Explicitly set description
+        _job_zip5: jobZip5,
+        _job_status_norm: st,
+      };
+    })
+  ).then(jobs => jobs.map(j => normalizeJobContract(j, { proLat: opts.lat, proLng: opts.lng })));
+}
+/* PS PATCH: keep job details after state change — end */
 
 async function fetchAvailableOffers(
   client: any,  ordersClient: any,  opts: { lat: number | null; lng: number | null; zip?: string | null; radius: number; limit: number; proId?: string; source?: string },
@@ -749,107 +1038,7 @@ async function fetchAvailableOffers(
 
 /* PS PATCH: geo source selection + distance — start */
       // Convert mapping to async to support on-the-fly geocoding
-      const offers = (
-        await Promise.all(
-          jobs.map(async (j: any) => {
-            // Try multiple sources for geo coordinates (Job)
-            // Priority:
-            // 1. Direct properties (j.geo_lat)
-            // 2. Order properties (j.order_geo_lat - via enrichment)
-            // 3. Metadata fallback
-            // 4. Geocode address (new)
-            let jLat = toNum(j?.geo_lat) ?? toNum(j?.[latCol]);
-            let jLng = toNum(j?.geo_lng) ?? toNum(j?.[lngCol]);
-
-            // Final fallback: check metadata for geo coordinates
-            if ((jLat === null || jLng === null) && j?.metadata) {
-              jLat = jLat ?? toNum(j.metadata.geo_lat);
-              jLng = jLng ?? toNum(j.metadata.geo_lng);
-            }
-
-            // GEOCODING FALLBACK (If missing coords but has address)
-            let geocodedSource = false;
-            if (jLat === null || jLng === null) {
-              const addr = j.service_address || j.address;
-              const city = j.service_city || j.city;
-              const state = j.service_state || j.state;
-              const zip = j.service_zip || j.zip;
-
-              if (addr && city && state) {
-                // Check in-memory cache first? (Simulated by ZIP cache for now, but use helper)
-                const geo = await geocodeJobAddress(addr, city, state, zip);
-                if (geo.lat !== null && geo.lng !== null) {
-                  jLat = geo.lat;
-                  jLng = geo.lng;
-                  geocodedSource = true;
-                  // Note: Ideally we would save this back to DB here, but to avoid write-heavy GETs,
-                  // we just return it. The cache in `geocodeJobAddress` helps speed.
-                }
-              }
-            }
-
-            /* PS PATCH: alias-bound geo + scheduled date — start */
-            const dist =
-              jLat != null && jLng != null && opts.lat != null && opts.lng != null
-                ? haversineMiles(opts.lat!, opts.lng!, jLat, jLng)
-                : null;
-
-            // Debug Logging Object (Requested by User)
-            const _debug_geo = {
-                alias_pro_id: opts.proId || 'unknown',
-                tech_coords: { lat: opts.lat, lng: opts.lng, source: opts.source },
-                job_id: j.job_id,
-                job_address: `${j.service_address || j.address}, ${j.service_city || j.city}, ${j.service_state || j.state} ${j.service_zip || j.zip}`,
-                job_coords: { lat: jLat, lng: jLng, source: geocodedSource ? 'geocoded_dynamic' : (j.geo_lat ? 'db_stored' : 'fallback') },
-                dist_calc: dist
-            };
-            if (debugMode) console.log(`[JobDebug ${j.job_id}]`, JSON.stringify(_debug_geo));
-            /* PS PATCH: alias-bound geo + scheduled date — end */
-
-            const jobZip5 = first5(
-              j?.[zipCol] ?? j?.service_zip ?? j?.zip ?? j?.zip_code ?? j?.postal_code ?? j?.metadata?.service_zip
-            );
-            const st = String(j?.[statusCol] ?? j?.status ?? j?.job_status ?? j?.state ?? '')
-              .toLowerCase()
-              .trim();
-            // Extract line_items from metadata if available
-            const lineItems = j?.line_items || j?.metadata?.items_json || null;
-            // CRITICAL: Read payout from column first, then metadata
-            const estimatedPayout = Number(j?.payout_estimated || j?.metadata?.estimated_payout || 0);
-            // CRITICAL: Enrich service name from items if generic
-            const enrichedServiceName = enrichServiceName(j);
-            // ✅ NEW: Extract camera installation details
-            const cameraDetails = extractCameraDetails(j);
-
-            /* PS PATCH: scheduled date correctness — start */
-            // Ensure strict date handling
-            // Priority: scheduled_start_at (DB) > delivery_date (Order) > created_at fallback (Audit only)
-            const scheduledStart = j.scheduled_start_at || j.start_time || j.delivery_date; // delivery_date is often YYYY-MM-DD
-            const scheduledEnd = j.scheduled_end_at || j.end_time;
-            const scheduledTz = j.scheduled_tz || 'UTC'; // Store TZ
-            /* PS PATCH: scheduled date correctness — end */
-
-            return {
-              ...j,
-              // Normalized Date Fields
-              scheduled_start_at: scheduledStart,
-              scheduled_end_at: scheduledEnd,
-              scheduled_tz: scheduledTz,
-              
-              service_name: enrichedServiceName, // Override generic names
-              line_items: lineItems, // Ensure line_items is available for frontend
-              camera_details: cameraDetails, // Add structured camera data
-              distance_miles: dist != null ? Math.round(dist * 10) / 10 : null,
-              _debug_geo: _debug_geo, // Pass debug info to frontend for console log
-              geo_source: geocodedSource ? 'geocoded_dynamic' : 'stored',
-              payout_estimated: estimatedPayout,
-              referral_code: j?.metadata?.referral_code ?? null,
-              _job_zip5: jobZip5,
-              _job_status_norm: st,
-            };
-          })
-        )
-      )
+      const offers = (await normalizeJobDTO(jobs, opts))
 /* PS PATCH: geo source selection + distance — end */
     .filter((j: any) => {
       if (j._job_status_norm === 'scheduled') {
@@ -971,21 +1160,38 @@ function groupByState(rows: any[]) {
   const isOneOf = (value: string, set: string[]) => set.includes(value);
   const COMPLETED = ['completed', 'complete', 'done', 'paid', 'closed', 'cancelled', 'canceled'];
   const UPCOMING = ['accepted', 'assigned', 'scheduled', 'schedule_pending', 'in_progress', 'in-progress', 'enroute', 'en_route', 'started'];
-  const OFFER = ['pending_assign', 'pending', 'open', 'offered', 'available', 'unassigned', 'new'];
+  const OFFER = ['pending_assign', 'pending', 'open', 'offered', 'available', 'unassigned', 'new', 'queued'];
 
   for (const r of rows) {
-    const state = String(r.assign_state || r.assignment_state || r.state || r.status || '').toLowerCase().trim();
-
-    if (!state) {
+    // CRITICAL: Check job lifecycle status FIRST (done/cancelled take precedence over assignment state)
+    const jobStatus = String(r.status || r.job_status || '').toLowerCase().trim();
+    const assignState = String(r.assign_state || r.assignment_state || r.state || '').toLowerCase().trim();
+    
+    // If job is done/cancelled/completed, it goes to Completed regardless of assignment state
+    if (jobStatus && isOneOf(jobStatus, COMPLETED)) {
+      completed.push(r);
+      continue;
+    }
+    
+    // For bucketing, prioritize assignment state (accepted/pending) over job status (queued)
+    // This ensures accepted jobs go to Upcoming even if job.status is still 'queued'
+    const bucketingState = assignState || jobStatus;
+    
+    if (!bucketingState) {
       offers.push(r);
       continue;
     }
 
-    if (isOneOf(state, COMPLETED) || state.includes('complete')) {
+    if (isOneOf(bucketingState, COMPLETED) || bucketingState.includes('complete')) {
       completed.push(r);
-    } else if (isOneOf(state, UPCOMING) || state.includes('accept') || state.includes('scheduled')) {
-      upcoming.push(r);
-    } else if (isOneOf(state, OFFER) || state === 'queued') {
+    } else if (isOneOf(bucketingState, UPCOMING) || bucketingState.includes('accept') || bucketingState.includes('scheduled')) {
+      // Double-check: don't put done jobs in upcoming even if assign_state says accepted
+      if (!isOneOf(jobStatus, COMPLETED)) {
+        upcoming.push(r);
+      } else {
+        completed.push(r);
+      }
+    } else if (isOneOf(bucketingState, OFFER)) {
       offers.push(r);
     } else {
       offers.push(r);
@@ -1139,12 +1345,18 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
 }
 
 function mergeJobAssignment(job: any, assignment: any) {
-  // Prefer job fields, but ensure assignment state fields are surfaced.
+  // CRITICAL: Keep job.status (lifecycle) separate from assignment.state (acceptance status)
+  // Schema reality: jobs have 'status', assignments have 'state' (NOT assign_state)
+  const jobStatus = job?.status ?? job?.job_status ?? assignment?.job_status ?? 'queued';
+  const assignState = assignment?.state ?? assignment?.assignment_state ?? assignment?.assign_state ?? 'pending';
+  
   return {
     ...job,
     ...assignment,
     job_id: job?.job_id ?? assignment?.job_id,
-    assign_state: assignment?.assign_state ?? assignment?.state ?? assignment?.status ?? job?.assign_state ?? job?.status,
+    status: jobStatus,           // Job lifecycle: queued/assigned/in_progress/completed/done/cancelled
+    assign_state: assignState,   // Assignment state: pending/accepted/declined/expired (from assignments.state)
+    state: assignState,          // Also preserve as 'state' for compatibility
   };
 }
 
@@ -1288,6 +1500,22 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
     console.warn('[portal_jobs] Single-job order enrichment failed:', err);
   }
 
+  /* PS PATCH: scheduled date correctness — start */
+  // Ensure strict date handling for single job fetch (parity with List View)
+  const scheduledStart = job.scheduled_start_at || job.start_time || job.delivery_date || job.metadata?.date || job.metadata?.start_iso;
+  const scheduledEnd = job.scheduled_end_at || job.end_time;
+  const scheduledTz = job.scheduled_tz || 'UTC';
+  
+  job = {
+      ...job,
+      scheduled_start_at: scheduledStart,
+      scheduled_end_at: scheduledEnd,
+      scheduled_tz: scheduledTz,
+      // Ensure start_iso alias exists for frontend compatibility
+      start_iso: scheduledStart
+  };
+  /* PS PATCH: scheduled date correctness — end */
+
   console.log('[portal_jobs] Returning single job:', jobId, '- has line_items:', !!job.line_items?.length);
   return NextResponse.json(
     { ok: true, job },
@@ -1308,12 +1536,20 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
   let payload;
   try {
     console.log('[portal_jobs] About to verify token...');
-    payload = verifyPortalToken(token);
+    const authResult = await verifyPortalToken(token);
+    if (!authResult.ok || !authResult.payload) {
+      console.error('[portal_jobs] Token verification failed:', authResult.error);
+      return NextResponse.json(
+        { ok: false, error: authResult.error || 'Invalid token', error_code: authResult.errorCode || 'bad_session' },
+        { status: 401, headers: corsHeaders(request) }
+      );
+    }
+    payload = authResult.payload;
     console.log('[portal_jobs] Token verified successfully:', payload);
   } catch (err: any) {
-    console.error('[portal_jobs] Token verification failed:', err.message);
+    console.error('[portal_jobs] Token verification exception:', err.message);
     return NextResponse.json(
-      { ok: false, error: 'Invalid or expired token', error_code: 'bad_session', details: err.message },
+      { ok: false, error: 'Token verification failed', error_code: 'bad_session', details: err.message },
       { status: 401, headers: corsHeaders(request) }
     );
   }
@@ -1827,6 +2063,19 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
     console.warn('[Portal Jobs] Secondary enrichment failed:', err);
   }
 
+  /* PS PATCH: Ensure full DTO for Upcoming jobs — start */
+  // Fixes bug where acceptance drops location/description/camera details
+  if (merged.length > 0) {
+       merged = await normalizeJobDTO(merged, {
+           lat: proGeo.lat,
+           lng: proGeo.lng,
+           proId: proGeo.proId,
+           source: proGeo.source,
+           radius: proGeo.radius
+       });
+  }
+  /* PS PATCH: Ensure full DTO for Upcoming jobs — end */
+
   const grouped = groupByState(merged);
 
   // Important: accepting one job must NOT hide other nearby offers.
@@ -1891,12 +2140,17 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
   // DEBUG: Log what we're actually returning
   console.log('[portal_jobs] Returning data:', combinedOffers.length, 'offers');
   
+  // FINAL NORMALIZATION: Guarantee contract on all jobs before returning
+  const normalizedOffers = combinedOffers.map(j => normalizeJobContract(j, { proLat: proGeo.lat, proLng: proGeo.lng }));
+  const normalizedUpcoming = grouped.upcoming.map(j => normalizeJobContract(j, { proLat: proGeo.lat, proLng: proGeo.lng }));
+  const normalizedCompleted = grouped.completed.map(j => normalizeJobContract(j, { proLat: proGeo.lat, proLng: proGeo.lng }));
+  
   return NextResponse.json(
     {
       ok: true,
-      offers: combinedOffers,
-      upcoming: grouped.upcoming,
-      completed: grouped.completed,
+      offers: normalizedOffers,
+      upcoming: normalizedUpcoming,
+      completed: normalizedCompleted,
       meta: {
         portal_fix_version: PORTAL_VERSION,
         portal_fix_logs: returnDebug ? debugLogs : undefined,

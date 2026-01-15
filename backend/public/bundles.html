@@ -1,7 +1,53 @@
-ï»¿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) — start -->
+<script>
+(function(){
+  window.__H2S_BOOT = {start: performance.now(), events: []};
+  function log(msg, detail) {
+    var t = performance.now();
+    window.__H2S_BOOT.events.push({t:t, msg:msg, detail:detail||''});
+    console.log('[BOOT] ' + t.toFixed(0) + 'ms: ' + msg, detail||'');
+  }
+  log('HTML_PARSE_START');
+  
+  if(window.PerformanceObserver) {
+    try {
+      new PerformanceObserver(function(list){
+        list.getEntries().forEach(function(e){
+          log('PAINT_' + e.name.toUpperCase().replace(/-/g,'_'), e.startTime.toFixed(0) + 'ms');
+        });
+      }).observe({entryTypes:['paint']});
+    } catch(_){}
+  }
+  
+  window.addEventListener('error', function(e){ log('JS_ERROR', e.message); });
+  window.addEventListener('unhandledrejection', function(e){ log('PROMISE_REJECT', e.reason); });
+  document.addEventListener('DOMContentLoaded', function(){ log('DOM_READY'); });
+  window.addEventListener('load', function(){
+    log('WINDOW_LOAD');
+    setTimeout(function(){
+      console.group('?? BOOT TIMELINE');
+      window.__H2S_BOOT.events.forEach(function(e){
+        console.log(e.t.toFixed(0) + 'ms:', e.msg, e.detail);
+      });
+      if(window.performance && performance.getEntriesByType){
+        var res = performance.getEntriesByType('resource');
+        var bundles = res.filter(function(r){ return r.name.includes('bundles'); });
+        if(bundles[0]) console.log('bundles.js:', bundles[0].duration.toFixed(0) + 'ms download');
+      }
+      console.groupEnd();
+    }, 100);
+  });
+  
+  window.__H2S_BUNDLES_START = function(){ log('BUNDLES_JS_EXEC'); };
+})();
+</script>
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION — end -->
+
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
 <title>Smart Home Packages &bull; Home2Smart</title>
 <meta name="description" content="TV mounting and security camera packages. Pick a package, we handle the rest. Done right, done once.">
@@ -17,7 +63,8 @@ window.H2S_unlockScroll=function(){document.body.style.overflow='';document.docu
 <!-- Critical CSS - Inline for instant paint -->
 <style>
 *,*::before,*::after{box-sizing:border-box;}
-body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a2332;background:#fff;}
+html,body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a2332;min-height:100%;}
+body{background:#fff;}
 .hero{background:linear-gradient(135deg,#0a2a5a 0%,#1a4d8f 100%);color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
 .hero h1{font-size:clamp(32px,7vw,56px);font-weight:900;margin:0 0 20px;letter-spacing:-0.03em;line-height:1.1;}
 .hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
@@ -26,6 +73,19 @@ body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;col
 .btn-primary{background:#1493ff;color:#fff;}
 .btn-ghost{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);}
 </style>
+
+<!-- Success page detection - runs at parse time BEFORE any JS -->
+<script>
+(function(){
+  try{
+    var p=new URLSearchParams(window.location.search);
+    if(p.get('view')==='shopsuccess'||p.has('shopsuccess')||p.has('session_id')||window.location.pathname.includes('/success')){
+      window.__IS_SUCCESS_MODE = true;
+      document.documentElement.setAttribute('data-success-mode','1');
+    }
+  }catch(e){}
+})();
+</script>
 
 <!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
@@ -524,6 +584,7 @@ body.modal-open {
   
   /* Ensure success page content scrolls properly */
   #outlet {
+    background: #0f172a;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
   }
@@ -3182,6 +3243,11 @@ body.modal-open {
 
 </head>
 <body>
+
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS — start -->
+<!-- No overlay needed - success page exists in DOM and displays via html[data-success-mode="1"] selector -->
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS — end -->
+
 <div id="pageShell">
 
 <!-- URGENCY BANNER -->
@@ -3232,6 +3298,194 @@ body.modal-open {
 <!-- Main Outlet for Dynamic Views -->
 <main id="mainView">
 <div id="outlet">
+
+<!-- ? STATIC SUCCESS PAGE (NO JS GENERATION) ? -->
+<div id="staticSuccessPage" style="display:none;">
+  <style>
+    /* Show success page, hide everything else when in success mode */
+    html[data-success-mode="1"] #staticSuccessPage { display: block !important; }
+    html[data-success-mode="1"] #outlet > *:not(#staticSuccessPage) { display: none !important; }
+    html[data-success-mode="1"] body { background: #f8fafc !important; }
+    html[data-success-mode="1"] .hero,
+    html[data-success-mode="1"] .h2s-loader,
+    html[data-success-mode="1"] .urgency-banner,
+    html[data-success-mode="1"] #pageShell > *:not(#mainView) { display: none !important; }
+    
+    .ss-wrapper {
+      min-height: 100vh; width: 100%; 
+      padding-top: max(env(safe-area-inset-top), 60px);
+      padding-bottom: 80px;
+      background: transparent;
+      font-family: 'Archivo', system-ui, -apple-system, sans-serif;
+    }
+    .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
+    .ss-header { text-align: center; margin-bottom: 32px; }
+    .ss-badge {
+      width: 72px; height: 72px; margin: 0 auto 16px;
+      background: #10b981; color: white; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4);
+    }
+    .ss-title { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0 0 8px; letter-spacing: -0.02em; }
+    .ss-subtitle { font-size: 16px; color: #64748b; margin: 0; }
+    .ss-card {
+      background: white; border-radius: 20px;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02);
+      border: 1px solid #e2e8f0;
+      padding: 24px; margin-bottom: 24px;
+    }
+    .ss-label { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .ss-value { font-size: 16px; font-weight: 600; color: #1e293b; }
+    .loading-shimmer { 
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); 
+      background-size: 200% 100%; 
+      animation: shimmer 1.5s infinite; 
+      display: inline-block; 
+      border-radius: 4px; 
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; width: 100%; box-sizing: border-box; }
+    .cal-day-cell {
+      aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+      border-radius: 12px; font-weight: 600; font-size: 15px;
+      cursor: pointer; color: #334155; transition: all 0.1s ease;
+      border: 2px solid #e2e8f0; background: white;
+    }
+    .cal-day-cell:not(.disabled):not(.is-disabled):hover { 
+      background: #eff6ff; 
+      border-color: #93c5fd; 
+      transform: translateY(-2px);
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+    }
+    .cal-day-cell.selected, .cal-day-cell.is-selected { 
+      background: #2563eb !important; 
+      color: white !important; 
+      border-color: #1e40af !important; 
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important; 
+      transform: scale(1.08) !important;
+      font-weight: 700 !important;
+    }
+    .cal-day-cell.disabled, .cal-day-cell.is-disabled { 
+      color: #cbd5e1 !important; 
+      background: #f8fafc !important;
+      cursor: not-allowed !important; 
+      border: 1px solid #f1f5f9 !important;
+      opacity: 0.35 !important;
+      pointer-events: none !important;
+      filter: grayscale(100%);
+    }
+    .time-btn {
+      width: 100%; padding: 14px; border-radius: 12px;
+      border: 2px solid #e2e8f0; background: white;
+      color: #475569; font-weight: 600; font-size: 15px;
+      transition: all 0.2s ease; cursor: pointer;
+    }
+    .time-btn:hover:not(.selected):not(.is-selected) { 
+      border-color: #93c5fd; background: #eff6ff; 
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(37, 99, 235, 0.15);
+    }
+    .time-btn.selected, .time-btn.is-selected { 
+      border-color: #2563eb !important; 
+      background: #2563eb !important; 
+      color: white !important; 
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+      transform: scale(1.05) !important;
+      font-weight: 700 !important;
+    }
+    .cta-btn, .cta-btn.is-disabled {
+      width: 100%; padding: 18px; border-radius: 14px;
+      background: #d1d5db !important; color: #9ca3af !important; 
+      font-weight: 800; font-size: 16px;
+      border: none !important; box-shadow: none !important;
+      transition: all 0.3s ease; cursor: not-allowed !important;
+      opacity: 0.5 !important;
+    }
+    .cta-btn.active, .cta-btn.is-enabled { 
+      background: #16a34a !important; 
+      color: white !important; 
+      cursor: pointer !important;
+      box-shadow: 0 4px 16px rgba(22, 163, 74, 0.5) !important;
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+    .cta-btn.active:hover, .cta-btn.is-enabled:hover {
+      background: #15803d !important;
+      box-shadow: 0 6px 20px rgba(22, 163, 74, 0.6) !important;
+      transform: translateY(-2px) !important;
+    }
+  </style>
+
+  <div class="ss-wrapper">
+    <div class="ss-container">
+      <div class="ss-header">
+        <div class="ss-badge">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h1 class="ss-title">Order Confirmed!</h1>
+        <p class="ss-subtitle">We've received your booking request.</p>
+      </div>
+
+      <div class="ss-card">
+        <div style="display: flex; justify-content: space-between; border-bottom: 2px dashed #f1f5f9; padding-bottom: 20px; margin-bottom: 20px; gap: 16px;">
+          <div>
+            <div class="ss-label">Order #</div>
+            <div class="ss-value" id="orderId" style="font-family:monospace;font-size:17px;">CONFIRMED</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="ss-label">Total</div>
+            <div class="ss-value" id="orderTotal" style="color:#059669;">PAID</div>
+          </div>
+        </div>
+        <div>
+          <div class="ss-label">Includes</div>
+          <div id="orderItems" style="font-weight: 500; color: #334155; line-height: 1.5;">Home2Smart Service</div>
+        </div>
+      </div>
+
+      <div class="ss-card" style="padding:24px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+          <div style="width:40px;height:40px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;color:#2563eb;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+          </div>
+          <div>
+            <h3 style="margin:0;font-size:18px;font-weight:800;color:#0f172a;">Schedule Install</h3>
+            <p id="selectionSummary" style="margin:2px 0 0;font-size:13px;color:#64748b;">Pick a date & time for your pro.</p>
+          </div>
+        </div>
+
+        <div id="calendarWidget">
+          <div class="cal-grid">
+            <div class="cal-day-cell">S</div><div class="cal-day-cell">M</div><div class="cal-day-cell">T</div><div class="cal-day-cell">W</div><div class="cal-day-cell">T</div><div class="cal-day-cell">F</div><div class="cal-day-cell">S</div>
+            <div class="cal-day-cell"></div><div class="cal-day-cell">1</div><div class="cal-day-cell">2</div><div class="cal-day-cell">3</div><div class="cal-day-cell">4</div><div class="cal-day-cell">5</div><div class="cal-day-cell">6</div>
+            <div class="cal-day-cell">7</div><div class="cal-day-cell">8</div><div class="cal-day-cell">9</div><div class="cal-day-cell">10</div><div class="cal-day-cell">11</div><div class="cal-day-cell">12</div><div class="cal-day-cell">13</div>
+            <div class="cal-day-cell">14</div><div class="cal-day-cell">15</div><div class="cal-day-cell">16</div><div class="cal-day-cell">17</div><div class="cal-day-cell">18</div><div class="cal-day-cell">19</div><div class="cal-day-cell">20</div>
+            <div class="cal-day-cell">21</div><div class="cal-day-cell">22</div><div class="cal-day-cell">23</div><div class="cal-day-cell">24</div><div class="cal-day-cell">25</div><div class="cal-day-cell">26</div><div class="cal-day-cell">27</div>
+            <div class="cal-day-cell">28</div><div class="cal-day-cell">29</div><div class="cal-day-cell">30</div><div class="cal-day-cell">31</div><div class="cal-day-cell"></div><div class="cal-day-cell"></div><div class="cal-day-cell"></div>
+          </div>
+        </div>
+
+        <div id="timeWindowSection" style="display:none;margin-top:24px;padding-top:24px;border-top:1px solid #f1f5f9;">
+          <div class="ss-label" style="text-align:center;margin-bottom:12px;">Select Arrival Window</div>
+          <div id="timeSlotsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            <button class="time-btn" data-window="9am - 12pm">9-12</button>
+            <button class="time-btn" data-window="12pm - 3pm">12-3</button>
+            <button class="time-btn" data-window="3pm - 6pm">3-6</button>
+          </div>
+        </div>
+
+        <button id="confirmApptBtn" class="cta-btn" style="margin-top:24px;">Confirm Appointment</button>
+        <div id="schedMsg" style="text-align:center;margin-top:12px;font-size:14px;min-height:20px;"></div>
+      </div>
+
+      <div style="text-align:center;">
+        <a href="/bundles" style="color:#64748b;font-weight:600;font-size:14px;text-decoration:none;">Return to Shop</a>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- END STATIC SUCCESS PAGE -->
 <!-- HERO -->
 <section class="hero">
   <div class="hero-inner">
@@ -3456,7 +3710,7 @@ body.modal-open {
     <!-- Multi-Room -->
     <article class="package">
       <div class="package-header">
-        <h3 class="package-name">3â€“4 TVs</h3>
+        <h3 class="package-name">3–4 TVs</h3>
         <div class="package-price">From $699</div>
       </div>
       <p class="package-promise">Whole-home entertainment in one visit.</p>
@@ -3475,7 +3729,7 @@ body.modal-open {
           90-Day Workmanship Warranty
         </div>
       </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3â€“4 TVs', 699)">
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3–4 TVs', 699)">
         Schedule Installation
       </button>
       <div class="urgency-text">4 Slots Left This Week</div>
@@ -3508,7 +3762,7 @@ body.modal-open {
 <section class="section" id="security">
   <div class="section-header">
     <h2>Cameras: pick by coverage level</h2>
-    <p>Choose coverage by outcome â€” faces at the door, plates in the driveway, or full perimeter protection.</p>
+    <p>Choose coverage by outcome — faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
   <div class="package-grid">
@@ -3546,7 +3800,7 @@ body.modal-open {
         <h3 class="package-name">Standard Perimeter</h3>
         <div class="package-price">$1,199</div>
       </div>
-      <p class="package-promise">Front, driveway, backyard â€” practical coverage for most homes.</p>
+      <p class="package-promise">Front, driveway, backyard — practical coverage for most homes.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3565,7 +3819,7 @@ body.modal-open {
       <button class="btn btn-primary" onclick="selectPackage('cam_standard', 'Standard Perimeter', 1199)">
         Schedule Installation
       </button>
-      <div class="urgency-text">Most Popular â€” Book Now</div>
+      <div class="urgency-text">Most Popular — Book Now</div>
     </article>
 
     <!-- Full Perimeter -->
@@ -3602,7 +3856,7 @@ body.modal-open {
         <h3 class="package-name">Custom (quote)</h3>
         <div class="package-price">Quote</div>
       </div>
-      <p class="package-promise">Unique property? Weâ€™ll design a coverage plan with you.</p>
+      <p class="package-promise">Unique property? We’ll design a coverage plan with you.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3634,7 +3888,7 @@ body.modal-open {
           <div class="review-avatar">JM</div>
           <div class="review-meta">
             <div class="review-name">John M.</div>
-            <div class="review-stars">â˜…â˜…â˜…â˜…â˜…</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
@@ -3645,7 +3899,7 @@ body.modal-open {
           <div class="review-avatar">SL</div>
           <div class="review-meta">
             <div class="review-name">Sarah L.</div>
-            <div class="review-stars">â˜…â˜…â˜…â˜…â˜…</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
@@ -3656,7 +3910,7 @@ body.modal-open {
           <div class="review-avatar">MT</div>
           <div class="review-meta">
             <div class="review-name">Michael T.</div>
-            <div class="review-stars">â˜…â˜…â˜…â˜…â˜…</div>
+            <div class="review-stars">?????</div>
           </div>
         </div>
         <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
@@ -3719,7 +3973,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Cancel or reschedule anytime before 24 hours of your appointmentâ€”no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+          <p>Cancel or reschedule anytime before 24 hours of your appointment—no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
         </div>
       </div>
       
@@ -3731,7 +3985,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Yesâ€”in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+          <p>Yes—in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
         </div>
       </div>
       
@@ -3743,7 +3997,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when bookingâ€”nothing due at installation.</p>
+          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking—nothing due at installation.</p>
         </div>
       </div>
       
@@ -3806,7 +4060,7 @@ body.modal-open {
 <!-- FINAL CTA SECTION -->
 <section class="final-cta-section">
   <div class="final-cta-inner">
-    <h2>Book your installation todayâ€”Next available slots filling fast</h2>
+    <h2>Book your installation today—Next available slots filling fast</h2>
     <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
     <div class="final-cta-buttons">
       <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
@@ -3817,9 +4071,9 @@ body.modal-open {
       </button>
     </div>
     <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-      <span style="margin-right: 20px;">âœ“ Book instantly online</span>
-      <span style="margin-right: 20px;">âœ“ 90-day warranty</span>
-      <span>âœ“ Same-week availability</span>
+      <span style="margin-right: 20px;">? Book instantly online</span>
+      <span style="margin-right: 20px;">? 90-day warranty</span>
+      <span>? Same-week availability</span>
     </div>
   </div>
 </section>
@@ -4004,7 +4258,7 @@ body.modal-open {
       </div>
       
       <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">ðŸ“ž Prefer to call?</div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">?? Prefer to call?</div>
         <a href="tel:864-528-1475" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f9ff; border: 1px solid #d7eafc; border-radius: 8px; text-decoration: none; color: var(--cobalt); font-weight: 600; transition: all 0.2s;">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
@@ -4124,7 +4378,7 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
-<script defer src="bundles.js?v=UNICORN_FIX_JAN6_SYNTAX"></script>
+<script defer src="bundles.js?v=SOLID_RENDER_JAN10_V1"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
@@ -4203,8 +4457,8 @@ window.toggleCart = function() {
         try {
           if (typeof out === 'string') {
             out = out
-              .replace(/\?&mdash;|\?\u2014|\?â€”/g, 'â€”')
-              .replace(/&mdash;/g, 'â€”');
+              .replace(/\?&mdash;|\?\u2014|\?—/g, '—')
+              .replace(/&mdash;/g, '—');
           }
         } catch (_) {}
         return out;

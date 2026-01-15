@@ -1,3 +1,4 @@
+console.log("[BUILD_ID]", "SHA-VERIFY-002", "2026-01-13 17:34:00", location.href);
 // PS PATCH: Signal bundles.js execution — start
 if(window.__H2S_BUNDLES_START) window.__H2S_BUNDLES_START();
 // PS PATCH: Signal bundles.js execution — end
@@ -9,7 +10,7 @@ performance.mark('ss_entry');
 'use strict';
 
 // BUILD FINGERPRINT - Always logs to prove which version is running
-window.__H2S_BUNDLES_BUILD = "🚀🚀🚀 PERF_V10_OVERLAY_FIX_FINAL 🚀🚀🚀";
+window.__H2S_BUNDLES_BUILD = "BUILD-VERIFY-001";
 console.log('[BUILD]', window.__H2S_BUNDLES_BUILD);
 document.documentElement.setAttribute('data-build', window.__H2S_BUNDLES_BUILD); // Hidden attribute for verification
 
@@ -852,12 +853,12 @@ async function route(){
   // IDEMPOTENT GUARD: Prevent double routing for same view
   const view = getParam('view') || 'shop';
   if(window.__LAST_ROUTED_VIEW === view) {
-    console.log('⚠️ [ROUTE] Already routed to', view, '- skipping duplicate call');
+    // console.log('⚠️ [ROUTE] Already routed to', view, '- skipping duplicate call');
     return;
   }
   window.__LAST_ROUTED_VIEW = view;
   
-  console.log('🔴 [ROUTE] FUNCTION CALLED - view:', view);
+  // console.log('🔴 [ROUTE] FUNCTION CALLED - view:', view);
   logger.log('[ROUTE] View parameter:', view);
 
   // Safety: ensure we never carry a scroll lock across views
@@ -875,9 +876,9 @@ async function route(){
   
   // Call the renderer safely
   try {
-    console.log('🔴 [ROUTE] Calling renderer for view:', view);
+    // console.log('🔴 [ROUTE] Calling renderer for view:', view);
     await renderer();
-    console.log('🔴 [ROUTE] Renderer completed');
+    // console.log('🔴 [ROUTE] Renderer completed');
   } catch(err) {
     console.error('[ROUTE] Fatal render error:', err);
     console.error('[ROUTE] Error stack:', err.stack);
@@ -890,12 +891,12 @@ async function route(){
 
 // === INIT ===
 async function init(){
-  console.log('🟢 [INIT] Function called');
+  // console.log('🟢 [INIT] Function called');
   
   // CRITICAL: Early exit for success pages - skip ALL shop-only logic
   const view = getParam('view');
   if(view === 'shopsuccess') {
-    console.log('⚡ [INIT] Success page detected - skipping shop init, calling route() once');
+    // console.log('⚡ [INIT] Success page detected - skipping shop init, calling route() once');
     route();
     return;
   }
@@ -1033,13 +1034,13 @@ async function init(){
     
     // PHASE 3: DETERMINE VIEW - Quick routing decision
     const view = getParam('view');
-    console.log('🟢 [INIT] View parameter:', view);
+    // console.log('🟢 [INIT] View parameter:', view);
     const isSpecialView = view && view !== 'shop';
     
     // PHASE 4: RENDER IMMEDIATELY - Don't wait for anything
-    console.log('🟢 [INIT] Calling route()...');
+    // console.log('🟢 [INIT] Calling route()...');
     route(); // Shows static content instantly for shop view
-    console.log('🟢 [INIT] route() returned');
+    // console.log('🟢 [INIT] route() returned');
     
     
     // PHASE 5: BACKGROUND LOADS - Use pre-started fetch

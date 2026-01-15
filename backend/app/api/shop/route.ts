@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDb1, getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { resolveDispatchRequiredIds } from '@/lib/dispatchRequiredIds';
+import { filterDispatchJobPayload } from '@/lib/dispatchJobGuardrails';
 import { KNOWN_PROMO_CODES } from '@/lib/promoCache';
 import { generateJobDetailsSummary, generateEquipmentProvided, getScheduleStatus } from '@/lib/dataCompleteness';
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import crypto from 'crypto';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const openai = process.env.OPENAI_API_KEY 
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -634,7 +638,9 @@ export async function POST(request: Request) {
     // Support both 'action' and '__action' for backwards compatibility
     const action = body.action || body.__action;
     const { customer, cart, promotion_code, success_url, cancel_url, metadata } = body;
-    const __action = action; // Keep __action variable for existing code
+    // Back-compat: older clients POSTed {customer, cart, metadata} with no action.
+    // If we have a checkout-shaped payload, treat it as create_checkout_session.
+    const __action = action || ((customer && cart) ? 'create_checkout_session' : undefined);
 
     // ===== SIGNIN =====
     if (__action === 'signin') {
@@ -1283,6 +1289,45 @@ export async function POST(request: Request) {
         };
       });
       
+      // ✅ DISPATCH FIX: Calculate job value and technician payout
+      // CRITICAL: cart prices are in DOLLARS, must convert to cents
+      // Job value = pre-discount subtotal (not amount paid, which can be $0 with 100% discount)
+      // Payout = 35% of job value (strict business rule)
+      const jobValueDollars = subtotal; // subtotal is in dollars (e.g., 2100 for $2,100)
+      const jobValueCents = Math.round(jobValueDollars * 100); // Convert to cents (210000)
+      const techPayoutCents = Math.round(jobValueCents * 0.35); // 35% in cents (73500)
+      const techPayoutDollars = techPayoutCents / 100; // Back to dollars for display (735.00)
+      
+      console.log('[Checkout] ========== JOB VALUE & PAYOUT CALCULATION ==========');
+      console.log('[Checkout] Cart subtotal (DOLLARS):', jobValueDollars);
+      console.log('[Checkout] Job value (cents):', jobValueCents);
+      console.log('[Checkout] Tech payout @ 35% (cents):', techPayoutCents);
+      console.log('[Checkout] Tech payout (DOLLARS):', techPayoutDollars);
+      
+      // SANITY CHECK: Abort if values are nonsensical
+      if (jobValueDollars < 100) {
+        console.error('[Checkout] ❌ INVALID JOB VALUE:', jobValueDollars);
+        console.error('[Checkout] Cart items:', JSON.stringify(cart, null, 2));
+        await logFailure('INVALID_JOB_VALUE', new Error(`Job value too low: $${jobValueDollars}`));
+        return NextResponse.json({
+          ok: false,
+          error: 'Invalid cart value',
+          code: 'INVALID_JOB_VALUE'
+        }, { status: 400, headers: corsHeaders(request) });
+      }
+      
+      if (techPayoutDollars < 35) {
+        console.error('[Checkout] ❌ INVALID PAYOUT:', techPayoutDollars);
+        console.error('[Checkout] This should never happen - payout should be 35% of job value');
+        console.error('[Checkout] Job value:', jobValueDollars, 'Payout:', techPayoutDollars);
+        await logFailure('INVALID_PAYOUT', new Error(`Payout too low: $${techPayoutDollars}`));
+        return NextResponse.json({
+          ok: false,
+          error: 'Payout calculation failed',
+          code: 'INVALID_PAYOUT'
+        }, { status: 500, headers: corsHeaders(request) });
+      }
+      
       // Generate complete data summaries (no placeholders)
       const jobDetailsSummary = generateJobDetailsSummary(cart, customer, offerMeta);
       const equipmentProvided = generateEquipmentProvided(cart, offerMeta);
@@ -1299,6 +1344,11 @@ export async function POST(request: Request) {
         schedule_status: 'Scheduling Pending',
         cart_items_count: cart.length,
         cart_total_items: cart.reduce((sum, item) => sum + (item.qty || 1), 0),
+        // ✅ PAYOUT CALCULATION - Store in h2s_orders.metadata_json
+        job_value_cents: jobValueCents,        // e.g., 210000 for $2,100
+        tech_payout_cents: techPayoutCents,    // e.g., 73500 (35%)
+        tech_payout_dollars: techPayoutDollars, // e.g., 735.00
+        payout_rate: 0.35,
       };
       
       // Insert order with status "pending_payment"
@@ -1409,18 +1459,34 @@ export async function POST(request: Request) {
           throw new Error('Failed to resolve or create recipient');
         }
 
-        // Create dispatch job
+        // Create dispatch job - MINIMAL DATA ONLY
         // NOTE: If constraint h2s_dispatch_jobs_recipient_step_uq still exists, this will fail for repeat customers
         // The migration should have dropped it and added order_id uniqueness instead
-        const insertJob: any = {
-          order_id: orderId,
-          status: 'pending_payment', // Wait for payment before showing to technicians
+        
+        // ✅ SCHEMA COMPLIANCE: h2s_dispatch_jobs has ONLY 13 columns
+        // NO metadata column, NO payout columns - all financial data lives in h2s_orders.metadata_json
+        // This table only tracks job workflow state and links to order via order_id
+        
+        const insertJob: any = filterDispatchJobPayload({
+          order_id: orderId,                   // ✅ Links to h2s_orders (source of payout data)
+          status: 'queued',                    // ✅ Required by DB check constraint
           created_at: new Date().toISOString(),
-          due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Temporary - will be updated when scheduled
           recipient_id: recipientId,
           sequence_id: DEFAULT_SEQUENCE_ID,
           step_id: DEFAULT_STEP_ID,
-        };
+          attempt_count: 0,
+          // ❌ NO metadata field (column doesn't exist)
+          // ❌ NO payout_estimated field (column doesn't exist)
+          // ✅ All payout data is in h2s_orders.metadata_json (linked via order_id)
+        });
+        
+        console.log('[Checkout] ========== DISPATCH JOB CREATION ==========');
+        console.log('[Checkout] Job value (cents):', jobValueCents);
+        console.log('[Checkout] Tech payout @ 35%:', techPayoutDollars);
+        console.log('[Checkout] ✅ Payout stored in h2s_orders.metadata_json.tech_payout_dollars');
+        console.log('[Checkout] ✅ Dispatch job links to order via order_id:', orderId);
+        console.log('[Checkout] Install date/window: Will be set when customer schedules appointment');
 
         console.log('[Checkout] Creating dispatch job:', JSON.stringify(insertJob));
 
@@ -1468,7 +1534,26 @@ export async function POST(request: Request) {
 
         jobId = jobData?.job_id;
         console.log('[Checkout] ✅ Dispatch job created:', jobId);
-        await logTrace('JOB_CREATED', { order_id: orderId, job_id: jobId, recipient_id: recipientId });
+        console.log('[Checkout] ========== JOB WRITTEN TO DATABASE ==========');
+        console.log('[Checkout] Job ID:', jobId);
+        console.log('[Checkout] Status:', jobData?.status);
+        console.log('[Checkout] Due at (temporary):', jobData?.due_at);
+        console.log('[Checkout] Payout (metadata->tech_payout_dollars):', jobData?.metadata?.tech_payout_dollars);
+        console.log('[Checkout] Metadata includes:', {
+          job_value_cents: jobData?.metadata?.job_value_cents,
+          tech_payout_cents: jobData?.metadata?.tech_payout_cents,
+          job_value_dollars: jobData?.metadata?.job_value_dollars,
+          tech_payout_dollars: jobData?.metadata?.tech_payout_dollars,
+          scheduled_status: jobData?.metadata?.scheduled_status
+        });
+        await logTrace('JOB_CREATED', { 
+          order_id: orderId, 
+          job_id: jobId, 
+          recipient_id: recipientId,
+          job_value_cents: jobValueCents,
+          tech_payout_cents: techPayoutCents,
+          payout_estimated: techPayoutDollars
+        });
 
         // Link job to order metadata - CRITICAL STEP
         if (jobId) {
@@ -1543,76 +1628,69 @@ export async function POST(request: Request) {
 
       console.log('[Checkout] ========== STEP 2: CREATE STRIPE SESSION ==========');
 
-      // === CALL STRIPE RELAY (Railway) ===
-      // Direct Stripe API calls from Vercel timeout unreliably.
-      // Relay service provides stable connectivity.
+      // Prefer Stripe Relay if configured; otherwise fall back to direct Stripe.
+      // Direct Stripe API calls are now verified via /api/stripe_smoke, so this is safe.
       const relayUrl = process.env.STRIPE_RELAY_URL;
       const relaySecret = process.env.STRIPE_RELAY_SECRET;
 
-      if (!relayUrl || !relaySecret) {
-        console.error('[Checkout] STRIPE_RELAY_URL or STRIPE_RELAY_SECRET not configured');
-        
-        // Clean up order and job
-        try {
-          await client.from('h2s_orders').delete().eq('order_id', orderId);
-          if (jobId) {
-            const dispatch = getSupabaseDispatch() || client;
-            await dispatch.from('h2s_dispatch_jobs').delete().eq('job_id', jobId);
-          }
-        } catch (cleanupErr) {
-          console.error('[Checkout] Cleanup failed:', cleanupErr);
-        }
-        
-        return NextResponse.json({
-          ok: false,
-          error: 'Payment system configuration error. Please contact support.',
-          code: 'RELAY_NOT_CONFIGURED'
-        }, { status: 500, headers: corsHeaders(request) });
-      }
-
-      console.log(`[Checkout] Calling relay: ${relayUrl}/stripe/checkout`);
       console.log(`[Checkout] Using idempotency key: ${deterministicKey}`);
       await logTrace('SESSION_CREATE_START', { order_id: orderId, idempotency_key: deterministicKey });
 
-      let session;
+      let session: { id: string; url: string | null };
       try {
-        // Fetch with timeout control (8 seconds max)
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        if (relayUrl && relaySecret) {
+          console.log(`[Checkout] Calling relay: ${relayUrl}/stripe/checkout`);
 
-        const relayResponse = await fetch(`${relayUrl}/stripe/checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${relaySecret}`
-          },
-          body: JSON.stringify({
+          // Fetch with timeout control (8 seconds max)
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+          const relayResponse = await fetch(`${relayUrl}/stripe/checkout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${relaySecret}`
+            },
+            body: JSON.stringify({
+              sessionParams,
+              idempotencyKey: deterministicKey // Use deterministic key for retry safety
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timeoutId);
+          const relayData = await relayResponse.json();
+
+          if (!relayResponse.ok || !relayData.ok) {
+            console.error('[Checkout] Relay returned error:', relayData);
+            return NextResponse.json({
+              ok: false,
+              error: relayData.error || 'Payment system error',
+              code: relayData.code || 'RELAY_ERROR'
+            }, { status: relayResponse.status, headers: corsHeaders(request) });
+          }
+
+          session = { id: relayData.session.id, url: relayData.session.url };
+          console.log(`[Checkout] ✓ Session created via relay: ${session.id}`);
+          await logTrace('SESSION_CREATED', { stripe_session_id: session.id, order_id: orderId, via: 'relay' });
+        } else if (stripe) {
+          console.warn('[Checkout] Stripe relay not configured; falling back to direct Stripe API');
+          const created = await stripe.checkout.sessions.create(
             sessionParams,
-            idempotencyKey: deterministicKey // Use deterministic key for retry safety
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-        const relayData = await relayResponse.json();
-
-        if (!relayResponse.ok || !relayData.ok) {
-          console.error('[Checkout] Relay returned error:', relayData);
-          return NextResponse.json({
-            ok: false,
-            error: relayData.error || 'Payment system error',
-            code: relayData.code || 'RELAY_ERROR'
-          }, { status: relayResponse.status, headers: corsHeaders(request) });
+            { idempotencyKey: deterministicKey }
+          );
+          session = { id: created.id, url: created.url };
+          console.log(`[Checkout] ✓ Session created via direct Stripe: ${session.id}`);
+          await logTrace('SESSION_CREATED', { stripe_session_id: session.id, order_id: orderId, via: 'direct' });
+        } else {
+          console.error('[Checkout] Neither Stripe Relay nor STRIPE_SECRET_KEY configured');
+          throw new Error('PAYMENT_NOT_CONFIGURED');
         }
 
-        session = { id: relayData.session.id, url: relayData.session.url };
-        console.log(`[Checkout] ✓ Session created via relay: ${session.id}`);
-        await logTrace('SESSION_CREATED', { stripe_session_id: session.id, order_id: orderId });
+      } catch (stripeCreateError: any) {
+        console.error('[Checkout] ❌ Session creation failed:', stripeCreateError);
+        await logFailure('SESSION_CREATE_FAILED', stripeCreateError, { order_id: orderId });
 
-      } catch (relayError: any) {
-        console.error('[Checkout] ❌ Relay call failed:', relayError);
-        await logFailure('RELAY_CALL_FAILED', relayError, { order_id: orderId });
-        
         // Clean up order and job since Stripe session failed
         try {
           await client.from('h2s_orders').delete().eq('order_id', orderId);
@@ -1624,21 +1702,28 @@ export async function POST(request: Request) {
         } catch (cleanupErr) {
           console.error('[Checkout] Failed to clean up after Stripe failure:', cleanupErr);
         }
-        
-        // Classify error types and fail the request
-        if (relayError.name === 'AbortError') {
+
+        if (stripeCreateError?.name === 'AbortError') {
           return NextResponse.json({
             ok: false,
             error: 'Payment system timeout. Please try again.',
-            code: 'RELAY_TIMEOUT'
+            code: 'PAYMENT_TIMEOUT'
           }, { status: 504, headers: corsHeaders(request) });
         }
-        
+
+        if (stripeCreateError?.message === 'PAYMENT_NOT_CONFIGURED') {
+          return NextResponse.json({
+            ok: false,
+            error: 'Payment system configuration error. Please contact support.',
+            code: 'PAYMENT_NOT_CONFIGURED'
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
         return NextResponse.json({
           ok: false,
           error: 'Unable to connect to payment system. Please try again.',
-          code: 'RELAY_CONNECTION_ERROR',
-          details: relayError.message
+          code: 'PAYMENT_CONNECTION_ERROR',
+          details: stripeCreateError?.message
         }, { status: 500, headers: corsHeaders(request) });
       }
 

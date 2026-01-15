@@ -12,6 +12,19 @@ Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "   FRONTEND DEPLOYMENT SAFEGUARD" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
+# Generate Build ID
+$buildDate = Get-Date -Format "yyyyMMdd_HHmm"
+$gitSha = (git rev-parse --short=7 HEAD 2>$null).Trim()
+if ([string]::IsNullOrEmpty($gitSha)) {
+    $gitSha = "0000000"
+    Write-Host "WARNING: Could not get git SHA, using placeholder" -ForegroundColor Yellow
+}
+$buildId = "PORTAL_BUILD_${buildDate}_${gitSha}"
+
+Write-Host "Build ID: " -NoNewline -ForegroundColor Yellow
+Write-Host $buildId -ForegroundColor Green
+Write-Host ""
+
 # Configuration
 $frontendDir = "frontend"
 $requiredFiles = @("portal.html", "bundles.html", "vercel.json")
@@ -82,6 +95,30 @@ if ($Test) {
     exit 0
 }
 
+# Step 5.5: Inject Build ID
+Write-Host "[5.5/7] Injecting build ID into portal.html..." -ForegroundColor Yellow
+$portalPath = Join-Path $frontendDir "portal.html"
+$originalContent = Get-Content $portalPath -Raw
+$injectedContent = $originalContent -replace "\{\{BUILD_ID\}\}", $buildId
+
+if ($injectedContent -ne $originalContent) {
+    Set-Content $portalPath -Value $injectedContent -NoNewline
+    Write-Host "  ✓ Build ID injected: $buildId" -ForegroundColor Green
+    
+    # Verify injection
+    $verifyContent = Get-Content $portalPath -Raw
+    if ($verifyContent -match $buildId) {
+        Write-Host "  ✓ Injection verified" -ForegroundColor Green
+    } else {
+        Write-Host "  ERROR: Injection verification failed!" -ForegroundColor Red
+        # Restore original
+        Set-Content $portalPath -Value $originalContent -NoNewline
+        exit 1
+    }
+} else {
+    Write-Host "  ⚠ No {{BUILD_ID}} placeholders found (already replaced or missing)" -ForegroundColor Yellow
+}
+
 # Step 6: Deploy from ROOT with frontend/ as root directory
 Write-Host "[6/7] Deploying via Git integration (recommended method)..." -ForegroundColor Yellow
 Write-Host "  The h2s-bundles-frontend project MUST be configured with:" -ForegroundColor Yellow
@@ -94,10 +131,10 @@ Write-Host "  Manual deployment from frontend/ folder creates EMPTY deployments.
 if (!$Force) {
     Write-Host "To verify Git integration is working:" -ForegroundColor Yellow
     Write-Host "  1. Make a small change to frontend/portal.html" -ForegroundColor White
-    Write-Host "  2. git add -A && git commit -m 'test' && git push" -ForegroundColor White
+    Write-Host "  2. git add -A; git commit -m 'test'; git push" -ForegroundColor White
     Write-Host "  3. Wait 10 seconds" -ForegroundColor White
     Write-Host "  4. Run: vercel ls h2s-bundles-frontend | Select-Object -First 3" -ForegroundColor White
-    Write-Host "  5. New deployment should appear with Age < 1m`n" -ForegroundColor White
+    Write-Host "  5. New deployment should appear with Age less than 1m`n" -ForegroundColor White
     
     Write-Host "Use -Force to attempt manual deployment (NOT RECOMMENDED)`n" -ForegroundColor Yellow
     exit 0
@@ -108,8 +145,9 @@ Write-Host "WARNING: Manual deployment often creates empty deployments!" -Foregr
 Write-Host "Proceeding anyway because -Force was specified...`n" -ForegroundColor Yellow
 
 Push-Location
+Set-Location $frontendDir
+
 try {
-    Set-Location $frontendDir
     Write-Host "Deploying from: $(Get-Location)" -ForegroundColor Yellow
     vercel --prod --yes
     
@@ -119,12 +157,26 @@ try {
         Write-Host "Run: vercel ls h2s-bundles-frontend | Select-Object -First 3`n" -ForegroundColor White
     } else {
         Write-Host "`nERROR: Deployment failed with exit code $LASTEXITCODE" -ForegroundColor Red
+        Pop-Location
         exit 1
     }
-} finally {
+} catch {
+    Write-Host "`nERROR: Deployment exception: $_" -ForegroundColor Red
     Pop-Location
+    exit 1
+}
+
+Pop-Location
+
+# Restore original portal.html (remove injected build ID)
+if ($originalContent) {
+    Write-Host "`nRestoring portal.html to original state..." -ForegroundColor Yellow
+    Set-Content (Join-Path $frontendDir "portal.html") -Value $originalContent -NoNewline
+    Write-Host "  ✓ Restored {{BUILD_ID}} placeholders" -ForegroundColor Green
 }
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "   DEPLOYMENT COMPLETE" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
+Write-Host "Build ID: $buildId" -ForegroundColor Green
+Write-Host ""

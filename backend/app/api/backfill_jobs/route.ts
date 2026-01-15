@@ -209,9 +209,15 @@ async function handle(request: Request, isDryRun: boolean = false) {
       updated++;
     } else {
       try {
+        const updatePayload: any = { metadata: updatedMeta };
+        // ✅ Update payout_estimated column if we computed a new payout
+        if (updatedMeta.estimated_payout && updatedMeta.estimated_payout > 0) {
+          updatePayload.payout_estimated = updatedMeta.estimated_payout;
+        }
+        
         const { error: updateError } = await dispatch
           .from('h2s_dispatch_jobs')
-          .update({ metadata: updatedMeta })
+          .update(updatePayload)
           .eq('job_id', jobId);
 
         if (updateError) {

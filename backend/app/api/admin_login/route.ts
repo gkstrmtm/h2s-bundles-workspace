@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { issuePortalToken } from '@/lib/portalTokens';
+import { issuePortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -59,7 +59,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Invalid admin credentials' }, { status: 401, headers: corsHeaders(request) });
     }
 
-    const token = issuePortalToken({ sub: email, role: 'admin', email });
+    // Admin tokens use proId=email and zip for compatibility
+    const token = await issuePortalToken({ proId: email, email, zip });
 
     return NextResponse.json({ ok: true, token }, { headers: corsHeaders(request) });
   } catch (error: any) {

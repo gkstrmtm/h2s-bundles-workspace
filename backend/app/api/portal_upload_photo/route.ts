@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 import { bestEffortUpdateProRow, sanitizeFilename } from '@/lib/portalProProfile';
 
 function corsHeaders(request?: Request): Record<string, string> {
@@ -63,7 +63,11 @@ export async function POST(request: Request) {
 
     let payload: any;
     try {
-      payload = verifyPortalToken(token);
+      const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      payload = _auth.payload;
     } catch (e: any) {
       return NextResponse.json({ ok: false, error: e?.message || 'Invalid token', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
     }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -110,10 +110,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Missing token', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
     }
 
-    const payload = verifyPortalToken(token);
-    if (payload.role !== 'admin') {
-      return NextResponse.json({ ok: false, error: 'Not an admin session', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+    const authResult = await verifyPortalToken(token);
+    if (!authResult.ok || !authResult.payload) {
+      return NextResponse.json({ ok: false, error: 'Invalid token', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
     }
+    
+    const payload = authResult.payload;
+    // Token verified - proceed
 
     const dispatch = getSupabaseDispatch();
     if (!dispatch) {

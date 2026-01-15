@@ -1,7 +1,77 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
+import { getConfig } from '@/lib/config';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
+import { sendMail } from '@/lib/mail';
+
+/**
+ * Send customer notification email when technician accepts job
+ */
+async function sendCustomerNotification(sb: any, jobId: string, proPayload: any, assignment: any) {
+  try {
+    // Fetch job details to get customer info
+    const { data: jobData } = await sb
+      .from('h2s_dispatch_jobs')
+      .select('customer_email, customer_name, service_name, service_address, service_city, service_state')
+      .eq('job_id', jobId)
+      .single();
+    
+    if (!jobData || !jobData.customer_email) {
+      console.log('[Accept] No customer email found for notification');
+      return;
+    }
+
+    // Fetch pro profile for bio and vehicle
+    const { data: proData } = await sb
+      .from('h2s_pros')
+      .select('name, full_name, bio_short, vehicle_text, photo_url')
+      .or(`pro_id.eq.${proPayload.sub},email.eq.${proPayload.email}`)
+      .single();
+    
+    const proName = proData?.name || proData?.full_name || 'Your technician';
+    const proBio = proData?.bio_short || 'An experienced professional ready to help with your installation.';
+    const proVehicle = proData?.vehicle_text || 'Company vehicle';
+    
+    // Build email body
+    const emailBody = `
+      <h2>Great news! Your technician has been assigned.</h2>
+      <p>Hi ${jobData.customer_name || 'there'},</p>
+      <p><strong>${proName}</strong> has accepted your job for ${jobData.service_name || 'your service'}.</p>
+      
+      <h3>About Your Technician:</h3>
+      <p>${proBio}</p>
+      
+      <h3>What to Expect:</h3>
+      <ul>
+        <li><strong>Vehicle:</strong> ${proVehicle}</li>
+        <li><strong>Location:</strong> ${jobData.service_address || ''}, ${jobData.service_city || ''} ${jobData.service_state || ''}</li>
+      </ul>
+      
+      <p>Your technician will contact you shortly to confirm the appointment details.</p>
+      <p>If you have any questions, feel free to reach out to us.</p>
+      <p>Thank you for choosing Home2Smart!</p>
+    `;
+
+    // Call Supabase Edge Function or email service
+    console.log('[Accept] Customer notification prepared for:', jobData.customer_email);
+    
+    /* PS PATCH: mail robustness + idempotency + correct dates — start */
+    await sendMail({
+        to: jobData.customer_email,
+        subject: `Your Technician has been assigned: ${proName}`,
+        html: emailBody,
+        category: 'job_accepted',
+        idempotencyKey: `job_accepted:${jobId}:${proPayload.sub}`,
+        meta: { jobId, proId: proPayload.sub, customerEmail: jobData.customer_email }
+    });
+    /* PS PATCH: mail robustness + idempotency + correct dates — end */
+    
+  } catch (err) {
+    console.error('[Accept] Failed to prepare customer notification:', err);
+    throw err;
+  }
+}
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -39,7 +109,16 @@ async function handle(request: Request, token: string, jobId: string) {
     return NextResponse.json({ ok: false, error: 'Missing job_id', error_code: 'bad_request' }, { status: 400, headers: corsHeaders(request) });
   }
 
-  const payload = verifyPortalToken(token);
+  const authResult = await verifyPortalToken(token);
+  if (!authResult.ok || !authResult.payload) {
+    return NextResponse.json({ 
+      ok: false, 
+      error: authResult.error || 'Invalid token', 
+      error_code: authResult.errorCode || 'bad_session' 
+    }, { status: 401, headers: corsHeaders(request) });
+  }
+  
+  const payload = authResult.payload;
   if (payload.role !== 'pro') {
     return NextResponse.json({ ok: false, error: 'Not a pro session', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
   }
@@ -93,14 +172,29 @@ async function handle(request: Request, token: string, jobId: string) {
         if (!error && Array.isArray(data) && data.length) {
           const row = data[0] || null;
 
-          // Best-effort: mark the job as accepted so it won't show up as a public offer.
+          // CRITICAL: Update job status to 'scheduled' (NOT 'accepted') since constraint only allows: pending, scheduled, done, cancelled
+          // This ensures groupByState will put it in Upcoming section
           try {
-            await sb
+            const { error: jobUpdateError } = await sb
               .from(jobsTable)
-              .update(({ [jobStatusCol]: 'accepted' } as any))
+              .update({ [jobStatusCol]: 'scheduled', updated_at: new Date().toISOString() } as any)
               .eq(jobIdCol as any, jobId);
-          } catch {
-            // ignore
+            
+            if (jobUpdateError) {
+              console.error('[Accept] Failed to update job status:', jobUpdateError);
+            } else {
+              console.log(`[Accept] Updated job ${jobId} status to 'scheduled'`);
+            }
+          } catch (jobUpdateErr) {
+            console.error('[Accept] Job status update exception:', jobUpdateErr);
+          }
+
+          // Send customer notification email
+          try {
+            await sendCustomerNotification(sb, jobId, payload, row);
+          } catch (emailErr) {
+            console.warn('[Accept] Customer notification failed:', emailErr);
+            // Don't fail the acceptance if email fails
           }
 
           return NextResponse.json(
@@ -150,6 +244,13 @@ async function handle(request: Request, token: string, jobId: string) {
             .eq(jobIdCol as any, jobId);
         } catch {
           // ignore
+        }
+
+        // Send customer notification email
+        try {
+          await sendCustomerNotification(sb, jobId, payload, row);
+        } catch (emailErr) {
+          console.warn('[Accept] Customer notification failed:', emailErr);
         }
 
         return NextResponse.json(

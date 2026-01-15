@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 async function validateLegacyAdminSession(client: any, token: string): Promise<string | null> {
   if (!token) return null;
@@ -82,7 +82,7 @@ export async function GET(request: Request) {
     }
 
     // Legacy admin validation: allow signed admin token or a legacy admin session token.
-    const signed = token ? verifyPortalToken(token) : null;
+    const signed = token ? await verifyPortalToken(token) : null;
     const signedAdminEmail = signed?.role === 'admin' ? (signed.email || signed.sub || null) : null;
     const adminEmail = signedAdminEmail || (await validateLegacyAdminSession(client as any, token));
 

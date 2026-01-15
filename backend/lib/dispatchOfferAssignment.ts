@@ -49,6 +49,41 @@ export async function ensureDispatchOfferAssignment(
   ]);
   const stateCols = uniq([schema?.assignmentsStateCol, 'assign_state', 'state', 'status', 'assignment_state']);
 
+  // RACE CONDITION PROTECTION: Check if job already accepted by DIFFERENT pro
+  if (state === 'accepted' || state === 'assigned') {
+    for (const jobCol of jobCols) {
+      for (const stateCol of stateCols) {
+        try {
+          const { data: existingAccepted, error: checkErr } = await sb
+            .from(table)
+            .select('*')
+            .eq(jobCol as any, jobId)
+            .in(stateCol as any, ['accepted', 'assigned'])
+            .limit(10);
+          
+          if (!checkErr && Array.isArray(existingAccepted) && existingAccepted.length) {
+            // Check if any of these are for a DIFFERENT pro
+            const alreadyAssignedToOther = existingAccepted.some((row: any) => {
+              for (const proCol of proCols) {
+                const existingProValue = String(row[proCol] || '').trim();
+                if (existingProValue && existingProValue !== proValue) {
+                  return true; // Different pro already has it
+                }
+              }
+              return false;
+            });
+            
+            if (alreadyAssignedToOther) {
+              return { ok: false, error: 'Job already assigned to another pro' };
+            }
+          }
+        } catch {
+          // Continue - if check fails, proceed with insert attempt
+        }
+      }
+    }
+  }
+
   for (const jobCol of jobCols) {
     for (const proCol of proCols) {
       try {

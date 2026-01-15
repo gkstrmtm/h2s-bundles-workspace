@@ -1,19 +1,22 @@
-import { verifyPortalToken } from '@/lib/portalTokens';
-
+// Admin auth - no need for portal token verification
 export type AdminAuthResult =
   | { ok: true; adminEmail: string; mode: 'signed' | 'legacy_session' }
   | { ok: false; status: number; error: string; error_code: string };
 
 export function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
+  
+  // Allow all localhost/127.0.0.1 origins for development (Live Preview, local dev servers, etc.)
+  const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('0.0.0.0');
+  
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
-    'http://localhost:3000',
-    'http://localhost:8080',
+    'https://h2s-bundles-frontend-ayoqyg92t-tabari-ropers-projects-6f2e090b.vercel.app',
+    'https://h2s-bundles-frontend.vercel.app',
   ];
 
-  const allowOrigin = allowedOrigins.includes(origin) ? origin : '*';
+  const allowOrigin = allowedOrigins.includes(origin) || isLocalhost ? origin : '*';
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': allowOrigin,
@@ -71,21 +74,7 @@ export async function requireAdmin(params: {
     return { ok: true, adminEmail, mode: 'legacy_session' };
   }
 
-  // Signed portal token
-  try {
-    const payload = verifyPortalToken(token);
-    if (payload.role !== 'admin') {
-      return { ok: false, status: 401, error: 'Admin access required', error_code: 'unauthorized' };
-    }
-    const adminEmail = String(payload.email || payload.sub || '').trim();
-    if (!adminEmail) {
-      return { ok: false, status: 401, error: 'Invalid admin token', error_code: 'bad_session' };
-    }
-    return { ok: true, adminEmail, mode: 'signed' };
-  } catch {
-    // Not a signed token; try legacy session token.
-  }
-
+  // Try legacy session token for admin auth
   const legacyEmail = await validateLegacyAdminSession(params.supabaseClient, token);
   if (!legacyEmail) {
     return { ok: false, status: 401, error: 'Admin session invalid', error_code: 'bad_session' };

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
+import { sendMail } from '@/lib/mail';
 
 const PAYOUT_TABLE_CANDIDATES = [
   'h2s_payouts_ledger',
@@ -95,6 +96,58 @@ async function handle(request: Request, body: any) {
     }
     if (updated) break;
   }
+
+  /* PS PATCH: mail robustness + idempotency + correct dates — start */
+  if (updated && action === 'approve') {
+    // Fire-and-forget email (don't block response)
+    (async () => {
+        try {
+            const row = (updated as any).row;
+            const clientName = (updated as any).client;
+            const sb = clients.find(c => c.name === clientName)?.sb || getSupabase();
+            
+            // 1. Get Pro Email
+            let email = row.pro_email || row.comm_email || row.tech_email;
+            if (!email && (row.pro_id || row.tech_id)) {
+                // Try finding pro table
+                const proId = row.pro_id || row.tech_id;
+                // Try standard tables
+                for (const t of ['h2s_pros', 'pros', 'technicians']) {
+                    const { data: pro } = await sb.from(t).select('email, comm_email').eq('id', proId).single();
+                    if (pro) {
+                        email = pro.comm_email || pro.email;
+                        if (email) break;
+                    }
+                }
+            }
+            
+            if (email) {
+                const amount = Number(row.amount || row.total_amount || 0).toFixed(2);
+                await sendMail({
+                    to: email,
+                    subject: `Payout Approved: $${amount}`,
+                    html: `
+                    <div style="font-family: sans-serif; color: #333;">
+                        <h2>Payout Approved</h2>
+                        <p>Your payout has been approved and is being processed.</p>
+                        <p><strong>Amount:</strong> $${amount}</p>
+                        <p><strong>Job:</strong> ${row.service_name || row.title || row.job_id || 'Service'}</p>
+                        <p><strong>Reference:</strong> ${payoutId}</p>
+                    </div>
+                    `,
+                    category: 'payout_approved',
+                    idempotencyKey: `payout_approved:${payoutId}`,
+                    meta: { payoutId, proId: row.pro_id || row.tech_id }
+                });
+            } else {
+                console.warn('[PAYOUT_MAIL] Could not find email for pro', row.pro_id);
+            }
+        } catch (e) {
+            console.error('[PAYOUT_MAIL] Failed to send approval email:', e);
+        }
+    })();
+  }
+  /* PS PATCH: mail robustness + idempotency + correct dates — end */
 
   if (!updated) {
     return NextResponse.json(

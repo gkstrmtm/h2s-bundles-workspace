@@ -1,10 +1,49 @@
-# DEPLOYMENT VERIFICATION SCRIPT
-# Purpose: Stamp versions, deploy, and verify correct files are on correct URLs
-# Usage: .\deploy-and-verify.ps1
+# DEPLOYMENT VERIFICATION SCRIPT (ONE ENTRYPOINT)
+# - Frontend: stamps + verifies portal/shop HTML
+# - Backend: builds + deploys + verifies payout/scheduling/portal_jobs
+#
+# Usage:
+#   .\deploy-and-verify.ps1                 # prompts, defaults to frontend
+#   .\deploy-and-verify.ps1 -Frontend       # force frontend mode
+#   .\deploy-and-verify.ps1 -Backend        # backend deploy+verify
+
+param(
+    [switch]$Frontend,
+    [switch]$Backend
+)
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "`nHOME2SMART DEPLOYMENT VERIFICATION SYSTEM`n" -ForegroundColor Cyan
+# If backend requested, delegate to canonical backend deploy script.
+if ($Backend -and -not $Frontend) {
+    if (-not (Test-Path ".\deploy-backend-and-verify.ps1")) {
+        Write-Host "ERROR: Missing deploy-backend-and-verify.ps1" -ForegroundColor Red
+        exit 1
+    }
+    & .\deploy-backend-and-verify.ps1
+    exit $LASTEXITCODE
+}
+
+# If neither specified, prompt once (default frontend).
+if (-not $Frontend -and -not $Backend) {
+    Write-Host "Deploy which project?" -ForegroundColor Cyan
+    Write-Host "  1) Frontend (portal/shop HTML)" -ForegroundColor Gray
+    Write-Host "  2) Backend (API)" -ForegroundColor Gray
+    $choice = Read-Host "Enter 1 or 2 (default 1)"
+    if ($choice -eq '2') {
+        if (-not (Test-Path ".\deploy-backend-and-verify.ps1")) {
+            Write-Host "ERROR: Missing deploy-backend-and-verify.ps1" -ForegroundColor Red
+            exit 1
+        }
+        & .\deploy-backend-and-verify.ps1
+        exit $LASTEXITCODE
+    }
+    $Frontend = $true
+}
+
+# Frontend flow (existing behavior)
+
+Write-Host "`nHOME2SMART FRONTEND DEPLOYMENT VERIFICATION SYSTEM`n" -ForegroundColor Cyan
 Write-Host "======================================================`n" -ForegroundColor Cyan
 
 # Step 1: Generate version stamp

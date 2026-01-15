@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -41,7 +41,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: 'Missing token', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
     }
 
-    const payload = verifyPortalToken(token);
+    const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      const payload = _auth.payload;
     if (payload.role !== 'pro') {
       return NextResponse.json({ ok: false, error: 'Not a pro session', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
     }

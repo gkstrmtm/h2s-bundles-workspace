@@ -3,6 +3,7 @@ import { getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { ensureDispatchOfferAssignment } from '@/lib/dispatchOfferAssignment';
+import { sendMail } from '@/lib/mail';
 
 async function bestEffortUpdateAssignedTo(sb: any, table: string, idCol: string, jobId: string, proValue: string) {
   const basePatch: any = { updated_at: new Date().toISOString() };
@@ -86,6 +87,45 @@ async function handle(request: Request, body: any) {
     }
 
     await bestEffortUpdateAssignedTo(sb, jobsTable, idCol, jobId, proId);
+
+    /* PS PATCH: mail robustness + idempotency + correct dates — start */
+    // Send "New Job Assigned" email to Pro
+    (async () => {
+        try {
+            // Check h2s_pros for email
+            const { data: pro } = await sb.from('h2s_pros')
+                .select('email, comm_email, name, full_name')
+                .eq('id', proId)
+                .single();
+            
+            const email = pro?.comm_email || pro?.email;
+            const proName = pro?.name || pro?.full_name || 'Pro';
+            
+            if (email) {
+                await sendMail({
+                    to: email,
+                    subject: `New Job Assigned: ${jobId}`,
+                    html: `
+                       <div style="font-family: sans-serif; color: #333;">
+                        <h2>New Job Assignment</h2>
+                        <p>Hi ${proName},</p>
+                        <p>You have been manually assigned a new job.</p>
+                        <p><strong>Job ID:</strong> ${jobId}</p>
+                        <p>Please log in to the portal to view details.</p>
+                        <a href="https://portal.home2smart.com" style="display:inline-block;padding:10px 20px;background:#1A9BFF;color:white;text-decoration:none;border-radius:5px;">Open Portal</a>
+                       </div>
+                    `,
+                    category: 'job_assigned_admin',
+                    idempotencyKey: `job_assigned_admin:${jobId}:${proId}:${new Date().toISOString().split('T')[0]}`,
+                    meta: { jobId, proId, assignedBy: 'admin' }
+                });
+            }
+        } catch (e) {
+            console.error('[DISPATCH_MAIL] Failed:', e);
+        }
+    })();
+    /* PS PATCH: mail robustness + idempotency + correct dates — end */
+
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || 'Failed to dispatch job', error_code: 'dispatch_failed' },

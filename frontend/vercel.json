@@ -2,6 +2,17 @@
   "public": true,
   "cleanUrls": true,
   "trailingSlash": false,
+  "headers": [
+    {
+      "source": "/(portal|portal.html|bundles.js)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/",
@@ -11,7 +22,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "/portal.html"
+      "destination": "/portal"
     },
     {
       "source": "/",

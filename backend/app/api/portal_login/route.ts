@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { issuePortalToken } from '@/lib/portalTokens';
+import { issuePortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
+    'https://portal.home2smart.com',
+    'https://shop.home2smart.com',
     'http://localhost:3000',
     'http://localhost:8080'
   ];
@@ -147,7 +149,7 @@ export async function POST(request: Request) {
     const proId = String(pickFirst(hit.row, ID_COLUMNS) || email);
     const name = pickFirst(hit.row, NAME_COLUMNS) || '';
 
-    const token = issuePortalToken({ sub: proId, role: 'pro', email });
+    const token = await issuePortalToken({ proId, email, zip });
 
     return NextResponse.json(
       {

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { issuePortalToken } from '@/lib/portalTokens';
+import { issuePortalToken } from '@/lib/auth';
 import crypto from 'crypto';
 
 function corsHeaders(request?: Request): Record<string, string> {

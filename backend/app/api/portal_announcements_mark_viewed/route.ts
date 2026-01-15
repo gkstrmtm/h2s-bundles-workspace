@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 async function validateLegacyProSession(client: any, token: string): Promise<string | null> {
   if (!token) return null;
@@ -91,7 +91,11 @@ async function handle(request: Request) {
     );
   }
 
-  const payload = verifyPortalToken(token);
+  const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      const payload = _auth.payload;
   const isSignedPro = payload?.role === 'pro' && !!payload?.sub;
 
   // If we cannot persist viewed state, treat as non-critical and still return ok.

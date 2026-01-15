@@ -1,9 +1,23 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🛡️ GUARDRAIL: SINGLE DATABASE ARCHITECTURE
+// ═══════════════════════════════════════════════════════════════════════════
+// This project uses ONE Supabase database (SUPABASE_URL).
+// All tables (orders, jobs, pros, payouts, etc.) are in the SAME database.
+// 
+// DO NOT create separate "dispatch" or "main" database assumptions!
+// getSupabaseDispatch() falls back to getSupabase() when no separate
+// SUPABASE_URL_DISPATCH env var exists (which is the normal case).
+//
+// If you see errors about "dispatch database not found", the fix is NOT
+// to create separate credentials - the fix is to use getSupabase() or
+// ensure getSupabaseDispatch() returns the main client (which it does).
+// ═══════════════════════════════════════════════════════════════════════════
+
 let supabaseInstance: SupabaseClient | null = null;
 let supabaseMgmtInstance: SupabaseClient | null = null;
 let supabaseInstanceDb1: SupabaseClient | null = null;
-let supabaseDispatchInstance: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient {
   if (!supabaseInstance) {
@@ -72,31 +86,6 @@ export function getSupabaseDb1(): SupabaseClient | null {
 // Get Supabase client for Dispatch / Portal Database
 // Used by Pro Portal endpoints that operate on dispatch tables (jobs, assignments, payouts, etc.)
 export function getSupabaseDispatch(): SupabaseClient | null {
-  const dispatchUrl = process.env.SUPABASE_URL_DISPATCH;
-  const dispatchServiceKey =
-    process.env.SUPABASE_SERVICE_KEY_DISPATCH ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY_DISPATCH ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  // If dispatch tables live in the main DB (common in this codebase), fall back
-  // to the primary Supabase credentials when separate DISPATCH creds are not set.
-  if (!dispatchUrl || !dispatchServiceKey) {
-    try {
-      return getSupabase();
-    } catch {
-      return null;
-    }
-  }
-
-  if (!supabaseDispatchInstance) {
-    supabaseDispatchInstance = createClient(dispatchUrl, dispatchServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
-  }
-
-  return supabaseDispatchInstance;
+  // USE THE SAME DATABASE - no separate dispatch URL needed
+  return getSupabase();
 }

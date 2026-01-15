@@ -1,3 +1,7 @@
+import { getSupabase } from '@/lib/supabase';
+import { resolveDispatchSchema } from '@/lib/dispatchSchema';
+import { sendMail } from '@/lib/mail';
+
 /**
  * DATA ORCHESTRATION ALGORITHM
  * Centralized data validation, enrichment, and normalization system
@@ -480,3 +484,278 @@ export function auditJobsBatch(jobs: any[]): {
     commonIssues,
   };
 }
+
+/* PS PATCH: completion orchestration shared + service-week bucketing — start */
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+
+function numOrZero(v: any): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function uniq(list: Array<string | undefined | null>): string[] {
+  const out: string[] = [];
+  for (const v of list) {
+    const s = String(v || '').trim();
+    if (!s) continue;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
+function round2(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+function getProPayoutPercent(): number {
+  const raw = process.env.PORTAL_PAYOUT_PERCENT || process.env.PRO_PAYOUT_PERCENT || '';
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.35;
+}
+
+function computeLegacyPercentPayout(opts: { subtotal: number; serviceHint?: string; qtyHint?: number }): number {
+  const subtotal = numOrZero(opts.subtotal);
+  if (!(subtotal > 0)) return 0;
+
+  const payoutPct = getProPayoutPercent();
+  const MIN_PAYOUT = Number(process.env.PORTAL_MIN_PAYOUT || 35) || 35;
+  const MAX_PAYOUT_PCT = Number(process.env.PORTAL_MAX_PAYOUT_PCT || 0.45) || 0.45;
+  const qty = Math.max(1, Math.floor(numOrZero(opts.qtyHint) || 1));
+
+  let base = Math.floor(subtotal * payoutPct);
+  const svc = String(opts.serviceHint || '').toLowerCase();
+  if (base < 45 && svc.includes('mount')) {
+    base = 45 * qty;
+  }
+
+  let payout = Math.max(MIN_PAYOUT, base);
+  payout = Math.min(payout, subtotal * MAX_PAYOUT_PCT);
+  return round2(payout);
+}
+
+function extractEstimatedPayout(jobRow: any): number {
+  if (!jobRow || typeof jobRow !== 'object') return 0;
+  const safeParseJson = (v: any) => {
+    try { return (typeof v === 'string' ? JSON.parse(v) : v); } catch { return null; }
+  };
+  const meta = safeParseJson(jobRow?.metadata) || safeParseJson(jobRow?.meta) || null;
+
+  return (
+    numOrZero(jobRow?.calc_pro_payout_total) ||
+    numOrZero(jobRow?.pro_payout_total) ||
+    numOrZero(jobRow?.tech_payout_total) ||
+    numOrZero(jobRow?.estimated_payout) ||
+    numOrZero(jobRow?.payout_estimated) ||
+    numOrZero(meta?.calc_pro_payout_total) ||
+    numOrZero(meta?.pro_payout_total) ||
+    numOrZero(meta?.tech_payout_total) ||
+    numOrZero(meta?.estimated_payout) ||
+    numOrZero(meta?.payout_estimated)
+  );
+}
+
+function bestEffortComputePayoutFromCustomerTotals(jobRow: any): number {
+  if (!jobRow || typeof jobRow !== 'object') return 0;
+  const safeParseJson = (v: any) => {
+    try { return (typeof v === 'string' ? JSON.parse(v) : v); } catch { return null; }
+  };
+  const meta = safeParseJson(jobRow?.metadata) || safeParseJson(jobRow?.meta) || {};
+  const serviceHint = String(jobRow?.service_id || jobRow?.service_name || meta?.service_id || meta?.service_name || '');
+
+  const items = (meta?.items_json || meta?.items || meta?.line_items || meta?.lineItems) as any;
+  if (Array.isArray(items) && items.length) {
+    let subtotal = 0;
+    let qtySum = 0;
+    for (const it of items) {
+      if (!it || typeof it !== 'object') continue;
+      const qty = Math.max(1, Math.floor(numOrZero(it.qty || it.quantity || 1) || 1));
+      const line = numOrZero(it.line_total || it.lineTotal || it.line_customer_total || it.lineCustomerTotal);
+      const unit = numOrZero(it.unit_price || it.unitPrice || it.unit_customer_price || it.unitCustomerPrice || it.price);
+
+      if (line > 0) subtotal += line;
+      else if (unit > 0) subtotal += unit * qty;
+      qtySum += qty;
+    }
+    const payout = computeLegacyPercentPayout({ subtotal, serviceHint, qtyHint: qtySum });
+    if (payout > 0) return payout;
+  }
+
+  const subtotal = numOrZero(meta?.subtotal || meta?.order_subtotal || meta?.orderSubtotal || jobRow?.subtotal || jobRow?.order_subtotal || jobRow?.amount_subtotal);
+  if (subtotal > 0) return computeLegacyPercentPayout({ subtotal, serviceHint, qtyHint: 1 });
+
+  const total = numOrZero(meta?.total || meta?.order_total || meta?.orderTotal || jobRow?.total || jobRow?.order_total || jobRow?.amount_total || jobRow?.total_amount);
+  if (total > 0) return computeLegacyPercentPayout({ subtotal: total, serviceHint, qtyHint: 1 });
+
+  return 0;
+}
+
+export function getWeekStart(dateIso: string): string {
+    const d = new Date(dateIso);
+    if (Number.isNaN(d.getTime())) {
+        const now = new Date();
+        const day = now.getUTCDay();
+        const diff = (day === 0 ? -6 : 1) - day;
+        now.setUTCDate(now.getUTCDate() + diff);
+        now.setUTCHours(0, 0, 0, 0);
+        return now.toISOString().slice(0, 10);
+    }
+    const day = d.getUTCDay(); // 0=Sun
+    const diff = (day === 0 ? -6 : 1) - day;
+    d.setUTCDate(d.getUTCDate() + diff);
+    d.setUTCHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+}
+
+// ----------------------------------------------------------------------------
+// Main Orchestration
+// ----------------------------------------------------------------------------
+
+export async function ensureCompletionSideEffects(opts: {
+  jobId: string;
+  completedAtIso: string;
+  actorType: 'pro' | 'admin';
+  actorId: string;
+  requestId?: string;
+}): Promise<{ ok: boolean; error?: string; payoutId?: string; sentMail?: boolean; warning?: string }> {
+  const { jobId, completedAtIso, actorType, actorId } = opts;
+  const rid = opts.requestId || `req_${Date.now()}`;
+  const sb = getSupabase(); // Service role client
+
+  console.log(`[COMPLETION_ORCH_START] jobId=${jobId} actor=${actorType}:${actorId}`);
+
+  // 1. Resolve tables
+  let idCol = 'job_id';
+  let jobsTable = 'h2s_jobs';
+  try {
+     const schema = await resolveDispatchSchema(sb);
+     if (schema) {
+         jobsTable = schema.jobsTable;
+         idCol = schema.jobsIdCol;
+     }
+  } catch {}
+
+  // 2. Load Job (Fail Closed)
+  const { data: job, error: jobError } = await sb.from(jobsTable).select('*').eq(idCol, jobId).single();
+  
+  if (jobError || !job) {
+      console.error(`[COMPLETION_ORCH_FAIL] Job not found: ${jobId}`, jobError);
+      return { ok: false, error: 'Job not found during side-effect orchestration' };
+  }
+
+  // 3. Determine Pro
+  let beneficiaryProId = (actorType === 'pro') ? actorId : null;
+  if (!beneficiaryProId) {
+    beneficiaryProId = job.pro_id || job.assigned_pro_id || job.tech_id || job.technician_id || job.pro_uuid;
+  }
+  
+  // 3b. Update assignments (Legacy Best Effort)
+  const proEmail = job.pro_email || job.email || job.tech_email;
+  
+  // 4. Calculate Payout
+  let amount = extractEstimatedPayout(job);
+  if (amount <= 0) {
+      amount = bestEffortComputePayoutFromCustomerTotals(job);
+  }
+
+  // 4b. Integrity Check: Assert minimum viable payout Logic
+  // Check if amount is suspiciously zero but we have order total?
+  // We won't block on 0, but we will block on NaN or Infinity.
+  if(!Number.isFinite(amount)) return { ok: false, error: 'Calculated payout is non-finite' };
+
+  let payoutId = null;
+
+  // 5. Week Bucket (Service Date Priority)
+  // FIX: Prioritize scheduled_start_at
+  const serviceDateIso = job.scheduled_start_at || job.start_iso || job.start_at || completedAtIso || job.created_at;
+  const weekStart = getWeekStart(serviceDateIso);
+
+  // 5b. Strict Integrity Check
+  if (job.order_total && amount > job.order_total * 0.9) {
+      console.error(`[COMPLETION_INTEGRITY_FAIL] Payout ${amount} exceeds probable max for order ${job.order_total}`);
+      // Fail closed? Or warn? User asked for "log loudly with return error... No silent wrong totals"
+      // Let's fail if it's egregious (>90% of order total). 
+      // Actually 90% is possible for labor-only jobs? let's safe guard at > 100%.
+      if(amount > job.order_total) {
+          return { ok: false, error: 'Payout exceeds order total (Integrity Check Failed)' };
+      }
+  }
+
+  if (beneficiaryProId && amount > 0) {
+      const payoutPayload = {
+          job_id: jobId,
+          pro_id: beneficiaryProId,
+          payout_type: 'job',
+          amount: amount,
+          total_amount: amount,
+          status: 'pending',
+          week_start: weekStart, // The FIX
+          week_bucket: weekStart,
+          meta: {
+              ...(typeof job.metadata === 'object' ? job.metadata : {}),
+              service_date_iso: serviceDateIso,
+              completed_at_iso: completedAtIso,
+              derived_week_start: weekStart
+          },
+          updated_at: new Date().toISOString()
+      };
+
+      try {
+          // Idempotent UPSERT
+          // We rely on unique constraint on (job_id, pro_id, payout_type)
+          // We must match the DB constraint exactly for ON CONFLICT to work.
+          const { data: ins, error: insErr } = await sb.from('h2s_payouts_ledger')
+              .upsert(payoutPayload, { onConflict: 'job_id, pro_id, payout_type' }) 
+              .select('payout_id')
+              .single();
+              
+          if (insErr) {
+             throw insErr;
+          }
+          if (ins) payoutId = ins.payout_id;
+          
+          console.log(`[COMPLETION_ORCH_PAYOUT_UPSERT] jobId=${jobId} payoutId=${payoutId} weekStart=${weekStart} serviceDateIso=${serviceDateIso}`);
+
+      } catch (e: any) {
+          console.error(`[COMPLETION_ORCH_FAIL] Payout upsert failed: ${e.message}`);
+          return { ok: false, error: e.message }; // Fail Closed as requested
+      }
+  } else {
+     console.log(`[COMPLETION_ORCH_SKIP_PAYOUT] amount=${amount}, pro=${beneficiaryProId}`);
+  }
+  
+  // 6. Send Mail
+  // Send to Pro if we have email
+  const targetEmail = proEmail || (actorType === 'pro' ? null : null); // If admin, we used job pro email
+  if (targetEmail && targetEmail.includes('@')) {
+       // Only send completion receipt
+       const emailHtml = `
+         <div style="font-family: sans-serif; color: #333;">
+            <h2>Job Completed</h2>
+            <p><strong>Job ID:</strong> ${jobId}</p>
+            <p><strong>Service:</strong> ${job.service_name || job.title || 'Service'}</p>
+            <p><strong>Service Date:</strong> ${serviceDateIso}</p>
+            <p><strong>Marked Done:</strong> ${completedAtIso}</p>
+            <p><strong>Estimated Payout:</strong> $${amount.toFixed(2)}</p>
+            <hr>
+            <p>This confirmation serves as your receipt.</p>
+         </div>
+       `;
+       const mailRes = await sendMail({
+         to: targetEmail,
+         subject: `Job Completed: ${job.service_name || job.title || 'Service'}`,
+         html: emailHtml,
+         category: 'job_completed',
+         idempotencyKey: `job_completed:${jobId}`,
+         meta: { jobId, proId: beneficiaryProId, amount }
+       });
+       console.log(`[COMPLETION_ORCH_MAIL] jobId=${jobId} type=job_completed skippedOrSent=${mailRes.skipped ? 'skipped' : 'sent'}`);
+  }
+
+  console.log(`[COMPLETION_ORCH_DONE] jobId=${jobId}`);
+  return { ok: true, payoutId };
+}
+/* PS PATCH: completion orchestration shared + service-week bucketing — end */

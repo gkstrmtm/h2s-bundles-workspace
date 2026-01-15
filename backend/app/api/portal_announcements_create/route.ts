@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 async function validateLegacyAdminSession(client: any, token: string): Promise<string | null> {
   if (!token) return null;
@@ -96,7 +96,7 @@ export async function POST(request: Request) {
     const normalized = normalizeBody(body);
 
     // Legacy portal allows admin access either via explicit created_by OR via h2s_admin_sessions session token.
-    const signed = token ? verifyPortalToken(token) : null;
+    const signed = token ? await verifyPortalToken(token) : null;
     const signedAdminEmail = signed?.role === 'admin' ? (signed.email || signed.sub || null) : null;
 
     if (!normalized.title || !normalized.message) {

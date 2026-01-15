@@ -37,7 +37,6 @@ const API = 'https://h2s-backend.vercel.app/api/shop';
 const APIV1 = 'https://h2s-backend.vercel.app/api/schedule-appointment';
 // MIGRATED: Analytics now goes to Vercel (was GAS DASH_URL)
 const DASH_URL = 'https://h2s-backend.vercel.app/api/track';
-const CAL_FORM_URL = 'https://api.leadconnectorhq.com/widget/booking/RjwOQacM3FAjRNCfm6uU';
 const PIXEL_ID = '2384221445259822';
 // Removed Meta Test Events verification code for production
 const TEST_EVENT_CODE = null;
@@ -2929,6 +2928,13 @@ function showCheckoutModal() {
           </div>
         </div>
 
+        <div style="margin-bottom:16px;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" id="coOptIn" checked style="width:18px; height:18px; cursor:pointer;">
+            <span style="font-size:14px; color:var(--ink);">Send me promotional updates and notifications</span>
+          </label>
+        </div>
+
         <div id="coError" style="color:#d32f2f; font-size:14px; margin-bottom:12px; display:none; background:#fee; padding:8px; border-radius:4px;"></div>
 
         <div style="display:flex; gap:10px;">
@@ -3662,7 +3668,7 @@ window.renderShopSuccess = async function(){
     }
   });
 
-  // 4. FETCH ORDER DATA (Parallel)
+  // 4. FETCH ORDER DATA (Parallel) - with retry for webhook timing
   if(sessionId){
     // Mark session (fire and forget)
     fetch(API, {
@@ -3670,80 +3676,107 @@ window.renderShopSuccess = async function(){
       body: JSON.stringify({ __action: 'mark_session', session_id: sessionId, status: 'success_redirect', note: 'User returned from Stripe at ' + new Date().toISOString() })
     }).catch(e => logger.error('Failed to mark session:', e));
 
-    // Fetch order details
-    fetch(`${API}?action=orderpack&session_id=${sessionId}`)
-      .then(res => res.json())
-      .then(data => {
-        if(data.ok && data.summary){
-          logger.log('? Fetched order pack:', data.summary.order_id);
-          
-          // Update Order ID
-          const finalOrderId = data.summary.order_id || sessionId;
-          const finalShortId = finalOrderId.length > 20 ? finalOrderId.substring(0, 20) + '...' : finalOrderId;
-          const idEl = byId('successOrderId');
-          if(idEl) {
-            idEl.textContent = finalShortId;
-            idEl.title = finalOrderId;
-          }
+    // Fetch order details with retry logic (webhook may not have fired yet)
+    let retryCount = 0;
+    const maxRetries = 5;
+    const retryDelay = 2000; // 2 seconds between retries
 
-          // Update Total
-          const total = typeof data.summary.total === 'number' ? data.summary.total : 0;
-          const tax = typeof data.summary.tax === 'number' ? data.summary.tax : 0;
-          const currency = data.summary.currency || 'USD';
-          
-          const totalEl = byId('successOrderTotal');
-          if(totalEl) totalEl.innerHTML = `${money(total)} <span style="font-size: 14px; font-weight: 600; color: var(--muted);">${currency}</span>`;
-
-          // Update Tax Display
-          const taxRow = byId('successTaxRow');
-          const taxEl = byId('successTaxAmount');
-          if(taxRow && taxEl) {
-            if(tax > 0) {
-              taxRow.style.display = 'flex';
-              taxEl.textContent = money(tax);
-            } else {
-              taxRow.style.display = 'none';
+    const fetchOrderData = () => {
+      fetch(`${API}?action=orderpack&session_id=${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+          if(data.ok && data.summary){
+            logger.log('✓ Fetched order pack:', data.summary.order_id);
+            
+            // Update Order ID
+            const finalOrderId = data.summary.order_id || sessionId;
+            const finalShortId = finalOrderId.length > 20 ? finalOrderId.substring(0, 20) + '...' : finalOrderId;
+            const idEl = byId('successOrderId');
+            if(idEl) {
+              idEl.textContent = finalShortId;
+              idEl.title = finalOrderId;
             }
-          }
 
-          // Update Items
-          const itemsEl = byId('successOrderItems');
-          if(itemsEl && data.lines && data.lines.length > 0) {
-            const parts = [];
-            data.lines.forEach(l => {
-              const name = l.service_name || l.name || l.bundle_id || l.service_id || (l.line_type === 'bundle' ? 'Bundle' : 'Service');
-              parts.push(`<div style="margin-bottom:4px;">• ${Number(l.qty||1)}x ${escapeHtml(name)}</div>`);
+            // Update Total
+            const total = typeof data.summary.total === 'number' ? data.summary.total : 0;
+            const tax = typeof data.summary.tax === 'number' ? data.summary.tax : 0;
+            const currency = (data.summary.currency || 'USD').toUpperCase();
+            
+            const totalEl = byId('successOrderTotal');
+            if(totalEl) totalEl.innerHTML = `${money(total)} <span style="font-size: 14px; font-weight: 600; color: var(--muted);">${currency}</span>`;
+
+            // Update Tax Display
+            const taxRow = byId('successTaxRow');
+            const taxEl = byId('successTaxAmount');
+            if(taxRow && taxEl) {
+              if(tax > 0) {
+                taxRow.style.display = 'flex';
+                taxEl.textContent = money(tax);
+              } else {
+                taxRow.style.display = 'none';
+              }
+            }
+
+            // Update Items
+            const itemsEl = byId('successOrderItems');
+            if(itemsEl && data.lines && data.lines.length > 0) {
+              const parts = [];
+              data.lines.forEach(l => {
+                const name = l.service_name || l.name || l.bundle_id || l.service_id || (l.line_type === 'bundle' ? 'Bundle' : 'Service');
+                parts.push(`<div style="margin-bottom:4px;">• ${Number(l.qty||1)}x ${escapeHtml(name)}</div>`);
+              });
+              itemsEl.innerHTML = parts.join('');
+            } else if(itemsEl) {
+              itemsEl.textContent = 'Order details loaded';
+            }
+            
+            // Update Promo
+            if(data.summary.discount_code) {
+              const promoRow = byId('successPromoRow');
+              const promoCode = byId('successPromoCode');
+              if(promoRow && promoCode) {
+                promoRow.style.display = 'flex';
+                promoCode.textContent = data.summary.discount_code;
+              }
+            }
+            
+            // Track Purchase with complete customer data
+            h2sTrack('Purchase', {
+              order_id: finalOrderId,
+              value: String(total),
+              currency: currency,
+              num_items: String(data.lines?.length || 0),
+              customer_email: user?.email || data.customer?.email || null,
+              customer_phone: user?.phone || data.customer?.phone || null,
+              revenue_amount: parseFloat(total) || 0
             });
-            itemsEl.innerHTML = parts.join('');
-          } else if(itemsEl) {
-            itemsEl.textContent = 'Order details loaded';
+            
+          } else if(!data.ok && retryCount < maxRetries) {
+            // Order not in DB yet (webhook hasn't fired), retry
+            retryCount++;
+            logger.log(`⏳ Order not ready, retrying ${retryCount}/${maxRetries}...`);
+            setTimeout(fetchOrderData, retryDelay);
+          } else if(retryCount >= maxRetries) {
+            // Max retries reached, show fallback
+            logger.warn('⚠ Max retries reached, using fallback display');
+            const totalEl = byId('successOrderTotal');
+            const itemsEl = byId('successOrderItems');
+            if(totalEl) totalEl.textContent = 'Processing...';
+            if(itemsEl) itemsEl.textContent = 'Order is being processed. You will receive a confirmation email shortly.';
           }
-          
-          // Update Promo
-          if(data.summary.discount_code) {
-            const promoRow = byId('successPromoRow');
-            const promoCode = byId('successPromoCode');
-            if(promoRow && promoCode) {
-              promoRow.style.display = 'flex';
-              promoCode.textContent = data.summary.discount_code;
-            }
+        })
+        .catch(err => {
+          logger.error('Failed to fetch order pack:', err);
+          if(retryCount < maxRetries) {
+            retryCount++;
+            logger.log(`⏳ Fetch error, retrying ${retryCount}/${maxRetries}...`);
+            setTimeout(fetchOrderData, retryDelay);
           }
-          
-          // Track Purchase with complete customer data
-          h2sTrack('Purchase', {
-            order_id: finalOrderId,
-            value: String(total),
-            currency: currency,
-            num_items: String(data.lines?.length || 0),
-            customer_email: user?.email || data.customer?.email || null,
-            customer_phone: user?.phone || data.customer?.phone || null,
-            revenue_amount: parseFloat(total) || 0
-          });
-          
-          // Cart already cleared at top of renderShopSuccess
-        }
-      })
-      .catch(err => logger.error('Failed to fetch order pack:', err));
+        });
+    };
+
+    // Start fetching
+    fetchOrderData();
   }
   // Cart already cleared at top of renderShopSuccess
 

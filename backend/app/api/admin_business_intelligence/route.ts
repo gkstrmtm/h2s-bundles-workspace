@@ -257,24 +257,51 @@ function isoDayFrom(value: any): string {
   return new Date(t).toISOString().slice(0, 10);
 }
 
-async function loadJobs(sb: any, jobsTable: string, days: number) {
+async function loadJobs(sb: any, mainSb: any | null, jobsTable: string, days: number) {
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  let jobs: any[] = [];
 
+  // 1. Fetch Dispatch Jobs
   try {
     const { data, error } = await sb.from(jobsTable).select('*').gte('created_at', sinceIso).limit(2000);
-    if (!error && Array.isArray(data)) return data;
+    if (!error && Array.isArray(data)) jobs = data;
   } catch {
-    // ignore
+     try {
+       const { data } = await sb.from(jobsTable).select('*').limit(500);
+       if (Array.isArray(data)) jobs = data;
+     } catch {}
   }
 
-  try {
-    const { data, error } = await sb.from(jobsTable).select('*').limit(500);
-    if (!error && Array.isArray(data)) return data;
-  } catch {
-    // ignore
+  // 2. Fetch Orders (Source of Truth) and Merge
+  if (mainSb) {
+    try {
+      const { data: orders } = await mainSb.from('h2s_orders').select('*').gte('created_at', sinceIso).limit(2000);
+      
+      if (Array.isArray(orders)) {
+        const existingJobIds = new Set(jobs.map(j => String(j.job_id || j.id || '')));
+        const existingOrderIds = new Set(jobs.map(j => extractOrderKey(j)).filter(Boolean));
+
+        const virtualJobs = orders.filter((o: any) => {
+           // If we have a job for this order, skip
+           if (o.order_id && existingOrderIds.has(o.order_id)) return false;
+           // If we have a job matching the metadata, skip
+           const meta = parseMaybeJson(o.metadata_json) || parseMaybeJson(o.metadata) || {};
+           const jid = meta.dispatch_job_id || meta.job_id;
+           if (jid && existingJobIds.has(jid)) return false;
+           return true;
+        }).map((o: any) => ({
+           ...o,
+           job_id: o.id, // Use Order UUID as Job ID
+           status: o.status === 'paid' ? 'unassigned' : (o.status || 'pending'),
+           is_virtual: true
+        }));
+        
+        jobs = [...jobs, ...virtualJobs];
+      }
+    } catch {}
   }
 
-  return [];
+  return jobs;
 }
 
 async function loadActiveProsCount(dispatchSb: any, mainSb: any | null): Promise<number> {
@@ -366,8 +393,9 @@ async function handle(request: Request, body: any) {
   const schema = await resolveDispatchSchema(sb);
   const jobsTable = schema?.jobsTable || 'h2s_dispatch_jobs';
 
-  const days = 30;
-  const jobs = await loadJobs(sb, jobsTable, days);
+  // FIX: Allow configurable days, default to 365 to show reality (subject to 2000 limit)
+  const days = body?.days ? Number(body.days) : 365;
+  const jobs = await loadJobs(sb, main, jobsTable, days);
 
   const orderKeys = jobs.map(extractOrderKey).filter(Boolean);
   const ordersIndex = main ? await loadOrdersIndex(main, orderKeys) : new Map<string, any>();
@@ -398,7 +426,7 @@ async function handle(request: Request, body: any) {
   const statusCol = schema?.jobsStatusCol || 'status';
 
   const completedStatuses = new Set(['completed', 'pending_payment', 'paid']);
-  const pendingStatuses = new Set(['pending', 'pending_scheduling', 'offer_sent', 'accepted', 'scheduled', 'unassigned', 'new']);
+  const pendingStatuses = new Set(['pending', 'queued', 'pending_scheduling', 'offer_sent', 'accepted', 'scheduled', 'unassigned', 'new']);
 
   let jobsCompleted = 0;
   let jobsPending = 0;
@@ -477,7 +505,7 @@ async function handle(request: Request, body: any) {
   // Simple MoM approximation: compare last 30d vs previous 30d if possible
   let momGrowth = 0;
   try {
-    const prevJobs = await loadJobs(sb, jobsTable, 60);
+    const prevJobs = await loadJobs(sb, main, jobsTable, 60);
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const thisPeriod = prevJobs.filter((j: any) => (j?.created_at ? new Date(j.created_at).getTime() : 0) >= cutoff).length;
     const prevPeriod = prevJobs.length - thisPeriod;

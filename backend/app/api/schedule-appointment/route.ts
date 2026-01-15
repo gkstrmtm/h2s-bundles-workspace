@@ -3,6 +3,7 @@ import { getSupabase } from '@/lib/supabase';
 import { getSupabaseDispatch } from '@/lib/supabase';
 import { ensureDispatchOfferAssignmentForJob } from '@/lib/dispatchOfferAssignment';
 import { resolveDispatchRequiredIds } from '@/lib/dispatchRequiredIds';
+import { filterDispatchJobPayload } from '@/lib/dispatchJobGuardrails';
 import twilio from 'twilio';
 
 // Initialize Twilio client for customer notifications
@@ -10,36 +11,63 @@ const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_T
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
   : null;
 
-/**
- * Calculates technician payout from order data
- * BUSINESS RULES:
- * - Base: 35% of subtotal
- * - Floor: $35 minimum ($45 for TV mounting)
- * - Cap: 45% of subtotal maximum
- */
-function estimatePayout(order: any): number {
-  const subtotal = Number(order?.order_subtotal || order?.subtotal || order?.order_total || order?.total || 0);
-  if (!Number.isFinite(subtotal) || subtotal <= 0) return 35; // Return minimum if no valid subtotal
-  
-  let payout = Math.floor(subtotal * 0.35);
-  
-  // Apply floor
-  const MIN = 35;
-  payout = Math.max(MIN, payout);
-  
-  // Special rule: TV mounting minimum is $45
-  const serviceId = String(order?.service_id || order?.service_name || '').toLowerCase();
-  if (payout < 45 && (serviceId.includes('mount') || serviceId.includes('tv'))) {
-    payout = 45;
+type StrictPayout = {
+  subtotal_cents: number;
+  tech_payout_cents: number;
+  tech_payout_dollars: number;
+};
+
+function requirePositiveNumber(value: any): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  if (n <= 0) return null;
+  return n;
+}
+
+function computeStrictTechPayout(order: any, metadata?: any): StrictPayout {
+  // Source of truth: h2s_orders (and its metadata_json).
+  // Rules:
+  // - Use pre-discount subtotal (NOT Stripe paid amount).
+  // - If subtotal missing or 0: hard error.
+
+  const meta = metadata || {};
+
+  // 1) Preferred: cents computed at checkout.
+  const subtotalFromMetaCents =
+    requirePositiveNumber(meta.job_value_cents) ?? requirePositiveNumber(meta.cart_subtotal_cents);
+  if (subtotalFromMetaCents != null) {
+    const subtotalCents = Math.round(subtotalFromMetaCents);
+    const payoutCents = Math.round(subtotalCents * 0.35);
+    return {
+      subtotal_cents: subtotalCents,
+      tech_payout_cents: payoutCents,
+      tech_payout_dollars: Math.round((payoutCents / 100) * 100) / 100,
+    };
   }
-  
-  // Apply cap
-  const MAX_PCT = 0.45;
-  if (subtotal > 0) {
-    payout = Math.min(payout, subtotal * MAX_PCT);
+
+  // 2) Next: order columns (assumed dollars).
+  const subtotalFromOrderDollars =
+    requirePositiveNumber(order?.order_subtotal) ??
+    requirePositiveNumber(order?.subtotal) ??
+    requirePositiveNumber(meta.order_subtotal) ??
+    requirePositiveNumber(meta.subtotal) ??
+    requirePositiveNumber(meta.bundle_price);
+
+  if (subtotalFromOrderDollars == null) {
+    throw new Error('Missing pre-discount subtotal on order; cannot compute technician payout');
   }
-  
-  return Math.round(payout * 100) / 100;
+
+  const subtotalCents = Math.round(subtotalFromOrderDollars * 100);
+  if (!Number.isFinite(subtotalCents) || subtotalCents <= 0) {
+    throw new Error('Invalid pre-discount subtotal on order; cannot compute technician payout');
+  }
+
+  const payoutCents = Math.round(subtotalCents * 0.35);
+  return {
+    subtotal_cents: subtotalCents,
+    tech_payout_cents: payoutCents,
+    tech_payout_dollars: Math.round((payoutCents / 100) * 100) / 100,
+  };
 }
 
 function corsHeaders() {
@@ -293,11 +321,43 @@ async function safeInsertDispatchJob(dispatch: any, initialPayload: any) {
 
     lastError = error;
 
+    // Handle unique constraint violation on (recipient_id, step_id)
+    // This means the chosen recipient already has a job at this step
+    if (String(error?.code || '') === '23505' && String(error?.message || '').includes('h2s_dispatch_jobs_recipient_step_uq')) {
+      console.log(`[Schedule] Recipient ${payload.recipient_id} already has a job at step ${payload.step_id}, finding alternative...`);
+      
+      // Find all busy recipients at this step
+      const { data: busyJobs } = await dispatch
+        .from('h2s_dispatch_jobs')
+        .select('recipient_id')
+        .eq('step_id', payload.step_id);
+      
+      const busyRecipients = new Set((busyJobs || []).map((j: any) => j.recipient_id));
+      
+      // Get all recipients from h2s_recipients (not h2s_dispatch_pros!)
+      const { data: allRecipients } = await dispatch.from('h2s_recipients').select('recipient_id').limit(100);
+      
+      if (allRecipients && allRecipients.length > 0) {
+        // Filter to available recipients (not busy at this step)
+        const availableRecipients = allRecipients.filter((r: any) => !busyRecipients.has(r.recipient_id));
+        
+        if (availableRecipients.length > 0) {
+          // Pick first available recipient
+          payload.recipient_id = availableRecipients[0].recipient_id;
+          console.log(`[Schedule] Switched to available recipient: ${payload.recipient_id}`);
+          continue; // Retry insert with new recipient
+        } else {
+          console.warn(`[Schedule] All ${allRecipients.length} recipients are busy at this step!`);
+          return { data: null, error: new Error('All recipients are busy at this step'), payload, removed };
+        }
+      }
+    }
+
     // Handle NOT NULL constraints that may appear in the dispatch DB schema.
     // This prevents deploy-time schema drift from breaking checkout/scheduling flows.
     if (String(error?.code || '') === '23502') {
       const col = extractNotNullColumnFromSupabaseError(error);
-      if ((col === 'sequence_id' || col === 'recipient_id' || col === 'step_id') && (payload as any)[col] == null) {
+      if ((col === 'sequence_id' || col === 'recipient_id' || col === 'step_id' || col === 'due_at') && (payload as any)[col] == null) {
         const picked = await resolveDispatchRequiredIds(dispatch);
         if (col === 'sequence_id' && picked.sequenceId) {
           payload.sequence_id = picked.sequenceId;
@@ -309,6 +369,11 @@ async function safeInsertDispatchJob(dispatch: any, initialPayload: any) {
         }
         if (col === 'step_id' && picked.stepId) {
           payload.step_id = picked.stepId;
+          continue;
+        }
+        if (col === 'due_at') {
+          // ✅ FIX: Add due_at if missing
+          payload.due_at = payload.start_iso || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
           continue;
         }
 
@@ -402,6 +467,12 @@ export async function POST(request: Request) {
       const lat = typeof body.lat === 'number' ? body.lat : null;
       const lng = typeof body.lng === 'number' ? body.lng : null;
 
+      console.log('[Schedule API] ========== RECEIVED APPOINTMENT REQUEST ==========');
+      console.log('[Schedule API] Order Key:', orderKey);
+      console.log('[Schedule API] Delivery Date:', delivery_date);
+      console.log('[Schedule API] Delivery Time:', delivery_time);
+      console.log('[Schedule API] Full body:', JSON.stringify(body, null, 2));
+
       if (!orderKey) {
         return NextResponse.json({ ok: false, error: 'Missing order_id' }, { status: 400, headers: corsHeaders() });
       }
@@ -457,14 +528,65 @@ export async function POST(request: Request) {
       const order: any = orderRes.data;
       const canonicalOrderId = String(order.order_id || order.id);  // Use order_id (ORD-XXX) not UUID id
 
-      // Update order with scheduled appointment
+      // Parse existing metadata
+      const existingMeta = safeParseJson(order.metadata_json) || safeParseJson(order.metadata) || {};
+      
+      let strictPayout: StrictPayout;
+      try {
+        strictPayout = computeStrictTechPayout(order, existingMeta);
+      } catch (e: any) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: String(e?.message || 'Unable to compute technician payout'),
+          },
+          { status: 500, headers: corsHeaders() }
+        );
+      }
+
+      // Strict payout: 35% of pre-discount subtotal only.
+      const estimatedPayout = strictPayout.tech_payout_dollars;
+      
+      console.log('[Schedule] ========== PAYOUT CALCULATION ==========');
+      console.log('[Schedule] Order ID:', canonicalOrderId);
+      console.log('[Schedule] Order total:', order?.order_total);
+      console.log('[Schedule] Order subtotal:', order?.order_subtotal);
+      console.log('[Schedule] Metadata job_details:', existingMeta?.job_details);
+      console.log('[Schedule] Estimated payout:', estimatedPayout);
+
+      // Update order with scheduled appointment AND payout
+      const updatedMetadata = {
+        ...existingMeta,
+        delivery_date,
+        delivery_time,
+        payout_rate: 0.35,
+        job_value_cents: existingMeta?.job_value_cents ?? strictPayout.subtotal_cents,
+        tech_payout_cents: strictPayout.tech_payout_cents,
+        tech_payout_dollars: strictPayout.tech_payout_dollars,
+        payout_estimated: estimatedPayout,
+        scheduled_at: new Date().toISOString(),
+        dispatch_job_id: existingMeta?.dispatch_job_id || null, // ✅ Link to dispatch job (if already known)
+        install_date: delivery_date, // Duplicate for convenience
+        install_window: delivery_time, // Duplicate for convenience
+      };
+      
       const { error: updateError } = await main
         .from('h2s_orders')
-        .update({ delivery_date, delivery_time, updated_at: new Date().toISOString() })
+        .update({ 
+          delivery_date, 
+          delivery_time, 
+          metadata_json: updatedMetadata,
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', order.id);
       if (updateError) {
+        console.error('[Schedule API] Failed to update order:', updateError);
         return NextResponse.json({ ok: false, error: updateError.message }, { status: 500, headers: corsHeaders() });
       }
+      
+      console.log('[Schedule API] Successfully updated order', canonicalOrderId, 'with date:', delivery_date, 'time:', delivery_time, 'payout:', estimatedPayout);
+      console.log('[Schedule API] ✅ Payout stored in h2s_orders.metadata_json.payout_estimated');
+      console.log('[Schedule API] Job linkage (if present): metadata_json.dispatch_job_id =', updatedMetadata.dispatch_job_id);
 
       // Derive address fields (prefer metadata_json)
       const metaObj = safeParseJson(order.metadata_json) || safeParseJson(order.metadata) || {};
@@ -626,11 +748,14 @@ export async function POST(request: Request) {
       const customerEmail = String(order.customer_email || metaObj?.customer_email || '').trim();
       const customerPhone = String(order.customer_phone || metaObj?.customer_phone || '').trim();
 
-      const desiredStartIso = start_iso || computeStartIsoFromWindow(delivery_date, delivery_time);
+      // Compute an ISO timestamp for the install date/time.
+      // If we can't parse the provided window, fall back to noon UTC on the scheduled date
+      // so the portal always displays the correct install DATE (and avoids timezone day-rollover).
+      const desiredStartIso =
+        start_iso ||
+        computeStartIsoFromWindow(delivery_date, delivery_time) ||
+        `${delivery_date}T12:00:00.000Z`;
       const desiredEndIso = end_iso || null;
-
-      // ===== Calculate payout using standardized algorithm =====
-      const estimatedPayout = estimatePayout(order);
 
       // Parse items from order data
       let itemsJson: any[] = [];
@@ -678,24 +803,47 @@ export async function POST(request: Request) {
       if (existingJob?.job_id) {
         jobId = String(existingJob.job_id);
 
+        // ✅ SCHEMA COMPLIANCE: Update ONLY valid columns in h2s_dispatch_jobs
+        // NO metadata column - all payout/install info is in h2s_orders.metadata_json
         const updateJob: any = {
-          status: 'scheduled',
+          status: 'queued', // ✅ Activate job for technicians
           updated_at: new Date().toISOString(),
-          metadata: enrichedMetadata, // Update metadata with payout
+          // ❌ NO metadata field (column doesn't exist)
+          // ✅ Update due_at to match scheduled install date
         };
-        if (desiredStartIso) updateJob.start_iso = desiredStartIso;
-        if (desiredEndIso) updateJob.end_iso = desiredEndIso;
-        if (geoLat !== null && geoLng !== null) {
+        
+        // ✅ CRITICAL: Set due_at to actual install date (not tomorrow)
+        // Portal reads: job.due_at to display install date
+        if (desiredStartIso) {
+          updateJob.due_at = desiredStartIso; // ISO timestamp with time
+          if ('start_iso' in (existingJob || {})) {
+            updateJob.start_iso = desiredStartIso; // Only if column exists
+          }
+        }
+        if (desiredEndIso && 'end_iso' in (existingJob || {})) {
+          updateJob.end_iso = desiredEndIso; // Only if column exists
+        }
+        
+        console.log('[Schedule] ========== UPDATING JOB WITH INSTALL DATE ==========');
+        console.log('[Schedule] Job ID:', jobId);
+        console.log('[Schedule] Install date (YYYY-MM-DD):', delivery_date);
+        console.log('[Schedule] Install window:', delivery_time);
+        console.log('[Schedule] Due at (install datetime):', desiredStartIso);
+        console.log('[Schedule] ✅ Payout stored in h2s_orders.metadata_json.tech_payout_dollars:', estimatedPayout);
+        console.log('[Schedule] ✅ NO metadata field written to dispatch_jobs (column does not exist)');
+        
+        // Add geo, address fields if they exist in schema
+        if (geoLat !== null && geoLng !== null && 'geo_lat' in (existingJob || {})) {
           updateJob.geo_lat = geoLat;
           updateJob.geo_lng = geoLng;
         }
-        if (address) updateJob.service_address = address;
-        if (city) updateJob.service_city = city;
-        if (state) updateJob.service_state = state;
-        if (zip) updateJob.service_zip = zip;
-        if (customerName) updateJob.customer_name = customerName;
-        if (customerPhone) updateJob.customer_phone = customerPhone;
-        if (serviceId) updateJob.service_id = serviceId;
+        if (address && 'service_address' in (existingJob || {})) updateJob.service_address = address;
+        if (city && 'service_city' in (existingJob || {})) updateJob.service_city = city;
+        if (state && 'service_state' in (existingJob || {})) updateJob.service_state = state;
+        if (zip && 'service_zip' in (existingJob || {})) updateJob.service_zip = zip;
+        if (customerName && 'customer_name' in (existingJob || {})) updateJob.customer_name = customerName;
+        if (customerPhone && 'customer_phone' in (existingJob || {})) updateJob.customer_phone = customerPhone;
+        if (serviceId && 'service_id' in (existingJob || {})) updateJob.service_id = serviceId;
         if (existingJob.order_id !== canonicalOrderId) {
           updateJob.order_id = canonicalOrderId;
         }
@@ -704,20 +852,49 @@ export async function POST(request: Request) {
         if (updRes.error) {
           console.warn('[Schedule] Job update returned error (non-fatal):', updRes.error?.message || updRes.error);
         } else {
-          console.log('[Schedule] Updated existing job:', jobId);
+          console.log('[Schedule] ✅ Job updated successfully:', jobId);
+          console.log('[Schedule] ========== JOB UPDATE CONFIRMED ==========');
+          console.log('[Schedule] Fields written to h2s_dispatch_jobs:');
+          console.log('[Schedule]   - due_at:', updateJob.due_at, '(✅ install date)');
+          console.log('[Schedule]   - status: queued (✅ activated for technicians)');
+          console.log('[Schedule] Payout data stored in h2s_orders.metadata_json:');
+          console.log('[Schedule]   - tech_payout_dollars:', estimatedPayout);
+          console.log('[Schedule]   - install_date:', delivery_date);
+          console.log('[Schedule]   - install_window:', delivery_time);
+          console.log('[Schedule] Portal will query h2s_orders to display payout');
         }
       } else {
         // Build job object - start with required fields only
         const insertJob: any = {
-          status: 'scheduled',
+          status: 'queued', // ✅ Only 'queued' is allowed by check constraint
           created_at: new Date().toISOString(),
+          due_at: desiredStartIso || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Use delivery date or default to tomorrow
+          order_id: canonicalOrderId, // ✅ Link to h2s_orders (source of payout + install details)
+          attempt_count: 0,
         };
 
-        // Some dispatch schemas require recipient_id (NOT NULL). If so, reuse an existing recipient_id.
-        const attemptedRecipientId = await pickDispatchRecipientId(dispatch);
-        if (attemptedRecipientId) {
-          insertJob.recipient_id = attemptedRecipientId;
+        // ✅ FIX: Use a valid recipient_id from h2s_recipients table
+        // First try to get from existing jobs (most reliable)
+        let validRecipientId: string | null = null;
+        try {
+          const { data: recentJobs } = await dispatch
+            .from('h2s_dispatch_jobs')
+            .select('recipient_id')
+            .not('recipient_id', 'is', null)
+            .limit(1);
+          if (recentJobs && recentJobs.length > 0) {
+            validRecipientId = recentJobs[0].recipient_id;
+          }
+        } catch (e) {
+          console.warn('[Schedule] Could not fetch recent jobs for recipient_id');
         }
+
+        // Fallback to known valid recipient_id from h2s_recipients
+        if (!validRecipientId) {
+          validRecipientId = '2ddbb40b-5587-4bd9-b78d-e7ff8754968f'; // default-dispatch-recipient
+        }
+
+        insertJob.recipient_id = validRecipientId;
 
         // Some dispatch schemas require a non-null recipient_id.
         // Best-effort: choose a fallback pro/recipient from dispatch pros.
@@ -725,63 +902,27 @@ export async function POST(request: Request) {
         if (fallbackRecipientId && !insertJob.recipient_id) {
           insertJob.recipient_id = fallbackRecipientId;
         }
-        
-        // Build comprehensive metadata including geo coordinates
-        const jobMetadata: any = enrichedMetadata || {};
-        
-        // Always save geo in metadata (guaranteed to work)
-        if (geoLat !== null && geoLng !== null) {
-          jobMetadata.geo_lat = geoLat;
-          jobMetadata.geo_lng = geoLng;
-          jobMetadata.geocoded = true;
-        }
-        
-        // Save all address and contact info in metadata
-        if (address) jobMetadata.service_address = address;
-        if (city) jobMetadata.service_city = city;
-        if (state) jobMetadata.service_state = state;
-        if (zip) jobMetadata.service_zip = zip;
-        if (customerEmail) jobMetadata.customer_email = customerEmail;
-        if (customerName) jobMetadata.customer_name = customerName;
-        if (customerPhone) jobMetadata.customer_phone = customerPhone;
-        if (serviceId) jobMetadata.service_id = serviceId;
-        
-        // Save metadata in multiple common column names; safeInsert will strip unknown columns.
-        insertJob.metadata = jobMetadata;
-        insertJob.metadata_json = jobMetadata;
-        insertJob.meta = jobMetadata;
 
-        // Attempt to persist a first-class order reference if the schema supports it.
-        insertJob.order_id = canonicalOrderId;
-        insertJob.order_number = canonicalOrderId;
-        insertJob.order_ref = canonicalOrderId;
-        
-        // Add common first-class columns in INSERT (best-effort).
-        if (customerName) insertJob.customer_name = customerName;
-        if (customerPhone) insertJob.customer_phone = customerPhone;
-        if (address) insertJob.address = address;
-        if (city) insertJob.city = city;
-        if (state) insertJob.state = state;
-        if (zip) insertJob.zip = zip;
-        if (address) insertJob.service_address = address;
-        if (city) insertJob.service_city = city;
-        if (state) insertJob.service_state = state;
-        if (zip) insertJob.service_zip = zip;
-        if (serviceId) insertJob.service_id = serviceId;
-        if (order?.service_name) insertJob.service_name = String(order.service_name);
-        if (desiredStartIso) insertJob.start_iso = desiredStartIso;
-        if (desiredEndIso) insertJob.end_iso = desiredEndIso;
-        if (geoLat !== null) insertJob.geo_lat = geoLat;
-        if (geoLng !== null) insertJob.geo_lng = geoLng;
+        // Ensure required dispatch IDs exist (sequence_id / step_id) without inventing columns.
+        try {
+          const picked = await resolveDispatchRequiredIds(dispatch);
+          if (picked?.sequenceId) insertJob.sequence_id = picked.sequenceId;
+          if (picked?.stepId) insertJob.step_id = picked.stepId;
+        } catch (_) {
+          // non-fatal; safeInsertDispatchJob will attempt to recover on NOT NULL errors
+        }
+
+        // Final clamp: only send columns that exist on h2s_dispatch_jobs.
+        const clampedInsertJob = filterDispatchJobPayload(insertJob);
         
         console.log('[Schedule] Creating job for order:', canonicalOrderId);
         console.log('[Schedule] Customer:', customerName, customerPhone, customerEmail);
         console.log('[Schedule] Address:', address, `${city}, ${state} ${zip}`);
         console.log('[Schedule] Geo:', geoLat, geoLng);
-        console.log('[Schedule] insertJob payload:', JSON.stringify(insertJob, null, 2));
+        console.log('[Schedule] insertJob payload:', JSON.stringify(clampedInsertJob, null, 2));
         
         // Insert with retries for schema mismatches (unknown columns)
-        const { data: newJob, error: jobErr, payload: finalInsertPayload, removed: removedColumns } = await safeInsertDispatchJob(dispatch, insertJob);
+        const { data: newJob, error: jobErr, payload: finalInsertPayload, removed: removedColumns } = await safeInsertDispatchJob(dispatch, clampedInsertJob);
         
         if (jobErr) {
           console.error('[Schedule] Job insert failed:', jobErr.message, jobErr.code);
@@ -793,40 +934,31 @@ export async function POST(request: Request) {
           jobCreationDebug = {
             inserted_payload_keys: Object.keys(finalInsertPayload || {}),
             stripped_columns: removedColumns,
-            attempted_recipient_id: attemptedRecipientId || fallbackRecipientId || null,
+            attempted_recipient_id: validRecipientId || fallbackRecipientId || null,
             error_code: jobErr.code || null,
           };
         } else {
           jobId = String(newJob.job_id);
           console.log('[Schedule] ✅ Job created:', jobId);
           
-          // Best-effort: update additional fields (tolerate schema mismatch).
-          const updatePayload: any = {
-            updated_at: new Date().toISOString(),
-            metadata: jobMetadata,
-            metadata_json: jobMetadata,
-            meta: jobMetadata,
-          };
-          if (serviceId) updatePayload.service_id = serviceId;
-          if (order?.service_name) updatePayload.service_name = String(order.service_name);
-          if (customerName) updatePayload.customer_name = customerName;
-          if (customerPhone) updatePayload.customer_phone = customerPhone;
-          if (address) updatePayload.address = address;
-          if (city) updatePayload.city = city;
-          if (state) updatePayload.state = state;
-          if (zip) updatePayload.zip = zip;
-          if (address) updatePayload.service_address = address;
-          if (city) updatePayload.service_city = city;
-          if (state) updatePayload.service_state = state;
-          if (zip) updatePayload.service_zip = zip;
-          if (desiredStartIso) updatePayload.start_iso = desiredStartIso;
-          if (desiredEndIso) updatePayload.end_iso = desiredEndIso;
-          if (geoLat !== null) updatePayload.geo_lat = geoLat;
-          if (geoLng !== null) updatePayload.geo_lng = geoLng;
-
-          const updRes = await safeUpdateDispatchJob(dispatch, jobId, updatePayload);
-          if (updRes.error) {
-            console.warn('[Schedule] Non-critical: Additional fields update returned error:', updRes.error?.message || updRes.error);
+          // ✅ UPDATE ORDER: Write dispatch_job_id back to order metadata
+          try {
+            const orderMetadata = safeParseJson(order.metadata_json) || safeParseJson(order.metadata) || {};
+            const updatedOrderMetadata = {
+              ...orderMetadata,
+              dispatch_job_id: jobId,
+              estimated_payout: estimatedPayout,
+              geo_lat: geoLat,
+              geo_lng: geoLng,
+            };
+            
+            await main.from('h2s_orders').update({ 
+              metadata_json: updatedOrderMetadata 
+            }).eq('order_id', canonicalOrderId);
+            
+            console.log('[Schedule] ✅ Order metadata updated with job_id');
+          } catch (err: any) {
+            console.warn('[Schedule] Non-critical: Failed to update order metadata:', err?.message);
           }
         }
       }

@@ -452,6 +452,11 @@ export async function POST(request: Request) {
     has_customer_phone: !!body.customer_phone
   });
 
+  // DEBUGGING: Log scan data
+  if((body.event_name === 'debug_paint_scan' || body.event_name === 'DebugPaint' || body.event_name === 'DebugFlash') && (body.top_element || body.scan_id)) {
+     console.log('[DEBUG_PAINT_SCAN]', JSON.stringify(body, null, 2));
+  }
+
   try {
     // Get database client
     const db1Client = getSupabaseDb1();

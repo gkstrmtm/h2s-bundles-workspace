@@ -147,10 +147,40 @@ export async function POST(request: Request) {
       );
     }
     
-    // Upload to storage (reuse existing storage logic)
-    const storagePath = `customer-uploads/${jobId}/${Date.now()}-${filename}`;
+    // ✅ DE-DUPLICATION: Check file hash to prevent duplicate uploads
+    const crypto = await import('crypto');
     const base64Data = data.split(',')[1] || data;
     const buffer = Buffer.from(base64Data, 'base64');
+    const fileHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    
+    // Check if this exact file was already uploaded for this job
+    const { data: existingUpload, error: hashCheckError } = await dispatchClient
+      .from('job_customer_uploads')
+      .select('upload_id, file_url, created_at')
+      .eq('job_id', jobId)
+      .eq('file_hash', fileHash)
+      .is('deleted_at', null)
+      .maybeSingle();
+    
+    if (existingUpload) {
+      console.log('[customer_upload] Duplicate detected (hash match):', fileHash);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'This photo has already been uploaded',
+          error_code: 'duplicate_photo',
+          existing_upload: {
+            upload_id: existingUpload.upload_id,
+            file_url: existingUpload.file_url,
+            uploaded_at: existingUpload.created_at
+          }
+        },
+        { status: 409, headers: corsHeaders(request) } // 409 Conflict
+      );
+    }
+    
+    // Upload to storage (reuse existing storage logic)
+    const storagePath = `customer-uploads/${jobId}/${Date.now()}-${filename}`;
     
     const { data: uploadData, error: uploadError } = await dispatchClient.storage
       .from('h2s-job-artifacts')
@@ -186,6 +216,7 @@ export async function POST(request: Request) {
         file_url: fileUrl,
         file_mime: mimetype,
         file_size: fileSize,
+        file_hash: fileHash, // ✅ Store hash for de-duplication
         storage_path: storagePath,
         analysis_status: 'NOT_RUN',
         visibility: 'tech_only',

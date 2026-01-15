@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { issuePortalToken, verifyPortalToken } from '@/lib/portalTokens';
+import { issuePortalToken, verifyPortalToken } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

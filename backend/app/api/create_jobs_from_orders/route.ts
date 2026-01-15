@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 import { ensureDispatchOfferAssignmentForJob } from '@/lib/dispatchOfferAssignment';
 
 function corsHeaders(request?: Request): Record<string, string> {
@@ -286,12 +286,13 @@ async function handle(request: Request, token: string, options?: { limit?: numbe
       service_state: state || null,
       service_zip: zip || null,
       start_iso: startIso,
+      payout_estimated: payout ?? meta?.estimated_payout ?? null, // ✅ Store payout as column for consistent access
       created_at: new Date().toISOString(),
       metadata: {
         ...(meta || {}),
         order_id_text: orderIdText || null,
         session_id: sessionId || null,
-        estimated_payout: payout ?? meta?.estimated_payout ?? null,
+        estimated_payout: payout ?? meta?.estimated_payout ?? null, // ✅ Also in metadata for backwards compatibility
         items_json: itemsJson,
         migrated_from_orders: true,
         // 🔧 ENRICHMENT: Preserve critical order details for tech reference

@@ -14,12 +14,19 @@ If you see any other Vercel project mentioned, DELETE IT or IGNORE IT.
 
 ---
 
-## ⚠️ CRITICAL: ALWAYS USE THE VERIFICATION SCRIPT
+## ⚠️ CRITICAL: ALWAYS USE THE ONE ENTRYPOINT
 
-**NEVER deploy manually. ALWAYS use:**
+**NEVER deploy manually. ALWAYS start with:**
 
 ```powershell
 .\deploy-and-verify.ps1
+```
+
+It will prompt you for **Frontend vs Backend**, or you can force:
+
+```powershell
+.\deploy-and-verify.ps1 -Frontend
+.\deploy-and-verify.ps1 -Backend
 ```
 
 **This script prevents deployment confusion by:**
@@ -85,17 +92,7 @@ vercel --prod --force
 ### When you change API ENDPOINTS:
 
 ```powershell
-# 1. Navigate to backend
-cd backend
-
-# 2. Edit API files
-code app/api/portal_login/route.ts
-
-# 3. Deploy backend separately
-vercel --prod --force
-
-# 4. Go back to root
-cd ..
+.\deploy-and-verify.ps1 -Backend
 ```
 
 **Result:** Deploys to `h2s-backend` → APIs available at h2s-backend.vercel.app/api/*

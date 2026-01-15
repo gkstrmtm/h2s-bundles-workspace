@@ -2,6 +2,18 @@ import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🛡️ GUARDRAIL: Pros Table Priority
+// ═══════════════════════════════════════════════════════════════════════════
+// The h2s_pros table is the CANONICAL source for all technician data.
+// It contains 39+ records with complete info (vehicle, address, is_active, etc.)
+//
+// h2s_dispatch_pros is LEGACY/OUTDATED with only 1 generic record.
+// Always check h2s_pros FIRST to get the real technician roster.
+//
+// Table priority order: h2s_pros > h2s_dispatch_pros > h2s Pros (legacy)
+// ═══════════════════════════════════════════════════════════════════════════
+
 async function tryLoadPros(sb: any, table: string): Promise<any[] | null> {
   try {
     const { data, error } = await sb.from(table).select('*').limit(2000);
@@ -15,7 +27,9 @@ async function tryLoadPros(sb: any, table: string): Promise<any[] | null> {
 type ProSourceMeta = { db: 'dispatch' | 'main'; table: string } | null;
 
 async function loadProsWithFallback(dispatchSb: any, mainSb: any | null): Promise<{ rows: any[]; source: ProSourceMeta }> {
-  const tableCandidates = ['h2s_dispatch_pros', 'h2s_pros', 'h2s Pros'];
+  // PRIORITY: h2s_pros is the main table with all technician data
+  // h2s_dispatch_pros only has 1 generic record and is outdated
+  const tableCandidates = ['h2s_pros', 'h2s_dispatch_pros', 'h2s Pros'];
 
   for (const table of tableCandidates) {
     const rows = await tryLoadPros(dispatchSb, table);
@@ -40,6 +54,21 @@ function normalizeProRow(p: any) {
   const status = p?.status || p?.state || null;
   const email = p?.email || p?.pro_email || p?.tech_email || null;
   const phone = p?.phone || p?.pro_phone || p?.mobile || null;
+  
+  // Normalize vehicle info fields
+  const vehicle_make_model = p?.vehicle_text || p?.vehicle_make_model || null;
+  const vehicle_year = p?.vehicle_year || null;
+  const vehicle_license_plate = p?.vehicle_license_plate || null;
+  const vehicle_color = p?.vehicle_color || null;
+  
+  // Normalize address fields - prioritize home_* fields
+  const address = p?.home_address || p?.address || null;
+  const city = p?.home_city || p?.city || null;
+  const state = p?.home_state || p?.state || null;
+  const zip = p?.home_zip || p?.zip || null;
+  
+  // Normalize company info
+  const company_name = p?.company_name || p?.company || null;
 
   return {
     ...p,
@@ -49,6 +78,18 @@ function normalizeProRow(p: any) {
     status,
     email,
     phone,
+    vehicle_make_model,
+    vehicle_year,
+    vehicle_license_plate,
+    vehicle_color,
+    home_address: address,
+    home_city: city,
+    home_state: state,
+    home_zip: zip,
+    city,
+    state,
+    zip,
+    company_name,
   };
 }
 

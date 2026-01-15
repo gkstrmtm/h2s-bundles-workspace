@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
+    'https://portal.home2smart.com',
+    'https://shop.home2smart.com',
     'http://localhost:3000',
     'http://localhost:8080'
   ];
@@ -77,14 +79,17 @@ export async function GET(request: Request) {
       );
     }
 
-    const payload = verifyPortalToken(token);
-    if (payload.role !== 'pro') {
+    const result = await verifyPortalToken(token);
+    
+    if (!result.ok || !result.payload) {
       return NextResponse.json(
-        { ok: false, error: 'Not a pro session', error_code: 'bad_session' },
+        { ok: false, error: result.error || 'Invalid token', error_code: 'bad_session' },
         { status: 401, headers: corsHeaders(request) }
       );
     }
 
+    const payload = result.payload;
+    
     const dispatchClient = getSupabaseDispatch();
     if (!dispatchClient) {
       return NextResponse.json(
@@ -99,22 +104,19 @@ export async function GET(request: Request) {
 
     const hit = await tryGetProById(dispatchClient, payload.sub);
 
-    // Even if we can't fetch profile row, return a usable shape.
-    const proId = payload.sub;
-    const email =
-      payload.email ||
-      pickFirst(hit?.row, ['email', 'Email', 'pro_email', 'tech_email', 'professional_email', 'user_email']) ||
-      '';
+    if (!hit || !hit.row) {
+      return NextResponse.json(
+        { ok: false, error: 'Pro profile not found', error_code: 'not_found' },
+        { status: 404, headers: corsHeaders(request) }
+      );
+    }
 
+    // Return the full pro profile data that the frontend expects
     return NextResponse.json(
       {
         ok: true,
-        me: {
-          pro_id: proId,
-          email,
-          profile: hit?.row || null,
-          source_table: hit?.table || null,
-        },
+        pro: hit.row, // Frontend expects 'pro' key with direct access to all fields
+        source_table: hit.table,
       },
       { headers: corsHeaders(request) }
     );

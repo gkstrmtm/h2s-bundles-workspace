@@ -24,6 +24,25 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
+function safeParseJson(value: any): any {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    try {
+      const inner = JSON.parse(s);
+      if (typeof inner === 'string') return JSON.parse(inner);
+      return inner;
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders() });
 }
@@ -134,7 +153,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Update order metadata
-    const currentMetadata = orderData.metadata_json || {};
+    const currentMetadata = safeParseJson(orderData.metadata_json) || {};
     const previousScheduledDate = currentMetadata.scheduled_date || null;
     const isRescheduling = !!previousScheduledDate;
     
@@ -192,7 +211,8 @@ export async function POST(request: NextRequest) {
                 rescheduled: isRescheduling,
               },
             })
-            .eq('job_id', jobId);
+            .eq('job_id', jobId)
+            .not('status', 'in', '("completed","done","cancelled")'); // Guardrail
           
           if (!jobError) {
             updatedJobId = jobId;
@@ -220,7 +240,8 @@ export async function POST(request: NextRequest) {
                   rescheduled: isRescheduling,
                 },
               })
-              .eq('job_id', jobs[0].job_id);
+              .eq('job_id', jobs[0].job_id)
+              .not('status', 'in', '("completed","done","cancelled")'); // Guardrail
             
             if (!jobError) {
               updatedJobId = jobs[0].job_id;

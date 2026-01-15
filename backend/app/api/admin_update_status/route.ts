@@ -3,6 +3,7 @@ import { getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { canTransitionTo, addAuditEntry } from '@/lib/jobHelpers';
+import { ensureCompletionSideEffects } from '@/lib/dataOrchestration';
 
 async function handle(request: Request, body: any) {
   const jobId = String(body?.job_id || '').trim();
@@ -88,7 +89,23 @@ async function handle(request: Request, body: any) {
     );
   }
 
-  return NextResponse.json({ ok: true, job_id: jobId, status }, { headers: corsHeaders(request) });
+  // Orchestrate Side Effects (Payout + Mail)
+  let sideEffects = null;
+  if (status === 'completed') {
+    try {
+      sideEffects = await ensureCompletionSideEffects({
+        jobId,
+        completedAtIso: new Date().toISOString(),
+        actorType: 'admin',
+        actorId: adminUser,
+        requestId: `admin_${Date.now()}`
+      });
+    } catch (e) {
+      console.error('[ADMIN_COMPLETION_ORCH_FAIL]', e);
+    }
+  }
+
+  return NextResponse.json({ ok: true, job_id: jobId, status, sideEffects }, { headers: corsHeaders(request) });
 }
 
 export async function OPTIONS(request: Request) {

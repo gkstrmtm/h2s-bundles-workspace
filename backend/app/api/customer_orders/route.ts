@@ -30,6 +30,8 @@ interface OrderRecord {
   customer_email: string | null;
   customer_phone: string | null;
   total: number;
+  subtotal?: any;
+  order_subtotal?: any;
   status: string;
   created_at: string;
   metadata_json?: any;
@@ -41,6 +43,25 @@ interface DispatchJob {
   due_at: string | null;
   customer_photos_count?: number;
   metadata?: any;
+}
+
+function safeParseJson(value: any): any {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (!s) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    try {
+      const inner = JSON.parse(s);
+      if (typeof inner === 'string') return JSON.parse(inner);
+      return inner;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -109,7 +130,7 @@ export async function POST(request: NextRequest) {
     // Enrich orders with dispatch job data
     const dispatchClient = getSupabaseDispatch();
     const enrichedOrders = await Promise.all(ordersData.map(async (order: OrderRecord) => {
-      const metadata = order.metadata_json || {};
+      const metadata = safeParseJson(order.metadata_json) || {};
       
       // Try to find linked dispatch job
       let jobData: DispatchJob | null = null;
@@ -159,6 +180,24 @@ export async function POST(request: NextRequest) {
       const deliveryDate = (order as any).delivery_date || metadata.scheduled_date || jobData?.metadata?.scheduled_date || null;
       const deliveryTime = (order as any).delivery_time || metadata.time_window || jobData?.metadata?.time_window || null;
       const scheduleStatus = deliveryDate ? 'Scheduled' : (metadata.schedule_status || 'Scheduling Pending');
+
+      // Payout + subtotal contract fields (do not expose full metadata_json here).
+      const orderSubtotal =
+        (order as any).order_subtotal ??
+        (order as any).subtotal ??
+        metadata.order_subtotal ??
+        metadata.subtotal ??
+        (typeof metadata.job_value_cents === 'number' ? metadata.job_value_cents / 100 : null) ??
+        null;
+
+      const payoutEstimated =
+        metadata.tech_payout_dollars ??
+        metadata.payout_estimated ??
+        metadata.estimated_payout ??
+        (typeof metadata.tech_payout_cents === 'number' ? metadata.tech_payout_cents / 100 : null) ??
+        (typeof orderSubtotal === 'number' && orderSubtotal > 0 ? Math.round(orderSubtotal * 0.35 * 100) / 100 : null);
+
+      const dispatchJobId = metadata.dispatch_job_id || metadata.job_id || null;
       
       // Build service summary
       const items = metadata.items_json || [];
@@ -173,6 +212,8 @@ export async function POST(request: NextRequest) {
         customer_email: order.customer_email,
         customer_phone: order.customer_phone,
         total: order.total,
+        subtotal: (order as any).subtotal ?? null,
+        order_subtotal: (order as any).order_subtotal ?? null,
         status: order.status,
         created_at: order.created_at,
         
@@ -191,8 +232,15 @@ export async function POST(request: NextRequest) {
         time_preference: deliveryTime, // Alias for compatibility
         
         // Job info
-        job_id: jobData?.job_id || null,
+        job_id: jobData?.job_id || dispatchJobId,
+        dispatch_job_id: dispatchJobId,
         job_status: jobData?.status || null,
+
+        // Payout contract (for debugging and customer support visibility)
+        payout_estimated: payoutEstimated,
+        tech_payout_dollars: payoutEstimated,
+        payout_rate: metadata.payout_rate ?? 0.35,
+        job_value_cents: metadata.job_value_cents ?? null,
         
         // Photos
         photos_count: photosCount,

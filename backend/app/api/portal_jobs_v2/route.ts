@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
-import { verifyPortalToken } from '@/lib/portalTokens';
+import { verifyPortalToken } from '@/lib/auth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { bestEffortUpdateProRow } from '@/lib/portalProProfile';
 import { enrichServiceName, extractCameraDetails } from '@/lib/dataOrchestration';
@@ -1202,7 +1202,11 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
   let payload;
   try {
     console.log('[portal_jobs] About to verify token...');
-    payload = verifyPortalToken(token);
+    const _auth = await verifyPortalToken(token);
+      if (!_auth.ok || !_auth.payload) {
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+      }
+      payload = _auth.payload;
     console.log('[portal_jobs] Token verified successfully:', payload);
   } catch (err: any) {
     console.error('[portal_jobs] Token verification failed:', err.message);

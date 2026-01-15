@@ -1,3 +1,8 @@
+console.log("[BUILD_ID]", "SHA-VERIFY-002", "2026-01-13 17:34:00", location.href);
+// PS PATCH: Signal bundles.js execution — start
+if(window.__H2S_BUNDLES_START) window.__H2S_BUNDLES_START();
+// PS PATCH: Signal bundles.js execution — end
+
 performance.mark('ss_bundles_first_line');
 performance.mark('ss_entry');
 ﻿// PERFORMANCE: defer attribute allows HTML parsing to continue
@@ -5,7 +10,7 @@ performance.mark('ss_entry');
 'use strict';
 
 // BUILD FINGERPRINT - Always logs to prove which version is running
-window.__H2S_BUNDLES_BUILD = "🚀🚀🚀 PERF_V10_OVERLAY_FIX_FINAL 🚀🚀🚀";
+window.__H2S_BUNDLES_BUILD = "BUILD-VERIFY-001";
 console.log('[BUILD]', window.__H2S_BUNDLES_BUILD);
 document.documentElement.setAttribute('data-build', window.__H2S_BUNDLES_BUILD); // Hidden attribute for verification
 
@@ -20,25 +25,13 @@ const logger = {
 logger.log('[BundlesJS] Script loaded and executing');
 performance.mark('ss_init_start');
 
-// === FAST RENDER START ===
-// Detect success view immediately and render skeleton before heavy init
+// === SUCCESS PAGE DETECTION ===
+// Detect success view early to trigger immediate routing (no early render attempt)
 if (typeof URLSearchParams !== 'undefined' && (new URLSearchParams(window.location.search).has('shopsuccess') || window.location.search.includes('view=shopsuccess'))) {
-    console.log('[DEBUG] Success page detected in URL');
-    window.__H2S_EARLY_RENDER = true;
-    
-    // Attempt synchronous render (function is hoisted)
-    try {
-        if (typeof renderShopSuccessView === 'function') {
-             console.log('[DEBUG] Calling renderShopSuccessView immediately');
-             renderShopSuccessView();
-        } else {
-             console.warn('[DEBUG] renderShopSuccessView not available yet');
-        }
-    } catch(e) {
-        console.error('[DEBUG] Early render failed:', e);
-    }
+    console.log('[FastRoute] Success page detected - will route immediately after init');
+    window.__IS_SUCCESS_PAGE = true;
 }
-// === FAST RENDER END ===
+// === END DETECTION ===
 
 function byId(id){ return document.getElementById(id); }
 
@@ -403,260 +396,60 @@ function renderShopView() {
 
 
 async function renderShopSuccessView() {
-  console.log('[DEBUG] renderShopSuccessView() called');
+  /* NEW APPROACH: Static HTML already exists in DOM, just hydrate data */
+  if(window.__H2S_BOOT) window.__H2S_BOOT.events.push({
+    t: performance.now(), 
+    msg: 'SUCCESS_HYDRATION_START'
+  });
   
-  // 1. REMOVE OVERLAYS INSTANTLY
-  const hider = document.getElementById('hide-content-temp');
-  if(hider) {
-    console.log('[DEBUG] Removing hide-content-temp overlay');
-    hider.remove();
-  }
+  console.log('[SUCCESS] Hydrating static success page');
   
-  const overlay = document.getElementById('success-pre-overlay');
-  if(overlay) {
-    overlay.style.opacity = '0';
-    overlay.style.pointerEvents = 'none'; 
-    overlay.style.visibility = 'hidden';
-    setTimeout(() => { if(overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay); }, 100);
-  }
-
-  // 2. PAINT COMPLETE SHELL IMMEDIATELY (Frame 1) - NO SKELETON INTERMEDIATE
-  const outlet = byId('outlet');
-  if(!outlet) {
-    console.error('[DEBUG] outlet element not found!');
-    return;
-  }
-  console.log('[DEBUG] outlet found, preparing to render');
-
   const params = new URLSearchParams(window.location.search);
-  const sessionId = params.get('session_id') || params.get('stripe_session_id');
-  console.log('[DEBUG] sessionId:', sessionId);
-
-  window.scrollTo(0, 0);
-  document.documentElement.style.overflow = 'auto'; 
-  document.body.style.overflow = 'auto'; 
-  document.body.style.backgroundColor = '#f8fafc';
+  const sessionId = params.get('session_id') || params.get('stripe_session_id') || '';
   
-  const styles = `
-    <style>
-      .ss-wrapper {
-        min-height: 100vh; width: 100%; 
-        padding-top: max(env(safe-area-inset-top), 60px);
-        padding-bottom: 80px;
-        background: #f8fafc;
-        font-family: 'Archivo', system-ui, -apple-system, sans-serif;
-      }
-      .ss-container { max-width: 600px; margin: 0 auto; padding: 0 20px; }
-      .ss-header { text-align: center; margin-bottom: 32px; animation: fadeIn 0.3s ease-out; }
-      .ss-badge {
-        width: 72px; height: 72px; margin: 0 auto 16px;
-        background: #10b981; color: white; border-radius: 50%;
-        display: flex; align-items: center; justify-content: center;
-        box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.4);
-      }
-      .ss-title { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0 0 8px; letter-spacing: -0.02em; }
-      .ss-subtitle { font-size: 16px; color: #64748b; margin: 0; }
-      .ss-card {
-        background: white; border-radius: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.02);
-        border: 1px solid #e2e8f0;
-        padding: 24px; margin-bottom: 24px;
-      }
-      .ss-label { font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
-      .ss-value { font-size: 16px; font-weight: 600; color: #1e293b; }
-      .loading-shimmer { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; display: inline-block; border-radius: 4px; }
-      @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-      @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-      
-      .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; width: 100%; box-sizing: border-box; }
-      .cal-day-cell {
-        aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
-        border-radius: 12px; font-weight: 600; font-size: 15px;
-        cursor: pointer; color: #334155; transition: all 0.1s ease;
-        border: 2px solid transparent;
-      }
-      .cal-day-cell.selected { background: #2563eb !important; color: white !important; border-color: #1e40af !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); transform: scale(1.05); }
-      .cal-day-cell.disabled { color: #e2e8f0; cursor: not-allowed; }
-      
-      .time-btn {
-        width: 100%; padding: 12px; border-radius: 12px;
-        border: 1px solid #e2e8f0; background: white;
-        color: #475569; font-weight: 600; font-size: 14px;
-        transition: all 0.2s;
-      }
-      .time-btn.selected { border-color: #2563eb !important; background: #2563eb !important; color: white !important; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
-      
-      .cta-btn {
-        width: 100%; padding: 18px; border-radius: 14px;
-        background: #10b981; color: white; font-weight: 800; font-size: 16px;
-        border: none; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
-        transition: all 0.2s; cursor: pointer; opacity: 0.5; pointer-events: none;
-      }
-      .cta-btn.active { opacity: 1; pointer-events: auto; }
-      .cta-btn:active { transform: scale(0.98); }
-    </style>
-  `;
-
-  
-  // PAINT COMPLETE SHELL WITH LOADING PLACEHOLDERS (no intermediate skeleton)
-  const isFallback = !sessionId;
-  
-  let contentHtml = '';
-  if (isFallback) {
-      contentHtml = `
-            <div class="ss-header">
-              <div class="ss-badge" style="background:#e2e8f0; color:#64748b;">
-                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-              </div>
-              <h1 class="ss-title">Verification Pending</h1>
-              <p class="ss-subtitle">We are confirming your order details.</p>
-            </div>
-            <div class="ss-card" style="text-align:center; padding:40px;">
-                <p style="margin-bottom:10px;">Missing Session ID</p>
-                <div style="font-size:13px; color:#64748b;">If you just completed checkout, please check your email.</div>
-            </div>
-            <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
-            </div>
-      `;
-  } else {
-      contentHtml = `
-            <div class="ss-header">
-              <div class="ss-badge">
-                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </div>
-              <h1 class="ss-title">Order Confirmed!</h1>
-              <p class="ss-subtitle">We've received your booking request.</p>
-            </div>
-
-            <div class="ss-card">
-               <div style="display: flex; justify-content: space-between; border-bottom: 2px dashed #f1f5f9; padding-bottom: 20px; margin-bottom: 20px;">
-                  <div>
-                     <div class="ss-label">Order #</div>
-                     <div class="ss-value" id="orderId"><span class="loading-shimmer" style="width:120px;height:20px;">&nbsp;</span></div>
-                  </div>
-                  <div style="text-align: right;">
-                     <div class="ss-label">Total</div>
-                     <div class="ss-value" id="orderTotal"><span class="loading-shimmer" style="width:80px;height:20px;">&nbsp;</span></div>
-                  </div>
-               </div>
-               <div>
-                  <div class="ss-label">Includes</div>
-                  <div id="orderItems" style="font-weight: 500; color: #334155; line-height: 1.5;">
-                     <span class="loading-shimmer" style="width:200px;height:18px;display:block;">&nbsp;</span>
-                  </div>
-               </div>
-            </div>
-
-            <div class="ss-card" style="padding: 24px;">
-               <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
-                  <div style="width:40px; height:40px; border-radius:10px; background:#eff6ff; display:flex; align-items:center; justify-content:center; color:#2563eb;">
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                  </div>
-                  <div>
-                    <h3 style="margin:0; font-size:18px; font-weight:800; color:#0f172a;">Schedule Install</h3>
-                    <p id="selectionSummary" style="margin:2px 0 0; font-size:13px; color:#64748b;">Pick a date & time for your pro.</p>
-                  </div>
-               </div>
-
-               <div id="calendarWidget"></div>
-               
-               <div id="timeWindowSection" style="display:none; margin-top:24px; padding-top:24px; border-top: 1px solid #f1f5f9;">
-                  <div class="ss-label" style="text-align:center; margin-bottom:12px;">Select Arrival Window</div>
-                  <div id="timeSlotsGrid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-                     <button class="time-btn" data-window="9am - 12pm">9-12</button>
-                     <button class="time-btn" data-window="12pm - 3pm">12-3</button>
-                     <button class="time-btn" data-window="3pm - 6pm">3-6</button>
-                  </div>
-               </div>
-
-               <button id="confirmApptBtn" class="cta-btn" style="margin-top:24px;">Confirm Appointment</button>
-               <div id="schedMsg" style="text-align:center; margin-top:12px; font-size:14px; min-height:20px;"></div>
-            </div>
-            
-            <div style="text-align:center;">
-               <a href="/bundles" style="color:#64748b; font-weight:600; font-size:14px; text-decoration:none;">Return to Shop</a>
-            </div>
-      `;
-  }
-
-  // SINGLE PAINT - Complete shell with placeholders
-  outlet.innerHTML = `${styles}
-    <div class="ss-wrapper">
-      <div class="ss-container">
-        ${contentHtml}
-      </div>
-    </div>`;
-  
-  console.log('[DEBUG] Success page HTML painted');
-  
-  // Check for submission failure flag
-  const submitFailed = localStorage.getItem('strike_submit_failed');
-  if (submitFailed) {
-    localStorage.removeItem('strike_submit_failed');
-    const banner = document.createElement('div');
-    banner.innerHTML = `<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;padding:12px 16px;border-radius:8px;margin:16px 0;font-size:14px">
-      ⚠️ <strong>Note:</strong> Your payment completed successfully, but we couldn't save all details. Our team will contact you shortly to confirm your order.
-    </div>`;
-    const container = outlet.querySelector('.ss-container');
-    if (container) container.insertBefore(banner, container.firstChild);
-  }
-  
-  // 3. START DATA FETCH (Only if session present) - runs in background
-  if (isFallback) {
-      console.warn('[DEBUG] Fallback mode - no session ID');
-  } else {
-    console.log('[DEBUG] Starting calendar load and data fetch');
-    // Build calendar immediately (visible interaction while data loads)
+  // Hydrate immediately - no delays, no animation frames
+  if (sessionId) {
     loadCalendarInteractive(params, sessionId);
     
-    // Fetch data in parallel - silently updates placeholders
-    const fetchOrder = async () => {
-        const cacheKey = `h2s_order_${sessionId}`;
-        const cached = sessionStorage.getItem(cacheKey);
-        if (cached) {
-          try {
-            const cachedData = JSON.parse(cached);
-            if (cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) {
-              return cachedData;
-            }
-          } catch(e) {}
-        }
-        
-        try {
-          const c = new AbortController();
-          setTimeout(()=>c.abort(), 6000);
-          const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
-          
-          if(!res.ok) throw new Error(`HTTP ${res.status}`);
-          const data = await res.json();
-          const order = data.order || data;
-          order._timestamp = Date.now();
-          sessionStorage.setItem(cacheKey, JSON.stringify(order));
-          return order;
-        } catch(err) {
-          return { fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Home2Smart Service' };
-        }
+    // Fetch order data for hydration
+    const cacheKey = `h2s_order_${sessionId}`;
+    const cached = sessionStorage.getItem(cacheKey);
+
+    const useOrder = (order) => {
+      const orderIdEl = byId('orderId');
+      if(orderIdEl) orderIdEl.innerHTML = `<span style="font-family:monospace;font-size:17px;">${order.order_id ? order.order_id.slice(0,18) : sessionId.slice(0,18).toUpperCase()}</span>`;
+      const totalEl = byId('orderTotal');
+      if(totalEl) totalEl.innerHTML = `<span style="color:#059669;">${order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0))}</span>`;
+      const itemsEl = byId('orderItems');
+      if(itemsEl) itemsEl.textContent = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
+      window.__currentOrderData = order;
     };
-    
-    // Silently hydrate data when it arrives (no flash, just content swap)
-    fetchOrder().then(order => {
-         console.log('[DEBUG] Order data received:', order);
-         // Replace loading shimmers with actual data
-         const orderIdEl = byId('orderId');
-         if(orderIdEl) orderIdEl.innerHTML = `<span style="font-family:monospace;font-size:17px;">${order.order_id ? order.order_id.slice(0,18) : sessionId.slice(0,18).toUpperCase()}</span>`;
-         
-         const totalEl = byId('orderTotal');
-         if(totalEl) totalEl.innerHTML = `<span style="color:#059669;">${order.order_total?.includes('PAID') ? 'PAID' : (money(order.amount_total||order.order_total||0))}</span>`;
-         
-         const itemsEl = byId('orderItems');
-         if(itemsEl) {
-            const text = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
-            itemsEl.textContent = text;
-         }
-         
-         window.__currentOrderData = order;
-    });
+
+    if (cached) {
+      try {
+        const cachedData = JSON.parse(cached);
+        if (cachedData && cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) {
+          useOrder(cachedData);
+          return;
+        }
+      } catch(_e) {}
+    }
+
+    (async () => {
+      try {
+        const c = new AbortController();
+        setTimeout(()=>c.abort(), 6000);
+        const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const order = data.order || data;
+        order._timestamp = Date.now();
+        sessionStorage.setItem(cacheKey, JSON.stringify(order));
+        useOrder(order);
+      } catch(_err) {
+        useOrder({ fallback: true, order_id: sessionId, order_total: 'PAID', order_summary: 'Home2Smart Service' });
+      }
+    })();
   }
 }
 
@@ -721,9 +514,24 @@ function loadCalendarInteractive(params, sessionId) {
       el.onclick = () => {
          // Update State
          window.selectedDate = el.dataset.date;
+         console.log('[CAL-CLICK] Date selected:', window.selectedDate);
          
          // Update UI immediately (re-render to show selection)
          render(offset);
+         
+         // PROOF: Log actual DOM state after render
+         setTimeout(() => {
+           const selected = widget.querySelector('.cal-day-cell.selected');
+           if(selected) {
+             const computed = window.getComputedStyle(selected);
+             console.log('[CAL-DOM] Selected cell:', {
+               className: selected.className,
+               background: computed.backgroundColor,
+               color: computed.color,
+               borderColor: computed.borderColor
+             });
+           }
+         }, 10);
          
          // Show Time Slots
          byId('timeWindowSection').style.display = 'block';
@@ -745,11 +553,26 @@ function loadCalendarInteractive(params, sessionId) {
   if(slotContainer) {
       slotContainer.querySelectorAll('.time-btn').forEach(btn => {
           btn.onclick = () => {
+              console.log('[TIME-CLICK] Window selected:', btn.dataset.window);
               // Clear previous
               slotContainer.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
               // Select new
               btn.classList.add('selected');
               window.selectedWindow = btn.dataset.window;
+              
+              // PROOF: Log actual DOM state
+              setTimeout(() => {
+                const selected = slotContainer.querySelector('.time-btn.selected');
+                if(selected) {
+                  const computed = window.getComputedStyle(selected);
+                  console.log('[TIME-DOM] Selected button:', {
+                    className: selected.className,
+                    background: computed.backgroundColor,
+                    color: computed.color,
+                    borderColor: computed.borderColor
+                  });
+                }
+              }, 10);
               
               updateSummary();
               checkSubmit();
@@ -782,6 +605,18 @@ function checkSubmit() {
     if(window.selectedDate && window.selectedWindow) {
         btn.classList.add('active');
         btn.disabled = false;
+        
+        // PROOF: Log confirm button enabled state
+        setTimeout(() => {
+          const computed = window.getComputedStyle(btn);
+          console.log('[CONFIRM-DOM] Button enabled:', {
+            disabled: btn.disabled,
+            className: btn.className,
+            background: computed.backgroundColor,
+            opacity: computed.opacity,
+            pointerEvents: computed.pointerEvents
+          });
+        }, 10);
         
         const newBtn = btn.cloneNode(true);
         btn.parentNode.replaceChild(newBtn, btn);
@@ -853,6 +688,18 @@ function checkSubmit() {
     } else {
         btn.classList.remove('active');
         btn.disabled = true;
+        
+        // PROOF: Log confirm button disabled state
+        setTimeout(() => {
+          const computed = window.getComputedStyle(btn);
+          console.log('[CONFIRM-DOM] Button disabled:', {
+            disabled: btn.disabled,
+            className: btn.className,
+            background: computed.backgroundColor,
+            opacity: computed.opacity,
+            pointerEvents: computed.pointerEvents
+          });
+        }, 10);
     }
 }
 
@@ -1003,9 +850,15 @@ function getViewRenderers() {
 
 // === ROUTING ===
 async function route(){
-  console.log('🔴 [ROUTE] FUNCTION CALLED');
+  // IDEMPOTENT GUARD: Prevent double routing for same view
   const view = getParam('view') || 'shop';
-  console.log('🔴 [ROUTE] View parameter:', view);
+  if(window.__LAST_ROUTED_VIEW === view) {
+    // console.log('⚠️ [ROUTE] Already routed to', view, '- skipping duplicate call');
+    return;
+  }
+  window.__LAST_ROUTED_VIEW = view;
+  
+  // console.log('🔴 [ROUTE] FUNCTION CALLED - view:', view);
   logger.log('[ROUTE] View parameter:', view);
 
   // Safety: ensure we never carry a scroll lock across views
@@ -1023,9 +876,9 @@ async function route(){
   
   // Call the renderer safely
   try {
-    console.log('🔴 [ROUTE] Calling renderer for view:', view);
+    // console.log('🔴 [ROUTE] Calling renderer for view:', view);
     await renderer();
-    console.log('🔴 [ROUTE] Renderer completed');
+    // console.log('🔴 [ROUTE] Renderer completed');
   } catch(err) {
     console.error('[ROUTE] Fatal render error:', err);
     console.error('[ROUTE] Error stack:', err.stack);
@@ -1038,7 +891,16 @@ async function route(){
 
 // === INIT ===
 async function init(){
-  console.log('🟢 [INIT] Function called');
+  // console.log('🟢 [INIT] Function called');
+  
+  // CRITICAL: Early exit for success pages - skip ALL shop-only logic
+  const view = getParam('view');
+  if(view === 'shopsuccess') {
+    // console.log('⚡ [INIT] Success page detected - skipping shop init, calling route() once');
+    route();
+    return;
+  }
+  
   // Keep init minimal and fast
   
   // CRITICAL: Attach checkout button event listener with safeguards
@@ -1172,13 +1034,13 @@ async function init(){
     
     // PHASE 3: DETERMINE VIEW - Quick routing decision
     const view = getParam('view');
-    console.log('🟢 [INIT] View parameter:', view);
+    // console.log('🟢 [INIT] View parameter:', view);
     const isSpecialView = view && view !== 'shop';
     
     // PHASE 4: RENDER IMMEDIATELY - Don't wait for anything
-    console.log('🟢 [INIT] Calling route()...');
+    // console.log('🟢 [INIT] Calling route()...');
     route(); // Shows static content instantly for shop view
-    console.log('🟢 [INIT] route() returned');
+    // console.log('🟢 [INIT] route() returned');
     
     
     // PHASE 5: BACKGROUND LOADS - Use pre-started fetch
@@ -1373,24 +1235,16 @@ function setupMobileInputHandling() {
 console.log('🟢 [INIT] Setting up DOMContentLoaded listener...');
 if(document.readyState === 'loading'){
   document.addEventListener('DOMContentLoaded', () => { 
-    console.log('🟢 [INIT] DOMContentLoaded fired, checking execution mode');
-    if(window.__H2S_EARLY_RENDER) {
-         console.log('⚡ [FastRender] init() skipped - success view already active');
-    } else {
-         console.log('🟢 [INIT] Calling init()');
-         performance.mark('before_init_call');
-         try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
-    }
+    console.log('🟢 [INIT] DOMContentLoaded fired');
+    console.log('🟢 [INIT] Calling init()');
+    performance.mark('before_init_call');
+    try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
   });
 } else {
-  console.log('🟢 [INIT] DOM already loaded, checking execution mode');
-  if(window.__H2S_EARLY_RENDER) {
-       console.log('⚡ [FastRender] init() skipped - success view already active');
-  } else {
-       console.log('🟢 [INIT] Calling init() immediately');
-       performance.mark('before_init_call');
-       try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
-  }
+  console.log('🟢 [INIT] DOM already loaded');
+  console.log('🟢 [INIT] Calling init() immediately');
+  performance.mark('before_init_call');
+  try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
 }
 
 // Fire Meta Pixel ViewContent quickly after DOM is ready
@@ -3442,6 +3296,12 @@ function removeFromCart(idx){
 
 // === AI RECOMMENDATIONS ===
 async function loadAIRecommendations(){
+  // CRITICAL: Never run on success pages
+  const view = getParam('view');
+  if(view === 'shopsuccess') {
+    console.log('[AI] Blocked on success page - ai_sales call count: 0');
+    return;
+  }
   if(!user || !user.email) return;
   
   try{
@@ -3955,15 +3815,13 @@ window.handleCheckoutSubmit = async function(e) {
       document.body.classList.remove('modal-open');
       
       logger.log('[Checkout] ✅ Success! Session:', sessionId);
-      
-      // INSTANT NAVIGATION - Go to success page immediately
-      // (Stripe webhook will handle backend order creation)
-      const successUrl = `https://shop.home2smart.com/bundles?view=shopsuccess&session_id=${sessionId}`;
-      
+
+      // Redirect to Stripe Checkout to collect payment.
+      // Stripe will send the customer back to success_url with {CHECKOUT_SESSION_ID}.
       try {
-        window.location.href = successUrl;
+        window.location.href = data.pay.session_url;
       } catch(e) {
-        window.location.assign(successUrl);
+        window.location.assign(data.pay.session_url);
       }
       
       // Exit retry loop on success
