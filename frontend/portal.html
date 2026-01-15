@@ -1,44 +1,50 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5,user-scalable=yes,viewport-fit=cover">
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
-<title>Pro Portal | Home2Smart</title>
-<meta name="build-id" content="BUILD-VERIFY-001">
-<!-- VERSION: 2026-01-13-BUILD-001 -->
+<title>Pro Portal ? Home2Smart</title>
+<!-- VERSION: 2026-01-13-015911 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
-console.log("[BUILD_ID]", "BUILD-VERIFY-001", new Date().toISOString(), "FILE:", "portal.html");
+console.log('%c STOP AND READ: FORCING CLEANUP ', 'background: #ff0000; color: #ffffff; font-size: 20px');
 
-// CLEANUP: Silent service worker & cache check
+// 1. FORCE UNREGISTER ALL SERVICE WORKERS
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then(registrations => {
     if (registrations.length > 0) {
+        console.log(`>> Found ${registrations.length} workers - KILLING THEM ALL`);
         registrations.forEach(reg => {
             reg.unregister().then(success => {
-                if (success) window.location.reload(); 
+                if (success) console.log('>> Worker Unregistered:', reg.scope);
+                window.location.reload(); // Reload immediately after killing one to allow new fetch
             });
         });
+    } else {
+        console.log('>> No active Service Workers (Good)');
     }
   });
 }
 
 // 2. CLEAR CACHES IF VERSION OLD / MISMATCH
 try {
-   const currentVersion = '2026-01-13_SAFE_v7';
+   const currentVersion = '2026-01-13_SAFE_v6';
    const lastVersion = localStorage.getItem('h2s_portal_version_check');
    if (lastVersion !== currentVersion) {
+       console.log(`>> Version mismatch: ${lastVersion} vs ${currentVersion}. Clearing caches.`);
        if (caches) {
            caches.keys().then(names => {
                for (let name of names) caches.delete(name);
+               console.log('>> All caches deleted');
            });
        }
        localStorage.setItem('h2s_portal_version_check', currentVersion);
+       // Optional: clear specific keys? No, let's trust the logic.
    }
-} catch(e) { }
+} catch(e) { console.error(e); }
 
 // Logs removed for clarity
 /*
@@ -8136,7 +8142,7 @@ a:focus-visible{
       <div id="videoPlayer" style="aspect-ratio:16/9;background:linear-gradient(135deg,#1a4a7a 0%,#0f2d52 100%);border-radius:14px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.3)"></div>
       <div id="videoDescription" class="muted" style="line-height:1.6;font-size:15px"></div>
       <div class="row" style="margin-top:16px;justify-content:space-between;align-items:center">
-        <button id="videoMarkComplete" class="btn" type="button" style="min-width:160px">Mark Complete</button>
+        <button id="videoMarkComplete" class="btn" type="button" style="min-width:160px">? Mark Complete</button>
         <button id="videoClose" class="btn secondary" type="button">Close</button>
       </div>
       <p class="muted" style="margin-top:10px;font-size:13px">Tip: Your progress is automatically saved every 10 seconds. Close anytime to resume later.</p>
@@ -8154,17 +8160,17 @@ a:focus-visible{
     <div style="background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);border-radius:12px;padding:16px;margin-bottom:20px">
       <p style="margin:0;font-size:14px;line-height:1.6;color:#bfdbfe">
         <strong style="color:#60a5fa;display:block;margin-bottom:8px">Required info:</strong>
-        &bull; Vehicle description<br>
-        &bull; Max service radius (miles)<br>
-        &bull; Max jobs per day<br>
-        &bull; Profile photo & short bio
+        ? Vehicle description<br>
+        ? Max service radius (miles)<br>
+        ? Max jobs per day<br>
+        ? Profile photo & short bio
       </p>
     </div>
     <p class="muted" style="margin-bottom:20px;font-size:14px">
       This info helps customers know who's coming and helps us send you the right jobs.
     </p>
     <div class="row">
-      <button id="welcomeGoToProfile" class="btn" type="button">Complete Profile &#8594;</button>
+      <button id="welcomeGoToProfile" class="btn" type="button">Complete Profile ?</button>
       <button id="welcomeLater" class="btn secondary" type="button">I'll do it later</button>
     </div>
   </div>
@@ -8757,7 +8763,7 @@ function setCache(cacheKey, data) {
   if (tabCache[cacheKey]) {
     tabCache[cacheKey].data = data;
     tabCache[cacheKey].timestamp = Date.now();
-    // console.log(`[CACHE] ? Stored ${cacheKey} (valid for ${tabCache[cacheKey].ttl/1000}s)`);
+    console.log(`[CACHE] ? Stored ${cacheKey} (valid for ${tabCache[cacheKey].ttl/1000}s)`);
     
     // Save to localStorage for persistence across refreshes
     saveCacheToStorage();
@@ -8768,11 +8774,11 @@ function setCache(cacheKey, data) {
 function getCache(cacheKey) {
   if (isCacheValid(cacheKey)) {
     perfMetrics.cacheHits++;
-    // console.log(`[CACHE] Hit ${cacheKey} (age: ${Math.round((Date.now() - tabCache[cacheKey].timestamp)/1000)}s)`);
+    console.log(`[CACHE] Hit ${cacheKey} (age: ${Math.round((Date.now() - tabCache[cacheKey].timestamp)/1000)}s)`);
     return tabCache[cacheKey].data;
   }
   perfMetrics.cacheMisses++;
-  // console.log(`[CACHE] ? Miss ${cacheKey}`);
+  console.log(`[CACHE] ? Miss ${cacheKey}`);
   return null;
 }
 
@@ -8781,7 +8787,7 @@ function invalidateCache(cacheKey) {
   if (tabCache[cacheKey]) {
     tabCache[cacheKey].data = null;
     tabCache[cacheKey].timestamp = 0;
-    // console.log(`[CACHE] Invalidated ${cacheKey}`);
+    console.log(`[CACHE] Invalidated ${cacheKey}`);
     
     // ? FIX: Also remove from localStorage immediately
     try {
@@ -8791,7 +8797,7 @@ function invalidateCache(cacheKey) {
         const parsed = JSON.parse(stored);
         delete parsed[cacheKey];
         localStorage.setItem(storageKey, JSON.stringify(parsed));
-        // console.log(`[CACHE] Removed ${cacheKey} from localStorage`);
+        console.log(`[CACHE] Removed ${cacheKey} from localStorage`);
       }
     } catch (err) {
       console.error('[CACHE] Failed to remove from localStorage:', err);
@@ -9647,7 +9653,7 @@ function showAuth() {
   }
 }
 function showPortal() {
-  // console.log("? FAST LOAD: Initializing portal");
+  console.log("? FAST LOAD: Initializing portal");
   const perfStart = performance.now();
   
   showMenuButton();
@@ -9657,7 +9663,7 @@ function showPortal() {
   
   // PARALLEL LOAD: Launch announcements in background (non-blocking)
   loadProAnnouncements().catch(err => {
-    // console.warn('Announcements load failed (non-critical):', err);
+    console.warn('Announcements load failed (non-critical):', err);
   });
 
   // Start periodic refresh (avoid multiple timers)
@@ -9670,7 +9676,7 @@ function showPortal() {
     }, 120000); // every 2 minutes
   }
   
-  // console.log(`? Portal shown in ${Math.round(performance.now() - perfStart)}ms`);
+  console.log(`? Portal shown in ${Math.round(performance.now() - perfStart)}ms`);
 }
 function showAdmin() {
   showMenuButton();
@@ -10387,6 +10393,113 @@ window.showCustomerPhotoLightbox = function(startIndex, photos) {
   });
 };
 
+/* PATCH START: Fix job details modal rendering helpers */
+function safeText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === 'object') return ""; 
+  return String(value).trim();
+}
+
+function formatJobAddress(job) {
+  const parts = [];
+  // Street priority: street1 (obj) > service_address (string) > address (string)
+  let street = "";
+  
+  // Handle Job Address Object safely (Priority 1)
+  if (job.address && typeof job.address === 'object') {
+     street = job.address.formatted_address || job.address.street1 || job.address.line1 || "";
+  } 
+  // Handle Job Address String (Priority 2)
+  else if (typeof job.address === 'string') {
+     street = job.address;
+  }
+  
+  // Fallback (Priority 3)
+  if (!street && job.service_address && typeof job.service_address === 'string') {
+     street = job.service_address;
+  }
+  
+  // Clean
+  if (street && street !== '[object Object]') parts.push(safeText(street));
+  
+  // City
+  const city = safeText(job.city || job.service_city);
+  
+  // State
+  const state = safeText(job.state || job.service_state).toUpperCase();
+  
+  // Zip
+  const zip = safeText(job.zip || job.service_zip || job.postal_code);
+  
+  // Construct City, ST ZIP part
+  let locationPart = "";
+  if (city) locationPart += city.replace(/\b\w/g, c => c.toUpperCase());
+  if (state) locationPart += (locationPart ? ", " : "") + state;
+  if (zip) locationPart += (state ? " " : (locationPart ? ", " : "")) + zip;
+  
+  if (locationPart) parts.push(locationPart);
+  
+  return parts.join(", ") || "Address unavailable";
+}
+
+function formatJobStatus(status) {
+  if (!status) return "Status unknown";
+  const s = status.toLowerCase();
+  const map = { 'scheduled': 'Scheduled', 'completed': 'Completed', 'canceled': 'Canceled', 'pending': 'Pending' };
+  return map[s] || (s.charAt(0).toUpperCase() + s.slice(1));
+}
+
+function formatJobDateTime(job) {
+  // Canonical fields only
+  const rawDate = job.scheduled_start_at || job.start_iso || job.due_at;
+  const rawWindow = job.window || job.time_window;
+  
+  // Use noon to avoid timezone shift on plain dates
+  const d = rawDate ? ((typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) ? new Date(rawDate + 'T12:00:00') : new Date(rawDate)) : null;
+  
+  if (d && !isNaN(d)) {
+    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return `${dateStr} • ${timeStr}`;
+  } else if (rawWindow) {
+    return `Window: ${rawWindow}`;
+  }
+  return "Scheduling Pending";
+}
+
+function getSafeServiceSummary(job) {
+  const lineItems = job.line_items || [];
+  const description = job.description || "";
+  const cameraDetails = job.camera_details;
+  let summary = "";
+  let bullets = [];
+
+  if (cameraDetails && cameraDetails.is_camera_install) {
+     summary = `${cameraDetails.camera_count} Camera Install - ${cameraDetails.coverage_type || 'Custom'}`;
+     if (cameraDetails.camera_count > 0) bullets.push(`${cameraDetails.camera_count} Camera${cameraDetails.camera_count > 1 ? 's' : ''}`);
+     if (cameraDetails.coverage_type && cameraDetails.coverage_type !== 'Unknown') bullets.push(`Coverage: ${safeText(cameraDetails.coverage_type)}`);
+     if (cameraDetails.equipment_mode && cameraDetails.equipment_mode !== 'Unknown') {
+        let mode = safeText(cameraDetails.equipment_mode);
+        if (mode === 'Equipment Provided') bullets.push(`[Package] Equipment Provided`);
+        else if (mode === 'Customer-Supplied') bullets.push(`[Cust-Owned] Customer-Supplied`);
+        else if (mode === 'Check with customer') bullets.push(`[Action Required] Confirm equipment details`);
+        else bullets.push(`Equipment: ${mode}`);
+     }
+     if (cameraDetails.install_requirements) cameraDetails.install_requirements.forEach(req => bullets.push(safeText(req)));
+  } else if (lineItems.length > 0) {
+      if (job.service_name) summary = job.service_name;
+      lineItems.forEach(item => { if (item.name) bullets.push(safeText(item.name)); });
+  } else if (description) {
+      summary = "Job Description";
+      bullets.push(safeText(description).substring(0, 100) + (description.length > 100 ? '...' : ''));
+  }
+  
+  // CSS FIX: align-items:flex-start
+  const bulletsHtml = bullets.map(b => `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:4px;"><span style="color:#cbd5e1;font-size:1.2em;line-height:1">•</span><span>${b}</span></div>`).join("");
+  return { summary, bulletsHtml };
+}
+/* PATCH END: Fix job details modal rendering helpers */
+
 // ? Normalize field names (handle old vs new schema variations)
 function normalizeJobFields(job) {
   if (!job) return job;
@@ -10462,87 +10575,40 @@ function showJobDetails(job) {
   title = formatResourceName(title, job);
   $("md-title").textContent = title;
   
+  /* PATCH START: Fix job details modal rendering */
+  // ? DEBUG: Required Instrumentation
+  console.log('[JOB_MODAL_DEBUG]', {
+      addressType: typeof job.address,
+      addressKeys: (job.address && typeof job.address === 'object') ? Object.keys(job.address) : null,
+      formatted: job.address?.formatted_address,
+      street1: job.address?.street1,
+      cityRaw: job.city,
+      stateRaw: job.state,
+      zipRaw: job.zip,
+      startRaw: job.scheduled_start_at || job.start_iso,
+      statusRaw: job.status
+  });
+
   // ? INTELLIGENCE: Better status for unscheduled jobs + friendly format
   (function(){
-    /* PS PATCH: alias-bound geo + scheduled date ? start */
-    // Explicit priority for scheduled_start_at - Robust List (matches showOfferDetails)
-    const rawDate = job.scheduled_start_at || job.start_iso || job.due_at || job.metadata?.start_iso || job.metadata?.date || job.metadata?.scheduled_date;
-    const rawWindow = job.window || job.time_window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
-    
-    // Status Display Logic
+    const timeLabel = formatJobDateTime(job);
     const status = (job.status || 'Pending').toLowerCase();
     const isCompleted = status === 'completed' || status === 'done';
     
-    // Always show scheduled date if we have it, regardless of status
-    const d = rawDate ? ((typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) ? new Date(rawDate + 'T12:00:00') : new Date(rawDate)) : null;
-    let timeLabel = '';
-    
-    if (d && !isNaN(d)) {
-      const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      timeLabel = `${dateStr} &bull; ${timeStr}`;
-    } else if (rawWindow) {
-      timeLabel = `Window: ${rawWindow}`;
-    } else {
-      timeLabel = "Scheduling Pending";
-    }
+    // Status color logic matching legacy behavior
+    const statusColor = (status === 'scheduled' || isCompleted) ? '#10b981' : '#f59e0b';
+    const statusBadge = `<span style="text-transform:capitalize;font-weight:600;color:${statusColor}">${formatJobStatus(status)}</span>`;
 
-    // Force "Scheduled" label logic
     if (isCompleted) {
-        $("md-date").innerHTML = `<span style="color:#10b981">Completed</span> &bull; <span style="color:#64748b;font-size:0.9em">${timeLabel.replace('?', '&bull;')}</span>`;
+        $("md-date").innerHTML = `<span style="color:#10b981">Completed</span> <span style="margin:0 6px;color:#ccc">•</span> <span style="color:#64748b;font-size:0.9em">${timeLabel}</span>`;
     } else {
-        if (d && !isNaN(d)) {
-             // It is scheduled (has a date)
-             // Primary label: Scheduled
-             const primary = `<span style="color:#10b981;font-weight:600">Scheduled</span>`;
-             const cleanTimeLabel = timeLabel.replace('?', '&bull;');
-             
-             /* PS PATCH: status mapping fix start */
-             // Secondary status logic: Map to real states, avoid "pending confirmation" unless meaningful
-             let secondary = '';
-             let statusColor = '#f59e0b'; // amber default
-             let statusText = ''; // empty by default
-             
-             // Check robust flags first
-             if (job.on_my_way_at || job.metadata?.on_my_way_at) {
-                 statusText = 'On My Way';
-                 statusColor = '#3b82f6'; // blue
-             } else if (job.in_progress_at || job.started_at) {
-                 statusText = 'In Progress';
-                 statusColor = '#3b82f6'; // blue
-             } else if (status === 'accepted' || status === 'assigned' || status === 'scheduled') {
-                 // Calm state - Technician has job, no immediate action needed until start time
-                 statusText = 'Accepted'; 
-                 statusColor = '#64748b'; // slate/gray (neutral)
-             } else if (status === 'open' || status === 'pending') {
-                 // Truly waiting on something upstream
-                 statusText = 'Awaiting Dispatch';
-             } else {
-                 statusText = status; // Fallback
-             }
-             
-             // Only show secondary line if we have a valid status text
-             if (statusText && statusText.toLowerCase() !== 'scheduled') {
-                 secondary = `<div style="font-size:12px;color:${statusColor};font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-top:4px;">${statusText}</div>`;
-             }
-             /* PS PATCH: status mapping fix end */
-             
-             $("md-date").innerHTML = `
-                <div style="font-size:15px;color:var(--h2s-text-main);">${primary} &bull; ${cleanTimeLabel}</div>
-                ${secondary}
-             `;
-        } else {
-             // Legacy fallback
-             const statusBadge = `<span style="text-transform:capitalize;font-weight:600;color:${status === 'scheduled' ? '#10b981' : '#f59e0b'}">${status}</span>`;
-             $("md-date").innerHTML = `${statusBadge} &bull; ${timeLabel.replace('?', '&bull;')}`;
-        }
+        $("md-date").innerHTML = `${statusBadge} <span style="margin:0 6px;color:#ccc">•</span> ${timeLabel}`;
     }
-    /* PS PATCH: alias-bound geo + scheduled date ? end */
   })();
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const s = getSafeServiceSummary(job);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -10552,31 +10618,30 @@ function showJobDetails(job) {
     }
   })();
   
-  // ? ADDRESS: Use same fields as cards (service_address, service_city, etc.)
-  const fullAddress = (job.address || job.service_address || "") + 
-    (job.city || job.service_city ? (", " + (job.city || job.service_city) + " " + (job.state || job.service_state || "") + " " + (job.zip || job.service_zip || "")) : "");
-  $("md-addr").textContent = fullAddress || "Not yet assigned";
+  // ? ADDRESS: Use strict formatter
+  $("md-addr").textContent = formatJobAddress(job);
   
-  // ? CUSTOMER PHONE: Show with click-to-call link (use customer_phone or phone field)
+  // ? CUSTOMER PHONE: Show with click-to-call link
   const customerPhone = job.customer_phone || job.phone || "";
   const phoneEl = $("md-customer-phone");
   const customerName = job.customer_name || job.metadata?.customer_name || "";
   if (customerPhone) {
-    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> <span style="color:#888;margin:0 4px">•</span> ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
       ${esc(customerPhone)}
     </a>`;
   } else {
-    phoneEl.textContent = customerName ? customerName : "Not provided";
+    phoneEl.textContent = customerName ? safeText(customerName) : "Not provided";
   }
   
   // ? INTELLIGENCE: Service summary + bullets from line items
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
-    const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
+    const s = getSafeServiceSummary(job);
+    const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${safeText(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
   })();
+  /* PATCH END: Fix job details modal rendering */
 
   // Tone down payout prominence for readability
   (function(){
@@ -10855,57 +10920,33 @@ function showJobDetails(job) {
 function showOfferDetails(job) {
   if (!job) { toast("Job details not available"); return; }
 
-  console.log('[OFFER MODAL] ===== FULL JOB DATA =====');
-  console.log('[OFFER MODAL] job_id:', job.job_id);
-  console.log('[OFFER MODAL] customer_name:', job.customer_name);
-  console.log('[OFFER MODAL] customer_phone:', job.customer_phone);
-  console.log('[OFFER MODAL] service_address:', job.service_address);
-  console.log('[OFFER MODAL] service_city:', job.service_city);
-  console.log('[OFFER MODAL] service_state:', job.service_state);
-  console.log('[OFFER MODAL] metadata:', job.metadata);
-  console.log('[OFFER MODAL] Full job object:', job);
-  console.log('[OFFER MODAL] line_items:', job.line_items);
-  console.log('[OFFER MODAL] line_items[0] FULL:', job.line_items?.[0]);
-  console.log('[OFFER MODAL] description:', job.description);
+  // ? DEBUG: Required Instrumentation
+  console.log('[JOB_MODAL_DEBUG] (Offer)', {
+      addressType: typeof job.address,
+      addressKeys: (job.address && typeof job.address === 'object') ? Object.keys(job.address) : null,
+      formatted: job.address?.formatted_address,
+      street1: job.address?.street1,
+      cityRaw: job.city,
+      stateRaw: job.state,
+      zipRaw: job.zip,
+      startRaw: job.scheduled_start_at || job.start_iso,
+      statusRaw: job.status
+  });
 
   let title = job.service_name || "Job Offer";
   // Apply operational language to title as well
   title = formatResourceName(title, job);
   $("md-title").textContent = title;
   
+  /* PATCH START: Fix job details modal rendering (Offer Modal) */
   // ? INTELLIGENCE: Read from canonical schedule fields (start_iso / due_at)
   (function(){
-    const rawDate = job.scheduled_start_at || job.start_iso || job.due_at || job.metadata?.start_iso || job.metadata?.date || job.metadata?.scheduled_date;
-    const rawWindow = job.window || job.time_window || job.metadata?.window || job.metadata?.time_window || job.metadata?.arrival_window;
-    
-    // Explicit debug
-    console.log('[DETAILS DATE] Raw Date:', rawDate);
-    console.log('[DETAILS DATE] Raw Window:', rawWindow);
-
-    // FIXED: Force noon to avoid timezone rollback on date-only strings
-    let d = null;
-    if (rawDate) {
-      if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
-        d = new Date(rawDate + 'T12:00:00');
-      } else {
-        d = new Date(rawDate);
-      }
-    }
-    
+    const timeLabel = formatJobDateTime(job);
     const dateEl = $("md-date");
-
-    if (d && !isNaN(d)) {
-      const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = rawWindow || d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      
-      // Highlight execution time clearly
-      dateEl.innerHTML = `
-        <span style="font-size:1.1em;font-weight:700;color:var(--h2s-text-main)">${dateStr}</span>
-        <span style="color:var(--h2s-border-subtle);margin:0 6px">&#10095;</span>
-        <span style="font-weight:600;color:var(--h2s-brand-azure)">${timeStr}</span>
-      `;
-    } else if (rawWindow) {
-      dateEl.innerHTML = `<span style="font-weight:500;color:var(--h2s-text-secondary)">Scheduled Window:</span> <strong>${esc(rawWindow)}</strong>`;
+    
+    // For offers, we usually just show the window/date cleanly
+    if (timeLabel && timeLabel !== "Scheduling Pending") {
+      dateEl.innerHTML = `<span style="color:var(--h2s-text-main)">${timeLabel}</span>`;
     } else {
       dateEl.innerHTML = `<span style="color:var(--h2s-text-soft);font-style:italic">Scheduling Pending</span>`;
     }
@@ -10913,7 +10954,7 @@ function showOfferDetails(job) {
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description);
+    const s = getSafeServiceSummary(job);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -10923,39 +10964,36 @@ function showOfferDetails(job) {
     }
   })();
   
-  // ? ADDRESS: Use same fields as cards
-  const fullAddress = (job.address || job.service_address || "") + 
-    (job.city || job.service_city ? (", " + (job.city || job.service_city) + " " + (job.state || job.service_state || "") + " " + (job.zip || job.service_zip || "")) : "");
+  // ? ADDRESS: Use strict formatter
+  const fullAddress = formatJobAddress(job);
   console.log('[OFFER MODAL] Setting address to:', fullAddress);
-  const addrEl = $("md-addr");
-  addrEl.textContent = fullAddress || "Not yet assigned";
-  console.log('[OFFER MODAL] Address element after setting:', addrEl, 'parent:', addrEl.parentElement, 'parent display:', window.getComputedStyle(addrEl.parentElement).display);
+  $("md-addr").textContent = fullAddress;
   
   // ? CUSTOMER NAME + PHONE (click-to-call)
   (function(){
     const phoneEl = $("md-customer-phone");
     const customerName = job.customer_name || job.metadata?.customer_name || "";
     const customerPhone = job.customer_phone || job.phone || job.metadata?.customer_phone || "";
-    console.log('[OFFER MODAL] Setting customer - name:', customerName, 'phone:', customerPhone);
-    console.log('[OFFER MODAL] Phone element:', phoneEl, 'parent:', phoneEl.parentElement);
+    
     if (customerPhone) {
-      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}` +
+      phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> <span style="color:#888;margin:0 4px">•</span> ` : ''}` +
         `<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
            ${esc(customerPhone)}
          </a>`;
     } else {
-      phoneEl.textContent = customerName || "Not provided";
+      phoneEl.textContent = customerName ? safeText(customerName) : "Not provided";
     }
   })();
   
   // ? INTELLIGENCE: Service summary + bullets
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
-    const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
+    const s = getSafeServiceSummary(job);
+    const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${safeText(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
   })();
+  /* PATCH END: Fix job details modal rendering (Offer Modal) */
   
   // Tone down payout prominence for offers (still visible)
   (function(){
@@ -11280,59 +11318,6 @@ async function cancelJob() {
 
 let jobPhotos = {}; // Cache: {job_id: [{artifact_id, storage_url, uploaded_at}]}
 
-
-function updateJobCardUI(jobId) {
-  try {
-    const hasPhotos = photoOnFile[jobId];
-    // Check global signature state, defaulting to false if undefined
-    const hasSignature = (typeof signatureOnFile !== 'undefined') ? signatureOnFile[jobId] : false;
-
-    // 1. Update Photo Button
-    const photoBtn = document.querySelector(`button[data-photos="${jobId}"]`);
-    if (photoBtn) {
-      if (hasPhotos) {
-        photoBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Photos`;
-        photoBtn.style.color = "#10b981"; // Green
-        photoBtn.style.background = "rgba(16,185,129,.1)";
-        photoBtn.style.borderColor = "rgba(16,185,129,.2)";
-      } else {
-        // Revert to "Upload" or standard state
-        photoBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> Photos`;
-        photoBtn.style.color = "var(--h2s-text-main)";
-        photoBtn.style.background = "var(--h2s-secondary)";
-        photoBtn.style.borderColor = "transparent";
-      }
-    }
-
-    // 2. Update Signature Button
-    const sigBtn = document.querySelector(`button[data-sign="${jobId}"]`);
-    if (sigBtn) {
-        // Enforce dependency: signature button disabled/dimmed if no photos
-        if (!hasPhotos) {
-             sigBtn.style.opacity = '0.5';
-             // optional: sigBtn.disabled = true;
-        } else {
-             sigBtn.style.opacity = '1';
-             // sigBtn.disabled = false;
-        }
-
-        if (hasSignature) {
-            sigBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Signed`;
-            sigBtn.style.color = "#10b981";
-            sigBtn.style.borderColor = "rgba(16,185,129,.2)";
-            sigBtn.style.background = "rgba(16,185,129,.1)";
-        } else {
-             sigBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg> Sign`;
-             sigBtn.style.color = "var(--h2s-text-main)";
-             sigBtn.style.background = "var(--h2s-secondary)";
-             sigBtn.style.borderColor = "transparent";
-        }
-    }
-  } catch(e) {
-    console.warn("Error updating job card UI:", e);
-  }
-}
-
 async function loadJobPhotos(jobId) {
   if (!jobId) {
     console.warn("[Load Photos] No job ID provided");
@@ -11341,44 +11326,47 @@ async function loadJobPhotos(jobId) {
   
   try {
     console.log("[Load Photos] ========================================");
-    console.log("[Load Photos] Fetching ALL artifacts for job:", jobId);
+    console.log("[Load Photos] Fetching photos for job:", jobId);
     console.log("[Load Photos] Token:", token ? `${token.substring(0,20)}...` : 'MISSING');
     
-    // PS PATCH: Remove type constraint to get signature status too
-    const out = await GET("portal_get_artifacts", {token, job_id: jobId});
-
+    const out = await GET("portal_get_artifacts", {token, job_id: jobId, type: "photo"});
+    
+    console.log("[Load Photos] Raw Response:", JSON.stringify(out, null, 2));
+    
     if (!out.ok) {
-      console.error("[Load Photos] Failed:", out.error);
+      console.error("[Load Photos] ? Failed:", out.error);
+      console.error("[Load Photos] Error code:", out.error_code);
+      
+      // Provide actionable feedback based on error type
+      let userMessage = 'Failed to load photos';
+      if (out.error_code === 'bad_session') {
+        userMessage = 'Session expired - please sign in again';
+        setTimeout(() => { location.reload(); }, 2000);
+      } else if (out.error_code === 'query_error') {
+        userMessage = 'Database error - our team has been notified';
+      } else if (out.error) {
+        userMessage = out.error;
+      }
+      
+      toast(`&#9888; ${userMessage}`);
       return [];
     }
     
-    const allArtifacts = out.artifacts || [];
+    const artifacts = out.artifacts || [];
+    jobPhotos[jobId] = artifacts;
+    // Authoritative state: set photoOnFile from backend truth
+    photoOnFile[jobId] = Array.isArray(artifacts) && artifacts.length > 0;
     
-    // Filter for the gallery (photos only)
-    const photosOnly = allArtifacts.filter(a => a.type === 'photo');
-    jobPhotos[jobId] = photosOnly;
-    
-    /* PS PATCH: artifact digest + consistent button state — start */
-    // DIGEST: Log exactly what we have to console for observability
-    const photoCount = photosOnly.length;
-    const sigCount = allArtifacts.filter(a => a.type === 'signature').length;
-    
-    // Condensed Logging
-    console.log(`[ARTIFACT_DIGEST] Job ${jobId}: Photos=${photoCount}, Sigs=${sigCount}, Total=${allArtifacts.length}`);
-    
-    // TRUTH: Update state variables used by UI buttons
-    photoOnFile[jobId] = photoCount > 0;
-    signatureOnFile[jobId] = sigCount > 0;
-    
-    // Force UI update immediately
-    updateJobCardUI(jobId);
-    /* PS PATCH: artifact digest + consistent button state — end */
+    console.log(`[Load Photos] ? Loaded ${artifacts.length} photos for job ${jobId}`);
+    console.log("[Load Photos] Photos data:", artifacts);
+    console.log("[Load Photos] ========================================");
     
     return jobPhotos[jobId];
   } catch(err) {
-    console.error("[Load Photos] Exception:", err);
+    console.error("[Load Photos] ? Exception:", err);
     console.error("[Load Photos] Stack:", err.stack);
     
+    // Network vs server error
     const isNetworkError = err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'));
     const userMessage = isNetworkError 
       ? 'Network error - check your connection'
@@ -12008,12 +11996,12 @@ async function requestTeammate(jobId) {
 }
 
 async function loadJobs() {
-  // console.log('[DEBUG] loadJobs() called');
+  console.log('[DEBUG] loadJobs() called');
   const loadStart = performance.now(); // Track total load time
   
   // Check cache first (5-min TTL)
   const cached = getCache('dash');
-  // console.log('[DEBUG] Cache check:', cached ? 'HIT' : 'MISS');
+  console.log('[DEBUG] Cache check:', cached ? 'HIT' : 'MISS');
   const cacheAge = cached ? Date.now() - (cached._timestamp || 0) : Infinity;
   const CACHE_MAX_AGE = 5 * 60 * 1000; // 5 minutes
   
@@ -12026,23 +12014,23 @@ async function loadJobs() {
       } catch(_) { return false; }
     })();
     if (hasDetails) {
-      // console.log(`[Dashboard] Using cached data (age: ${Math.round(cacheAge/1000)}s)`);
+      console.log(`[Dashboard] Using cached data (age: ${Math.round(cacheAge/1000)}s)`);
       currentJobsData = cached;
       renderOffers(cached.offers);
       renderUpcoming(cached.upcoming);
       renderCompleted(cached.completed);
       startJobPolling();
       loading(false);
-      // console.log(`[Dashboard] ? Cached load: ${Math.round(performance.now() - loadStart)}ms`);
+      console.log(`[Dashboard] ? Cached load: ${Math.round(performance.now() - loadStart)}ms`);
       return;
     } else {
-      // console.log('[Dashboard] Bypassing cache: no service details present; fetching fresh');
+      console.log('[Dashboard] Bypassing cache: no service details present; fetching fresh');
     }
   }
   
   try {
     const apiStart = performance.now();
-    // console.log('[Dashboard] Loading fresh data from backend...');
+    console.log('[Dashboard] Loading fresh data from backend...');
 
     /* PS PATCH: geo source selection ? connect to backend priority */
     let liveLoc = null;
@@ -12054,33 +12042,27 @@ async function loadJobs() {
                new Promise(r => setTimeout(() => r(null), 2000)) 
            ]);
        }
-    } catch(e) { /* console.warn('[JobLoad] Geo fetch warning:', e); */ }
+    } catch(e) { console.warn('[JobLoad] Geo fetch warning:', e); }
 
     const payload = { token };
     if (liveLoc && liveLoc.lat && liveLoc.lng) {
         payload.live_lat = liveLoc.lat;
         payload.live_lng = liveLoc.lng;
-        // console.log('[Dashboard] Including live location in fetch:', liveLoc);
+        console.log('[Dashboard] Including live location in fetch:', liveLoc);
     }
 
-    // console.log('[DEBUG] Calling GET("portal_jobs") with token:', token ? token.substring(0,15)+'...' : 'MISSING');
+    console.log('[DEBUG] Calling GET("portal_jobs") with token:', token ? token.substring(0,15)+'...' : 'MISSING');
     
     const out = await GET("portal_jobs", payload);
-    // console.log('[DEBUG] API Response:', out);
-    /* if (out.upcoming) {
-        console.log('UPCOMING_LIST_RAW', out.upcoming);
-        if (out.upcoming.length > 0) {
-            console.log('FIRST_UPCOMING_JOB', out.upcoming[0]);
-        }
-    } */
-    /* console.log('[DEBUG] First offer full object:', out.offers && out.offers[0] ? out.offers[0] : 'NO OFFERS');
+    console.log('[DEBUG] API Response:', out);
+    console.log('[DEBUG] First offer full object:', out.offers && out.offers[0] ? out.offers[0] : 'NO OFFERS');
     if (out.offers && out.offers[0]) {
       console.log('[DEBUG] First offer line_items:', out.offers[0].line_items);
       console.log('[DEBUG] First offer description:', out.offers[0].description);
-    } */
+    }
     const apiTime = Math.round(performance.now() - apiStart);
     recordMetric('api', apiTime);
-    // console.log(`[Dashboard] API response time: ${apiTime}ms`);
+    console.log(`[Dashboard] API response time: ${apiTime}ms`);
     
     if (!out.ok) {
       console.error('[Dashboard] ? Error:', out.error, out.error_code);
@@ -12108,9 +12090,35 @@ async function loadJobs() {
     const offers = out.offers || out.pending || [];
     const upcoming = out.upcoming || [];
     const completed = out.completed || out.past || [];
+    console.log('[DEBUG] Extracted data - Offers:', offers.length, 'Upcoming:', upcoming.length, 'Completed:', completed.length);
     
     // Backend already filters by radius - no need for client-side filtering
     const filteredOffers = offers;
+    
+    console.log(`[Dashboard] Jobs loaded - Offers: ${filteredOffers.length}, Upcoming: ${upcoming.length}, Completed: ${completed.length}`);
+    
+    // Log detailed offer information
+    if (filteredOffers.length > 0) {
+      console.log('[Dashboard] PENDING OFFERS:');
+      filteredOffers.forEach((offer, idx) => {
+        console.log(`  ${idx + 1}. Job ID: ${offer.job_id}`);
+        console.log(`     Service: ${offer.service_name || 'Unknown'}`);
+        console.log(`     Location: ${offer.address || 'N/A'}, ${offer.city || ''} ${offer.state || ''}`);
+        console.log(`     Window: ${offer.window || offer.start_iso || 'Not set'}`);
+        console.log(`     Distance: ${offer.distance_miles || 'N/A'} miles`);
+        console.log(`     Status: ${offer.assign_state || 'offered'}`);
+      });
+    } else {
+      console.log('[Dashboard] No pending offers at this time');
+    }
+    
+    // Log upcoming jobs summary
+    if (upcoming.length > 0) {
+      console.log('[Dashboard] UPCOMING JOBS:');
+      upcoming.forEach((job, idx) => {
+        console.log(`  ${idx + 1}. ${job.service_name} - ${job.window || job.start_iso}`);
+      });
+    }
 
     // Store job data globally for Details button access
     currentJobsData = { offers: filteredOffers, upcoming, completed };
@@ -12129,15 +12137,23 @@ async function loadJobs() {
     });
 
     const renderStart = performance.now();
+    console.log('[DEBUG] Calling renderOffers with', filteredOffers.length, 'jobs');
     renderOffers(filteredOffers);
+    console.log('[DEBUG] Calling renderUpcoming with', upcoming.length, 'jobs');
     renderUpcoming(upcoming);
+    console.log('[DEBUG] Calling renderCompleted with', completed.length, 'jobs');
     renderCompleted(completed);
     const renderTime = Math.round(performance.now() - renderStart);
-    const totalTime = Math.round(performance.now() - loadStart);
     
-    if (totalTime > 2000) {
-      console.warn(`[Dashboard] Slow load detected (${totalTime}ms)`);
+    const totalTime = Math.round(performance.now() - loadStart);
+    console.log(`[Dashboard] Render time: ${renderTime}ms`);
+    console.log(`[Dashboard] ? Total load time: ${totalTime}ms (API: ${apiTime}ms, Render: ${renderTime}ms)`);
+    
+    if (totalTime > 1000) {
+      console.warn(`[Dashboard] Slow load detected (${totalTime}ms) - Check backend performance`);
     }
+    
+    console.log('[Dashboard] All jobs rendered successfully');
   } catch(err) {
     console.error('[Dashboard] Exception:', err);
     
@@ -12165,10 +12181,10 @@ async function loadJobs() {
 function fmtWindow(row) { return row.window || row.start_iso || ""; }
 
 function renderOffers(list) {
-  // console.log('[DEBUG] renderOffers() called with', list.length, 'items');
+  console.log('[DEBUG] renderOffers() called with', list.length, 'items');
   const renderStart = performance.now(); // ? PERFORMANCE: Track render timing
   const box = $("list-offers");
-  // console.log('[DEBUG] Found list-offers element:', box ? 'YES' : 'NO');
+  console.log('[DEBUG] Found list-offers element:', box ? 'YES' : 'NO');
   
   // ? IMPROVED EMPTY STATES: Time-based messaging
   const emptyEl = $("offers-empty");
@@ -12177,16 +12193,15 @@ function renderOffers(list) {
     let emptyMessage = 'No pending offers at the moment';
     
     if (hour < 8) {
-      /* PS PATCH: text cleanup */
-      emptyMessage = 'Check back at 8am for morning jobs';
+      emptyMessage = '?? Check back at 8am for morning jobs';
     } else if (hour < 12) {
-      emptyMessage = 'New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
+      emptyMessage = '?? New jobs typically arrive between 8am-10am. Check back at 3pm for afternoon work.';
     } else if (hour < 15) {
-      emptyMessage = 'Check back at 3pm for afternoon and evening jobs';
+      emptyMessage = '?? Check back at 3pm for afternoon and evening jobs';
     } else if (hour < 18) {
-      emptyMessage = 'Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
+      emptyMessage = '?? Evening jobs typically post between 3pm-5pm. Check back tomorrow morning.';
     } else {
-      emptyMessage = 'Jobs for tomorrow typically post between 8am-10am. Rest up!';
+      emptyMessage = '?? Jobs for tomorrow typically post between 8am-10am. Rest up!';
     }
     
     emptyEl.innerHTML = emptyMessage;
@@ -12505,13 +12520,7 @@ function renderOffersSync(list, box) {
       }
       
       // Send request to backend
-      if (act === "accept") {
-         console.log("OFFER_BEFORE_ACCEPT", JSON.parse(JSON.stringify(alteredJob)));
-      }
       const out = await GET(act === "accept" ? "portal_accept" : "portal_decline", {token, job_id: jobId});
-      if (act === "accept") {
-         console.log("ACCEPT_RESPONSE", out);
-      }
       
       if (!out.ok) { 
         console.error("Action failed, rolling back UI", out);
@@ -12644,7 +12653,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
 }
 
 async function renderUpcoming(list) {
-  // console.log('[DEBUG] renderUpcoming() called with', list.length, 'items');
+  console.log('[DEBUG] renderUpcoming() called with', list.length, 'items');
   
   // ? ROUTE OPTIMIZATION: Sort jobs by optimal route
   const routeData = await optimizeRoute(list);
@@ -12667,7 +12676,7 @@ async function renderUpcoming(list) {
   }
   
   const box = $("list-upcoming");
-  // console.log('[DEBUG] Found list-upcoming element:', box ? 'YES' : 'NO');
+  console.log('[DEBUG] Found list-upcoming element:', box ? 'YES' : 'NO');
   $("upcoming-empty").style.display = optimizedList.length ? "none" : "block";
   box.onclick = null;
   
@@ -12731,7 +12740,7 @@ async function renderUpcoming(list) {
       const teammateName = j.teammate_name || 'Partner';
       const split = j.payout_split || '50/50';
       teamIndicator = `<div style="margin-top:8px;padding:8px;background:rgba(139,92,246,.1);border-left:3px solid #8b5cf6;border-radius:6px;font-size:13px">
-        <strong>Team Job</strong> &bull; Working with: ${esc(teammateName)} &bull; Split: ${esc(split)}
+        <strong>Team Job</strong> ? Working with: ${esc(teammateName)} ? Split: ${esc(split)}
       </div>`;
     }
     
@@ -12742,7 +12751,7 @@ async function renderUpcoming(list) {
       if (lines.length > 0) {
         synopsisPreview = `<div style="margin-top:8px;padding:8px;background:#f0f7ff;border-radius:6px;font-size:14px;border-left:3px solid #2196F3">
           ${lines.map(line => `<div style="margin:2px 0">${esc(line)}</div>`).join('')}
-          ${j.tech_synopsis.split('\n').length > 2 ? '<div style="margin-top:4px;color:#666;font-style:italic">Click "Details" for full prep checklist &rarr;</div>' : ''}
+          ${j.tech_synopsis.split('\n').length > 2 ? '<div style="margin-top:4px;color:#666;font-style:italic">Click "Details" for full prep checklist ?</div>' : ''}
         </div>`;
       }
     }
@@ -12793,14 +12802,12 @@ async function renderUpcoming(list) {
         const timeStr = targetDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
         const timeDisplay = rawWindow || timeStr;
         
-        /* PS PATCH: date separator fix */
         dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          ${dateStr} &bull; ${timeDisplay}
+          ${dateStr} ? ${timeDisplay}
         </div>`;
     } else if (rawWindow) {
-         /* PS PATCH: date separator fix */
          dateTimeBlock = `<div style="text-align:center;font-size:14px;font-weight:600;color:var(--h2s-text-main);margin:10px 0;padding:8px;background:rgba(20,147,255,0.08);border-radius:8px">
-          Scheduled &bull; ${esc(rawWindow)}
+          Scheduled ? ${esc(rawWindow)}
         </div>`;
     }
 
@@ -12819,7 +12826,7 @@ async function renderUpcoming(list) {
     if (targetDate && !isNaN(targetDate)) {
         const dateStr = targetDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const timeStr = rawWindow || targetDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} &bull; ${timeStr}</div>`;
+        dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${dateStr} ? ${timeStr}</div>`;
     } else if (rawWindow) {
         dateRow = `<div style="font-size:13px;color:var(--h2s-text-secondary);margin-bottom:10px">${esc(rawWindow)}</div>`;
     }
@@ -12907,35 +12914,6 @@ async function renderUpcoming(list) {
   box.replaceChildren();
   box.appendChild(fragment);
   renderPaginationControls('upcoming', optimizedList.length, box);
-
-  /* PS PATCH: artifact hydration - ensure buttons reflect actual state on load */
-  setTimeout(() => {
-    paginatedList.forEach(j => {
-      if (typeof photoOnFile[j.job_id] === 'undefined' || typeof signatureOnFile[j.job_id] === 'undefined') {
-        const fetchArtifactStatus = async (jobId) => {
-             if (!jobId || !token) return;
-             try {
-                 const out = await GET("portal_get_artifacts", {token, job_id: jobId});
-                 if (out.ok && Array.isArray(out.artifacts)) {
-                     const photos = out.artifacts.filter(a => a.type === 'photo');
-                     const sigs = out.artifacts.filter(a => a.type === 'signature');
-                     
-                     photoOnFile[jobId] = photos.length > 0;
-                     signatureOnFile[jobId] = sigs.length > 0;
-                     if (photos.length > 0) jobPhotos[jobId] = photos;
-
-                     updateJobCardUI(jobId);
-                 }
-             } catch (e) {
-                 console.warn("[Artifact Hydration] Failed for", jobId);
-             }
-        };
-        fetchArtifactStatus(j.job_id);
-      } else {
-        updateJobCardUI(j.job_id);
-      }
-    });
-  }, 50);
 
   // UPCOMING JOBS CLICK HANDLERS
   box.onclick = async e => {
@@ -13218,7 +13196,7 @@ async function renderUpcoming(list) {
             
             currentJobsData.completed.unshift(completedJob);
             
-            console.log(`[COMPLETION_FLOW] Optimistic update applied for ${jobId}`);
+            console.log(`[COMPLETE] ? Optimistically moved job ${jobId} to completed`);
             
             // Re-render immediately (feels instant)
             renderUpcoming(currentJobsData.upcoming);
@@ -13226,37 +13204,29 @@ async function renderUpcoming(list) {
           }
           
           // Send to backend
-          console.log(`[COMPLETION_FLOW] Sending POST portal_mark_done for ${jobId}`);
           const out = await POST("portal_mark_done", {token, job_id: jobId});
           
           if (!out.ok) { 
-            console.error(`[COMPLETION_FLOW] Backend Error:`, out);
             toast(out.error || "Could not mark done");
             // Rollback on error
             await loadJobs();
             return;
           }
           
-          console.log('[COMPLETION_FLOW] Backend Success:', {
-             ok: out.ok,
-             jobId: jobId,
-             meta: out.meta,
-             payout: out.meta?.payout || 'Not returned'
-          });
+          console.log('[COMPLETE] Backend response:', out);
+          console.log('[PAYOUT] Created', out.payouts_created || 0, 'ledger entries for pro', out.pro_id);
           
-          /* PS PATCH: auto payout on job completion + artifact linkage + glyph cleanup — start */
-          toast("✓ Job Completed! Payment processing will update shortly.");
+          toast("? Job Completed! Payment processing will update shortly.");
           
-          // Invalidate cache
+          // ? Invalidate cache
           invalidateCache('dash');
           invalidateCache('schedule');
           invalidateCache('payouts');
-          /* PS PATCH: auto payout on job completion + artifact linkage + glyph cleanup — end */
           
           // ? ROBUST REFRESH: Retry with backoff to handle DB replication lag
           const refreshWithRetry = async (attempt = 1) => {
             const maxAttempts = 3;
-            console.log(`[COMPLETION_FLOW] Verification attempt ${attempt}/${maxAttempts}`);
+            console.log(`[COMPLETE] Refresh attempt ${attempt}/${maxAttempts}`);
             
             await loadJobs();
             
@@ -13265,11 +13235,10 @@ async function renderUpcoming(list) {
             const nowInCompleted = currentJobsData.completed.some(j => j.job_id === jobId);
             
             if (stillInUpcoming && !nowInCompleted && attempt < maxAttempts) {
-              console.warn(`[COMPLETION_FLOW] Job ${jobId} still in upcoming... waiting for replication`);
+              console.warn(`[COMPLETE] Job ${jobId} still in upcoming after refresh, retrying in ${attempt * 2}s...`);
               setTimeout(() => refreshWithRetry(attempt + 1), attempt * 2000);
             } else {
-              const result = nowInCompleted ? "CONFIRMED_IN_COMPLETED" : "NOT_IN_COMPLETED_BUT_GONE_FROM_UPCOMING";
-              console.log(`[COMPLETION_FLOW] Verification Result: ${result}`);
+              console.log(`[COMPLETE] ? Job properly categorized as completed`);
               loadPayouts(); // Load payouts after confirmed completion
             }
           };
@@ -13316,11 +13285,7 @@ function renderCompleted(list) {
 
     // ? DATE
     let dateDisplay = '';
-    // PS PATCH: Prefer actual completion date if available, otherwise fallback to schedule
-    let rawDate = j.completed_at || j.updated_at || j.start_iso || j.metadata?.start_iso || j.metadata?.date;
-    // If it's just 'updated_at' (e.g. today) but start_iso was yesterday, we want 'today'.
-    // However, j.updated_at might be generic. Ideally the backend provides completed_at.
-    
+    let rawDate = j.start_iso || j.metadata?.start_iso || j.metadata?.date;
     let rawWindow = j.window || j.metadata?.window || j.metadata?.time_window || j.metadata?.arrival_window;
     let targetDate = null;
     if (rawDate) {
@@ -20073,16 +20038,16 @@ window.addEventListener("beforeunload", () => {
 
 /* ===== INIT ===== */
 (async function init() {
-  // console.log("?? Initializing portal...");
-  // console.log("Admin token:", adminToken ? "present" : "none");
-  // console.log("Pro token:", token ? "present" : "none");
+  console.log("?? Initializing portal...");
+  console.log("Admin token:", adminToken ? "present" : "none");
+  console.log("Pro token:", token ? "present" : "none");
   
   // ?? Load cache from LocalStorage FIRST (instant initial render)
   loadCacheFromStorage();
   
   try {
     if (adminToken) {
-      // console.log("?? Attempting admin session...");
+      console.log("?? Attempting admin session...");
       loading(true);
       isAdmin = true;
       renderMenuItems();
@@ -20095,8 +20060,8 @@ window.addEventListener("beforeunload", () => {
     renderMenuItems();
     
     if (token) {
-      // console.log("?? Attempting pro session with existing token...");
-      // console.log(`?? Token found in storage: ${token.substring(0, 20)}...`);
+      console.log("?? Attempting pro session with existing token...");
+      console.log(`?? Token found in storage: ${token.substring(0, 20)}...`);
       const perfStart = performance.now();
       
       // ?? INSTANT RENDER: Show portal UI immediately, validate token in background
@@ -20113,7 +20078,7 @@ window.addEventListener("beforeunload", () => {
       
       // ?? OPTIMISTIC LOAD: If authenticated, show portal immediately
       if (isAuthed && (token || cachedJobs)) {
-        // console.log("? Optimistic load: User is authenticated, showing portal immediately");
+        console.log("? Optimistic load: User is authenticated, showing portal immediately");
         showPortal();
         switchTab(lastTab);
         if (cachedJobs) {
@@ -20127,7 +20092,7 @@ window.addEventListener("beforeunload", () => {
         }
       } else if (cachedJobs) {
         // Legacy fallback: Cache exists but maybe no auth flag (older session)
-        // console.log("? Rendering cached dashboard (legacy mode)...");
+        console.log("? Rendering cached dashboard (legacy mode)...");
         currentJobsData = cachedJobs;
         renderOffers(cachedJobs.offers || []);
         renderUpcoming(cachedJobs.upcoming || []);
@@ -20142,10 +20107,10 @@ window.addEventListener("beforeunload", () => {
       
       // Validate token in background (doesn't block render)
       hydrateMe().then(hydrated => {
-        // console.log(`?? Hydration: ${hydrated ? 'SUCCESS' : 'FAILED'} (${Math.round(performance.now() - perfStart)}ms)`);
+        console.log(`?? Hydration: ${hydrated ? 'SUCCESS' : 'FAILED'} (${Math.round(performance.now() - perfStart)}ms)`);
         
         if (hydrated) {
-          // console.log("? Pro session valid - staying logged in");
+          console.log("? Pro session valid - staying logged in");
           // Ensure auth flag is set (migration for existing users)
           localStorage.setItem("h2s_is_authenticated", "true");
           
@@ -20156,7 +20121,7 @@ window.addEventListener("beforeunload", () => {
             loadJobs(); // Only load if we didn't show cache
           } else {
             // Soft refresh in background to update cache
-            // console.log("?? Soft refresh: updating cache in background");
+            console.log("?? Soft refresh: updating cache in background");
             loadJobs();
           }
           
@@ -20166,7 +20131,7 @@ window.addEventListener("beforeunload", () => {
           // Keep view state consistent on successful hydration
           restoreViewState();
           
-          // console.log(`? Portal fully loaded in ${Math.round(performance.now() - perfStart)}ms`);
+          console.log(`? Portal fully loaded in ${Math.round(performance.now() - perfStart)}ms`);
         } else {
           // ? RESILIENCE: Don't log out on network error, only on explicit auth failure
           // If we have a token but hydration failed, it might be a network blip.
@@ -20675,36 +20640,36 @@ async function loadProAnnouncements() {
   }
   
   if (!sessionToken) {
-    // console.log('[Announcements] >> Skipping load - no session token');
+    console.log('[Announcements] >> Skipping load - no session token');
     return;
   }
   
   const who = (me && (me.email || me.pro_id)) || 'unknown';
-  // console.log('[Announcements] >> Loading announcements for:', who);
+  console.log('[Announcements] >> Loading announcements for:', who);
   
   // ? FAST LOAD: Check cache first (5-min TTL for announcements)
   const cached = getCache('announcements');
   if (cached && cached._timestamp && (Date.now() - cached._timestamp) < 5 * 60 * 1000) {
-    // console.log(`[Announcements] ? Using cached data (age: ${Math.round((Date.now() - cached._timestamp)/1000)}s)`);
+    console.log(`[Announcements] ? Using cached data (age: ${Math.round((Date.now() - cached._timestamp)/1000)}s)`);
     proAnnouncementsCache = cached.announcements || [];
     viewedAnnouncementIds = new Set((cached.viewed_ids || []).map(String));
-    // console.log(`[Announcements] >> Cached: ${proAnnouncementsCache.length} announcements`);
+    console.log(`[Announcements] >> Cached: ${proAnnouncementsCache.length} announcements`);
     updateTeamUpdatesBanner();
     return;
   }
   
   try {
-    // console.log('[Announcements] >> Fetching from API...');
+    console.log('[Announcements] >> Fetching from API...');
     const result = await GET("portal_announcements_list", { token: sessionToken });
     
-    // console.log('[Announcements] >> API Response:', result);
+    console.log('[Announcements] >> API Response:', result);
     
     if (!result.ok) throw new Error(result.error || 'Failed to load');
     
     proAnnouncementsCache = result.announcements || [];
     viewedAnnouncementIds = new Set((result.viewed_ids || []).map(String));
     
-    // console.log(`[Announcements] ? Loaded ${proAnnouncementsCache.length} announcements`);
+    console.log(`[Announcements] ? Loaded ${proAnnouncementsCache.length} announcements`);
     
     // ?? CACHE IT: Store for 5 minutes
     setCache('announcements', {
@@ -21980,11 +21945,8 @@ window.submitFeedback = async function() {
   }
 }
 
-// console.log('[Customer Photos] Tech portal viewer loaded');
+console.log('[Customer Photos] Tech portal viewer loaded');
 </script>
-<div style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:12px;text-align:center;padding:4px;z-index:99999;pointer-events:none;">
-    BUILD: BUILD-VERIFY-001 (Portal.html)
-</div>
 </body>
 </html>
 
