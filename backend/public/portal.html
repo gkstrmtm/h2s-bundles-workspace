@@ -12496,6 +12496,7 @@ function renderOffersSync(list, box) {
     } else {
         badgeHtml = `<div style="color:var(--h2s-text-muted);font-size:13px;font-weight:500;">Pending</div>`;
     }
+  }
 
     if (isTeam) {
         badgeHtml = `<div style="background:rgba(59,130,246,0.15);color:#60a5fa;font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;display:inline-block;margin-right:4px">Team Job</div>` + badgeHtml;
@@ -22121,4 +22122,4 @@ fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
 
 
 
-<!-- PROOF_OF_LIVE_CONNECTION_20260114_211352 -->
+<!-- PROOF_OF_LIVE_CONNECTION_FIXED_SYNTAX_20260114_213500 -->
