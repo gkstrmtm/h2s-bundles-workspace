@@ -9205,10 +9205,9 @@ async function GET_JSONP(action, payload={}) {
       if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
     };
     window[cb] = (data) => { resolve(data); cleanup(scriptEl); };
-  const qsObj = { action, ...payload, callback: cb, t: Date.now() };
-  // JSONP is only used for Apps Script (bypasses CORS). Ensure we hit the Apps Script endpoint.
-  const url = APPS_SCRIPT_API + '?' + qs(qsObj);
-  console.log(`[JSONP] ${action} -> (Apps Script)`, url);
+    const qsObj = { action, ...payload, callback: cb, t: Date.now() };
+    const url = APPS_SCRIPT_API + '?' + qs(qsObj);
+    console.log(`[JSONP] ${action} -> (Apps Script)`, url);
     const scriptEl = document.createElement('script');
     scriptEl.src = url;
     scriptEl.async = true;
