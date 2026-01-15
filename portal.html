@@ -22073,7 +22073,8 @@ window.submitFeedback = async function() {
 // console.log('[Customer Photos] Tech portal viewer loaded');
 
 // ==== DYNAMIC BUILD ID VERIFICATION ====
-fetch('/api/build-id').then(r => r.json()).then(data => {
+const apiBase = 'https://h2s-backend.vercel.app';
+fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
   const buildFooter = document.querySelector('div[style*="position:fixed"][style*="bottom:0"]');
   if (buildFooter && data.buildId) {
     buildFooter.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
