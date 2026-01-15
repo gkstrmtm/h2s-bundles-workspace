@@ -188,8 +188,9 @@ function extractProGeo(profile: any) {
         row?.service_zip ??
         ''
     ).trim() || null;
+  const state = String(row?.state ?? row?.State ?? row?.service_state ?? '').trim() || null;
   const radius = toNum(row?.service_radius_miles ?? row?.radius_miles ?? row?.service_radius) ?? 50;
-  return { lat, lng, zip, radius: Math.max(1, Math.min(radius, 250)) };
+  return { lat, lng, zip, state, radius: Math.max(1, Math.min(radius, 250)) };
 }
 
 /**
@@ -548,7 +549,7 @@ async function normalizeJobDTO(jobs: any[], opts: { lat: number | null; lng: num
 /* PS PATCH: keep job details after state change — end */
 
 async function fetchAvailableOffers(
-  client: any,  ordersClient: any,  opts: { lat: number | null; lng: number | null; zip?: string | null; radius: number; limit: number; proId?: string; source?: string },
+  client: any,  ordersClient: any,  opts: { lat: number | null; lng: number | null; zip?: string | null; state?: string | null; radius: number; limit: number; proId?: string; source?: string },
   schema?: { jobsTable?: string; jobsStatusCol?: string },
   debugMode: boolean = false
 ): Promise<{ offers: any[]; diagnostics: any; debugData?: any }> {
@@ -566,6 +567,7 @@ async function fetchAvailableOffers(
     dropped_reasons: {
       status_guardrail: 0,
       zip_mismatch: 0,
+      state_mismatch: 0,
       distance_too_far: 0,
       assigned_to_other: 0,
     },
@@ -976,6 +978,17 @@ async function fetchAvailableOffers(
         };
       })
       .filter((j: any) => {
+         // 0. State Match Guardrail (Phase 6 Requirement)
+         const jobState = (j.service_state || j.state || '').toLowerCase().trim();
+         const proState = (opts.state || '').toLowerCase().trim();
+         if (jobState && proState && jobState.length === 2 && proState.length === 2) {
+             if (jobState !== proState) {
+                  console.log(`[Portal Jobs] Job ${j.job_id}: DROPPED state mismatch (${jobState} != ${proState})`);
+                  diagnostics.dropped_reasons.state_mismatch++;
+                  return false;
+             }
+         }
+
          if (j._job_status_norm === 'scheduled') {
               if (isProbablyAssigned(j)) {
                   diagnostics.dropped_reasons.assigned_to_other++;
@@ -999,13 +1012,9 @@ async function fetchAvailableOffers(
 
         const match = resolvedZip === proZip5;
         if (!match) {
-          // In "Flood Gate" mode, we permit mismatches to avoid "undefined != 29649" issues
-          // But ideally we want strict matching. For now, LOG but INCLUDE.
-          console.log(`[Portal Jobs] Job ${j.job_id}: ZIP mismatch (${resolvedZip} != ${proZip5}) -> INCLUDED (Flood Gate)`);
-          
-          // FOR DIAGNOSTICS: If we WERE strict, would this drop?
-          // diagnostics.dropped_reasons.zip_mismatch++;
-          // Not dropping now, so don't increment drop count, but maybe log specific diagnostic?
+           console.log(`[Portal Jobs] Job ${j.job_id}: DROPPED zip mismatch (${resolvedZip} != ${proZip5}) - Flood Gate Closed`);
+           diagnostics.dropped_reasons.zip_mismatch++;
+           return false;
         }
         return true; 
       })
@@ -1049,6 +1058,18 @@ async function fetchAvailableOffers(
       const offers = (await normalizeJobDTO(jobs, opts))
 /* PS PATCH: geo source selection + distance — end */
     .filter((j: any) => {
+      // 0. State Match Guardrail (Phase 6 Requirement)
+      const jobState = (j.service_state || j.state || '').toLowerCase().trim();
+      const proState = (opts.state || '').toLowerCase().trim();
+      // Only enforce if both are valid 2-char codes (e.g. 'sc', 'ca')
+      if (jobState && proState && jobState.length === 2 && proState.length === 2) {
+          if (jobState !== proState) {
+               console.log(`[Portal Jobs] Job ${j.job_id}: DROPPED state mismatch (${jobState} != ${proState})`);
+               diagnostics.dropped_reasons.state_mismatch++;
+               return false;
+          }
+      }
+
       if (j._job_status_norm === 'scheduled') {
         if (isProbablyAssigned(j)) {
              diagnostics.dropped_reasons.assigned_to_other++;
@@ -1076,9 +1097,9 @@ async function fetchAvailableOffers(
         }
         return inRange;
       }
-
-      // 3. Fallback: Loose ZIP/Flood Gate
-      // If we couldn't match ZIP exactly AND couldn't calc distance (no coords), we fall here.
+      
+      // 3. Fallback: Loose ZIP/Flood Gate -> NOW STRICTER
+      // "If coords are missing: DO NOT allow the job unless job_state matches AND job_zip matches pro_zip"
       if (proZip5 && j._job_zip5) {
         // We already checked strict match above, so this catches mismatches.
         const zipMatch = proZip5 === j._job_zip5;
@@ -1089,6 +1110,9 @@ async function fetchAvailableOffers(
            diagnostics.dropped_reasons.zip_mismatch++;
            return false;
         }
+
+        // Additional Check: State Match (if available) to prevent ZIP collision (rare but possible) or bad data
+        // We assume opts.proState is not available here easily without refactoring, but ZIP is usually sufficient.
         
         console.log(`[Portal Jobs] Job ${j.job_id}: ZIP match (${proZip5}) -> INCLUDED (Fallback)`);
         return true;
@@ -1318,19 +1342,42 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
       // FIX: Handle object addresses to prevent [object Object]
       const resolveAddr = (v: any) => {
          if (!v) return '';
-         if (typeof v === 'string') return v;
+         if (typeof v === 'string') {
+             if (v.includes('[object Object]')) return 'Address details pending';
+             return v;
+         }
          if (typeof v === 'object') return v.formatted_address || v.line1 || v.street || '';
          return '';
       };
+      
+      const resolveString = (v: any) => {
+         if (!v) return '';
+         if (typeof v === 'string') {
+             // Avoid "undefined" string
+             if (v === 'undefined') return '';
+             return v;
+         }
+         if (typeof v === 'object') {
+             // Try to extract common name fields if it's an object
+             return v.name || v.title || v.description || v.label || ''; 
+         }
+         return String(v);
+      };
+
+      if (items && typeof items === 'object' && !Array.isArray(items)) {
+         // Fix: If items is a key-value map, convert to array
+         try { items = Object.values(items); } catch { items = []; }
+      }
+      if (!Array.isArray(items)) items = [];
 
       const merged = {
         ...j,
         order_status: order?.status || meta?.order_status || null,
-        service_name: j?.service_name || order?.service_name || meta?.service_name || 'Service',
+        service_name: resolveString(j?.service_name || order?.service_name || meta?.service_name || 'Service'),
         service_address: resolveAddr(j?.service_address) || resolveAddr(order?.address) || resolveAddr(meta?.service_address) || '',
-        service_city: j?.service_city || order?.city || meta?.service_city || '',
-        service_state: j?.service_state || order?.state || meta?.service_state || '',
-        service_zip: j?.service_zip || order?.zip || meta?.service_zip || '',
+        service_city: resolveString(j?.service_city || order?.city || meta?.service_city),
+        service_state: resolveString(j?.service_state || order?.state || meta?.service_state),
+        service_zip: resolveString(j?.service_zip || order?.zip || meta?.service_zip),
         geo_lat: toNum(j?.geo_lat) ?? toNum(order?.geo_lat) ?? toNum(meta?.geo_lat),
         geo_lng: toNum(j?.geo_lng) ?? toNum(order?.geo_lng) ?? toNum(meta?.geo_lng),
         payout_estimated: bestPayout,
@@ -1339,8 +1386,8 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
         delivery_date: order?.delivery_date || meta?.delivery_date || meta?.install_date || null,
         delivery_time: order?.delivery_time || meta?.delivery_time || meta?.install_window || null,
         line_items: items,
-        description: j?.description || order?.special_instructions || meta?.description || '',
-        customer_name: j?.customer_name || order?.customer_name || meta?.customer_name || '',
+        description: resolveString(j?.description || order?.special_instructions || meta?.description),
+        customer_name: resolveString(j?.customer_name || order?.customer_name || meta?.customer_name),
       };
       if (!merged.service_zip && merged.zip) merged.service_zip = merged.zip;
       return merged;
@@ -1694,6 +1741,7 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
       lat: effectiveLat,
       lng: effectiveLng,
       zip: proGeoProfile.zip,
+      state: proGeoProfile.state,
       radius: effectiveRadius
   };
   /* PS PATCH: geo source selection + distance — end */
@@ -1852,6 +1900,7 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
           lat: proGeo.lat,  // Use real lat
           lng: proGeo.lng,  // Use real lng
           zip: proGeo.zip || (payload as any)?.zip,
+          state: proGeo.state,
           radius: proGeo.radius,
           limit: 200,
           proId: proGeo.proId,
@@ -2110,6 +2159,7 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
         lat: proGeo.lat,
         lng: proGeo.lng,
         zip: proGeo.zip,
+        state: proGeo.state,
         radius: proGeo.radius,
         limit: 200,
         proId: proGeo.proId,
