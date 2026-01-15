@@ -1353,13 +1353,17 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
       const resolveString = (v: any) => {
          if (!v) return '';
          if (typeof v === 'string') {
-             // Avoid "undefined" string
-             if (v === 'undefined') return '';
+             // Avoid "undefined" string or "[object Object]" string literal
+             if (v === 'undefined' || v.includes('[object Object]')) return '';
              return v;
          }
          if (typeof v === 'object') {
              // Try to extract common name fields if it's an object
-             return v.name || v.title || v.description || v.label || ''; 
+             const candidate = v.name || v.title || v.description || v.label || '';
+             if (candidate && typeof candidate === 'string' && !candidate.includes('[object Object]')) {
+                 return candidate;
+             }
+             return '';
          }
          return String(v);
       };
