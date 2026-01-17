@@ -6,12 +6,16 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
-<meta name="build-id" content="SHA-VERIFY-FINAL-639040446899650413">
-<!-- VERSION: 2026-01-13-SHA-VERIFY-FINAL-1768341239
+<meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
+<!-- VERSION: 2026-01-14-NUCLEAR-FIX-ADDRESS-ROUTING
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
-console.log("[BUILD_ID]", "SHA-VERIFY-FINAL-639040446899650413", "2026-01-13 21:31:21", "FILE:", "portal.html");
+console.log("[BUILD_ID]", "MARK_DONE_HYBRID_SCHEMA-2026-01-15-0330", "2026-01-15 06:30:00", "FILE:", "portal.html");
+
+// Proof marker required for live page-source verification
+var PORTAL_BUILD = "PORTAL_BUILD_639041236418272610";
+console.log("[PORTAL_BUILD]", PORTAL_BUILD);
 
 // ==== GLOBAL ERROR HANDLERS FOR COMPLETE JOB DEBUGGING ====
 window.addEventListener('error', (event) => {
@@ -12147,7 +12151,19 @@ async function loadJobs() {
     // console.log('[DEBUG] API Response:', out);
     if (out.ok) {
        const allJobs = [...(out.offers||[]), ...(out.upcoming||[])];
-       console.log("[JOB_LIST_DEBUG]", allJobs.map(j => ({ id: j.job_id, addressType: typeof j.service_address, address: j.service_address, city: j.service_city, state: j.service_state, zip: j.service_zip })));
+       /* PATCH START: Enhanced payload verification */
+       console.log("[CARD_PAYLOAD_DEBUG]", allJobs.slice(0,5).map(j => ({ 
+         id: j.job_id, 
+         service_address_type: typeof j.service_address, 
+         service_address_value: j.service_address,
+         address_type: typeof j.address,
+         address_value: j.address,
+         city: j.service_city, 
+         state: j.service_state, 
+         zip: j.service_zip,
+         coords: { lat: j.geo_lat, lng: j.geo_lng }
+       })));
+       /* PATCH END */
     }
     /* if (out.upcoming) {
         console.log('UPCOMING_LIST_RAW', out.upcoming);
@@ -12917,7 +12933,10 @@ async function renderUpcoming(list) {
     }
 
     // ? ADDRESS & PAYOUT - Use same fields as Pending Offers
-    const address = j.address || j.service_address || j.service_city || j.city || "Location pending";
+    /* PATCH START: fix address contract + routing */
+    // NEVER coerce objects - only use string fields
+    const address = (typeof j.address_text === 'string' && j.address_text) ? j.address_text : "";
+    /* PATCH END */
     let payoutHtml = '';
     if (j.payout_estimated) {
         payoutHtml = `<div style="font-size:13px;color:var(--h2s-accent-positive);font-weight:600">$${j.payout_estimated}</div>`;
@@ -12955,7 +12974,7 @@ async function renderUpcoming(list) {
     if (hasPhotos && hasSignature) {
         // Ready to complete
         primaryBtnHtml = `
-        <button class="${doneBtnClass}" data-done="${esc(j.job_id)}" title="${doneBtnTitle}" style="background:var(--h2s-primary-cta);border:none;color:var(--h2s-text-main);font-weight:600;font-size:15px;height:44px;border-radius:9999px;width:100%;transition:all 0.2s;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:8px" type="button">
+        <button class="${doneBtnClass}" data-done="${esc(j.assign_id || j.assignment_id || '')}" title="${doneBtnTitle}" style="background:var(--h2s-primary-cta);border:none;color:var(--h2s-text-main);font-weight:600;font-size:15px;height:44px;border-radius:9999px;width:100%;transition:all 0.2s;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:8px" type="button">
             Complete Job
         </button>`;
         
@@ -13193,7 +13212,9 @@ async function renderUpcoming(list) {
     }
     
     if (doneBtn) {
-      const jobId = doneBtn.dataset.done;
+      const assignId = doneBtn.dataset.done;
+      // Photo/signature gating is keyed by job_id in this portal.
+      const jobId = doneBtn.closest('.item') ? (doneBtn.closest('.item').querySelector('button[data-details]')?.dataset?.details || '') : '';
       
       // ? ENFORCE WORKFLOW: Photos -> Signature -> Complete
       if (!photoOnFile[jobId]) {
@@ -13317,41 +13338,73 @@ async function renderUpcoming(list) {
       modal.querySelector('#final-complete-confirm').onclick = async () => {
         modal.remove();
 
-        // ==== INSTRUMENTATION: START ====
+        /* PATCH START: Complete Job handler remove global deps */
+        // Safe token retrieval
+        function getTokenSafe() {
+          return localStorage.getItem(LS_TOKEN) || sessionStorage.getItem(LS_TOKEN) || window.token || "";
+        }
+        
+        // Safe user retrieval
+        function getActiveUserSafe() {
+          // 1) Prefer window.me if exists
+          if (window.me && (window.me.id || window.me.pro_id || window.me.email)) {
+            return window.me;
+          }
+          // 2) Return null (session missing)
+          return null;
+        }
+        
         const cid = `complete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`[CLICK_COMPLETE_START] cid=${cid} job_id=${jobId} hasPhotos=${!!photoOnFile[jobId]} hasSignature=${!!signatureOnFile[jobId]}`);
+        const token = getTokenSafe();
+        const user = getActiveUserSafe();
+        
+        console.log(`[COMPLETE_START] cid=${cid} assign_id=${assignId}`);
+        
+        // Validate required fields before sending
+        if (!assignId) {
+          console.log(`[COMPLETE_FAIL] cid=${cid} error=missing_assign_id`);
+          toast('❌ Error: Assignment ID missing. Refresh and retry.');
+          return;
+        }
+        
+        if (!token) {
+          console.log(`[COMPLETE_FAIL] cid=${cid} error=missing_token`);
+          toast('❌ Session missing. Refresh and login again.');
+          return;
+        }
         
         try {
           loading(true);
           
-          // ==== NO OPTIMISTIC UPDATE - Wait for backend confirmation ====
-          // (This prevents UI "flash" if backend fails)
+          const payload = { assign_id: String(assignId).trim(), cid };
+          /* PATCH END */
           
-          // Send to backend
-          const payload = {token, job_id: jobId};
-          console.log(`[CLICK_COMPLETE_REQUEST] cid=${cid} endpoint=portal_mark_done payload=`, JSON.stringify(payload));
+          // Direct fetch so we can log HTTP status + backend error_code deterministically.
+          const endpoint = `${VERCEL_API}/portal_mark_done`;
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'X-Cid': cid
+            },
+            body: JSON.stringify(payload)
+          });
+          let out = null;
+          try {
+            out = await res.json();
+          } catch (e) {
+            out = { ok: false, error: 'Invalid JSON response', error_code: 'bad_response' };
+          }
           
-          const out = await POST("portal_mark_done", payload);
-          
-          console.log(`[CLICK_COMPLETE_RESPONSE] cid=${cid} status=${out.ok ? 'OK' : 'ERROR'} response=`, JSON.stringify(out));
-          
-          if (!out.ok) { 
-            console.error(`[CLICK_COMPLETE_ERROR] cid=${cid} error=`, out.error, 'error_code=', out.error_code, 'full_response=', out);
+          if (!res.ok || !out.ok) {
+            console.log(`[COMPLETE_FAIL] cid=${cid} error=${out.error || 'request_failed'}`);
             toast(`❌ Failed: ${out.error || "Could not mark done"} (cid: ${cid})`);
             loading(false);
             return;
           }
           
-          // CRITICAL: Verify backend actually persisted status='done'
-          if (!out.status_persisted || out.job_status !== 'done') {
-            console.error(`[CLICK_COMPLETE_STATUS_MISMATCH] cid=${cid} status_persisted=${out.status_persisted} job_status=${out.job_status}`);
-            toast(`⚠️ Completion may not have persisted - check job status`);
-          }
-          
-          console.log(`[CLICK_COMPLETE_SUCCESS] cid=${cid} backend_cid=${out.cid} status_persisted=${out.status_persisted} job_status=${out.job_status}`);
-          
-          // NO OPTIMISTIC UI UPDATE - Immediately refetch from source of truth
-          console.log(`[CLICK_COMPLETE_REFETCH] cid=${cid} reloading jobs from API to reflect backend state`);
+          console.log(`[COMPLETE_OK] cid=${cid} payout_ledger_id=${out.payout_ledger_id || 'null'}`);
           toast("✅ Job Completed!");
           
           // Immediate refetch to get authoritative state
@@ -22078,7 +22131,7 @@ window.submitFeedback = async function() {
 
 // ==== DYNAMIC BUILD ID VERIFICATION ====
 const apiBase = 'https://h2s-backend.vercel.app';
-fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
+fetch(`${apiBase}/api/build-id?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(data => {
   const buildFooter = document.querySelector('div[style*="position:fixed"][style*="bottom:0"]');
   if (buildFooter && data.buildId) {
     buildFooter.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
@@ -22091,9 +22144,9 @@ fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
 (async function() {
   try {
     const apiBase = 'https://h2s-backend.vercel.app';
-    const resp = await fetch(`${apiBase}/api/health`, { 
+    const resp = await fetch(`${apiBase}/api/health?_cb=${Date.now()}`, {
       method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
+      cache: 'no-store'
     });
     const health = await resp.json();
     
@@ -22104,7 +22157,7 @@ fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
       const footer = document.getElementById('buildFooter');
       if (footer) {
         footer.innerHTML = `
-          PORTAL: SHA-VERIFY-FINAL-1768341239 | 
+          PORTAL: ${PORTAL_BUILD} | 
           BACKEND: ${health.build_id} | 
           TOKEN: ${health.token_secret_present ? '✓' : '✗'}
         `;
@@ -22119,7 +22172,7 @@ fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
 // ==== END BACKEND HEALTH CHECK ====
 </script>
 <div id="buildFooter" style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:11px;text-align:center;padding:4px;z-index:99999;pointer-events:none;">
-    PORTAL: SHA-VERIFY-FINAL-1768341239 | Fetching backend info...
+  PORTAL: PORTAL_BUILD_639041236418272610 | Fetching backend info...
 </div>
 </body>
 </html>
