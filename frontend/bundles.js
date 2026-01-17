@@ -1,11 +1,12 @@
 console.log("[BUILD_ID]", "SHA-VERIFY-002", "2026-01-13 17:34:00", location.href);
-// PS PATCH: Signal bundles.js execution — start
+console.log('SHOP VERSION: 2026-01-17-000000');
+// PS PATCH: Signal bundles.js execution -- start
 if(window.__H2S_BUNDLES_START) window.__H2S_BUNDLES_START();
-// PS PATCH: Signal bundles.js execution — end
+// PS PATCH: Signal bundles.js execution -- end
 
 performance.mark('ss_bundles_first_line');
 performance.mark('ss_entry');
-﻿// PERFORMANCE: defer attribute allows HTML parsing to continue
+// PERFORMANCE: defer attribute allows HTML parsing to continue
 // Script executes after DOM is ready but doesn't block initial paint
 'use strict';
 
