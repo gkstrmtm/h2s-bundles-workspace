@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-14-NUCLEAR-FIX-ADDRESS-ROUTING
+<!-- VERSION: 2026-01-16-215000 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -22129,47 +22129,49 @@ window.submitFeedback = async function() {
 
 // console.log('[Customer Photos] Tech portal viewer loaded');
 
-// ==== DYNAMIC BUILD ID VERIFICATION ====
-const apiBase = 'https://h2s-backend.vercel.app';
-fetch(`${apiBase}/api/build-id?_cb=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(data => {
-  const buildFooter = document.querySelector('div[style*="position:fixed"][style*="bottom:0"]');
-  if (buildFooter && data.buildId) {
-    buildFooter.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
-    console.log('[BUILD_ID_LIVE]', data.buildId, 'fetched at', data.timestamp);
-  }
-}).catch(e => console.error('[BUILD_ID_FETCH_ERROR]', e));
-// ==== END DYNAMIC BUILD ID VERIFICATION ====
+// ==== DYNAMIC BUILD ID + BACKEND HEALTH (defer until DOM is ready) ====
+document.addEventListener('DOMContentLoaded', () => {
+  const apiBase = 'https://h2s-backend.vercel.app';
+  const footer = document.getElementById('buildFooter');
 
-// ==== BACKEND HEALTH CHECK ====
-(async function() {
-  try {
-    const apiBase = 'https://h2s-backend.vercel.app';
-    const resp = await fetch(`${apiBase}/api/health?_cb=${Date.now()}`, {
-      method: 'GET',
-      cache: 'no-store'
-    });
-    const health = await resp.json();
-    
-    if (health.ok) {
-      console.log('[HEALTH]', 'build_id=', health.build_id, 'supabase_host=', health.supabase_host, 'token_secret_present=', health.token_secret_present);
-      
-      // Update footer with backend build ID
-      const footer = document.getElementById('buildFooter');
-      if (footer) {
-        footer.innerHTML = `
-          PORTAL: ${PORTAL_BUILD} | 
-          BACKEND: ${health.build_id} | 
-          TOKEN: ${health.token_secret_present ? '✓' : '✗'}
-        `;
+  fetch(`${apiBase}/api/build-id?_cb=${Date.now()}`, { cache: 'no-store' })
+    .then(r => r.json())
+    .then(data => {
+      if (footer && data && data.buildId) {
+        footer.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
+        console.log('[BUILD_ID_LIVE]', data.buildId, 'fetched at', data.timestamp);
       }
-    } else {
-      console.error('[HEALTH] Backend health check failed:', health);
+    })
+    .catch(e => console.error('[BUILD_ID_FETCH_ERROR]', e));
+
+  (async function() {
+    try {
+      const resp = await fetch(`${apiBase}/api/health?_cb=${Date.now()}`, {
+        method: 'GET',
+        cache: 'no-store'
+      });
+      const health = await resp.json();
+
+      if (health && health.ok) {
+        console.log('[HEALTH]', 'build_id=', health.build_id, 'supabase_host=', health.supabase_host, 'token_secret_present=', health.token_secret_present);
+        if (footer) {
+          footer.innerHTML = `
+            PORTAL: ${PORTAL_BUILD} | 
+            BACKEND: ${health.build_id} | 
+            TOKEN: ${health.token_secret_present ? '✓' : '✗'}
+          `;
+        }
+      } else {
+        console.error('[HEALTH] Backend health check failed:', health);
+        if (footer) footer.textContent = `PORTAL: ${PORTAL_BUILD} | BACKEND: health_failed`;
+      }
+    } catch (err) {
+      console.error('[HEALTH] Failed to fetch backend health:', err);
+      if (footer) footer.textContent = `PORTAL: ${PORTAL_BUILD} | BACKEND: health_fetch_error`;
     }
-  } catch (err) {
-    console.error('[HEALTH] Failed to fetch backend health:', err);
-  }
-})();
-// ==== END BACKEND HEALTH CHECK ====
+  })();
+});
+// ==== END DYNAMIC BUILD ID + BACKEND HEALTH ====
 </script>
 <div id="buildFooter" style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:11px;text-align:center;padding:4px;z-index:99999;pointer-events:none;">
   PORTAL: PORTAL_BUILD_639041236418272610 | Fetching backend info...
