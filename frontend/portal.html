@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-17-113213 -->
+<!-- VERSION: 2026-01-17-141848 -->
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -10620,7 +10620,8 @@ function showJobDetails(job) {
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -10649,7 +10650,8 @@ function showJobDetails(job) {
   
   // ? INTELLIGENCE: Service summary + bullets from line items
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
@@ -10885,8 +10887,19 @@ function showJobDetails(job) {
     `;
   }
   
-  if (job.distance_miles) {
-    detailsHTML += `<div class="hr"></div><div class="subl">Distance</div><p>${Math.round(job.distance_miles * 10) / 10} miles from your location</p>`;
+  {
+    let d = job.distance_miles;
+    if (d === undefined || d === null) d = job.distance_mi;
+    if (d === undefined || d === null) d = job._calculatedDistance;
+    if (d === undefined || d === null) d = job._debug_geo && job._debug_geo.dist_calc;
+    if (d === undefined || d === null) d = job.distance;
+    if (typeof d === 'string') {
+      const n = Number(d);
+      d = isFinite(n) ? n : null;
+    }
+    if (d !== null && d !== undefined) {
+      detailsHTML += `<div class="hr"></div><div class="subl">Distance</div><p>${Math.round(d * 10) / 10} miles from your location</p>`;
+    }
   }
   
   // Insert details before buttons
@@ -10990,7 +11003,8 @@ function showOfferDetails(job) {
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -11028,7 +11042,8 @@ function showOfferDetails(job) {
   
   // ? INTELLIGENCE: Service summary + bullets
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
@@ -12309,7 +12324,11 @@ function renderOffers(list) {
   //? LOCATION INTELLIGENCE: Calculate distances asynchronously ONLY if no distance from API
   Promise.all(paginatedList.map(async (j) => {
     // Only calculate if API didn't provide distance
-    if (!j.distance_miles) {
+    const hasApiDistance =
+      !(j.distance_miles === undefined || j.distance_miles === null) ||
+      !(j.distance_mi === undefined || j.distance_mi === null) ||
+      !!(j._debug_geo && j._debug_geo.dist_calc);
+    if (!hasApiDistance) {
       const dist = await getDistanceToJob(j);
       if (dist !== null) {
         j._calculatedDistance = dist;
@@ -12348,8 +12367,13 @@ function renderOffersSync(list, box) {
     // Use calculated distance if available, otherwise backend distance
     // FIXED: Handle 0 or 0.01 correctly by checking for null/undefined explicitly
     let distance = j._calculatedDistance;
-    if (distance === undefined || distance === null) {
-      distance = j.distance_miles;
+    if (distance === undefined || distance === null) distance = j.distance_miles;
+    if (distance === undefined || distance === null) distance = j.distance_mi;
+    if (distance === undefined || distance === null) distance = j._debug_geo && j._debug_geo.dist_calc;
+    if (distance === undefined || distance === null) distance = j.distance;
+    if (typeof distance === 'string') {
+      const n = Number(distance);
+      distance = isFinite(n) ? n : null;
     }
     
     const maxRadius = me && me.service_radius_miles ? asNum(me.service_radius_miles) : 0;
@@ -12370,9 +12394,9 @@ function renderOffersSync(list, box) {
     
     // FIXED: Check if distance is a valid number (including 0), not just truthy
     let distDisplay = 'N/A';
-    if (j.distance_state === 'job_location_pending') {
+    if (j.distance_state === 'job_location_pending' && (distance === null || distance === undefined)) {
       distDisplay = '<span style="color:#94a3b8;font-style:italic">Location pending</span>';
-    } else if (j.distance_state === 'pro_location_pending') {
+    } else if (j.distance_state === 'pro_location_pending' && (distance === null || distance === undefined)) {
       distDisplay = '<span style="color:#94a3b8;font-style:italic">Your location pending</span>';
     } else if (distance !== null && distance !== undefined) {
       if (distance < 0.25) {
@@ -12397,14 +12421,15 @@ function renderOffersSync(list, box) {
     {
       console.log(`[OFFER CARD ${j.job_id}] line_items:`, j.line_items);
       console.log(`[OFFER CARD ${j.job_id}] description:`, j.description);
-      const summary = buildServiceSummary(j.line_items, j.description, j.camera_details);
+      const desc = j.service_description || j.description || j.job_details || j.bundle_description || '';
+      const summary = buildServiceSummary(j.line_items, desc, j.camera_details);
       console.log(`[OFFER CARD ${j.job_id}] summary result:`, summary);
       const summaryLine = summary.summary ? `<div style="font-size:13px;font-weight:600;color:var(--h2s-text-main);margin-top:4px">${esc(summary.summary)}</div>` : '';
       const bullets = summary.bulletsHtml ? `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4">${summary.bulletsHtml}</div>` : '';
       serviceDetails = summaryLine + bullets;
       console.log(`[OFFER CARD ${j.job_id}] serviceDetails HTML length:`, serviceDetails.length);
-      if (!serviceDetails && j.description) {
-        serviceDetails = `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(j.description)}</div>`;
+      if (!serviceDetails && desc) {
+        serviceDetails = `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(desc)}</div>`;
         console.log(`[OFFER CARD ${j.job_id}] Using fallback description`);
       }
     }
