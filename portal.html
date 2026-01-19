@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-18-214830 -->
+<!-- VERSION: 2026-01-18-221154 -->
 
-<script>console.log('PORTAL VERSION: 2026-01-18-214830');</script>
+<script>console.log('PORTAL VERSION: 2026-01-18-221154');</script>
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -13538,7 +13538,7 @@ function renderCompleted(list) {
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
     // ? ADDRESS & PAYOUT
-    const address = j.address || j.service_city || j.city || "Location pending";
+    const address = j.address || j.service_city || j.city || "Address not provided";
     let payoutHtml = '';
     if (j.payout_estimated) {
         payoutHtml = `<div style="font-size:13px;color:var(--h2s-accent-positive);font-weight:600">$${j.payout_estimated}</div>`;
@@ -21580,8 +21580,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   
   if (!hasLineItems && !hasDescription) {
     console.log('[buildServiceSummary] NO DATA - using fallback');
-    out.summary = 'Service (details pending)';
-    out.bulletsHtml = '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+    out.summary = 'Smart Home Service';
+    out.bulletsHtml = '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (no-data-fallback):', out);
     return out;
   }
@@ -21589,8 +21589,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   if (!hasLineItems) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     const descText = String(description).trim();
-    out.summary = descText.split('\n')[0].slice(0, 120) || 'Service (details pending)';
-    out.bulletsHtml = out.summary !== 'Service (details pending)' ? `&bull; ${escHtml(out.summary)}` : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+    out.summary = descText.split('\n')[0].slice(0, 120) || 'Smart Home Service';
+    out.bulletsHtml = out.summary !== 'Smart Home Service' ? `&bull; ${escHtml(out.summary)}` : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (description-fallback):', out);
     return out;
   }
@@ -21704,16 +21704,16 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     const descText = hasDescription ? String(description).trim() : '';
     const descFirstLine = descText ? descText.split('\n')[0].slice(0, 120) : '';
 
-    out.summary = String(name || descFirstLine || 'Service (details pending)');
-    out.bulletsHtml = out.summary !== 'Service (details pending)'
+    out.summary = String(name || descFirstLine || 'Smart Home Service');
+    out.bulletsHtml = out.summary !== 'Smart Home Service'
       ? `&bull; ${escHtml(out.summary)}`
-      : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+      : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (generic-fallback):', out);
     return out;
   }
 
-  out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Service (details pending)';
-  out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+  out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Smart Home Service';
+  out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
 }
