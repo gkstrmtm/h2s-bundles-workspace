@@ -1,5 +1,5 @@
 console.log("[BUILD_ID]", "SHA-VERIFY-002", "2026-01-13 17:34:00", location.href);
-console.log('SHOP VERSION: 2026-01-17-141927');
+console.log('SHOP VERSION: 2026-01-18-214357');
 // PS PATCH: Signal bundles.js execution -- start
 if(window.__H2S_BUNDLES_START) window.__H2S_BUNDLES_START();
 // PS PATCH: Signal bundles.js execution -- end

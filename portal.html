@@ -7,7 +7,9 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-17-141927 -->
+<!-- VERSION: 2026-01-18-214357 -->
+
+<script>console.log('PORTAL VERSION: 2026-01-18-214357');</script>
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -6860,6 +6862,18 @@ a:focus-visible{
             Professional Profile
           </h3>
           <div style="display:grid;gap:20px">
+            <!-- Name & Email Display -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--gap-md);">
+              <div>
+                 <label class="label" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Name</label>
+                 <div id="pfNameDisplay" style="padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#f1f5f9; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">--</div>
+              </div>
+              <div>
+                 <label class="label" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Email</label>
+                 <div id="pfEmailDisplay" style="padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#f1f5f9; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">--</div>
+              </div>
+            </div>
+
             <!-- Profile Photo Upload -->
             <div>
               <label class="label" style="display:block;margin-bottom:var(--control-gap);font-weight:600;color:var(--text);font-size:14px">
@@ -9763,17 +9777,17 @@ function renderMenuItems() {
     box.innerHTML = `
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px 4px">Main</div>
       <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="training" type="button"><span>Training</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Profile</div>
-      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="profile" type="button"><span>Account</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       <button class="menu-item" id="signOut" type="button" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#fca5a5"><span>Sign out</span></button>
     `;
   }
@@ -9824,7 +9838,15 @@ async function hydrateMe() {
   const cachedMe = getCache('me');
   if (cachedMe) {
     me = cachedMe;
-    document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+
+    // Normalize profile fields
+    const realName = me.name || me.pro_name || me.full_name || me.tech_name || me.display_name || 'Pro';
+    const realEmail = me.email || me.pro_email || me.tech_email || '';
+    
+    if(document.getElementById("pfNameDisplay")) document.getElementById("pfNameDisplay").textContent = realName;
+    if(document.getElementById("pfEmailDisplay")) document.getElementById("pfEmailDisplay").textContent = realEmail;
+
+    document.getElementById("portalTitle").textContent = realName ? ("Hi, " + realName.split(" ")[0]) : "Pro portal";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9861,7 +9883,15 @@ async function hydrateMe() {
     setCache('me', me);
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
     
-    document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    // Normalize profile fields
+    const realName = me.name || me.pro_name || me.full_name || me.tech_name || me.display_name || 'Pro';
+    const realEmail = me.email || me.pro_email || me.tech_email || '';
+    
+    // Update UI
+    if(document.getElementById("pfNameDisplay")) document.getElementById("pfNameDisplay").textContent = realName;
+    if(document.getElementById("pfEmailDisplay")) document.getElementById("pfEmailDisplay").textContent = realEmail;
+
+    document.getElementById("portalTitle").textContent = realName ? ("Hi, " + realName.split(" ")[0]) : "Pro portal";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9992,7 +10022,7 @@ function renderPaginationControls(type, totalItems, container) {
   const prevBtn = document.createElement('button');
   prevBtn.className = 'btn secondary';
   prevBtn.style.padding = '8px 16px';
-  prevBtn.textContent = '? Prev';
+  prevBtn.innerHTML = '&larr; Prev';
   prevBtn.disabled = state.page === 1;
   if (state.page === 1) prevBtn.style.opacity = '0.5';
   
@@ -10011,7 +10041,7 @@ function renderPaginationControls(type, totalItems, container) {
   const nextBtn = document.createElement('button');
   nextBtn.className = 'btn secondary';
   nextBtn.style.padding = '8px 16px';
-  nextBtn.textContent = 'Next ?';
+  nextBtn.innerHTML = 'Next &rarr;';
   nextBtn.disabled = state.page === totalPages;
   if (state.page === totalPages) nextBtn.style.opacity = '0.5';
   
@@ -10415,6 +10445,44 @@ function normalizeJobFields(job) {
   
   // Create normalized copy
   const normalized = { ...job };
+
+  // Line items: portal rendering assumes Array.isArray(line_items).
+  // Backend may send JSON string or object-map depending on source/schema.
+  function normalizeLineItems(v) {
+    if (!v) return null;
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (!s) return null;
+      try {
+        return normalizeLineItems(JSON.parse(s));
+      } catch (_) {
+        return null;
+      }
+    }
+    if (typeof v === 'object') {
+      if (Array.isArray(v.items)) return v.items;
+      // If it's an object map, use values
+      const vals = Object.values(v).filter(x => x && (typeof x === 'object' || typeof x === 'string'));
+      if (vals.length > 0) return vals;
+    }
+    return null;
+  }
+
+  if (!Array.isArray(normalized.line_items) || normalized.line_items.length === 0) {
+    const li = normalizeLineItems(job.line_items || job.lines || job.line_items_json || job.lineItems);
+    if (li) normalized.line_items = li;
+  }
+
+  // Service naming: some jobs use service_title/bundle_name instead of service_name
+  if (!normalized.service_name) {
+    normalized.service_name = job.service_title || job.bundle_name || job.service || null;
+  }
+
+  // Description: ensure we have a usable value for the modal summary fallback
+  if (!normalized.description) {
+    normalized.description = job.service_description || job.description || job.service_title || job.service_name || null;
+  }
   
   // Phone: try customer_phone, phone, contact_phone
   if (!normalized.customer_phone) {
@@ -10640,7 +10708,7 @@ function showJobDetails(job) {
   const phoneEl = $("md-customer-phone");
   const customerName = job.customer_name || job.metadata?.customer_name || "";
   if (customerPhone) {
-    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> &bull; ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
       ${esc(customerPhone)}
     </a>`;
@@ -10728,7 +10796,7 @@ function showJobDetails(job) {
             <span>View ${customerPhotos.length} Customer Photo${customerPhotos.length > 1 ? 's' : ''}</span>
           </button>
           <div style="margin-top:10px;font-size:12px;color:#9BB0CC;line-height:1.5;">
-            ${timingMsg} ? Customer shared ${photoContext} to help with installation planning.
+            ${timingMsg} &bull; Customer shared ${photoContext} to help with installation planning.
           </div>
         `;
       } else {
@@ -10944,6 +11012,9 @@ function showJobDetails(job) {
 // Offer-focused details with payout breakdown and Accept action
 function showOfferDetails(job) {
   if (!job) { toast("Job details not available"); return; }
+
+  // Normalize field/type variations before any rendering decisions.
+  job = normalizeJobFields(job);
 
   console.log('[OFFER MODAL] ===== FULL JOB DATA =====');
   console.log('[OFFER MODAL] job_id:', job.job_id);
@@ -12837,7 +12908,7 @@ async function renderUpcoming(list) {
   // ? PERFORMANCE: Use DocumentFragment for batch DOM updates
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
-    const sigLabel = signatureOnFile[j.job_id] ? "Signature ? saved" : "Signature";
+    const sigLabel = signatureOnFile[j.job_id] ? "Signature Saved" : "Signature";
     const statusLabel = (j.status || "").toLowerCase();
     const isOpen = statusLabel === "open";
     
@@ -13046,7 +13117,7 @@ async function renderUpcoming(list) {
       ${secondaryRowHtml}
       <div style="text-align:center;margin-top:6px">
         <button class="btn ghost" data-details="${esc(j.job_id)}" type="button" style="background:transparent;border:none;color:var(--h2s-text-muted);font-size:12px;font-weight:500;padding:4px 0;cursor:pointer">
-          View details ?
+          View details &rarr;
         </button>
       </div>
     `;
@@ -14622,13 +14693,13 @@ async function loadReviews() {
     
     reviews.forEach(r => {
       const avgStars = ((r.stars_tech || 0) + (r.stars_service || 0)) / 2;
-      const starsDisplay = "?".repeat(Math.round(avgStars));
-      
+      const starsDisplay = "★".repeat(Math.round(avgStars));
+
       const el = document.createElement("div");
       el.className = "item";
       el.innerHTML = `
         <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-        <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
+        <div class="meta">${esc(r.display_name)} • ${r.verified ? "✓ Verified" : ""} • ${new Date(r.created_at).toLocaleDateString()}</div>
         ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
         ${r.comment_service ? `<div style="margin-top:8px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
         ${r.tags.length ? `<div style="margin-top:8px;font-size:13px;opacity:.8">${r.tags.map(t => "#" + esc(t)).join(" ")}</div>` : ""}
@@ -14685,13 +14756,13 @@ function renderReviews(reviews) {
   
   reviews.forEach(r => {
     const avgStars = ((r.stars_tech || 0) + (r.stars_service || 0)) / 2;
-    const starsDisplay = "?".repeat(Math.round(avgStars));
-    
+    const starsDisplay = "★".repeat(Math.round(avgStars));
+
     const el = document.createElement("div");
     el.className = "item";
     el.innerHTML = `
       <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-      <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
+      <div class="meta">${esc(r.display_name)} • ${r.verified ? "✓ Verified" : ""} • ${new Date(r.created_at).toLocaleDateString()}</div>
       ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
       ${r.comment_service ? `<div style="margin-top:4px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
       <div id="replies-${esc(r.review_id)}" style="margin-top:8px"></div>
@@ -16137,12 +16208,12 @@ async function adminLoadPros() {
       const distLabel = c.distance_miles === "" ? "Unknown distance" : 
                        c.out_of_radius ? `${c.distance_miles} mi (${c.over_miles} mi over radius)` : 
                        `${c.distance_miles} mi`;
-      const ratingLabel = c.rating > 0 ? `? ${c.rating.toFixed(1)}` : "No rating";
+      const ratingLabel = c.rating > 0 ? `★ ${c.rating.toFixed(1)}` : "No rating";
       
       el.innerHTML = `
         <div>
           <strong>${esc(c.name || c.pro_id)}</strong><br>
-          <span class="meta">${esc(c.email)} ? ${distLabel} ? ${ratingLabel}</span>
+          <span class="meta">${esc(c.email)} • ${distLabel} • ${ratingLabel}</span>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn secondary" data-offer="${esc(c.pro_id)}" type="button">Assign (offer)</button>
@@ -21626,6 +21697,21 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   }
   ['mount','soundbar','camera','doorbell','thermostat','outlet','wiring'].forEach(k => push(groups[k]));
 
+  // Generic fallback: if nothing matched known categories, use item name/title.
+  if (parts.length === 0) {
+    const firstNamed = (lineItems || []).find(it => it && (it.bundle_summary || it.title || it.name || it.sku || it.service_id));
+    const name = firstNamed ? (firstNamed.bundle_summary || firstNamed.title || firstNamed.name || firstNamed.sku || firstNamed.service_id) : '';
+    const descText = hasDescription ? String(description).trim() : '';
+    const descFirstLine = descText ? descText.split('\n')[0].slice(0, 120) : '';
+
+    out.summary = String(name || descFirstLine || 'Service (details pending)');
+    out.bulletsHtml = out.summary !== 'Service (details pending)'
+      ? `&bull; ${escHtml(out.summary)}`
+      : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+    console.log('[buildServiceSummary] OUTPUT (generic-fallback):', out);
+    return out;
+  }
+
   out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Service (details pending)';
   out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
@@ -22162,9 +22248,9 @@ document.addEventListener('DOMContentLoaded', () => {
   fetch(`${apiBase}/api/build-id?_cb=${Date.now()}`, { cache: 'no-store' })
     .then(r => r.json())
     .then(data => {
+      // Debug footer removed for production
       if (footer && data && data.buildId) {
-        footer.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
-        console.log('[BUILD_ID_LIVE]', data.buildId, 'fetched at', data.timestamp);
+         console.log('[BUILD_ID_LIVE]', data.buildId, 'fetched at', data.timestamp);
       }
     })
     .catch(e => console.error('[BUILD_ID_FETCH_ERROR]', e));
@@ -22179,13 +22265,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (health && health.ok) {
         console.log('[HEALTH]', 'build_id=', health.build_id, 'supabase_host=', health.supabase_host, 'token_secret_present=', health.token_secret_present);
-        if (footer) {
-          footer.innerHTML = `
-            PORTAL: ${PORTAL_BUILD} | 
-            BACKEND: ${health.build_id} | 
-            TOKEN: ${health.token_secret_present ? '✓' : '✗'}
-          `;
-        }
+        // Debug footer removed for production
       } else {
         console.error('[HEALTH] Backend health check failed:', health);
         if (footer) footer.textContent = `PORTAL: ${PORTAL_BUILD} | BACKEND: health_failed`;
