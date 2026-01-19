@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-18-221541 -->
+<!-- VERSION: 2026-01-18-222559 -->
 
-<script>console.log('PORTAL VERSION: 2026-01-18-221541');</script>
+<script>console.log('PORTAL VERSION: 2026-01-18-222559');</script>
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -12466,9 +12466,9 @@ function renderOffersSync(list, box) {
     // FIXED: Check if distance is a valid number (including 0), not just truthy
     let distDisplay = 'N/A';
     if (j.distance_state === 'job_location_pending' && (distance === null || distance === undefined)) {
-      distDisplay = '<span style="color:#94a3b8;font-style:italic">Location pending</span>';
+      distDisplay = '';
     } else if (j.distance_state === 'pro_location_pending' && (distance === null || distance === undefined)) {
-      distDisplay = '<span style="color:#94a3b8;font-style:italic">Your location pending</span>';
+      distDisplay = '';
     } else if (distance !== null && distance !== undefined) {
       if (distance < 0.25) {
         distDisplay = '0.0 mi (On-site)';
@@ -13538,7 +13538,7 @@ function renderCompleted(list) {
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
     // ? ADDRESS & PAYOUT
-    const address = j.address || j.service_city || j.city || "Address not provided";
+    const address = j.address || j.service_city || j.city || "";
     let payoutHtml = '';
     if (j.payout_estimated) {
         payoutHtml = `<div style="font-size:13px;color:var(--h2s-accent-positive);font-weight:600">$${j.payout_estimated}</div>`;
