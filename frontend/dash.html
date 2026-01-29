@@ -19813,11 +19813,13 @@ const cropping = this.state.cropping || {};
                 if (focalY) focalY.disabled = isManual;
 
                 if (fineTune) {
+                    // Keep Advanced controls available, but make it clear they are inactive in manual.
                     fineTune.style.opacity = isManual ? '0.45' : '1';
                     fineTune.style.pointerEvents = isManual ? 'none' : 'auto';
                     if (isManual) fineTune.removeAttribute('open');
                 }
 
+                // Crosshair visibility is already handled by setCropMode; this just keeps text honest.
                 if (typeof this.updateStageDragHint === 'function') {
                     this.updateStageDragHint();
                 }

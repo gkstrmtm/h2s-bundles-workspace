@@ -80,6 +80,7 @@ const SUPABASE_CONFIG_API = API.replace('/api/shop', '/api/get_supabase_config')
 let _proofInitPromise = null;
 let _proofSlots = null;
 let _proofSupabaseUrl = '';
+let _proofSupabaseAnonKey = '';
 let _proofLogged = Object.create(null);
 let _proofLocalInitialized = false;
 let _proofLocalAssets = [];
@@ -367,6 +368,82 @@ function buildSupabasePublicUrl(supabaseUrl, bucket, path) {
   return `${base}/storage/v1/object/public/${encodeURIComponent(b)}/${p.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+function collectProofSlotAssetIds(slots) {
+  const ids = [];
+  const pushFrom = (arr) => {
+    (arr || []).forEach(a => {
+      const id = String(a?.asset_id || '').trim();
+      if (id) ids.push(id);
+    });
+  };
+
+  try {
+    const s = slots || {};
+    ['hero', 'mid_proof_rail', 'pre_cta'].forEach(k => {
+      const group = s[k] || {};
+      pushFrom(group.tv_mounting);
+      pushFrom(group.cameras);
+    });
+  } catch (_) {}
+
+  return Array.from(new Set(ids));
+}
+
+async function hydrateProofEditsFromSupabase() {
+  try {
+    if (!_proofSlots || !_proofSupabaseUrl || !_proofSupabaseAnonKey) return;
+
+    const ids = collectProofSlotAssetIds(_proofSlots);
+    if (!ids.length) return;
+
+    const base = String(_proofSupabaseUrl || '').replace(/\/+$/, '');
+    const key = String(_proofSupabaseAnonKey || '').trim();
+    if (!base || !key) return;
+
+    const headers = {
+      apikey: key,
+      Authorization: `Bearer ${key}`
+    };
+
+    const chunkSize = 40;
+    const map = new Map();
+
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const inList = chunk.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
+      const url = `${base}/rest/v1/proof_assets?select=asset_id,smart_crop_details&asset_id=in.(${inList})`;
+      const res = await fetch(url, { method: 'GET', headers, credentials: 'omit', cache: 'no-store' }).catch(() => null);
+      if (!res || !res.ok) continue;
+      const rows = await res.json().catch(() => null);
+      if (!Array.isArray(rows)) continue;
+      rows.forEach(r => {
+        const aid = String(r?.asset_id || '').trim();
+        if (!aid) return;
+        map.set(aid, r?.smart_crop_details ?? null);
+      });
+    }
+
+    if (!map.size) return;
+
+    const applyTo = (arr) => {
+      (arr || []).forEach(a => {
+        const aid = String(a?.asset_id || '').trim();
+        if (!aid || !map.has(aid)) return;
+        a.smart_crop_details = map.get(aid);
+      });
+    };
+
+    ['hero', 'mid_proof_rail', 'pre_cta'].forEach(k => {
+      const group = _proofSlots[k];
+      if (!group) return;
+      applyTo(group.tv_mounting);
+      applyTo(group.cameras);
+    });
+  } catch (_) {
+    // Never block checkout funnel due to proof hydration.
+  }
+}
+
 function getPrimaryServiceFromCart() {
   try {
     const ids = (cart || []).map(i => String(i?.id || i?.bundle_id || '')).join(' ');
@@ -401,6 +478,7 @@ async function loadProofData() {
       if (cfgRes && cfgRes.ok) {
         const cfg = await cfgRes.json();
         if (cfg && cfg.ok && cfg.url) _proofSupabaseUrl = String(cfg.url);
+        if (cfg && cfg.ok && cfg.anonKey) _proofSupabaseAnonKey = String(cfg.anonKey);
       }
     } catch (_) {}
 
@@ -410,6 +488,10 @@ async function loadProofData() {
         if (slots && slots.ok && slots.slots) _proofSlots = slots.slots;
       }
     } catch (_) {}
+
+    // proof-slots API omits edit metadata (smart_crop_details). Hydrate from Supabase so
+    // dashboard edits actually reflect on the live bundles page.
+    try { await hydrateProofEditsFromSupabase(); } catch (_) {}
 
     return { supabaseUrl: _proofSupabaseUrl, slots: _proofSlots };
   })();

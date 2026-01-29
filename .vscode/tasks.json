@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Deploy Frontend (safe TLS)",
+      "type": "shell",
+      "command": "./scripts/vercel-safe.sh --prod --yes",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy Frontend (refresh CA + safe TLS)",
+      "type": "shell",
+      "command": "./scripts/vercel-safe.sh --refresh-ca --prod --yes",
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy Frontend (macOS helper script)",
+      "type": "shell",
+      "command": "./scripts/deploy-frontend-prod-macos.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

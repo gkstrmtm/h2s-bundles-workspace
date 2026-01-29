@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "vercel-build": "echo 'Static site - no build needed'"
+    "vercel-build": "echo 'Static site - no build needed'",
+    "deploy:frontend": "./scripts/deploy-frontend-prod-macos.sh",
+    "deploy:frontend:refresh-ca": "./frontend/scripts/vercel-safe.sh --refresh-ca --prod --yes"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

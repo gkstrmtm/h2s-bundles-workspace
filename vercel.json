@@ -6,6 +6,21 @@
   "trailingSlash": false,
   "redirects": [
     {
+      "source": "/dash",
+      "destination": "/Dash",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/Dash",
+      "permanent": false
+    },
+    {
+      "source": "/-",
+      "destination": "/Dash",
+      "permanent": false
+    },
+    {
       "source": "/bundles",
       "has": [
         {
@@ -13,7 +28,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "/portal",
+      "destination": "/dash",
       "permanent": true
     }
   ],
@@ -46,6 +61,45 @@
   "headers": [
     {
       "source": "/portal",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
+        }
+      ]
+    },
+    {
+      "source": "/dash",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
+        }
+      ]
+    },
+    {
+      "source": "/dashboard",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
+        }
+      ]
+    },
+    {
+      "source": "/-",
       "headers": [
         {
           "key": "Cache-Control",

@@ -2,18 +2,28 @@
   "public": true,
   "cleanUrls": true,
   "trailingSlash": false,
-  "headers": [
+  "redirects": [
     {
-      "source": "/(portal|portal.html|bundles.js)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
-        }
-      ]
+      "source": "/Dash",
+      "destination": "/dash",
+      "permanent": false
+    },
+    {
+      "source": "/Dash/",
+      "destination": "/dash",
+      "permanent": false
+    },
+    {
+      "source": "/Dash.html",
+      "destination": "/dash",
+      "permanent": false
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://h2s-backend.vercel.app/api/:path*"
+    },
     {
       "source": "/",
       "has": [
@@ -23,6 +33,18 @@
         }
       ],
       "destination": "/portal"
+    },
+    {
+      "source": "/dash",
+      "destination": "/dash.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/dash.html"
+    },
+    {
+      "source": "/-",
+      "destination": "/dash.html"
     },
     {
       "source": "/",
@@ -48,6 +70,15 @@
     }
   ],
   "headers": [
+    {
+      "source": "/(portal|portal.html|dash|dashboard|\\-|dash.html|dashboard-design-system.css|bundles.js)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [
@@ -90,6 +121,15 @@
         {
           "key": "Cache-Control",
           "value": "no-store"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         }
       ]
     }
