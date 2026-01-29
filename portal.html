@@ -7,9 +7,9 @@
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
-<!-- VERSION: 2026-01-18-222559 -->
+<!-- VERSION: 2026-01-27-234022 -->
 
-<script>console.log('PORTAL VERSION: 2026-01-18-222559');</script>
+<script>console.log('PORTAL VERSION: 2026-01-27-234022');</script>
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
@@ -13942,11 +13942,11 @@ function renderPayoutsDashboard(data) {
       // State badge styling
       let stateBadge = '';
       if (String(r.state).toLowerCase() === 'approved') {
-        stateBadge = '<span style="background:rgba(16,185,129,.15);color:#10b981;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">? Approved</span>';
+        stateBadge = '<span style="background:rgba(16,185,129,.15);color:#10b981;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Approved</span>';
       } else if (String(r.state).toLowerCase() === 'pending') {
-        stateBadge = '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">? Pending</span>';
+        stateBadge = '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Pending</span>';
       } else if (String(r.state).toLowerCase() === 'paid') {
-        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">?? Paid</span>';
+        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Paid</span>';
       }
       
       const row = document.createElement("div");
@@ -17451,7 +17451,7 @@ function renderBuyList(buyList, jobId) {
   resultsDiv.classList.add('slide-down');
   
   // Update status indicator with animation
-  $("adBuyListStatus").innerHTML = '<span class="fade-in" style="color: #10b981; font-weight: 600; font-size: 15px;">? Order ready to place</span>';
+  $("adBuyListStatus").innerHTML = '<span class="fade-in" style="color: #10b981; font-weight: 600; font-size: 15px;">Order ready to place</span>';
   
   console.log("[renderBuyList] Complete - displayed", buyList.items.length, "items");
 }
@@ -18308,7 +18308,7 @@ window.openTimeOffModal = function() {
   }
   
   if (reasonSelect) reasonSelect.value = "Vacation";
-  if (hintEl) hintEl.innerHTML = `?? You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
+  if (hintEl) hintEl.innerHTML = `You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
   if (dateDisplay) dateDisplay.textContent = 'Choose a date';
   
   // Render quick-pick chips
@@ -21010,15 +21010,13 @@ function openAnnouncementsModal() {
   modal.style.display = "block";
   
   if (proAnnouncementsCache.length === 0) {
-    listBox.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0">No announcements at this time.</p>';
+    listBox.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0">You know what I\'m worried about?</p>';
     return;
   }
   
-  const icons = {info:'&#128227;', update:'&#128227;', warning:'&#9888;', urgent:'&#10071;'};
   const colors = {info:'#3b82f6', update:'#10b981', warning:'#f59e0b', urgent:'#ef4444'};
   
   listBox.innerHTML = proAnnouncementsCache.map(a => {
-    const icon = icons[a.type] || '&#128227;';
     const color = colors[a.type] || '#3b82f6';
     const isUnread = !viewedAnnouncementIds.has(String(a.announcement_id));
     const createdDate = new Date(a.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
@@ -21046,8 +21044,7 @@ function openAnnouncementsModal() {
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
               <span style="font-size:24px">${icon}</span>
               <h3 style="margin:0;font-size:18px;font-weight:700;color:#e0f2fe">${a.title}</h3>
-              ${isUnread?'<span style="background:#3b82f6;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600">NEW</span>':''}
-            </div>
+              $iv>
             <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' &bull; By '+a.created_by:''}</div>
           </div>
         </div>
@@ -21056,7 +21053,7 @@ function openAnnouncementsModal() {
         
         ${videoEmbed}
         
-        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">&#10003; Read</div>'}
+        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">Read</div>'}
       </div>
     `;
   }).join('');
@@ -21088,7 +21085,7 @@ async function markAnnouncementAsViewed(announcementId) {
       // Show subtle success feedback
       const toastEl = document.createElement('div');
       toastEl.style.cssText = 'position:fixed;bottom:24px;right:24px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(16,185,129,0.4);z-index:99999;font-size:14px;font-weight:600;animation:slideInUp 0.3s ease';
-      toastEl.textContent = '? Marked as read';
+      toastEl.textContent = 'Marked as read';
       document.body.appendChild(toastEl);
       setTimeout(() => {
         toastEl.style.animation = 'slideOutDown 0.3s ease';

@@ -4653,7 +4653,7 @@ Make sure the pro payouts details show up in a style card that shows images, oth
                         const jobIdSafe = escapeHtml(p.job_id || '');
                         const proSafe = escapeHtml(p.pro_id || '');
                         const payoutIdRaw = String(p.payout_id || '');
-                        const payoutIdSafe = escapeHtml(payoutIdRaw).replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const payoutIdSafe = String(payoutIdRaw || '').replace(/[^a-zA-Z0-9_-]/g, '_');
                         const payoutIdArg = JSON.stringify(payoutIdRaw).replace(/"/g, '&quot;');
                         const jobIdArg = JSON.stringify(String(p.job_id || '')).replace(/"/g, '&quot;');
                         return `
@@ -5121,7 +5121,7 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     }
 
 </script>
-<!-- DISPATCH_EOF_MARKER: 2026-01-09 -->
+<!-- DISPATCH_EOF_MARKER: 2026-01-19 -->
 </div>
 </body>
 </html>

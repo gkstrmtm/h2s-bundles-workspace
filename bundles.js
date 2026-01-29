@@ -1,5 +1,5 @@
 console.log("[BUILD_ID]", "SHA-VERIFY-002", "2026-01-13 17:34:00", location.href);
-console.log('SHOP VERSION: 2026-01-18-222559');
+console.log('SHOP VERSION: 2026-01-27-234022');
 // PS PATCH: Signal bundles.js execution -- start
 if(window.__H2S_BUNDLES_START) window.__H2S_BUNDLES_START();
 // PS PATCH: Signal bundles.js execution -- end
@@ -70,6 +70,518 @@ const IS_LOCAL = (location.hostname === '127.0.0.1' || location.hostname === 'lo
 // Expose endpoints globally for consistency with shared snippets
 window.H2S_TRACKING_ENDPOINT = DASH_URL;
 window.H2S_META_ENDPOINT = DASH_URL;
+
+// === PROOF (WORK HISTORY) ===
+// Public endpoints; safe no-op if tables/bucket not configured.
+const PROOF_SLOTS_API = API.replace('/api/shop', '/api/proof-slots');
+const PROOF_EVENT_API = API.replace('/api/shop', '/api/proof-event');
+const SUPABASE_CONFIG_API = API.replace('/api/shop', '/api/get_supabase_config');
+
+let _proofInitPromise = null;
+let _proofSlots = null;
+let _proofSupabaseUrl = '';
+let _proofLogged = Object.create(null);
+let _proofLocalInitialized = false;
+let _proofLocalAssets = [];
+
+function getProofMode() {
+  try {
+    const v = String(new URLSearchParams(location.search).get('proof') || '').trim().toLowerCase();
+    if (!v) return (IS_LOCAL ? 'demo' : '');
+    if (v === 'local') return (IS_LOCAL ? 'local' : '');
+    if (v === 'demo' || v === '1' || v === 'true' || v === 'yes') return 'demo';
+  } catch (_) {}
+  return (IS_LOCAL ? 'demo' : '');
+}
+
+function svgPlaceholderDataUri(label) {
+  const safe = String(label || 'Install photo').slice(0, 48);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a2a5a"/>
+      <stop offset="1" stop-color="#1493ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="720" rx="28" fill="url(#g)"/>
+  <rect x="40" y="40" width="880" height="640" rx="22" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.20)"/>
+  <text x="80" y="120" fill="#ffffff" font-size="44" font-family="system-ui, -apple-system, Segoe UI, Roboto" font-weight="800">Work history preview</text>
+  <text x="80" y="175" fill="rgba(255,255,255,0.85)" font-size="26" font-family="system-ui, -apple-system, Segoe UI, Roboto">${escapeHtml(safe)}</text>
+  <text x="80" y="640" fill="rgba(255,255,255,0.7)" font-size="22" font-family="system-ui, -apple-system, Segoe UI, Roboto">Enable real photos by uploading Proof Packs (admin) or use ?proof=local to preview files.</text>
+</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+function getDemoProofAssets(count) {
+  const n = Math.max(1, Math.min(12, Number(count || 6)));
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    out.push({
+      asset_id: 'demo-' + i,
+      media_kind: 'photo',
+      direct_url: svgPlaceholderDataUri('Recent install #' + i)
+    });
+  }
+  return out;
+}
+
+function capVideos(assets, maxVideos) {
+  const out = [];
+  let videos = 0;
+  (assets || []).forEach(a => {
+    const kind = String(a?.media_kind || 'photo');
+    if (kind === 'video') {
+      if (videos >= maxVideos) return;
+      videos++;
+    }
+    out.push(a);
+  });
+  return out;
+}
+
+function videoPosterDataUri() {
+  // Small neutral poster so video tiles don't look broken before play.
+  return svgPlaceholderDataUri('Tap to play');
+}
+
+function clampNumber(n, min, max, fallback = 0) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
+function normalizeCropMode(mode) {
+  const v = String(mode || '').trim().toLowerCase();
+  if (v === 'contain') return 'contain';
+  if (v === 'cover') return 'cover';
+  if (v === 'manual') return 'manual';
+  return '';
+}
+
+function getProofSmartCropDetails(asset) {
+  try {
+    const d = asset?.smart_crop_details;
+    if (d && typeof d === 'object') return d;
+    if (typeof d === 'string') {
+      const parsed = safeJsonParse(d);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (_) {}
+  return {};
+}
+
+function getProofObjectPosition(smart) {
+  // Prefer the persisted string ("50% 50%"), but clamp to safe values.
+  try {
+    const raw = String(smart?.objectPosition || '').trim();
+    if (raw) {
+      const parts = raw.split(/\s+/).slice(0, 2);
+      if (parts.length === 2) {
+        const m1 = parts[0].match(/(-?\d+(?:\.\d+)?)%/);
+        const m2 = parts[1].match(/(-?\d+(?:\.\d+)?)%/);
+        if (m1 && m2) {
+          const x = clampNumber(m1[1], 0, 100, 50);
+          const y = clampNumber(m2[1], 0, 100, 50);
+          return `${x}% ${y}%`;
+        }
+      }
+    }
+
+    // Fallback: accept common numeric focal fields.
+    const fxPct = smart?.focal_x_pct ?? smart?.focalX_pct;
+    const fyPct = smart?.focal_y_pct ?? smart?.focalY_pct;
+    if (Number.isFinite(Number(fxPct)) && Number.isFinite(Number(fyPct))) {
+      const x = clampNumber(fxPct, 0, 100, 50);
+      const y = clampNumber(fyPct, 0, 100, 50);
+      return `${x}% ${y}%`;
+    }
+
+    const fx01 = smart?.focal_x ?? smart?.focalX;
+    const fy01 = smart?.focal_y ?? smart?.focalY;
+    if (Number.isFinite(Number(fx01)) && Number.isFinite(Number(fy01))) {
+      const x = clampNumber(Number(fx01) * 100, 0, 100, 50);
+      const y = clampNumber(Number(fy01) * 100, 0, 100, 50);
+      return `${x}% ${y}%`;
+    }
+  } catch (_) {}
+  return '50% 50%';
+}
+
+function buildProofMediaStyle(asset) {
+  try {
+    // Match the ProofPacks "resting card truth" logic from Dash.html.
+    const rotateBase = Number(asset?.video_rotate_deg || 0);
+    const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
+
+    const smart = getProofSmartCropDetails(asset);
+    const mode = normalizeCropMode(smart?.mode);
+    const objectFit = mode === 'contain' ? 'contain' : 'cover';
+    const objectPosition = getProofObjectPosition(smart);
+
+    const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
+    const panX = clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -50, 50, 0);
+    const panY = clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -50, 50, 0);
+    const tilt = clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
+    const scalePct = clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 250, 100);
+    const scale = scalePct / 100;
+
+    const filterParts = [];
+    const bw = String(asset?.filter_bw || '') === '1' || asset?.filter_bw === true;
+    if (bw) filterParts.push('grayscale(100%)');
+
+    const b = Number(asset?.filter_brightness || 100);
+    const c = Number(asset?.filter_contrast || 100);
+    const s = Number(asset?.filter_saturation || 100);
+    if (Number.isFinite(b) && b !== 100) filterParts.push(`brightness(${clampNumber(b, 0, 200, 100)}%)`);
+    if (Number.isFinite(c) && c !== 100) filterParts.push(`contrast(${clampNumber(c, 0, 200, 100)}%)`);
+    if (Number.isFinite(s) && s !== 100) filterParts.push(`saturate(${clampNumber(s, 0, 200, 100)}%)`);
+
+    const needsTransform = rotateDeg !== 0 || tilt !== 0 || panX !== 0 || panY !== 0 || scale !== 1;
+    const transform = needsTransform
+      ? `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale}) translateZ(0)`
+      : '';
+
+    const parts = [
+      objectFit !== 'cover' ? `object-fit: ${objectFit}` : '',
+      objectPosition !== '50% 50%' ? `object-position: ${objectPosition}` : '',
+      needsTransform ? `transform: ${transform}` : '',
+      needsTransform ? 'will-change: transform' : '',
+      needsTransform ? 'backface-visibility: hidden' : '',
+      filterParts.length ? `filter: ${filterParts.join(' ')}` : ''
+    ].filter(Boolean);
+
+    return parts.length ? `${parts.join('; ')};` : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function proofLabelForAsset(asset) {
+  try {
+    const service = String(asset?.service || '').trim();
+    const shot = String(asset?.shot_type || '').trim().toLowerCase();
+    if (!service || !shot) return '';
+
+    if (service === 'cameras') {
+      if (shot.includes('motion') || shot.includes('track')) return 'Motion tracking';
+      if (shot.includes('pov') || shot.includes('view')) return 'Camera view';
+      if (shot.includes('bird')) return "Bird's-eye install";
+      if (shot.includes('third') || shot.includes('hand')) return 'Handheld install';
+      if (shot.includes('weather') || shot.includes('seal')) return 'Weather sealed';
+      if (shot.includes('mount')) return 'Mounted';
+      return 'Camera install';
+    }
+
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function getTrustBadge(asset) {
+  try {
+    const created = asset?.created_at || asset?.uploaded_at;
+    if (!created) return '';
+    
+    const age = Date.now() - new Date(created).getTime();
+    const daysOld = Math.floor(age / (1000 * 60 * 60 * 24));
+    
+    if (daysOld <= 7) return '<span class="trust-badge trust-fresh">Fresh</span>';
+    if (daysOld <= 30) return '<span class="trust-badge trust-recent">Recent</span>';
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function getQualityBadge(asset) {
+  try {
+    const w = Number(asset?.width_px || 0);
+    const h = Number(asset?.height_px || 0);
+    if (!w || !h) return '';
+    
+    const pixels = w * h;
+    if (pixels >= 3840 * 2160) return '<span class="quality-badge quality-4k">4K</span>';
+    if (pixels >= 1920 * 1080) return '<span class="quality-badge quality-hd">HD</span>';
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function buildDescriptiveAltText(asset) {
+  try {
+    const service = String(asset?.service || 'installation').replace(/_/g, ' ');
+    const shot = String(asset?.shot_type || 'finished install').replace(/_/g, ' ');
+    const date = asset?.created_at ? new Date(asset.created_at).toLocaleDateString() : '';
+    return `${service} ${shot} photo${date ? ` from ${date}` : ''}`;
+  } catch (_) {
+    return 'Recent installation photo';
+  }
+}
+
+function ensureLocalProofControls() {
+  const controls = byId('proofLocalControls');
+  const input = byId('proofLocalFiles');
+  const mode = getProofMode();
+  if (!controls || !input) return;
+
+  if (mode !== 'local') {
+    controls.style.display = 'none';
+    return;
+  }
+
+  controls.style.display = '';
+  if (_proofLocalInitialized) return;
+  _proofLocalInitialized = true;
+
+  input.addEventListener('change', () => {
+    try {
+      const files = Array.from(input.files || []);
+      _proofLocalAssets = files.map((f, idx) => {
+        const kind = (f && f.type && f.type.startsWith('video/')) ? 'video' : 'photo';
+        return {
+          asset_id: 'local-' + idx + '-' + Date.now(),
+          media_kind: kind,
+          direct_url: URL.createObjectURL(f)
+        };
+      });
+    } catch (_) {
+      _proofLocalAssets = [];
+    }
+
+    try { updateProofSections(); } catch (_) {}
+  });
+}
+
+function safeJsonParse(text) {
+  try { return JSON.parse(text); } catch (_) { return null; }
+}
+
+function buildSupabasePublicUrl(supabaseUrl, bucket, path) {
+  const base = String(supabaseUrl || '').replace(/\/+$/, '');
+  const b = String(bucket || '').replace(/^\/+|\/+$/g, '');
+  const p = String(path || '').replace(/^\/+/, '');
+  if (!base || !b || !p) return '';
+  return `${base}/storage/v1/object/public/${encodeURIComponent(b)}/${p.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function getPrimaryServiceFromCart() {
+  try {
+    const ids = (cart || []).map(i => String(i?.id || i?.bundle_id || '')).join(' ');
+    if (ids.includes('cam_') || ids.includes('camera')) return 'cameras';
+  } catch (_) {}
+  return 'tv_mounting';
+}
+
+function dedupeAssets(assets) {
+  const out = [];
+  const seen = new Set();
+  (assets || []).forEach(a => {
+    const id = a && (a.asset_id || a.storage_path || JSON.stringify(a));
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    out.push(a);
+  });
+  return out;
+}
+
+async function loadProofData() {
+  if (_proofInitPromise) return _proofInitPromise;
+
+  _proofInitPromise = (async () => {
+    // Fetch config + slots in parallel, but never throw (funnel-safe)
+    const [cfgRes, slotsRes] = await Promise.all([
+      fetch(SUPABASE_CONFIG_API, { method: 'GET', credentials: 'omit', cache: 'default' }).catch(() => null),
+      fetch(PROOF_SLOTS_API + '?surface=bundles&limit=6', { method: 'GET', credentials: 'omit', cache: 'default' }).catch(() => null),
+    ]);
+
+    try {
+      if (cfgRes && cfgRes.ok) {
+        const cfg = await cfgRes.json();
+        if (cfg && cfg.ok && cfg.url) _proofSupabaseUrl = String(cfg.url);
+      }
+    } catch (_) {}
+
+    try {
+      if (slotsRes && slotsRes.ok) {
+        const slots = await slotsRes.json();
+        if (slots && slots.ok && slots.slots) _proofSlots = slots.slots;
+      }
+    } catch (_) {}
+
+    return { supabaseUrl: _proofSupabaseUrl, slots: _proofSlots };
+  })();
+
+  return _proofInitPromise;
+}
+
+function logProofImpressionOnce(key, payload) {
+  try {
+    if (_proofLogged[key]) return;
+    _proofLogged[key] = true;
+    fetch(PROOF_EVENT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'omit',
+      body: JSON.stringify(payload || {})
+    }).catch(() => {});
+  } catch (_) {}
+}
+
+function renderProofTiles(targetEl, assets, opts) {
+  if (!targetEl) return false;
+  const list = (assets || []).slice(0, Math.max(1, Math.min(12, Number(opts?.limit || 6))));
+  if (!list.length) return false;
+
+  // Show loading skeletons first
+  if (opts?.showLoading) {
+    const skeletons = Array(list.length).fill(0).map(() => '<div class="proof-tile loading"></div>').join('');
+    targetEl.innerHTML = skeletons;
+  }
+
+  const html = list.map((a) => {
+    const url = a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
+    if (!url) return '';
+    const kind = String(a.media_kind || 'photo');
+    const w = Number(a.width_px || 0);
+    const h = Number(a.height_px || 0);
+    const label = proofLabelForAsset(a);
+    const trustBadge = getTrustBadge(a);
+    const qualityBadge = getQualityBadge(a);
+    const badge = label ? `<div class="proof-badge">${escapeHtml(label)}</div>` : '';
+    const badges = `${badge}${trustBadge}${qualityBadge}`;
+    const altText = buildDescriptiveAltText(a);
+
+    const style = buildProofMediaStyle(a);
+    const styleAttr = style ? ` style="${style}"` : '';
+
+    if (kind === 'video') {
+      const preload = String(opts?.videoPreload || 'none');
+      const poster = String(opts?.videoPoster || '') || videoPosterDataUri();
+      return `
+        <div class="proof-tile">
+          ${badge}
+          <video preload="${preload}" controls playsinline muted poster="${poster}"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}"></video>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="proof-tile">
+        ${badges}
+        <img loading="lazy" decoding="async"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}" alt="${escapeHtml(altText)}" onerror="this.parentElement.style.display='none';" />
+      </div>
+    `;
+  }).join('');
+
+  targetEl.innerHTML = html;
+  return true;
+}
+
+async function updateProofSections() {
+  try {
+    await loadProofData();
+
+    const mode = getProofMode();
+    ensureLocalProofControls();
+    const hasRemote = !!(_proofSlots && _proofSupabaseUrl);
+
+    // Mid-page rail
+    const railSection = byId('proofRailSection');
+    const rail = byId('proofRail');
+    if (railSection && rail) {
+      const primary = getPrimaryServiceFromCart();
+      const secondary = primary === 'tv_mounting' ? 'cameras' : 'tv_mounting';
+
+      let combined = [];
+      if (hasRemote) {
+        const slot = _proofSlots.mid_proof_rail || { tv_mounting: [], cameras: [] };
+        combined = dedupeAssets([...(slot[primary] || []), ...(slot[secondary] || [])]);
+      } else if (mode === 'local') {
+        combined = dedupeAssets(_proofLocalAssets);
+      }
+
+      if (!combined.length && mode) combined = getDemoProofAssets(5);
+
+      combined = capVideos(combined, 1);
+
+      const ok = renderProofTiles(rail, combined, { limit: 5, videoPreload: 'none' });
+      railSection.style.display = ok ? '' : (mode ? '' : 'none');
+      
+      // Update statistics
+      if (ok && combined.length) {
+        const stats = byId('proofRailStats');
+        if (stats) {
+          const services = {};
+          combined.forEach(a => {
+            const svc = a?.service || 'other';
+            services[svc] = (services[svc] || 0) + 1;
+          });
+          const serviceLabels = {
+            tv_mounting: 'TV',
+            cameras: 'Cameras',
+            other: 'Other'
+          };
+          const serviceList = Object.entries(services)
+            .map(([k, count]) => `<span class="proof-stats-badge">${serviceLabels[k] || k}: ${count}</span>`)
+            .join(' ');
+          stats.innerHTML = `<div class="proof-stats-row">${combined.length} photos ${serviceList}</div>`;
+          stats.style.display = '';
+        }
+      }
+      
+      if (ok && hasRemote) {
+        logProofImpressionOnce('mid_proof_rail:' + primary, {
+          event_type: 'impression',
+          surface: 'bundles',
+          slot_key: 'mid_proof_rail',
+          service: primary,
+          session_id: SESSION_ID,
+          page_url: location.href,
+          meta: { count: Math.min(5, combined.length) }
+        });
+      }
+    }
+
+    // Cart pre-CTA strip
+    const mini = byId('proofMini');
+    const miniTrack = byId('proofMiniTrack');
+    if (mini && miniTrack) {
+      const primary = getPrimaryServiceFromCart();
+
+      let assets = [];
+      if (hasRemote) {
+        const slot = _proofSlots.pre_cta || { tv_mounting: [], cameras: [] };
+        assets = dedupeAssets(slot[primary] || []);
+      } else if (mode === 'local') {
+        assets = dedupeAssets(_proofLocalAssets);
+      }
+
+      if (!assets.length && mode) assets = getDemoProofAssets(3);
+
+      // Pre-CTA: allow at most one video, and preload metadata so the tile has a real first frame quickly.
+      assets = capVideos(assets, 1);
+
+      const ok = renderProofTiles(miniTrack, assets, { limit: 3, videoPreload: 'metadata' });
+      mini.style.display = ok ? '' : (mode ? '' : 'none');
+      if (ok && hasRemote) {
+        logProofImpressionOnce('pre_cta:' + primary, {
+          event_type: 'impression',
+          surface: 'bundles',
+          slot_key: 'pre_cta',
+          service: primary,
+          session_id: SESSION_ID,
+          page_url: location.href,
+          meta: { count: Math.min(3, assets.length) }
+        });
+      }
+    }
+  } catch (_) {
+    // Never block funnel
+  }
+}
 
 // === PERFORMANCE: Start Data Fetch Immediately ===
 // RE-ENABLED: bundles-data endpoint now live on h2s-backend.vercel.app
@@ -1042,6 +1554,13 @@ async function init(){
     // console.log('🟢 [INIT] Calling route()...');
     route(); // Shows static content instantly for shop view
     // console.log('🟢 [INIT] route() returned');
+
+    // Proof rails (work history): load/render after first paint
+    try {
+      const run = () => { try { updateProofSections(); } catch (_) {} };
+      if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2500 });
+      else setTimeout(run, 1200);
+    } catch (_) {}
     
     
     // PHASE 5: BACKGROUND LOADS - Use pre-started fetch
@@ -1056,26 +1575,37 @@ async function init(){
             if (isSpecialView) route();
           }
           
-          if(data.reviews){
+          if (Array.isArray(data.reviews) && data.reviews.length > 0) {
             allReviews = data.reviews;
             reviewsLoadedFromAPI = true;
-            
+
             // Populate heroReviews from allReviews
             heroReviews = allReviews.slice(0, 5).map(r => ({
               text: r.text && r.text.trim() ? r.text.trim() : '',
               author: r.name || 'Customer',
               stars: r.rating || 5
             })).filter(r => r.text.length > 0);
+          } else {
+            // Backend returned 0 reviews; keep fallbacks and ensure carousel isn't empty.
+            if (allReviews.length === 0 && Array.isArray(heroReviews) && heroReviews.length > 0) {
+              allReviews = heroReviews.map(r => ({
+                rating: r.stars || 5,
+                review_text: r.text || '',
+                display_name: r.author || 'Customer',
+                services_selected: '',
+                timestamp_iso: '',
+                verified: false
+              })).filter(r => (r.review_text || '').trim().length > 0);
+            }
+          }
 
-            // Initialize hero reviews immediately for real names/words
-            if(!isSpecialView){
-              try { initHeroReviews(); } catch(e) { logger.warn('initHeroReviews error', e); }
-              // Defer renderReviews to idle to avoid blocking main thread
-              if('requestIdleCallback' in window){
-                requestIdleCallback(() => { try { renderReviews(); } catch(e) { logger.warn('renderReviews error', e); } }, {timeout: 2000});
-              } else {
-                setTimeout(() => { try { renderReviews(); } catch(e) { logger.warn('renderReviews error', e); } }, 1500);
-              }
+          // Initialize hero reviews and carousel
+          if(!isSpecialView){
+            try { initHeroReviews(); } catch(e) { logger.warn('initHeroReviews error', e); }
+            if('requestIdleCallback' in window){
+              requestIdleCallback(() => { try { renderReviews(); } catch(e) { logger.warn('renderReviews error', e); } }, {timeout: 2000});
+            } else {
+              setTimeout(() => { try { renderReviews(); } catch(e) { logger.warn('renderReviews error', e); } }, 1500);
             }
           }
         } else {
@@ -1310,6 +1840,13 @@ function renderShop(){
     
     // Initialize reviews immediately after DOM update
     try { initHeroReviews(); } catch(e) { logger.warn('initHeroReviews error', e); }
+
+    // Proof rails: re-render after DOM replacement
+    try {
+      const run = () => { try { updateProofSections(); } catch (_) {} };
+      if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2500 });
+      else setTimeout(run, 1200);
+    } catch (_) {}
     
     // Scroll to top
     window.scrollTo(0, 0);
@@ -1333,6 +1870,13 @@ function renderShop(){
       
       // Initialize reviews
       try { initHeroReviews(); } catch(e) { logger.warn('initHeroReviews error', e); }
+
+      // Proof rails: re-render after DOM replacement
+      try {
+        const run = () => { try { updateProofSections(); } catch (_) {} };
+        if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 2500 });
+        else setTimeout(run, 1200);
+      } catch (_) {}
       
       // Update signin state
       renderSigninState();
@@ -2403,7 +2947,7 @@ heroReviews = [
 // Fetch real reviews from Vercel endpoint (Background)
 async function loadHeroReviews() {
   try {
-    const reviewsUrl = API.replace('/shop', '/reviews') + '?limit=5&onlyVerified=true';
+    const reviewsUrl = API.replace('/shop', '/reviews') + '?limit=5';
     // logger.log('[Hero Reviews] Fetching from:', reviewsUrl);
     
     const res = await fetch(reviewsUrl, {
@@ -3055,6 +3599,13 @@ function paintCart(){
 
   // Offer message refresh
   try { h2sRenderOfferMessage(); } catch(_) {}
+
+  // Proof (pre-CTA) should stay aligned with the cart context
+  try {
+    const run = () => { try { updateProofSections(); } catch (_) {} };
+    if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 1500 });
+    else setTimeout(run, 600);
+  } catch (_) {}
 }
 
 async function updatePromoEstimate(){
@@ -3539,12 +4090,9 @@ function showCheckoutModal() {
   // Close cart drawer if open
   const cartDrawer = document.getElementById('cartDrawer');
   if (cartDrawer && cartDrawer.classList.contains('open')) {
-    cartDrawer.classList.remove('open');
+    try { toggleCart(); } catch (_e) { try { cartDrawer.classList.remove('open'); } catch(_e2) {} }
   }
-  
-  // Pre-fill data
-  const preName = user?.name || '';
-  const preEmail = user?.email || '';
+
   const prePhone = user?.phone || '';
   
   let preAddress = '', preCity = '', preState = '', preZip = '';
@@ -4680,7 +5228,10 @@ ${details}
     
     if (response.ok && data.ok) {
       msg.style.color = '#2e7d32';
-      msg.textContent = 'Request sent! We\'ll contact you within 1 hour.';
+      msg.textContent = '';
+      const confirmation = document.createElement('div');
+      confirmation.textContent = 'Request sent! We\'ll contact you within 1 hour.';
+      confirmation.style.marginBottom = '10px';
       
       h2sTrack('QuoteRequested', {
         package_type: packageId,
@@ -4690,10 +5241,36 @@ ${details}
         customer_email: email, // Kept for backward compatibility
         quote_id: data.quote_id
       });
+
+      // Ensure conversion is counted by backend allowlist and Meta Pixel standard event
+      try {
+        h2sTrack('Lead', {
+          lead_type: 'quote',
+          package_type: packageId,
+          quote_id: data.quote_id
+        });
+      } catch(_e) {}
+
+      const scheduleNowBtn = document.createElement('button');
+      scheduleNowBtn.type = 'button';
+      scheduleNowBtn.className = 'btn btn-primary';
+      scheduleNowBtn.style.width = '100%';
+      scheduleNowBtn.style.minHeight = '44px';
+      scheduleNowBtn.style.fontSize = '16px';
+      scheduleNowBtn.textContent = 'Schedule Now';
+      scheduleNowBtn.onclick = () => {
+        try { closeQuoteModal(); } catch (_e) {}
+        try {
+          if (typeof window.scrollToSection === 'function') {
+            window.scrollToSection(packageId === 'cam_custom' ? 'security' : 'tv');
+          }
+        } catch (_e) {}
+      };
+
+      msg.appendChild(confirmation);
+      msg.appendChild(scheduleNowBtn);
       
-      setTimeout(() => {
-        closeQuoteModal();
-      }, 2000);
+      btn.textContent = 'Sent ✓';
     } else {
       throw new Error(data.error || 'Server error');
     }

@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 
-<!-- VERSION: 2026-01-18-222559 -->
-<script>console.log('SHOP VERSION: 2026-01-18-222559');</script>
+<!-- VERSION: 2026-01-27-234022 -->
+<script>console.log('SHOP VERSION: 2026-01-27-234022');</script>
 
 <!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) - start -->
 <script>
@@ -879,6 +879,205 @@ body.modal-open {
   opacity: 0.7;
 }
 
+/* === PROOF RAIL (WORK HISTORY) === */
+.proof-rail-section {
+  padding: 48px 16px;
+  background: #fff;
+}
+
+.proof-rail-inner {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.proof-rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 8px 2px 4px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+@media (min-width: 860px) {
+  .proof-rail { justify-content: center; }
+}
+
+.proof-rail::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.proof-tile {
+  flex: 0 0 auto;
+  width: 160px;
+  height: 120px;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  background: #f1f5f9;
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+
+.proof-tile.loading {
+  background: linear-gradient(
+    90deg,
+    #f1f5f9 0%,
+    #e2e8f0 20%,
+    #f1f5f9 40%,
+    #f1f5f9 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.proof-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proof-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.proof-stats-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  background: #3b82f6;
+  color: #fff;
+}
+
+.proof-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(10, 42, 90, 0.78);
+  color: #fff;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.trust-badge, .quality-badge {
+  position: absolute;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.trust-badge {
+  top: 8px;
+  right: 8px;
+}
+
+.trust-fresh {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.trust-recent {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+
+.quality-badge {
+  bottom: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.proof-tile img,
+.proof-tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.proof-mini {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.proof-mini-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.proof-mini-track {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge legacy */
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.proof-mini-track::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.proof-mini .proof-tile {
+  width: 96px;
+  height: 72px;
+  border-radius: 10px;
+}
+
+.proof-mini .proof-badge {
+  top: 6px;
+  left: 6px;
+  max-width: calc(100% - 12px);
+  padding: 3px 5px;
+  font-size: 9px;
+}
+
 .hero-review-dot {
   width: 6px;
   height: 6px;
@@ -1552,21 +1751,15 @@ body.modal-open {
 
 /* === CTA BRIDGE === */
 .cta-bridge {
-  background: linear-gradient(135deg, var(--cobalt) 0%, #0d3568 100%);
-  padding: 32px 20px;
+  background: transparent;
+  padding: 18px 20px;
   text-align: center;
-  position: relative;
-  overflow: hidden;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 
 .cta-bridge::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(20, 147, 255, 0.5) 50%, transparent 100%);
+  content: none;
 }
 
 .cta-bridge-inner {
@@ -1579,22 +1772,27 @@ body.modal-open {
 }
 
 .cta-bridge-inner p {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
-  color: #fff;
+  color: var(--ink);
   margin: 0;
   letter-spacing: -0.01em;
 }
 
 .cta-bridge-inner svg {
-  color: var(--azure);
-  animation: bounce 2s infinite;
+  display: none;
 }
 
 @keyframes bounce {
   0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
   40% { transform: translateY(-10px); }
   60% { transform: translateY(-5px); }
+}
+
+/* Proof rail local preview controls (local/dev only; enabled via ?proof=local) */
+.proof-local-controls {
+  margin: 8px 0 14px;
+  text-align: center;
 }
 
 /* === WHY ORDER SECTION === */
@@ -3261,7 +3459,7 @@ body.modal-open {
     <span class="urgency-separator">|</span>
     <span>We're available 7 days/week</span>
   </div>
-  <button class="urgency-close" onclick="dismissUrgencyBanner()" aria-label="Dismiss banner">?&mdash;</button>
+  <button class="urgency-close" onclick="dismissUrgencyBanner()" aria-label="Dismiss banner">x</button>
 </div>
 
 <!-- HEADER -->
@@ -3632,6 +3830,33 @@ body.modal-open {
           <p>Not happy with the install? We'll make it right or refund you. No questions asked.</p>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROOF RAIL (WORK HISTORY) -->
+<section class="proof-rail-section" id="proofRailSection" style="display:none;">
+  <div class="proof-rail-inner">
+    <div class="section-header" style="margin-bottom: 18px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+        <div>
+          <h2>Recent installs</h2>
+          <p>Real work from recent jobs. Clean installs, done right.</p>
+        </div>
+        <div id="proofRailStats" class="proof-stats" style="display:none; font-size:12px; color:#64748b; padding:8px 12px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0;">
+          <!-- Stats populated by JS -->
+        </div>
+      </div>
+    </div>
+    <div id="proofLocalControls" class="proof-local-controls" style="display:none;">
+      <label class="btn btn-ghost" style="display:inline-flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px;">
+        Load install photos/videos
+        <input id="proofLocalFiles" type="file" multiple accept="image/*,video/*" style="display:none;">
+      </label>
+      <div class="help" style="margin-top: 8px; font-size: 12px;">Local preview only (does not upload).</div>
+    </div>
+    <div class="proof-rail" id="proofRail" aria-label="Recent installation photos">
+      <!-- Populated by bundles.js from Proof Packs -->
     </div>
   </div>
 </section>
@@ -4075,9 +4300,9 @@ body.modal-open {
       </button>
     </div>
     <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-      <span style="margin-right: 20px;">? Book instantly online</span>
-      <span style="margin-right: 20px;">? 90-day warranty</span>
-      <span>? Same-week availability</span>
+      <span style="margin-right: 20px;">- Book instantly online</span>
+      <span style="margin-right: 20px;">- 90-day warranty</span>
+      <span>- Same-week availability</span>
     </div>
   </div>
 </section>
@@ -4139,7 +4364,7 @@ body.modal-open {
     <!-- Error display -->
     <div id="checkoutError" class="checkout-error" role="alert" aria-live="polite" hidden>
       <span id="checkoutErrorMsg"></span>
-      <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">?&mdash;</button>
+      <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">x</button>
     </div>
 
     <!-- Promo Code -->
@@ -4182,6 +4407,12 @@ body.modal-open {
         <strong id="grandTotal">$0.00</strong>
       </div>
       <div class="note">Flat-rate pricing. No hidden fees. Workmanship guaranteed.</div>
+    </div>
+
+    <!-- Proof (pre-CTA) -->
+    <div id="proofMini" class="proof-mini" style="display:none;">
+      <div class="proof-mini-title">Proof from real installs</div>
+      <div id="proofMiniTrack" class="proof-mini-track" aria-label="Recent installation proof"></div>
     </div>
     
     <!-- Actions -->
@@ -4382,7 +4613,7 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
-<script defer src="bundles.js?v=SOLID_RENDER_JAN10_V1"></script>
+<script defer src="bundles.js?v=SOLID_RENDER_JAN20_V1"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
