@@ -373,6 +373,31 @@ function buildSupabasePublicUrl(supabaseUrl, bucket, path) {
   return `${base}/storage/v1/object/public/${encodeURIComponent(b)}/${p.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+function getProofAssetVersionToken(asset) {
+  try {
+    const u = asset?.updated_at || asset?.updatedAt || '';
+    if (u) return String(u);
+    const c = asset?.created_at || asset?.createdAt || '';
+    if (c) return String(c);
+    const sp = asset?.storage_path || asset?.storagePath || '';
+    if (sp) return String(sp);
+  } catch (_) {}
+  return '';
+}
+
+function appendCacheBust(url, token) {
+  try {
+    const u = String(url || '');
+    const t = String(token || '').trim();
+    if (!u || !t) return u;
+    if (u.startsWith('data:') || u.startsWith('blob:')) return u;
+    if (/\bv=/.test(u)) return u;
+    const joiner = u.includes('?') ? '&' : '?';
+    return u + joiner + 'v=' + encodeURIComponent(t);
+  } catch (_) {}
+  return url;
+}
+
 function collectProofSlotAssetIds(slots) {
   const ids = [];
   const pushFrom = (arr) => {
@@ -475,8 +500,8 @@ async function loadProofData() {
   _proofInitPromise = (async () => {
     // Fetch config + slots in parallel, but never throw (funnel-safe)
     const [cfgRes, slotsRes] = await Promise.all([
-      fetch(SUPABASE_CONFIG_API, { method: 'GET', credentials: 'omit', cache: 'default' }).catch(() => null),
-      fetch(PROOF_SLOTS_API + '?surface=bundles&limit=6', { method: 'GET', credentials: 'omit', cache: 'default' }).catch(() => null),
+      fetch(SUPABASE_CONFIG_API, { method: 'GET', credentials: 'omit', cache: 'no-store' }).catch(() => null),
+      fetch(PROOF_SLOTS_API + '?surface=bundles&limit=6', { method: 'GET', credentials: 'omit', cache: 'no-store' }).catch(() => null),
     ]);
 
     try {
@@ -551,7 +576,8 @@ function renderProofTiles(targetEl, assets, opts) {
   }
 
   const html = list.map((a) => {
-    const url = a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
+    const baseUrl = a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
+    const url = appendCacheBust(baseUrl, getProofAssetVersionToken(a));
     if (!url) return '';
     const kind = String(a.media_kind || 'photo');
     const w = Number(a.width_px || 0);

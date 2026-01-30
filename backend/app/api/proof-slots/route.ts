@@ -250,14 +250,23 @@ export async function GET(request: Request) {
           const { data } = await client.from('proof_assets').select('*').eq('asset_id', slot.asset_id).limit(1);
           assets = (data || []) as any[];
         } else if (slot.pack_id) {
-          const { data } = await client
+          // Key behavior: prioritize recency of edit (updated_at) so legacy assets
+          // become visible immediately after being edited.
+          // Fallback: if updated_at is not available in the schema, use created_at.
+          const baseQuery = client
             .from('proof_assets')
             .select('*')
             .eq('pack_id', slot.pack_id)
             .eq('is_visible', true)
-            .order('created_at', { ascending: false })
             .limit(50);
-          assets = (data || []) as any[];
+
+          const r1 = await baseQuery.order('updated_at', { ascending: false }).order('created_at', { ascending: false });
+          if (r1?.error) {
+            const r2 = await baseQuery.order('created_at', { ascending: false });
+            assets = ((r2 as any)?.data || []) as any[];
+          } else {
+            assets = ((r1 as any)?.data || []) as any[];
+          }
         }
 
         // Apply intelligence: compute quality + slot fitness; performance gate for hero
@@ -288,6 +297,8 @@ export async function GET(request: Request) {
           .map((a: any) => ({
             asset_id: a.asset_id,
             pack_id: a.pack_id,
+            created_at: a.created_at,
+            updated_at: a.updated_at,
             service: a.service,
             media_kind: a.media_kind,
             shot_type: a.shot_type,

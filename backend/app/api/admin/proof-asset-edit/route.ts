@@ -232,6 +232,8 @@ export async function POST(request: Request) {
     const trimRequested = trim.startSec > 0 || trim.endSec !== null;
     const needsVideoProcessing = rotateDeg !== 0 || bw || trimRequested;
 
+    const nowIso = new Date().toISOString();
+
     let client;
     try {
       client = getSupabase();
@@ -244,13 +246,35 @@ export async function POST(request: Request) {
         if (Object.keys(simpleUpdate).length === 0) {
             return NextResponse.json({ ok: true, noop: true }, { headers: corsHeaders(request) });
         }
-        
-        const { data: updatedRows, error: updErr } = await client
-            .from('proof_assets')
-            .update(simpleUpdate)
-            .eq('asset_id', assetId)
-            .select('*')
-            .limit(1);
+
+      // Important: bump updated_at so the asset immediately becomes “recent” for proof-slots.
+      // Some environments may not have updated_at; if so, retry without it.
+      const fastUpdate: Record<string, any> = { ...simpleUpdate, updated_at: nowIso };
+
+      let updatedRows: any[] | null = null;
+      let updErr: any = null;
+
+      {
+        const r = await client
+          .from('proof_assets')
+          .update(fastUpdate)
+          .eq('asset_id', assetId)
+          .select('*')
+          .limit(1);
+        updatedRows = (r as any).data || null;
+        updErr = (r as any).error || null;
+      }
+
+      if (updErr && /updated_at/i.test(String(updErr.message || updErr))) {
+        const r2 = await client
+          .from('proof_assets')
+          .update(simpleUpdate)
+          .eq('asset_id', assetId)
+          .select('*')
+          .limit(1);
+        updatedRows = (r2 as any).data || null;
+        updErr = (r2 as any).error || null;
+      }
 
         if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 400, headers: corsHeaders(request) });
         
@@ -319,11 +343,16 @@ export async function POST(request: Request) {
     }
 
     const patch: Record<string, any> = {
+      ...simpleUpdate,
       storage_bucket: bucket,
       storage_path: newPath,
       content_type: 'video/mp4',
       media_kind: 'video',
       file_size_kb: Math.round(outBytes.length / 1024),
+      // We bake rotate/bw into the file on the slow path; clear the CSS flags to prevent double-apply.
+      video_rotate_deg: 0,
+      filter_bw: false,
+      updated_at: nowIso,
     };
 
     // If we know the window length, update duration_seconds to match.
@@ -331,7 +360,27 @@ export async function POST(request: Request) {
       patch.duration_seconds = trim.durationSec;
     }
 
-    const { data: updatedRows, error: updErr } = await client.from('proof_assets').update(patch).eq('asset_id', assetId).select('*').limit(1);
+    let updatedRows: any[] | null = null;
+    let updErr: any = null;
+
+    {
+      const r = await client.from('proof_assets').update(patch).eq('asset_id', assetId).select('*').limit(1);
+      updatedRows = (r as any).data || null;
+      updErr = (r as any).error || null;
+    }
+
+    // If the current DB schema doesn't include some optional columns, retry without them.
+    if (updErr && /(updated_at|video_rotate_deg|filter_bw)/i.test(String(updErr.message || updErr))) {
+      const patch2 = { ...patch } as Record<string, any>;
+      delete patch2.updated_at;
+      delete patch2.video_rotate_deg;
+      delete patch2.filter_bw;
+
+      const r2 = await client.from('proof_assets').update(patch2).eq('asset_id', assetId).select('*').limit(1);
+      updatedRows = (r2 as any).data || null;
+      updErr = (r2 as any).error || null;
+    }
+
     if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 400, headers: corsHeaders(request) });
 
     return NextResponse.json(
