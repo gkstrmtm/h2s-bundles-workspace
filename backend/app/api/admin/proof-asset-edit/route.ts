@@ -81,6 +81,33 @@ function parseTrimWindow(startInput: unknown, endInput: unknown): { startSec: nu
   return { startSec, endSec, durationSec };
 }
 
+function parseImageDataUrl(input: unknown): { mime: string; base64: string } | null {
+  const raw = String(input ?? '').trim();
+  if (!raw) return null;
+  const m = raw.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i);
+  if (!m) return null;
+  const mime = String(m[1] || '').toLowerCase();
+  const base64 = String(m[2] || '').trim();
+  if (!mime.startsWith('image/')) return null;
+  if (!base64) return null;
+  return { mime, base64 };
+}
+
+function bytesFromBase64(base64: string): Buffer {
+  // Node's base64 decoder ignores whitespace; still trim to reduce surprises.
+  const b = Buffer.from(String(base64 || '').trim(), 'base64');
+  if (!b || !b.length) throw new Error('Invalid base64 image bytes');
+  return b;
+}
+
+function extFromImageMime(mime: string): string {
+  const m = String(mime || '').toLowerCase();
+  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
+  if (m === 'image/webp') return 'webp';
+  if (m === 'image/png') return 'png';
+  return 'jpg';
+}
+
 function ffmpegRotateFilter(deg: 0 | 90 | 180 | 270): string {
   if (deg === 90) return 'transpose=1,';
   if (deg === 270) return 'transpose=2,';
@@ -205,6 +232,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'asset_id required' }, { status: 400, headers: corsHeaders(request) });
     }
 
+    const revertToOriginal = parseBool((body as any).revert_to_original);
+
     // Capture lightweight properties (intent/weight/geometry) without processing video
     const updateIntent = (body as any).intent;
     const updateWeight = (body as any).weight;
@@ -232,6 +261,12 @@ export async function POST(request: Request) {
     const trimRequested = trim.startSec > 0 || trim.endSec !== null;
     const needsVideoProcessing = rotateDeg !== 0 || bw || trimRequested;
 
+    const bakedImage = parseImageDataUrl((body as any).baked_image_data_url)
+      || ((body as any).baked_image_base64
+        ? { mime: String((body as any).baked_image_mime || 'image/jpeg').toLowerCase(), base64: String((body as any).baked_image_base64 || '') }
+        : null);
+    const needsPhotoBake = !!(bakedImage && bakedImage.base64);
+
     const nowIso = new Date().toISOString();
 
     let client;
@@ -241,8 +276,107 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Database not available' }, { status: 503, headers: corsHeaders(request) });
     }
 
-    // FAST PATH: If only metadata/geometry changed, update immediately and return.
-    if (!needsVideoProcessing) {
+    // REVERT PATH: Restore the preserved original (if available) and clear baked metadata.
+    // This is used when an image was accidentally baked/cropped and needs to go back.
+    if (revertToOriginal) {
+      const { data: rows, error: selErr } = await client.from('proof_assets').select('*').eq('asset_id', assetId).limit(1);
+      if (selErr) return NextResponse.json({ ok: false, error: selErr.message }, { status: 400, headers: corsHeaders(request) });
+      const asset: any = rows?.[0] || null;
+      if (!asset) return NextResponse.json({ ok: false, error: 'Asset not found' }, { status: 404, headers: corsHeaders(request) });
+
+      const existingSmart = (asset.smart_crop_details && typeof asset.smart_crop_details === 'object') ? asset.smart_crop_details : {};
+      const origBucket = String((existingSmart as any)?.original_storage_bucket || (existingSmart as any)?.original?.storage_bucket || asset?.storage_bucket || 'proof').trim() || 'proof';
+
+      let origPath = String((existingSmart as any)?.original_storage_path || (existingSmart as any)?.original?.storage_path || '').trim();
+      let inferredOriginal = false;
+
+      // Fallback inference: if the asset was baked by older code (or metadata missing),
+      // attempt to infer the original path from the __crop_ naming convention.
+      if (!origPath) {
+        const curPath = String(asset?.storage_path || '').trim();
+        if (curPath && /__crop_/i.test(curPath)) {
+          const guess = curPath.replace(/__crop_[a-z0-9-]+/gi, '').replace(/__crop_/gi, '');
+          if (guess && guess !== curPath) {
+            try {
+              const { error: signedErr } = await client.storage.from(origBucket).createSignedUrl(guess, 60);
+              if (!signedErr) {
+                origPath = guess;
+                inferredOriginal = true;
+              }
+            } catch {
+              // ignore and fall through
+            }
+          }
+        }
+      }
+
+      const hasOrigPath = !!origPath;
+
+      const nextSmart: Record<string, any> = { ...(existingSmart as any) };
+      // Clear baked metadata and reset framing defaults to avoid surprise cropping.
+      try { delete (nextSmart as any).baked; } catch { /* ignore */ }
+      nextSmart.mode = 'contain';
+      nextSmart.objectPosition = '50% 50%';
+      nextSmart.geometry = { tilt_deg: 0, scale_pct: 100, pan_x_pct: 0, pan_y_pct: 0 };
+      nextSmart.reverted_at = nowIso;
+
+      // If we inferred the original path, store it so future reverts are deterministic.
+      if (inferredOriginal) {
+        try {
+          (nextSmart as any).original_storage_bucket = origBucket;
+          (nextSmart as any).original_storage_path = origPath;
+          (nextSmart as any).original_inferred_at = nowIso;
+        } catch {
+          // ignore
+        }
+      }
+
+      // If we don't have an original pointer, still allow "revert" to mean
+      // "reset crop/framing" back to full-image defaults.
+      const patch: Record<string, any> = {
+        ...simpleUpdate,
+        smart_crop_details: nextSmart,
+        updated_at: nowIso,
+      };
+
+      if (hasOrigPath) {
+        patch.storage_bucket = origBucket;
+        patch.storage_path = origPath;
+        patch.content_type = String((existingSmart as any)?.original_content_type || asset?.content_type || '') || undefined;
+        patch.width_px = (typeof (existingSmart as any)?.original_width_px === 'number') ? (existingSmart as any).original_width_px : undefined;
+        patch.height_px = (typeof (existingSmart as any)?.original_height_px === 'number') ? (existingSmart as any).original_height_px : undefined;
+      }
+
+      let updatedRows: any[] | null = null;
+      let updErr: any = null;
+
+      {
+        const r = await client.from('proof_assets').update(patch).eq('asset_id', assetId).select('*').limit(1);
+        updatedRows = (r as any).data || null;
+        updErr = (r as any).error || null;
+      }
+
+      if (updErr && /(updated_at|width_px|height_px|content_type)/i.test(String(updErr.message || updErr))) {
+        const patch2 = { ...patch } as Record<string, any>;
+        delete patch2.updated_at;
+        delete patch2.width_px;
+        delete patch2.height_px;
+        delete patch2.content_type;
+        const r2 = await client.from('proof_assets').update(patch2).eq('asset_id', assetId).select('*').limit(1);
+        updatedRows = (r2 as any).data || null;
+        updErr = (r2 as any).error || null;
+      }
+
+      if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 400, headers: corsHeaders(request) });
+
+      return NextResponse.json(
+        { ok: true, asset: updatedRows?.[0] || null, reverted_to_original: hasOrigPath, reverted_framing: !hasOrigPath },
+        { headers: corsHeaders(request) },
+      );
+    }
+
+    // FAST PATH: If only metadata/geometry changed (and no baked image), update immediately and return.
+    if (!needsVideoProcessing && !needsPhotoBake) {
         if (Object.keys(simpleUpdate).length === 0) {
             return NextResponse.json({ ok: true, noop: true }, { headers: corsHeaders(request) });
         }
@@ -285,6 +419,126 @@ export async function POST(request: Request) {
         }, { headers: corsHeaders(request) });
     }
 
+    // PHOTO BAKE PATH: Upload a baked (already-cropped) image and switch the asset to the new object.
+    // This makes live rendering deterministic (no CSS cover differences).
+    if (needsPhotoBake) {
+      const { data: rows, error: selErr } = await client.from('proof_assets').select('*').eq('asset_id', assetId).limit(1);
+      if (selErr) return NextResponse.json({ ok: false, error: selErr.message }, { status: 400, headers: corsHeaders(request) });
+      const asset: any = rows?.[0] || null;
+      if (!asset) return NextResponse.json({ ok: false, error: 'Asset not found' }, { status: 404, headers: corsHeaders(request) });
+
+      const mediaKind = String(asset?.media_kind || '').trim();
+      if (mediaKind === 'video') {
+        return NextResponse.json({ ok: false, error: 'baked_image_data_url is for photos only' }, { status: 400, headers: corsHeaders(request) });
+      }
+
+      const bucket = String(asset?.storage_bucket || 'proof').trim() || 'proof';
+      const oldPath = String(asset?.storage_path || '').trim();
+      if (bucket !== 'proof') return NextResponse.json({ ok: false, error: 'Invalid bucket' }, { status: 400, headers: corsHeaders(request) });
+      if (!oldPath) return NextResponse.json({ ok: false, error: 'Asset missing storage_path' }, { status: 400, headers: corsHeaders(request) });
+
+      const outMime = String(bakedImage?.mime || 'image/jpeg').toLowerCase();
+      const outBytes = bytesFromBase64(String(bakedImage?.base64 || ''));
+
+      // Always write a NEW object key to avoid CDN cache making it look like nothing happened.
+      const dir = oldPath.split('/').slice(0, -1).join('/');
+      const base = oldPath.split('/').pop() || 'photo';
+      const baseNoExt = base.replace(/\.[a-z0-9]+$/i, '');
+      const editSuffix = crypto.randomUUID().slice(0, 8);
+      const ext = extFromImageMime(outMime);
+      const newPath = `${dir}/${baseNoExt}__crop_${editSuffix}.${ext}`;
+
+      const up = await client.storage.from(bucket).upload(newPath, outBytes, {
+        contentType: outMime,
+        upsert: false,
+      });
+      if (up?.error) {
+        return NextResponse.json({ ok: false, error: up.error.message || 'Upload failed' }, { status: 500, headers: corsHeaders(request) });
+      }
+
+      // Preserve the original object. (Do NOT delete oldPath.)
+      const existingSmart = (asset.smart_crop_details && typeof asset.smart_crop_details === 'object') ? asset.smart_crop_details : {};
+      const incomingSmart = (updateSmartCrop && typeof updateSmartCrop === 'object') ? updateSmartCrop : {};
+
+      // Capture original pointer once (first bake wins).
+      const originalStoragePath = String((existingSmart as any)?.original_storage_path || (existingSmart as any)?.original?.storage_path || '').trim();
+      const finalSmart: Record<string, any> = {
+        ...existingSmart,
+        ...incomingSmart,
+      };
+
+      if (!originalStoragePath) {
+        finalSmart.original_storage_bucket = bucket;
+        finalSmart.original_storage_path = oldPath;
+        finalSmart.original_content_type = String(asset?.content_type || '') || undefined;
+        finalSmart.original_width_px = (typeof asset?.width_px === 'number') ? asset.width_px : undefined;
+        finalSmart.original_height_px = (typeof asset?.height_px === 'number') ? asset.height_px : undefined;
+      }
+
+      // Record the baked output pointer for debugging / future features.
+      finalSmart.baked = {
+        ...(typeof finalSmart.baked === 'object' ? finalSmart.baked : {}),
+        storage_bucket: bucket,
+        storage_path: newPath,
+        content_type: outMime,
+        width_px: Number((body as any).baked_width_px) || undefined,
+        height_px: Number((body as any).baked_height_px) || undefined,
+        kind: String((body as any).baked_kind || 'crop_4_3'),
+        created_at: nowIso,
+      };
+
+      const patch: Record<string, any> = {
+        ...simpleUpdate,
+        smart_crop_details: finalSmart,
+        storage_bucket: bucket,
+        storage_path: newPath,
+        content_type: outMime,
+        // Keep the same media_kind; normalize common variants.
+        media_kind: (mediaKind === 'image') ? 'photo' : mediaKind || 'photo',
+        file_size_kb: Math.round(outBytes.length / 1024),
+        updated_at: nowIso,
+      };
+
+      const bwPx = Number((body as any).baked_width_px);
+      const bhPx = Number((body as any).baked_height_px);
+      if (Number.isFinite(bwPx) && bwPx > 0) patch.width_px = bwPx;
+      if (Number.isFinite(bhPx) && bhPx > 0) patch.height_px = bhPx;
+
+      let updatedRows: any[] | null = null;
+      let updErr: any = null;
+
+      {
+        const r = await client.from('proof_assets').update(patch).eq('asset_id', assetId).select('*').limit(1);
+        updatedRows = (r as any).data || null;
+        updErr = (r as any).error || null;
+      }
+
+      // Retry without optional columns if the schema is narrower.
+      if (updErr && /(updated_at|width_px|height_px)/i.test(String(updErr.message || updErr))) {
+        const patch2 = { ...patch } as Record<string, any>;
+        delete patch2.updated_at;
+        delete patch2.width_px;
+        delete patch2.height_px;
+
+        const r2 = await client.from('proof_assets').update(patch2).eq('asset_id', assetId).select('*').limit(1);
+        updatedRows = (r2 as any).data || null;
+        updErr = (r2 as any).error || null;
+      }
+
+      if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 400, headers: corsHeaders(request) });
+
+      return NextResponse.json(
+        {
+          ok: true,
+          asset: updatedRows?.[0] || null,
+          baked: true,
+          baked_storage_path: newPath,
+          baked_content_type: outMime,
+        },
+        { headers: corsHeaders(request) },
+      );
+    }
+
     // SLOW PATH: Video processing required (transcoding/trimming)
     // We ALSO apply the simple updates here.
     const { data: rows, error: selErr } = await client.from('proof_assets').select('*').eq('asset_id', assetId).limit(1);
@@ -295,7 +549,7 @@ export async function POST(request: Request) {
 
     const mediaKind = String(asset?.media_kind || '').trim();
     if (mediaKind !== 'video') {
-      return NextResponse.json({ ok: false, error: 'Edit currently supports videos only' }, { status: 400, headers: corsHeaders(request) });
+      return NextResponse.json({ ok: false, error: 'Edit currently supports videos only (unless baked_image_data_url is provided for photos)' }, { status: 400, headers: corsHeaders(request) });
     }
 
     const bucket = String(asset?.storage_bucket || 'proof').trim() || 'proof';

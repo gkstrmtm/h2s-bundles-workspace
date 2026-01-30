@@ -15003,10 +15003,6 @@ details[open] .ob-chevron {
                 const mediaKind = String(asset?.media_kind || '').trim();
                 const isVideo = (mediaKind === 'video');
 
-                // Track whether the user actually performed a crop/reframe during this edit session.
-                // Prevents auto-baking a new cropped image when the user didn't touch framing.
-                this.state._userDidCrop = false;
-
                 // Ensure Supabase config is loaded so we can build a public preview URL.
                 const sb = await this.ensureSupabaseConfig();
                 if (!sb?.ok || !sb?.url) {
@@ -15024,9 +15020,9 @@ details[open] .ob-chevron {
                     const smart = this.getAssetSmartCropDetails(asset);
                     const origPath = String(smart?.original_storage_path || smart?.original?.storage_path || '').trim();
                     const origBucket = String(smart?.original_storage_bucket || smart?.original?.storage_bucket || '').trim();
-                    originalStorageBucket = origBucket;
-                    originalStoragePath = origPath;
                     if (origPath) {
+                        originalStoragePath = origPath;
+                        originalStorageBucket = origBucket || '';
                         path = origPath;
                         if (origBucket) bucket = origBucket;
                     }
@@ -15088,6 +15084,7 @@ details[open] .ob-chevron {
                 }
 
                 // Prepare editor state
+                this.state._userDidCrop = false;
                 this.state.edit = {
                     assetId: String(assetId),
                     asset,
@@ -15096,6 +15093,7 @@ details[open] .ob-chevron {
                     // Also store the raw storage pointer we edited against
                     source_storage_bucket: bucket,
                     source_storage_path: path,
+                    // Preserve original pointers (if present) so we can offer one-click revert.
                     original_storage_bucket: originalStorageBucket,
                     original_storage_path: originalStoragePath,
                 };
@@ -15132,14 +15130,34 @@ details[open] .ob-chevron {
                 // Hydrate editor from saved metadata (smart_crop_details) so the UI matches the resting card.
                 this.hydrateEditorFromAsset(asset);
 
-                // If this asset was previously baked, allow one-click revert to the original.
+                // Show/hide "Revert to original" if this asset is currently baked.
                 try {
                     const btn = document.getElementById('ppRevertToOriginal');
-                    const smart = this.getAssetSmartCropDetails(asset);
-                    const origPath = String(smart?.original_storage_path || smart?.original?.storage_path || '').trim();
-                    const curPath = String(asset?.storage_path || '').trim();
-                    const show = !!(btn && origPath && curPath && origPath !== curPath);
-                    if (btn) btn.style.display = show ? '' : 'none';
+                    if (btn) {
+                        const origPath = String(this.state.edit?.original_storage_path || '').trim();
+                        const curPath = String(asset?.storage_path || '').trim();
+                        const looksBaked = /__crop_/i.test(curPath);
+
+                        const smart = this.getAssetSmartCropDetails(asset);
+                        const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
+                        const mode = String(smart?.mode || '').toLowerCase();
+                        const pos = this.normalizeObjectPosition(smart?.objectPosition || '50% 50%');
+                        const nonDefaultFraming = (
+                            (mode && mode !== 'contain') ||
+                            (pos && pos !== '50% 50%') ||
+                            (Number(geom?.pan_x_pct ?? geom?.panX ?? 0) !== 0) ||
+                            (Number(geom?.pan_y_pct ?? geom?.panY ?? 0) !== 0) ||
+                            (Number(geom?.tilt_deg ?? geom?.tilt ?? 0) !== 0) ||
+                            (Number(geom?.scale_pct ?? geom?.scale ?? 100) !== 100)
+                        );
+
+                        const show = !!(
+                            (origPath && curPath && curPath !== origPath) ||
+                            (curPath && looksBaked) ||
+                            nonDefaultFraming
+                        );
+                        btn.style.display = show ? '' : 'none';
+                    }
                 } catch { /* ignore */ }
 
                 // Touch discoverability: show the drag hint briefly.
@@ -15397,8 +15415,9 @@ details[open] .ob-chevron {
                              
                              <!-- Right: History Tools -->
                              <div class="pp-editor-history" style="display:flex; gap:8px; margin-left: auto;">
-                                <button id="ppRevertToOriginal" class="editor-tool-btn" type="button" style="display:none;" onclick="proofPacks.revertEditedAssetToOriginal()" title="Revert to original image (undo baked crop)" aria-label="Revert to original image">
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+                                <button id="ppRevertToOriginal" class="editor-tool-btn" type="button" style="display:none; gap:6px; padding:6px 10px;" onclick="proofPacks.revertEditedAssetToOriginal()" title="Revert to original framing (undo crop)" aria-label="Revert to original">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg>
+                                    <span style="font-size:12px; font-weight:600;">Revert</span>
                                 </button>
                                 <button id="ppUndoBtn" disabled class="editor-tool-btn" title="Undo (Ctrl+Z)"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg></button>
                                 <button id="ppRedoBtn" disabled class="editor-tool-btn" title="Redo (Ctrl+Y)"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg></button>
@@ -17077,7 +17096,6 @@ details[open] .ob-chevron {
                         this.state.edit.asset = resp.asset;
                         this.state._userDidCrop = false;
 
-                        // Update local library list immediately
                         try {
                             const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                             const idx = items.findIndex(a => String(a?.asset_id || '') === String(resp.asset.asset_id || ''));
@@ -17088,7 +17106,6 @@ details[open] .ob-chevron {
                             }
                         } catch { /* ignore */ }
 
-                        // Refresh stage + live preview URLs immediately
                         await this.reloadPreviewAfterEdit(resp.asset, ['reverted to original']);
                         if (typeof this.refreshLivePreview === 'function') {
                             this.refreshLivePreview().catch(() => {});
@@ -17678,7 +17695,6 @@ details[open] .ob-chevron {
                         trimEndEl.style.outline = '2px solid #ef4444';
                         setTimeout(() => { trimEndEl.style.outline = ''; }, 2000);
                     }
-
                     unlockUi();
                     return;
                 }
@@ -17703,7 +17719,7 @@ details[open] .ob-chevron {
                     let bakedHeightPx = null;
                     let bakedKind = 'crop_4_3';
 
-                    // Only bake when framing actually changed (prevents accidental/automatic crops).
+                    // Only bake when framing actually changed (prevents accidental automatic crops).
                     let shouldBakePhoto = false;
                     try {
                         const tiltN = Number(tilt);
