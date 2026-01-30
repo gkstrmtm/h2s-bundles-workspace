@@ -205,10 +205,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'asset_id required' }, { status: 400, headers: corsHeaders(request) });
     }
 
+    // Capture lightweight properties (intent/weight/geometry) without processing video
+    const updateIntent = (body as any).intent;
+    const updateWeight = (body as any).weight;
+    const updateSmartCrop = (body as any).smart_crop_details;
+    const simpleUpdate: Record<string, any> = {};
+
+    // Map intent to database fields (if schema differs) or same column
+    if (typeof updateIntent === 'string') {
+        const VALID_INTENTS = ['working_shot', 'action_proof', 'result_proof', ''];
+        if (VALID_INTENTS.includes(updateIntent)) {
+            simpleUpdate.shot_type = updateIntent; // Correct mapping from intent -> shot_type
+        }
+    }
+    // Map weight to psychological_weight
+    if (typeof updateWeight === 'number') simpleUpdate.psychological_weight = updateWeight;
+    
+    // Always save smart_crop_details if provided. This is the "Visual Truth".
+    if (updateSmartCrop && typeof updateSmartCrop === 'object') {
+        simpleUpdate.smart_crop_details = updateSmartCrop;
+    }
+
     const rotateDeg = parseRotateDeg((body as any).rotate_deg);
     const bw = parseBool((body as any).filter_bw);
     const trim = parseTrimWindow((body as any).trim_start_sec, (body as any).trim_end_sec);
     const trimRequested = trim.startSec > 0 || trim.endSec !== null;
+    const needsVideoProcessing = rotateDeg !== 0 || bw || trimRequested;
 
     let client;
     try {
@@ -217,7 +239,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Database not available' }, { status: 503, headers: corsHeaders(request) });
     }
 
+    // FAST PATH: If only metadata/geometry changed, update immediately and return.
+    if (!needsVideoProcessing) {
+        if (Object.keys(simpleUpdate).length === 0) {
+            return NextResponse.json({ ok: true, noop: true }, { headers: corsHeaders(request) });
+        }
+        
+        const { data: updatedRows, error: updErr } = await client
+            .from('proof_assets')
+            .update(simpleUpdate)
+            .eq('asset_id', assetId)
+            .select('*')
+            .limit(1);
+
+        if (updErr) return NextResponse.json({ ok: false, error: updErr.message }, { status: 400, headers: corsHeaders(request) });
+        
+        return NextResponse.json({ 
+            ok: true, 
+            asset: updatedRows?.[0] || null,
+            _meta: "fast-path-metadata-only" 
+        }, { headers: corsHeaders(request) });
+    }
+
+    // SLOW PATH: Video processing required (transcoding/trimming)
+    // We ALSO apply the simple updates here.
     const { data: rows, error: selErr } = await client.from('proof_assets').select('*').eq('asset_id', assetId).limit(1);
+
     if (selErr) return NextResponse.json({ ok: false, error: selErr.message }, { status: 400, headers: corsHeaders(request) });
     const asset: any = rows?.[0] || null;
     if (!asset) return NextResponse.json({ ok: false, error: 'Asset not found' }, { status: 404, headers: corsHeaders(request) });

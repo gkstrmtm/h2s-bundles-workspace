@@ -4124,22 +4124,30 @@
             --pp-radius-full: 9999px;
         }
         
-        /* Video Thumbnail with Custom Play Button */
+        /* Video Thumbnail aligned with Editor Physics */
         .pp-video-thumbnail {
             position: relative;
-            width: 160px;
-            height: 90px;
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            height: auto;
             border-radius: var(--pp-radius-md);
             overflow: hidden;
-            background: var(--pp-gray-100);
+            background: #0f172a; /* Slate-900 match editor */
             flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .pp-video-thumbnail video,
         .pp-video-thumbnail img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            width: auto;
+            height: auto;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transform-origin: center center;
+            will-change: transform;
         }
         
         /* CRITICAL: Hide ALL native video controls */
@@ -6179,7 +6187,7 @@
         
         .pp-library-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(160px, 160px));
             gap: var(--pp-space-4);
         }
         
@@ -6201,7 +6209,7 @@
         
         .pp-grid-thumbnail {
             position: relative;
-            aspect-ratio: 16/9;
+            aspect-ratio: 4/3; /* Updated to 4:3 per UX request */
             background: #000;
             overflow: hidden;
         }
@@ -11100,14 +11108,18 @@ details[open] .ob-chevron {
 
                 const smart = this.getAssetSmartCropDetails(asset);
                 const mode = this.normalizeCropMode(smart?.mode);
-                const objectFit = mode === 'contain' ? 'contain' : 'cover';
-                const objectPosition = this.normalizeObjectPosition(smart?.objectPosition || '50% 50%');
 
+                // PS PATCH 2026-01-29: Sync with bundles.js logic.
+                // Use 'cover' by default to match Shop tiles (fill frame), unless explicitly 'contain'.
+                const objectFit = mode === 'contain' ? 'contain' : 'cover';
+                const objectPosition = mode === 'contain' ? (smart?.objectPosition || 'center center') : '50% 50%';
                 const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
-                const panX = this.clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -50, 50, 0);
-                const panY = this.clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -50, 50, 0);
+                
+                // Use expanded limits
+                const panX = this.clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -150, 150, 0);
+                const panY = this.clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -150, 150, 0);
                 const tilt = this.clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
-                const scalePct = this.clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 250, 100);
+                const scalePct = this.clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 300, 100);
                 const scale = scalePct / 100;
 
                 const transform = `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale}) translateZ(0)`;
@@ -11513,12 +11525,11 @@ details[open] .ob-chevron {
 
                 // Keep preview bounded and predictable even when rotated (90/270 swaps dimensions).
                 v.style.objectFit = 'contain';
+                v.style.objectPosition = 'center center';
                 v.style.width = 'auto';
                 v.style.height = 'auto';
-                v.style.maxHeight = '180px';
-                
-                const isPortrait = (deg === 90 || deg === 270);
-                v.style.maxWidth = isPortrait ? '180px' : '100%';
+                v.style.maxWidth = '100%';
+                v.style.maxHeight = '100%';
             },
 
             bindMediaLoadIndicators() {
@@ -11611,236 +11622,113 @@ details[open] .ob-chevron {
             },
 
             bindStageDragPan() {
-                const stageContainer = document.getElementById('ppStageContainer') || document.querySelector('.pp-stage-container');
-                const liveFrame = document.getElementById('ppLivePreviewFrame') || document.querySelector('.pp-preview-frame');
+                const stageContainer = document.getElementById('ppStageContainer');
+                const v = document.getElementById('ppEditorVideo');
                 const panXEl = document.getElementById('ppPanX');
                 const panYEl = document.getElementById('ppPanY');
                 const scaleEl = document.getElementById('ppScalePct');
-                const showCrossEl = document.getElementById('ppShowCrosshair');
-                if (!stageContainer || !panXEl || !panYEl) return;
-
-                // Bind once (stage is sentinel)
+                
+                if (!stageContainer || !panXEl || !panYEl || !scaleEl) return;
+                
+                // Prevent duplicate binding
                 if (stageContainer.dataset.ppBoundDragPan === 'true') return;
                 stageContainer.dataset.ppBoundDragPan = 'true';
+                
+                // Helper to get fresh values
+                const getVal = (el) => parseFloat(el.value || 0);
+                const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
-                const hint = document.getElementById('ppStageDragHint');
-                const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-                const minX = Number(panXEl.min || -50);
-                const maxX = Number(panXEl.max || 50);
-                const minY = Number(panYEl.min || -50);
-                const maxY = Number(panYEl.max || 50);
-                const minScale = Number(scaleEl?.min || 50);
-                const maxScale = Number(scaleEl?.max || 250);
+                // --- PANNING (Mouse & Touch) ---
+                let isDragging = false;
+                let startX = 0;
+                let startY = 0;
+                let initialPanX = 0;
+                let initialPanY = 0;
 
-                const isInteractiveTarget = (target) => {
-                    if (!target) return false;
-                    const el = target;
-                    if (el.closest && el.closest('.focal-crosshair')) return true;
-                    if (el.closest && el.closest('button, input, select, textarea, label, summary, a')) return true;
-                    return false;
-                };
-
-                const getCropMode = () => {
-                    const stateMode = this.normalizeCropMode(this.state?.cropping?.mode);
-                    if (stateMode) return stateMode;
-                    const activeBtn = document.querySelector('.crop-mode-btn.active');
-                    const dataMode = activeBtn?.getAttribute('data-mode');
-                    return this.normalizeCropMode(dataMode);
-                };
-
-                // Proof Packs UX: crosshair is always-on for cover/contain (drag-to-reframe).
-                // Manual crop uses pan (no crosshair).
-                const shouldShowCrosshair = () => showCrossEl ? !!showCrossEl.checked : true;
-
-                const applyPan = (x, y) => {
-                    // Apply Safe Zone constraints if Safe Zone is visible
-                    const safeZoneOverlay = document.getElementById('ppSafeZoneOverlay');
-                    const isSafeZoneActive = safeZoneOverlay && safeZoneOverlay.style.display === 'flex';
+                const onPointerDown = (e) => {
+                    // Ignore if clicking a button/control
+                    if (e.target.closest('button, input, label, .pp-timeline-pro')) return;
                     
-                    if (isSafeZoneActive) {
-                        const boundaries = this.getSafeZoneBoundaries?.();
-                        if (boundaries) {
-                            // Calculate constrained pan values
-                            // Safe Zone defines the visible area - we need to keep the subject within it
-                            // More restrictive constraints for Safe Zone mode
-                            const constraintFactor = 0.7; // Allow 70% of normal range
-                            const constrainedMinX = minX * constraintFactor;
-                            const constrainedMaxX = maxX * constraintFactor;
-                            const constrainedMinY = minY * constraintFactor;
-                            const constrainedMaxY = maxY * constraintFactor;
-                            
-                            x = clamp(x, constrainedMinX, constrainedMaxX);
-                            y = clamp(y, constrainedMinY, constrainedMaxY);
-                            
-                            // Visual feedback when near boundary
-                            const threshold = 0.85;
-                            const isNearBoundary = 
-                                Math.abs(x) > (constrainedMaxX * threshold) ||
-                                Math.abs(y) > (constrainedMaxY * threshold);
-                            
-                            const safeZoneRect = document.getElementById('ppSafeZoneRect');
-                            if (safeZoneRect) {
-                                if (isNearBoundary) {
-                                    safeZoneRect.classList.add('boundary-warning');
-                                } else {
-                                    safeZoneRect.classList.remove('boundary-warning');
-                                }
-                            }
-                        }
-                    }
+                    e.preventDefault(); // Stop selection/scrolling
+                    isDragging = true;
+                    startX = e.clientX || e.touches[0].clientX;
+                    startY = e.clientY || e.touches[0].clientY;
+                    initialPanX = getVal(panXEl);
+                    initialPanY = getVal(panYEl);
                     
-                    panXEl.value = String(x);
-                    panYEl.value = String(y);
-                    panXEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    panYEl.dispatchEvent(new Event('input', { bubbles: true }));
+                    stageContainer.style.cursor = 'grabbing';
                 };
 
-                const applyFocalFromEvent = (container, e) => {
-                    const rect = container.getBoundingClientRect();
-                    const x = rect.width ? ((e.clientX - rect.left) / rect.width) * 100 : 50;
-                    const y = rect.height ? ((e.clientY - rect.top) / rect.height) * 100 : 50;
-                    this.applyFocalPercent(x, y);
+                const onPointerMove = (e) => {
+                    if (!isDragging) return;
+                    e.preventDefault(); // crucial for touch
+                    
+                    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                    const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                    
+                    if (clientX === undefined) return;
+
+                    const dx = clientX - startX;
+                    const dy = clientY - startY;
+                    
+                    // Convert pixel delta to Percentage Shift.
+                    const rect = v ? v.getBoundingClientRect() : stageContainer.getBoundingClientRect();
+                    if (!rect.width || !rect.height) return;
+                    
+                    // Rotation Correction
+                    const angle = Number(document.getElementById('ppVideoRotate')?.value || 0);
+                    const rad = -angle * (Math.PI / 180); // Invert for mapping Screen -> Local
+                    const cos = Math.cos(rad);
+                    const sin = Math.sin(rad);
+                    
+                    const rDx = dx * cos - dy * sin;
+                    const rDy = dx * sin + dy * cos;
+                    
+                    const isPortrait = (Math.abs(angle) === 90 || Math.abs(angle) === 270);
+                    const axisW = isPortrait ? rect.height : rect.width;
+                    const axisH = isPortrait ? rect.width : rect.height;
+                    
+                    const pctX = (rDx / axisW) * 100; 
+                    const pctY = (rDy / axisH) * 100;
+
+                    // Update
+                    const newX = clamp(initialPanX + pctX, -150, 150);
+                    const newY = clamp(initialPanY + pctY, -150, 150);
+                    
+                    panXEl.value = newX.toFixed(2);
+                    panYEl.value = newY.toFixed(2);
+                    
+                    // Trigger live update
+                    this.applyEditorRotation();
                 };
 
-                const ensureCrosshairVisible = () => {
-                    const want = shouldShowCrosshair();
-                    this.toggleCrosshair(!!want);
+                const onPointerUp = () => {
+                    isDragging = false;
+                    stageContainer.style.cursor = 'grab';
                 };
 
-                const bindContainer = (container, kind) => {
-                    if (!container) return;
-                    if (container.dataset.ppBoundDirectManip === 'true') return;
-                    container.dataset.ppBoundDirectManip = 'true';
+                stageContainer.addEventListener('mousedown', onPointerDown);
+                window.addEventListener('mousemove', onPointerMove);
+                window.addEventListener('mouseup', onPointerUp);
+                
+                stageContainer.addEventListener('touchstart', onPointerDown, { passive: false });
+                window.addEventListener('touchmove', onPointerMove, { passive: false });
+                window.addEventListener('touchend', onPointerUp);
 
-                    let dragging = false;
-                    let mode = 'cover';
-                    let startClientX = 0;
-                    let startClientY = 0;
-                    let startPanX = 0;
-                    let startPanY = 0;
-                    let raf = 0;
-                    let pendingX = 0;
-                    let pendingY = 0;
-
-                    const scheduleApplyPan = () => {
-                        if (raf) return;
-                        raf = requestAnimationFrame(() => {
-                            raf = 0;
-                            applyPan(pendingX, pendingY);
-                        });
-                    };
-
-                    const onMove = (e) => {
-                        if (!dragging) return;
-                        if (mode === 'manual') {
-                            const rect = container.getBoundingClientRect();
-                            const dx = e.clientX - startClientX;
-                            const dy = e.clientY - startClientY;
-                            const pctX = rect.width ? (dx / rect.width) * 100 : 0;
-                            const pctY = rect.height ? (dy / rect.height) * 100 : 0;
-
-                            pendingX = clamp(Math.round(startPanX + pctX), minX, maxX);
-                            pendingY = clamp(Math.round(startPanY + pctY), minY, maxY);
-
-                            scheduleApplyPan();
-                        } else {
-                            applyFocalFromEvent(container, e);
-                            ensureCrosshairVisible();
-                        }
-                    };
-
-                    const endDrag = () => {
-                        dragging = false;
-                        container.classList.remove('is-dragging');
-                        try { container.releasePointerCapture?.(container._ppPointerId); } catch { /* ignore */ }
-                        container._ppPointerId = null;
-                    };
-
-                    container.addEventListener('pointerdown', (e) => {
-                        if (e.button !== 0) return;
-                        if (isInteractiveTarget(e.target)) return;
-                        if (e.ctrlKey || e.metaKey) return;
-
-                        mode = getCropMode();
-                        dragging = true;
-                        startClientX = e.clientX;
-                        startClientY = e.clientY;
-                        startPanX = Number(panXEl.value || 0);
-                        startPanY = Number(panYEl.value || 0);
-                        container.classList.add('is-dragging');
-
-                        container._ppPointerId = e.pointerId;
-                        try { container.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-                        e.preventDefault();
-
-                        if (mode !== 'manual') {
-                            applyFocalFromEvent(container, e);
-                            ensureCrosshairVisible();
-                        } else if (kind === 'stage' && hint) {
-                            hint.style.opacity = '0';
-                        }
-                    });
-
-                    container.addEventListener('pointermove', onMove);
-                    container.addEventListener('pointerup', endDrag);
-                    container.addEventListener('pointercancel', endDrag);
-                    container.addEventListener('lostpointercapture', endDrag);
-
-                    // Scroll/pinch to zoom (updates the Scale slider)
-                    container.addEventListener('wheel', (e) => {
-                        if (!scaleEl) return;
-                        if (isInteractiveTarget(e.target)) return;
-
-                        // Prevent the modal/page from scrolling while zooming on the stage.
-                        e.preventDefault();
-
-                        // If user zooms while in cover/contain, switch to manual so zoom/pan are predictable.
-                        try {
-                            const m = getCropMode();
-                            if (m !== 'manual') {
-                                const manualBtn = document.querySelector('.crop-mode-btn[data-mode="manual"]');
-                                this.setCropMode('manual', manualBtn || null);
-                                mode = 'manual';
-                            }
-                        } catch (_) {}
-
-                        const current = Number(scaleEl.value || 100);
-                        const fine = e.shiftKey ? 1 : 5;
-                        const delta = e.deltaY > 0 ? -fine : fine;
-                        const next = clamp(Math.round(current + delta), minScale, maxScale);
-                        if (next === current) return;
-                        scaleEl.value = String(next);
-                        scaleEl.dispatchEvent(new Event('input', { bubbles: true }));
-                    }, { passive: false });
-
-                    container.addEventListener('dblclick', (e) => {
-                        if (isInteractiveTarget(e.target)) return;
-                        const m = getCropMode();
-                        if (m === 'manual') {
-                            applyPan(0, 0);
-                            this.showToastDebounced('Position reset', 'info', 'pan-reset', 800);
-                        } else {
-                            this.applyFocalPercent(50, 50);
-                            ensureCrosshairVisible();
-                            this.showToastDebounced('Focal reset', 'info', 'focal-reset', 800);
-                        }
-                    });
-                };
-
-                bindContainer(stageContainer, 'stage');
-                bindContainer(liveFrame, 'live');
-
-                // Keep hint accurate when crop mode changes
-                if (typeof this.updateStageDragHint === 'function') {
-                    this.updateStageDragHint();
-                    document.querySelectorAll('.crop-mode-btn').forEach(b => {
-                        if (b.dataset.ppBoundHint === 'true') return;
-                        b.dataset.ppBoundHint = 'true';
-                        b.addEventListener('click', () => this.updateStageDragHint());
-                    });
-                }
-
-                // Legacy checkbox removed (drag-first UX)
+                // --- ZOOMING (Wheel) ---
+                stageContainer.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    
+                    const delta = -Math.sign(e.deltaY) * 5; // Step 5%
+                    const current = getVal(scaleEl);
+                    const next = clamp(current + delta, 50, 300); // Min 50%, Max 300%
+                    
+                    scaleEl.value = next;
+                    this.applyEditorRotation();
+                }, { passive: false });
+                
+                // Cursor init
+                stageContainer.style.cursor = 'grab';
             },
 
             startContinuousRepaint(videoElement) {
@@ -14126,7 +14014,7 @@ details[open] .ob-chevron {
                     html += `</div>`;
                     
                     if (allRail.length > 0) {
-                        html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;">`;
+                        html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">`;
                         allRail.slice(0, 10).forEach(asset => {
                             const url = this.buildAssetUrl(asset);
                             const style = this.buildProofMediaStyle(asset);
@@ -14223,29 +14111,28 @@ details[open] .ob-chevron {
             buildProofMediaStyle(asset) {
                 try {
                     const smart = asset?.smart_crop_details;
-                    if (!smart || typeof smart !== 'object') return '';
                     
-                    const mode = String(smart.mode || 'cover').toLowerCase();
-                    const objectFit = mode === 'contain' ? 'contain' : 'cover';
-                    const objectPosition = String(smart.objectPosition || '50% 50%');
-                    
-                    const geom = smart.geometry || {};
-                    const panX = Number(geom.pan_x_pct || 0);
-                    const panY = Number(geom.pan_y_pct || 0);
-                    const tilt = Number(geom.tilt_deg || 0);
-                    const scale = Number(geom.scale_pct || 100) / 100;
-                    const rotateDeg = Number(asset.video_rotate_deg || 0);
-                    
+                    // Editor V2 Physics: Force "contain" + "center" to treat image as a movable object on canvas
+                    const objectFit = 'contain'; 
+                    const objectPosition = 'center center';
+
+                    const geom = (smart && typeof smart === 'object' && smart.geometry) ? smart.geometry : {};
+                    // Expanded physics limits to match Editor V2 (Jan 2026)
+                    const panX = this.clampNumber(geom.pan_x_pct ?? geom.panX ?? 0, -150, 150, 0);
+                    const panY = this.clampNumber(geom.pan_y_pct ?? geom.panY ?? 0, -150, 150, 0);
+                    const tilt = this.clampNumber(geom.tilt_deg ?? geom.tilt ?? 0, -45, 45, 0);
+                    const scalePct = this.clampNumber(geom.scale_pct ?? geom.scale ?? 100, 50, 300, 100);
+                    const scale = scalePct / 100;
+                    const rotateBase = Number(asset.video_rotate_deg || 0);
+                    const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
+
                     const needsTransform = rotateDeg !== 0 || tilt !== 0 || panX !== 0 || panY !== 0 || scale !== 1;
-                    const transform = needsTransform 
+                    const transform = needsTransform
                         ? `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale})`
                         : '';
-                    
+
                     const filterParts = [];
-                    if (asset.filter_bw) filterParts.push('grayscale(100%)');
-                    const b = Number(asset.filter_brightness || 100);
-                    const c = Number(asset.filter_contrast || 100);
-                    const s = Number(asset.filter_saturation || 100);
+                    if (asset.filter_bw === '1' || asset.filter_bw === true) filterParts.push('grayscale(100%)');
                     if (b !== 100) filterParts.push(`brightness(${b}%)`);
                     if (c !== 100) filterParts.push(`contrast(${c}%)`);
                     if (s !== 100) filterParts.push(`saturate(${s}%)`);
@@ -15435,16 +15322,9 @@ details[open] .ob-chevron {
 
                         <!-- Toolbar -->
                         <div class="editor-toolbar">
-                             <!-- Left: Safe Zone Toggle -->
+                             <!-- Left: Guide info -->
                              <div class="editor-view-toggle">
-                                <button class="editor-view-btn" data-mode="safezone" title="Toggle crop boundaries">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px; vertical-align:middle;">
-                                        <rect x="3" y="3" width="18" height="18" rx="2"/>
-                                        <path d="M9 3v18M15 3v18M3 9h18M3 15h18"/>
-                                    </svg>
-                                    Safe Zone
-                                </button>
-                                <span style="margin-left:12px; font-size:11px; color:#64748b;">Shows exact crop for selected context below</span>
+                                <span style="font-size:12px; font-weight:500; color:#cbd5e1;">Proof Rail Editor</span>
                              </div>
                              
                              <!-- Right: History Tools -->
@@ -15475,27 +15355,26 @@ details[open] .ob-chevron {
                             <!-- Scale Indicator -->
                             <div id="ppScaleIndicator" style="position:absolute; top:12px; right:12px; background:rgba(0,0,0,0.75); color:white; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600; z-index:50; pointer-events:none; opacity:0; transition:opacity 0.2s;">100%</div>
 
-                            <div class="pp-video-stage" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                                <div id="ppEditorRotator" style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1); transform-origin: center center;">
+                            <div class="pp-video-stage" style="width:100%; height:100%; position:relative; overflow:hidden; background-color: #0f172a; display: flex; align-items: center; justify-content: center; cursor: grab;">
+                                <div id="ppEditorRotator" style="position: absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; transform-origin:center center;">
                                     ${previewEl.replace('ppLocalPreviewVideo', 'ppEditorVideo')}
                                 </div>
-                                <div class="pp-stage-overlay" id="ppStageOverlay" style="display:none;">
-                                    <div class="pp-grid-overlay">
+                                
+                                <!-- Integrated Crop Overlay (iOS Style) -->
+                                <div id="ppCropOverlay" style="position:absolute; inset:0; z-index:10; pointer-events:none; 
+                                    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.75); 
+                                    width: 320px; height: 240px; margin: auto; 
+                                    border: 1px solid rgba(255,255,255,0.5); border-radius: 2px;">
+                                    
+                                    <div class="pp-grid-overlay" style="width:100%; height:100%; opacity:0.3;">
                                         <div class="pp-grid-line vertical" style="left: 33.33%;"></div>
                                         <div class="pp-grid-line vertical" style="left: 66.66%;"></div>
                                         <div class="pp-grid-line horizontal" style="top: 33.33%;"></div>
                                         <div class="pp-grid-line horizontal" style="top: 66.66%;"></div>
                                     </div>
-                                </div>
-                                
-                                <!-- Safe Zone Overlay -->
-                                <div class="pp-safezone-overlay" id="ppSafeZoneOverlay" style="display:none;">
-                                    <div class="pp-safezone-rect" id="ppSafeZoneRect">
-                                        <div class="pp-safezone-corner" style="top:0; left:0;"></div>
-                                        <div class="pp-safezone-corner" style="top:0; right:0;"></div>
-                                        <div class="pp-safezone-corner" style="bottom:0; left:0;"></div>
-                                        <div class="pp-safezone-corner" style="bottom:0; right:0;"></div>
-                                        <div class="pp-safezone-label" id="ppSafeZoneLabel">Proof Rail | 4:3 | 160x120</div>
+                                    
+                                    <div style="position:absolute; bottom:-28px; left:0; right:0; text-align:center; color:rgba(255,255,255,0.8); font-size:11px; font-weight:500; font-family:system-ui, -apple-system, sans-serif;">
+                                        Proof Rail (4:3)
                                     </div>
                                 </div>
                             </div>
@@ -15520,6 +15399,7 @@ details[open] .ob-chevron {
                                 <div class="editor-section-title">Quick Crops</div>
                                 <div class="crop-presets">
                                     <button class="crop-preset-btn" data-preset="center-fill"><svg class="crop-preset-icon" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="1"/></svg>Center & Fill</button>
+                                    <button class="crop-preset-btn" data-preset="crop-4-3"><svg class="crop-preset-icon" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="9" rx="1"/></svg>4:3 Crop</button>
                                     <button class="crop-preset-btn" data-preset="top-third"><svg class="crop-preset-icon" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="4" rx="1"/><rect x="2" y="7" width="12" height="7" rx="1" opacity="0.3"/></svg>Top Third</button>
                                     <button class="crop-preset-btn" data-preset="cinematic"><svg class="crop-preset-icon" viewBox="0 0 16 16"><rect x="1" y="4" width="14" height="8" rx="1"/></svg>Cinematic</button>
                                     <button class="crop-preset-btn" data-preset="portrait"><svg class="crop-preset-icon" viewBox="0 0 16 16"><rect x="5" y="1" width="6" height="14" rx="1"/></svg>Portrait</button>
@@ -15558,8 +15438,8 @@ details[open] .ob-chevron {
                                     <input id="ppVideoRotate" type="range" class="editor-slider" min="0" max="270" step="90" value="0">
                                 </div>
                                 <div class="pp-control-section">
-                                    <div class="editor-slider-label"><span>Scale</span><button class="pp-btn-icon-sm" onclick="proofPacks.resetControl('scale')" aria-label="Reset scale"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button><span id="ppScaleValue">100%</span></div>
-                                    <input id="ppScalePct" type="range" class="editor-slider" min="50" max="200" step="5" value="100">
+                                    <div class="editor-slider-label"><span>Zoom</span><button class="pp-btn-icon-sm" onclick="proofPacks.resetControl('scale')" aria-label="Reset zoom"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button><span id="ppScaleValue">100%</span></div>
+                                    <input id="ppScalePct" type="range" class="editor-slider" min="50" max="300" step="5" value="100">
                                 </div>
                                 <div class="pp-control-section">
                                     <div class="editor-slider-label"><span>Tilt</span><button class="pp-btn-icon-sm" onclick="proofPacks.resetControl('tilt')" aria-label="Reset tilt"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button><span id="ppTiltValue">0deg</span></div>
@@ -15568,8 +15448,8 @@ details[open] .ob-chevron {
                                 <div class="pp-control-section">
                                     <div class="editor-slider-label"><span>Position</span><button class="pp-btn-icon-sm" onclick="proofPacks.resetControl('position')" aria-label="Reset position"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M21 12a9 9 0 1 1-3-6.7"/><polyline points="21 3 21 9 15 9"/></svg></button><span id="ppPanValue">0, 0</span></div>
                                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-                                        <input id="ppPanX" type="range" class="editor-slider" min="-50" max="50" step="1" value="0">
-                                        <input id="ppPanY" type="range" class="editor-slider" min="-50" max="50" step="1" value="0">
+                                        <input id="ppPanX" type="range" class="editor-slider" min="-150" max="150" step="1" value="0">
+                                        <input id="ppPanY" type="range" class="editor-slider" min="-150" max="150" step="1" value="0">
                                     </div>
                                 </div>
 
@@ -15582,23 +15462,18 @@ details[open] .ob-chevron {
                                         <!-- Left: Controls -->
                                         <div class="pp-editor-live-controls" style="display: flex; flex-direction: column; gap: 24px;">
                                             
-                                            <!-- Crop Mode -->
-                                            <div>
-                                                <label class="u-text-xs u-muted u-mb-1" style="display:block; margin-bottom:8px;">Crop Mode</label>
-                                                <div style="display:flex;">
-                                                    <button class="crop-mode-btn active" data-mode="cover" onclick="proofPacks.setCropMode('cover', this)">Fill (Cover)</button>
-                                                    <button class="crop-mode-btn" data-mode="contain" onclick="proofPacks.setCropMode('contain', this)">Fit (Contain)</button>
-                                                    <button class="crop-mode-btn" data-mode="manual" onclick="proofPacks.setCropMode('manual', this)">Custom</button>
+                                            <!-- Simple Interaction Hint -->
+                                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; padding:12px;">
+                                                <div style="display:flex; align-items:center; margin-bottom:8px;">
+                                                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--pp-primary); margin-right:8px;"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                                                    <span style="font-weight:600; font-size:13px; color:#334155;">Gesture Controls</span>
                                                 </div>
+                                                <ul style="margin:0; padding-left:20px; font-size:13px; color:#475569; line-height:1.5;">
+                                                    <li style="margin-bottom:4px;"><strong>Drag</strong> image to pan.</li>
+                                                    <li style="margin-bottom:4px;"><strong>Scroll</strong> to zoom in/out.</li>
+                                                    <li>Use <strong>Quick Crops</strong> below for presets.</li>
+                                                </ul>
                                             </div>
-
-                                            <!-- Reframe (drag-first) -->
-                                            <div>
-                                                <label class="u-text-xs u-muted u-mb-1" style="display:block; margin-bottom:8px;">Reframe</label>
-                                                <div style="font-size:12px; color:#64748b; line-height:1.35;">
-                                                    Drag on the stage or live preview to set the focal point. Double-click to reset.
-                                                    <span style="display:block; margin-top:4px;">Custom mode: drag to pan the image.</span>
-                                                </div>
                                                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
                                                     <button class="pp-btn-secondary-sm" type="button" onclick="proofPacks.applyFocalPercent(50, 50)">Reset center</button>
                                                 </div>
@@ -15924,14 +15799,41 @@ details[open] .ob-chevron {
                     'center-fill': { rotation: 0, scale: 100, panX: 0, panY: 0, tilt: 0 },
                     'top-third': { rotation: 0, scale: 110, panX: 0, panY: -15, tilt: 0 },
                     'cinematic': { rotation: 0, scale: 120, panX: 0, panY: 0, tilt: 0 },
-                    'portrait': { rotation: 90, scale: 100, panX: 0, panY: 0, tilt: 0 }
+                    'portrait': { rotation: 90, scale: 100, panX: 0, panY: 0, tilt: 0 },
+                    'crop-4-3': null // Calculated dynamically
                 };
                 
                 document.querySelectorAll('.crop-preset-btn').forEach(btn => {
                     if (btn.dataset.boundPreset) return;
                     btn.addEventListener('click', () => {
                         const presetName = btn.dataset.preset;
-                        const preset = presets[presetName];
+                        let preset = presets[presetName];
+                        
+                        // Dynamic calculation for 4:3 crop to support "iPhone-like" editing
+                        if (presetName === 'crop-4-3') {
+                            const v = document.getElementById('ppLocalPreviewVideo');
+                            if (v) {
+                                const w = v.videoWidth || v.naturalWidth || 1600;
+                                const h = v.videoHeight || v.naturalHeight || 900;
+                                const currentRatio = w / h;
+                                const targetRatio = 4 / 3;
+                                
+                                // Calculate scale to fill 4:3 frame
+                                let scale = 135; // Default fallback
+                                if (currentRatio && targetRatio) {
+                                    // If image is wider (e.g. 16:9), scale = (1.77 / 1.33) * 100 ≈ 133%
+                                    // If image is taller (e.g. 3:4), scale needs to be based on width fitting?
+                                    // For simplicity and "fill" behavior:
+                                    scale =  (currentRatio > targetRatio) 
+                                        ? (currentRatio / targetRatio) * 100 
+                                        : 100; // If narrower, fit to width (usually sufficient)
+                                }
+                                preset = { rotation: 0, scale: Math.round(scale), panX: 0, panY: 0, tilt: 0 };
+                            } else {
+                                preset = { rotation: 0, scale: 135, panX: 0, panY: 0, tilt: 0 };
+                            }
+                        }
+
                         if (!preset) return;
                         
                         // Apply preset values
@@ -16292,9 +16194,7 @@ details[open] .ob-chevron {
                 
                 this.state.edit = null;
                 
-                if (!wasSaved) {
-                    showToast('Editing cancelled', 'info');
-                }
+                // User Feedback: Silently close (removed toast)
             },
             
             /* ============================================
@@ -17328,6 +17228,17 @@ details[open] .ob-chevron {
                 const panYEl = document.getElementById('ppPanY');
                 const panY = panYEl ? Number(panYEl.value || 0) : 0;
 
+                // UI LOCK: Immediately freeze the UI and show "Saving..." state
+                const applyBtn = document.getElementById('ppApplyEdits');
+                const cancelBtn = document.getElementById('ppCancelEdit');
+                if (applyBtn) {
+                  applyBtn.textContent = 'Saving...';
+                  applyBtn.disabled = true;
+                  applyBtn.style.opacity = '0.7';
+                  applyBtn.style.cursor = 'wait';
+                }
+                if (cancelBtn) cancelBtn.disabled = true;
+
                 // Persist the *visual truth* (what the editor shows) into smart_crop_details.
                 // This makes the resting asset card match the saved edit, even before re-opening the editor.
                 this.state = this.state || {};
@@ -17478,6 +17389,11 @@ const cropping = this.state.cropping || {};
                             // ignore
                         }
                         
+                        // GLOBAL SYNC: Instantly update the "Recent Installs" rail on the dashboard
+                        if (typeof this.refreshLivePreview === 'function') {
+                            this.refreshLivePreview().catch(err => console.warn('[Editor] Live preview refresh failed:', err));
+                        }
+
                         // Separate Partial Failure Handling: Preview Reload
                         try {
                              await this.reloadPreviewAfterEdit(resp.asset, changes);
@@ -17489,16 +17405,25 @@ const cropping = this.state.cropping || {};
                              this.setEditorStatus('warning', 'Saved (Preview Error)', {
                                  detail: 'Saved, but preview failed to load',
                                  buttonState: {
-                                    state: 'warning', 
+                                    state: 'warning',
                                     disabled: false
                                  },
                                  resetAfterMs: 5000
                              });
-                             
+
                              // Force asset list refresh even if preview failed
-                             this.refreshAssets(); 
+                             this.refreshAssets();
                              this.refreshCoverage();
                              return; // Exit success flow (preview failed branch)
+                        } finally {
+                          // UI UNLOCK: Restore button state
+                          if (applyBtn) {
+                            applyBtn.textContent = 'Apply & Save';
+                            applyBtn.disabled = false;
+                            applyBtn.style.opacity = '1';
+                            applyBtn.style.cursor = 'pointer';
+                          }
+                          if (cancelBtn) cancelBtn.disabled = false;
                         }
                     }
 
@@ -20079,24 +20004,38 @@ const cropping = this.state.cropping || {};
                 
                 frame.dataset.ratio = ctx.ratio.replace(/\s*/g, '').replace('/', ':');
 
-                // Sync media styling with current crop state - APPLY ALL FRONTEND TRANSFORMS
+                // Sync media styling with current crop state
                 const media = document.getElementById('ppPreviewMedia');
                 if (media && this.state) {
-                    // Get all the same transform logic from buildProofMediaStyle
+                    // Snap base rotation to 0/90/180/270 only (matches resting-card truth)
                     const rotateBase = Number(this.state?.video_rotate_deg || 0);
                     const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
-                    
-                    const cropMode = this.normalizeCropMode(this.state?.cropping?.mode);
-                    const objectFit = cropMode === 'contain' ? 'contain' : 'cover';
-                    const objectPosition = this.state?.cropping?.objectPosition || '50% 50%';
-                    
+
                     const geom = this.state?.cropping?.geometry || {};
-                    const panX = this.clampNumber(geom?.pan_x_pct ?? 0, -50, 50, 0);
-                    const panY = this.clampNumber(geom?.pan_y_pct ?? 0, -50, 50, 0);
-                    const tilt = this.clampNumber(geom?.tilt_deg ?? 0, -45, 45, 0);
-                    const scalePct = this.clampNumber(geom?.scale_pct ?? 100, 50, 250, 100);
-                    const scale = scalePct / 100;
+
+                    // Proof Rail preview must match Proof Rail Editor physics (contain-model + expanded limits)
+                    // PS PATCH 2026-01-29: Sync with bundles.js logic. 
+                    // - Use extended physics limits (-150..150) for flexibility
+                    // - Use CSS 'cover' by default to MATCH SHOP TILES (fill frame), unless explicitly 'contain'.
+                    // - Do NOT force 'contain' for proof_rail, as user wants filled tiles.
                     
+                    const isProofRail = contextName === 'proof_rail';
+                    const cropMode = this.normalizeCropMode(this.state?.cropping?.mode);
+                    
+                    // Unified render logic matching bundles.js buildProofMediaStyle()
+                    const objectFit = cropMode === 'contain' ? 'contain' : 'cover';
+                    const objectPosition = cropMode === 'contain' ? (this.state?.cropping?.objectPosition || '50% 50%') : '50% 50%';
+
+                    // Use extended limits for proof_rail to allow extreme panning if needed
+                    const panLimit = isProofRail ? 150 : 50; 
+                    const scaleMax = isProofRail ? 300 : 250;
+
+                    const panX = this.clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -panLimit, panLimit, 0);
+                    const panY = this.clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -panLimit, panLimit, 0);
+                    const tilt = this.clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
+                    const scalePct = this.clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, scaleMax, 100);
+                    const scale = scalePct / 100;
+
                     // Filters
                     const filterParts = [];
                     if (this.state?.filter_bw === '1' || this.state?.filter_bw === true) {
@@ -20108,11 +20047,11 @@ const cropping = this.state.cropping || {};
                     if (b !== 100) filterParts.push(`brightness(${b}%)`);
                     if (c !== 100) filterParts.push(`contrast(${c}%)`);
                     if (s !== 100) filterParts.push(`saturate(${s}%)`);
-                    
-                    // Apply all styles to match frontend exactly
+
+                    // Apply styles
                     media.style.objectFit = objectFit;
                     media.style.objectPosition = objectPosition;
-                    
+
                     const needsTransform = rotateDeg !== 0 || tilt !== 0 || panX !== 0 || panY !== 0 || scale !== 1;
                     if (needsTransform) {
                         media.style.transform = `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale})`;
@@ -20123,7 +20062,7 @@ const cropping = this.state.cropping || {};
                         media.style.willChange = '';
                         media.style.backfaceVisibility = '';
                     }
-                    
+
                     if (filterParts.length) {
                         media.style.filter = filterParts.join(' ');
                     } else {

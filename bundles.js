@@ -216,15 +216,20 @@ function buildProofMediaStyle(asset) {
     const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
 
     const smart = getProofSmartCropDetails(asset);
+    
+    // DO NOT force objectFit/objectPosition here - let CSS defaults (cover) handle frame fill.
+    // Transforms below handle repositioning within the filled frame.
+    // Keeping objectFit/objectPosition logic for backward compat, but typically omitted from output.
     const mode = normalizeCropMode(smart?.mode);
-    const objectFit = mode === 'contain' ? 'contain' : 'cover';
-    const objectPosition = getProofObjectPosition(smart);
+    const objectFit = mode === 'contain' ? 'contain' : ''; // Empty = use CSS default (cover)
+    const objectPosition = mode === 'contain' ? (smart?.objectPosition || '') : '';
 
     const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
-    const panX = clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -50, 50, 0);
-    const panY = clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -50, 50, 0);
+    // Expanded physics limits to match Editor V2 (Jan 2026)
+    const panX = clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -150, 150, 0);
+    const panY = clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -150, 150, 0);
     const tilt = clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
-    const scalePct = clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 250, 100);
+    const scalePct = clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 300, 100);
     const scale = scalePct / 100;
 
     const filterParts = [];
@@ -244,8 +249,8 @@ function buildProofMediaStyle(asset) {
       : '';
 
     const parts = [
-      objectFit !== 'cover' ? `object-fit: ${objectFit}` : '',
-      objectPosition !== '50% 50%' ? `object-position: ${objectPosition}` : '',
+      objectFit ? `object-fit: ${objectFit}` : '',
+      objectPosition ? `object-position: ${objectPosition}` : '',
       needsTransform ? `transform: ${transform}` : '',
       needsTransform ? 'will-change: transform' : '',
       needsTransform ? 'backface-visibility: hidden' : '',
@@ -491,7 +496,29 @@ async function loadProofData() {
 
     // proof-slots API omits edit metadata (smart_crop_details). Hydrate from Supabase so
     // dashboard edits actually reflect on the live bundles page.
-    try { await hydrateProofEditsFromSupabase(); } catch (_) {}
+    try { 
+      console.log('[Bundles] Hydrating smart_crop_details from Supabase...');
+      await hydrateProofEditsFromSupabase(); 
+      console.log('[Bundles] Hydration complete. Checking assets...');
+      
+      // Debug: Log which assets have smart_crop_details
+      let hydrated = 0;
+      ['hero', 'mid_proof_rail', 'pre_cta'].forEach(k => {
+        const group = _proofSlots[k];
+        if (!group) return;
+        ['tv_mounting', 'cameras'].forEach(svc => {
+          (group[svc] || []).forEach(a => {
+            if (a.smart_crop_details) {
+              hydrated++;
+              console.log(`  ✓ Asset ${a.asset_id} has smart_crop_details:`, a.smart_crop_details);
+            }
+          });
+        });
+      });
+      console.log(`[Bundles] ${hydrated} assets hydrated with smart_crop_details`);
+    } catch (e) {
+      console.error('[Bundles] Hydration failed:', e);
+    }
 
     return { supabaseUrl: _proofSupabaseUrl, slots: _proofSlots };
   })();
@@ -538,6 +565,15 @@ function renderProofTiles(targetEl, assets, opts) {
 
     const style = buildProofMediaStyle(a);
     const styleAttr = style ? ` style="${style}"` : '';
+    
+    // Debug logging for the problematic asset
+    if (a.asset_id === 'd7769fe4-4b9a-444a-b5a8-2724aac3fd72') {
+      console.log('[renderProofTiles] Rendering TV asset:', a.asset_id);
+      console.log('  Has smart_crop_details:', !!a.smart_crop_details);
+      console.log('  Smart crop data:', a.smart_crop_details);
+      console.log('  Generated style:', style);
+      console.log('  Style attr:', styleAttr);
+    }
 
     if (kind === 'video') {
       const preload = String(opts?.videoPreload || 'none');
@@ -580,7 +616,10 @@ async function updateProofSections() {
       let combined = [];
       if (hasRemote) {
         const slot = _proofSlots.mid_proof_rail || { tv_mounting: [], cameras: [] };
-        combined = dedupeAssets([...(slot[primary] || []), ...(slot[secondary] || [])]);
+        // Show 3 from primary service, 2 from secondary to give balanced view
+        const primaryAssets = (slot[primary] || []).slice(0, 3);
+        const secondaryAssets = (slot[secondary] || []).slice(0, 2);
+        combined = dedupeAssets([...primaryAssets, ...secondaryAssets]);
       } else if (mode === 'local') {
         combined = dedupeAssets(_proofLocalAssets);
       }
@@ -589,30 +628,10 @@ async function updateProofSections() {
 
       combined = capVideos(combined, 1);
 
-      const ok = renderProofTiles(rail, combined, { limit: 5, videoPreload: 'none' });
+      const ok = renderProofTiles(rail, combined, { limit: 6, videoPreload: 'none' });
       railSection.style.display = ok ? '' : (mode ? '' : 'none');
       
-      // Update statistics
-      if (ok && combined.length) {
-        const stats = byId('proofRailStats');
-        if (stats) {
-          const services = {};
-          combined.forEach(a => {
-            const svc = a?.service || 'other';
-            services[svc] = (services[svc] || 0) + 1;
-          });
-          const serviceLabels = {
-            tv_mounting: 'TV',
-            cameras: 'Cameras',
-            other: 'Other'
-          };
-          const serviceList = Object.entries(services)
-            .map(([k, count]) => `<span class="proof-stats-badge">${serviceLabels[k] || k}: ${count}</span>`)
-            .join(' ');
-          stats.innerHTML = `<div class="proof-stats-row">${combined.length} photos ${serviceList}</div>`;
-          stats.style.display = '';
-        }
-      }
+      // Stats removed - user wants clean presentation without counts
       
       if (ok && hasRemote) {
         logProofImpressionOnce('mid_proof_rail:' + primary, {
