@@ -14177,27 +14177,10 @@ details[open] .ob-chevron {
                 // Store the placement context so we can set correct Safe Zone
                 this.state = this.state || {};
                 this.state._editPlacement = placement;
-                
-                // Find asset in current library
-                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
-                const asset = items.find(a => a.asset_id === assetId);
-                
-                if (asset) {
-                    // Use the proper edit flow that opens the modal correctly
-                    this.beginEditAssetMedia(assetId);
-                } else {
-                    showToast('Asset not found in library. Refreshing...', 'info');
-                    // Refresh assets and try again
-                    this.refreshAssets().then(() => {
-                        const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
-                        const asset = items.find(a => a.asset_id === assetId);
-                        if (asset) {
-                            this.beginEditAssetMedia(assetId);
-                        } else {
-                            showToast('Asset not found', 'error');
-                        }
-                    });
-                }
+
+                // Do not depend on the current library pack selection.
+                // beginEditAssetMedia() will fetch by asset_id if needed.
+                this.beginEditAssetMedia(assetId);
             },
 
             showAssetContextMenu(event, assetId, service, placement) {
@@ -14966,7 +14949,40 @@ details[open] .ob-chevron {
                 this._currentEditingAssetId = assetId;
                 
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
-                const asset = items.find(a => String(a?.asset_id || '') === String(assetId));
+                let asset = items.find(a => String(a?.asset_id || '') === String(assetId));
+
+                // If the user clicked from a live slot or from a page state where no pack is selected,
+                // the library may be empty. Fetch the asset directly by id as a reliable fallback.
+                if (!asset) {
+                    try {
+                        const resp = await this.fetchJson(`/api/admin/proof-assets?asset_id=${encodeURIComponent(assetId)}`, { method: 'GET' });
+                        const fetched = (resp && typeof resp.asset === 'object' && resp.asset)
+                            ? resp.asset
+                            : (Array.isArray(resp?.assets) ? resp.assets[0] : null);
+
+                        if (fetched && typeof fetched === 'object') {
+                            asset = fetched;
+                            this.state = this.state || {};
+                            this.state.assets = this.state.assets || { loading: false, pack_id: null, items: [], scopeNote: '' };
+
+                            const cur = Array.isArray(this.state.assets.items) ? this.state.assets.items : [];
+                            const exists = cur.some(a => String(a?.asset_id || '') === String(assetId));
+                            if (!exists) cur.unshift(fetched);
+                            this.state.assets.items = cur;
+
+                            if (!this.state.assets.pack_id && fetched.pack_id) {
+                                this.state.assets.pack_id = fetched.pack_id;
+                            }
+
+                            if (typeof this.setAssetsUi === 'function') {
+                                try { this.setAssetsUi(this.state.assets); } catch { /* ignore */ }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[Editor] Failed to fetch asset by id:', e);
+                    }
+                }
+
                 if (!asset) {
                     showToast('Asset not found. Refresh the library and try again.', 'error');
                     return;
