@@ -13801,7 +13801,8 @@ details[open] .ob-chevron {
                              data-media-type="${this.escapeHtml(mediaKind)}"
                              data-service="${this.escapeHtml(service)}"
                              data-visible="${visible}"
-                             data-created="${this.escapeHtml(created)}">
+                             data-created="${this.escapeHtml(created)}"
+                             oncontextmenu="proofPacks.showAssetContextMenu(event, '${this.escapeHtml(assetId)}', '${this.escapeHtml(service)}', 'library'); return false;">
                             <input type="checkbox" class="pp-library-item-checkbox" 
                                    data-asset-id="${this.escapeHtml(assetId)}"
                                    onchange="proofPacks.onItemCheckboxChange()">
