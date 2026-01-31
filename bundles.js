@@ -650,7 +650,7 @@ async function updateProofSections() {6
         combined = dedupeAssets(_proofLocalAssets);
       }
 
-      if (!combined.length && mode) combined = getDemoProofAssets(5);
+      if (!combined.length && mode) combined = getDemoProofAssets(6);
 
       combined = capVideos(combined, 1);
 
