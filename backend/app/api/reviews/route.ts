@@ -29,12 +29,11 @@ export async function GET(request: Request) {
       }, { status: 503, headers: corsHeaders() });
     }
 
-    // Query reviews from h2s_reviews table
+    // Query reviews from h2s_public_reviews table
     let query = client
-      .from('h2s_reviews')
+      .from('h2s_public_reviews')
       .select('*')
-      .eq('is_visible', true)
-      .order('created_at', { ascending: false })
+      .order('timestamp', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (onlyVerified) {
