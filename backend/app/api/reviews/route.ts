@@ -33,7 +33,8 @@ export async function GET(request: Request) {
     let query = client
       .from('h2s_public_reviews')
       .select('*')
-      .order('timestamp', { ascending: false })
+      .eq('is_visible', true)
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (onlyVerified) {
