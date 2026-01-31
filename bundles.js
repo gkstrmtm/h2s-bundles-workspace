@@ -642,8 +642,8 @@ async function updateProofSections() {6
       let combined = [];
       if (hasRemote) {
         const slot = _proofSlots.mid_proof_rail || { tv_mounting: [], cameras: [] };
-        // Show 3 from primary service, 2 from secondary to give balanced view
-        const primaryAssets = (slot[primary] || []).slice(0, 3);
+        // Show 4 from primary service, 2 from secondary = 6 total
+        const primaryAssets = (slot[primary] || []).slice(0, 4);
         const secondaryAssets = (slot[secondary] || []).slice(0, 2);
         combined = dedupeAssets([...primaryAssets, ...secondaryAssets]);
       } else if (mode === 'local') {
