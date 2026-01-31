@@ -603,7 +603,9 @@ function renderProofTiles(targetEl, assets, opts) {
 
     if (kind === 'video') {
       const preload = String(opts?.videoPreload || 'none');
-      const poster = String(opts?.videoPoster || '') || videoPosterDataUri();
+      // Use custom thumbnail if available, otherwise use default poster
+      const customPoster = a.video_thumbnail_url ? String(a.video_thumbnail_url) : '';
+      const poster = customPoster || String(opts?.videoPoster || '') || videoPosterDataUri();
       return `
         <div class="proof-tile">
           ${badge}
