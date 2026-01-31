@@ -640,7 +640,7 @@ async function updateProofSections() {
       const secondary = primary === 'tv_mounting' ? 'cameras' : 'tv_mounting';
 
       if (hasRemote) {
-        const slot = _proofSlots.mid_proof_rail || { tv_mounting: 6], cameras: [] };
+        const slot = _proofSlots.mid_proof_rail || { tv_mounting: [], cameras: [] };
         
         // Improved logic: Fill the rail (up to 6 items) instead of leaving it sparse.
         // Attempt a mix (4 from primary, 2 from secondary), but backfill if needed.
