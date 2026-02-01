@@ -16132,7 +16132,7 @@ details[open] .ob-chevron {
                         </div>
 
                         <!-- Top: Flexible Video Stage -->
-                        <div class="pp-stage-container" id="ppStageContainer" style="flex: none; height: 450px; min-height: 450px; width: 100%; display: flex; align-items: center; justify-content: center; background: #f8f9fa; position: relative; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 24px; overflow: hidden;">
+                        <div class="pp-stage-container" id="ppStageContainer" style="flex: none; height: auto; min-height: 400px; width: 100%; display: flex; align-items: center; justify-content: center; background: #f8f9fa; position: relative; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 24px; overflow: hidden; padding: 20px 0;">
 
                             <div class="pp-stage-drag-hint" id="ppStageDragHint">Drag to position</div>
 
@@ -16152,7 +16152,7 @@ details[open] .ob-chevron {
                             <!-- Scale Indicator -->
                             <div id="ppScaleIndicator" style="position:absolute; top:12px; right:12px; background:rgba(0,0,0,0.75); color:white; padding:4px 8px; border-radius:4px; font-size:12px; font-weight:600; z-index:50; pointer-events:none; opacity:0; transition:opacity 0.2s;">100%</div>
 
-                            <div class="pp-video-stage" id="ppVideoStage" style="position:relative; overflow:hidden; background-color: #0f172a; display: flex; align-items: center; justify-content: center; cursor: grab; aspect-ratio: 4 / 3; height: min(420px, 92%); width: auto; max-width: 92%; border-radius: 10px;">
+                            <div class="pp-video-stage" id="ppVideoStage" style="position:relative; overflow:hidden; background-color: #0f172a; display: flex; align-items: center; justify-content: center; cursor: grab; aspect-ratio: ${this.state._editContext === 'hero_banner' ? '16 / 9' : '4 / 3'}; height: auto; width: min(90%, 60vh * ${this.state._editContext === 'hero_banner' ? (16/9) : (4/3)}); max-height: 60vh; border-radius: 10px;">
                                 <div id="ppEditorRotator" style="position: absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; transform-origin:center center;">
                                     ${previewEl.replace('ppLocalPreviewVideo', 'ppEditorVideo')}
                                 </div>
@@ -16168,8 +16168,8 @@ details[open] .ob-chevron {
                                         <div class="pp-grid-line horizontal" style="top: 66.66%;"></div>
                                     </div>
                                     
-                                    <div style="position:absolute; bottom:-28px; left:0; right:0; text-align:center; color:rgba(255,255,255,0.8); font-size:11px; font-weight:500; font-family:system-ui, -apple-system, sans-serif;">
-                                        Proof Rail (4:3)
+                                    <div id="ppEditorOverlayLabel" style="position:absolute; bottom:-28px; left:0; right:0; text-align:center; color:rgba(255,255,255,0.8); font-size:11px; font-weight:500; font-family:system-ui, -apple-system, sans-serif;">
+                                        ${this.state._editContext === 'hero_banner' ? 'Hero Banner (16:9)' : 'Proof Rail (4:3)'}
                                     </div>
                                 </div>
                             </div>
