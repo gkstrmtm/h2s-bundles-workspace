@@ -2497,11 +2497,22 @@ function renderShop(){
 function navSet(params){
   const u = new URL(location.href);
   Object.entries(params||{}).forEach(([k,v])=>{
+    // Treat the default shop view as URL-clean (no ?view=shop)
+    if(k === 'view' && v === 'shop') v = null;
     if(v==null) u.searchParams.delete(k); else u.searchParams.set(k,v);
   });
   history.pushState({}, '', u.toString());
   route();
 }
+
+function goShopRoot(){
+  // Force a clean, canonical shop URL (no query params) and a fresh render.
+  // This also avoids any edge cases with stateful SPA routing.
+  window.location.assign('/bundles');
+}
+
+// Expose for inline onclick handlers
+window.goShopRoot = goShopRoot;
 
 function getParam(k){
   const u = new URL(location.href);
@@ -5140,7 +5151,7 @@ window.renderSignIn = function(){
   outlet.innerHTML = `
     <section class="form">
       <div style="text-align:center; margin-bottom:24px;">
-        <a href="#" onclick="navSet({view:'shop'}); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
+        <a href="#" onclick="goShopRoot(); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
           Back to shop
         </a>
       </div>
@@ -5198,7 +5209,7 @@ window.renderSignUp = function(){
   outlet.innerHTML = `
     <section class="form">
       <div style="text-align:center; margin-bottom:24px;">
-        <a href="#" onclick="navSet({view:'shop'}); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
+        <a href="#" onclick="goShopRoot(); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
           Back to shop
         </a>
       </div>
@@ -5274,7 +5285,7 @@ window.renderForgot = function(){
   outlet.innerHTML = `
     <section class="form">
       <div style="text-align:center; margin-bottom:24px;">
-        <a href="#" onclick="navSet({view:'shop'}); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
+        <a href="#" onclick="goShopRoot(); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
           Back to shop
         </a>
       </div>
@@ -5371,7 +5382,7 @@ window.renderAccount = function(){
   outlet.innerHTML = `
     <section class="form">
       <div style="text-align:center; margin:12px 0 24px;">
-        <a href="#" onclick="navSet({view:null}); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
+        <a href="#" onclick="goShopRoot(); return false;" class="link-btn" style="font-size:14px; color:var(--azure); font-weight:600;">
           Back to shop
         </a>
       </div>

@@ -721,6 +721,13 @@ body.modal-open {
   margin: 0 auto 24px;
 }
 
+/* We use the curated hero underlay background now.
+   Hide the legacy hero-media containers so they never render as a stray overlay “box”. */
+#heroMedia,
+#proofHeroMedia {
+  display: none !important;
+}
+
 /* Optional hero banner media (populated by bundles.js from proof slot: hero) */
 .hero-media {
   max-width: 640px;
@@ -3450,7 +3457,7 @@ body.modal-open {
 <!-- HEADER -->
 <header class="header">
   <div class="header-inner">
-    <a href="#" class="logo" aria-label="Home2Smart home" onclick="navSet({view:'shop'}); return false;">
+    <a href="/bundles" class="logo" aria-label="Home2Smart home">
       <img src="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" alt="Home2Smart" class="logo-img" width="36" height="36" fetchpriority="high" decoding="async">
     </a>
 
@@ -3828,7 +3835,7 @@ body.modal-open {
   <div class="proof-rail-inner">
     <div class="section-header" style="margin-bottom: 18px; text-align: center;">
       <h2>Recent installs</h2>
-      <p>Real work from recent jobs. Clean installs, done right.</p>
+      <p>Recent work from local jobs. Clean installs, done right.</p>
     </div>
     <div id="proofLocalControls" class="proof-local-controls" style="display:none;">
       <label class="btn btn-ghost" style="display:inline-flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px;">
@@ -3839,6 +3846,9 @@ body.modal-open {
     </div>
     <div class="proof-rail" id="proofRail" aria-label="Recent installation photos">
       <!-- Populated by bundles.js from Proof Packs -->
+    </div>
+    <div style="display:flex; justify-content:center; margin-top:14px;">
+      <a class="btn btn-ghost" href="/gallery" style="text-decoration:none; padding:10px 14px; font-size:13px;">See more photos</a>
     </div>
   </div>
 </section>
@@ -4308,7 +4318,8 @@ body.modal-open {
   </div>
   <nav class="menu-body">
     <div class="menu-nav">
-      <a href="/" class="menu-link">Home</a>
+      <a href="/bundles" class="menu-link">Home</a>
+      <a href="/gallery" class="menu-link">Gallery</a>
       <button class="menu-link" onclick="scrollToSection('tv'); toggleMenu();">TV Mounting</button>
       <button class="menu-link" onclick="scrollToSection('security'); toggleMenu();">Security Cameras</button>
       <button class="menu-link" onclick="openBooking(); toggleMenu();">Schedule Appointment</button>
@@ -4395,6 +4406,9 @@ body.modal-open {
     <div id="proofMini" class="proof-mini" style="display:none;">
       <div class="proof-mini-title">Check out our recent work</div>
       <div id="proofMiniTrack" class="proof-mini-track" aria-label="Recent installation proof"></div>
+      <div style="display:flex; justify-content:center; margin-top:12px;">
+        <a class="btn btn-ghost" href="/gallery" style="text-decoration:none; padding:10px 14px; font-size:13px;">See more</a>
+      </div>
     </div>
     
     <!-- Actions -->

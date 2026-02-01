@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import * as customerPhotos from '../customer_photos/route';
+import * as proofGallery from '../proof-gallery/route';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -29,6 +30,7 @@ export async function OPTIONS(request: Request, context?: { params: Promise<{ ac
   try {
     const action = context?.params ? (await context.params).action : '';
     if (action === 'customer_photos') return customerPhotos.OPTIONS(request);
+    if (action === 'proof-gallery') return proofGallery.OPTIONS();
   } catch (_) {}
   return NextResponse.json({}, { headers: corsHeaders(request) });
 }
@@ -57,6 +59,12 @@ export async function GET(request: Request, context: { params: Promise<{ action:
 
   if (action === 'customer_photos') {
     return customerPhotos.GET(request);
+  }
+
+  // Compatibility: allow /api/proof-gallery via the catch-all router.
+  // (Static route /api/proof-gallery should win, but this prevents 501s if routing ever falls back here.)
+  if (action === 'proof-gallery') {
+    return proofGallery.GET(request);
   }
 
   // Avoid shadowing existing routed endpoints if someone hits /api/v1 via dynamic routing.

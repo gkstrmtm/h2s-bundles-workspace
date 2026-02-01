@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1b3a" />
+  <title>Home2Smart Gallery</title>
+  <style>
+    :root{
+      --bg:#07152f;
+      --bg2:#0b1b3a;
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.09);
+      --text:#eaf2ff;
+      --muted:rgba(234,242,255,.72);
+      --border:rgba(255,255,255,.12);
+      --accent:#3aa6ff;
+      --accent2:#7fd1ff;
+      --shadow:0 18px 50px rgba(0,0,0,.45);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 800px at 20% 0%, rgba(58,166,255,.18), transparent 60%),
+                  radial-gradient(1000px 700px at 90% 10%, rgba(127,209,255,.10), transparent 55%),
+                  linear-gradient(180deg, var(--bg2), var(--bg));
+      color:var(--text);
+      overflow-x:hidden;
+    }
+    a{color:inherit}
+
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:20;
+      backdrop-filter: blur(10px);
+      background: rgba(7,21,47,.72);
+      border-bottom:1px solid var(--border);
+    }
+    .topbar-inner{
+      max-width:1200px;
+      margin:0 auto;
+      padding:14px 16px;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      justify-content:space-between;
+    }
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      min-width:0;
+    }
+    .logo-img{
+      width:34px;
+      height:34px;
+      border-radius:10px;
+      display:block;
+      box-shadow: 0 10px 26px rgba(0,0,0,.25);
+      flex:0 0 auto;
+      background: rgba(255,255,255,.06);
+    }
+    .brand h1{
+      margin:0;
+      font-size:16px;
+      letter-spacing:.2px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .brand p{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .btn{
+      appearance:none;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:700;
+      cursor:pointer;
+      transition: transform .08s ease, background .15s ease, border-color .15s ease;
+    }
+    .btn:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.18); }
+    .btn:active{ transform: translateY(1px); }
+
+    .container{
+      max-width:1200px;
+      margin:0 auto;
+      padding:18px 16px 42px;
+    }
+
+    .hero{
+      display:flex;
+      gap:12px;
+      align-items:flex-end;
+      justify-content:space-between;
+      flex-wrap:wrap;
+      margin: 10px 0 18px;
+    }
+    .hero-title{
+      max-width:760px;
+    }
+    .hero-title h2{
+      margin:0;
+      font-size:28px;
+      line-height:1.12;
+      letter-spacing:-.2px;
+    }
+    .hero-title .sub{
+      margin:8px 0 0;
+      font-size:14px;
+      color:var(--muted);
+    }
+
+    .filters{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      margin: 10px 0 18px;
+    }
+    .chip{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:800;
+      font-size:13px;
+    }
+    .chip[aria-pressed="true"]{
+      border-color: rgba(58,166,255,.55);
+      background: rgba(58,166,255,.18);
+      box-shadow: 0 18px 55px rgba(58,166,255,.12);
+    }
+
+    .section{
+      margin-top:16px;
+      padding-top:10px;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    .section-head{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      flex-wrap:wrap;
+      margin: 12px 0 12px;
+    }
+    .section-head h3{
+      margin:0;
+      font-size:18px;
+    }
+    .section-head p{
+      margin:0;
+      color:var(--muted);
+      font-size:13px;
+    }
+
+    /* Simple, fast masonry via CSS columns */
+    .masonry{
+      columns: 1;
+      column-gap: 10px;
+    }
+    @media (min-width: 560px){ .masonry{ columns: 2; } }
+    @media (min-width: 940px){ .masonry{ columns: 3; } }
+
+    .tile{
+      break-inside: avoid;
+      margin: 0 0 10px;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: hidden;
+      cursor: zoom-in;
+      position:relative;
+    }
+    /* Brick-ish stagger (small, consistent offsets; never overlaps)
+       NOTE: CSS columns flow order isn't by row, but this still creates the desired organic stagger. */
+    .tile:nth-child(3n + 1){ transform: translateX(4px); }
+    .tile:nth-child(3n + 2){ transform: translateX(-4px); }
+    .tile:nth-child(3n + 3){ transform: translateX(0px); }
+
+    .tile img{
+      width:100%;
+      height:auto;
+      display:block;
+      transform: translateZ(0);
+    }
+
+    .empty,
+    .error{
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      border-radius:18px;
+      padding:14px 14px;
+      color:var(--muted);
+    }
+
+    /* Lightbox */
+    .lightbox{
+      position: fixed;
+      inset: 0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,.74);
+      z-index: 60;
+      padding: 18px;
+    }
+    .lightbox.open{ display:flex; }
+    .lightbox-inner{
+      width: min(1100px, 100%);
+      max-height: 90vh;
+      overflow:hidden;
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      position: relative;
+    }
+    .lightbox-media{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      max-height: calc(90vh - 46px);
+      position: relative;
+    }
+    .lightbox-media img,
+    .lightbox-media video{
+      width:100%;
+      height:auto;
+      max-height: calc(90vh - 46px);
+      object-fit: contain;
+      display:block;
+      background: transparent;
+    }
+    .lightbox-media video{ height: 100%; }
+
+    .lb-x,
+    .lb-arrow{
+      appearance:none;
+      border:0;
+      background: rgba(0,0,0,.35);
+      color: rgba(255,255,255,.92);
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .lb-x{
+      position:absolute;
+      top: 10px;
+      right: 10px;
+      width: 40px;
+      height: 40px;
+      font-size: 22px;
+      line-height: 40px;
+      text-align:center;
+    }
+    .lb-arrow{
+      position:absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 64px;
+      font-size: 34px;
+      line-height: 64px;
+      text-align:center;
+    }
+    .lb-prev{ left: 10px; }
+    .lb-next{ right: 10px; }
+    .lb-x:focus,
+    .lb-arrow:focus{ outline: none; }
+    .lb-x:hover,
+    .lb-arrow:hover{ background: rgba(0,0,0,.50); }
+    @media (max-width: 520px){
+      .lb-arrow{ width: 40px; height: 58px; font-size: 30px; line-height: 58px; }
+      .lb-prev{ left: 6px; }
+      .lb-next{ right: 6px; }
+      .lb-x{ top: 6px; right: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img
+          class="logo-img"
+          src="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png"
+          alt="Home2Smart"
+          width="34"
+          height="34"
+          decoding="async"
+        />
+        <div style="min-width:0;">
+          <h1>Home2Smart Gallery</h1>
+          <p>Done right.</p>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <a class="btn" href="/bundles" style="text-decoration:none">Back to shop</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="hero">
+      <div class="hero-title">
+        <h2>Recent installation photos</h2>
+        <p class="sub">Browse recent installations from our local team. Tap any photo to view full-screen.</p>
+      </div>
+    </div>
+
+    <div class="filters" role="group" aria-label="Filter gallery">
+      <button class="chip" id="filterAll" aria-pressed="true">All</button>
+      <button class="chip" id="filterTv" aria-pressed="false">TV Mounting</button>
+      <button class="chip" id="filterCam" aria-pressed="false">Security Cameras</button>
+    </div>
+
+    <div id="galleryRoot"></div>
+
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+      <div class="lightbox-inner" onclick="event.stopPropagation()">
+        <div class="lightbox-media">
+          <img id="lightboxImg" alt="Installation photo" />
+          <video id="lightboxVideo" controls playsinline style="display:none"></video>
+        </div>
+
+        <button class="lb-arrow lb-prev" id="lightboxPrev" aria-label="Previous">‹</button>
+        <button class="lb-arrow lb-next" id="lightboxNext" aria-label="Next">›</button>
+        <button class="lb-x" id="lightboxX" aria-label="Close">×</button>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  /* global window, document */
+  (function () {
+    // The /api/* rewrite on shop.home2smart.com has been inconsistent in the past.
+    // To keep the customer gallery reliable, we hit the backend directly and also
+    // keep a deployment-URL fallback in case the alias is temporarily wrong.
+    const BACKEND_ORIGINS = [
+      'https://h2s-backend.vercel.app',
+      // Fallback deployment URL (most recent known-good)
+      'https://h2s-backend-fr07tsypo-tabari-ropers-projects-6f2e090b.vercel.app',
+      // Older known-good fallback
+      'https://h2s-backend-hubkv5iac-tabari-ropers-projects-6f2e090b.vercel.app'
+    ];
+
+    const root = document.getElementById('galleryRoot');
+    const lb = document.getElementById('lightbox');
+    const lbImg = document.getElementById('lightboxImg');
+    const lbVideo = document.getElementById('lightboxVideo');
+    const lbPrev = document.getElementById('lightboxPrev');
+    const lbNext = document.getElementById('lightboxNext');
+    const lbX = document.getElementById('lightboxX');
+
+    const filterAll = document.getElementById('filterAll');
+    const filterTv = document.getElementById('filterTv');
+    const filterCam = document.getElementById('filterCam');
+
+    function setPressed(active) {
+      const map = { all: filterAll, tv: filterTv, cam: filterCam };
+      Object.entries(map).forEach(([k, el]) => {
+        if (!el) return;
+        el.setAttribute('aria-pressed', k === active ? 'true' : 'false');
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function looksLikeVideo(item, url) {
+      const kind = String(item && item.media_kind || '').toLowerCase();
+      if (kind === 'video') return true;
+      return /\.(mp4|webm|mov)(\?|$)/i.test(String(url || ''));
+    }
+
+    let currentIndex = -1;
+    let currentList = [];
+
+    function showAtIndex(idx) {
+      if (!lb) return;
+      if (!currentList.length) return;
+
+      const n = currentList.length;
+      currentIndex = ((idx % n) + n) % n;
+
+      const it = currentList[currentIndex] || {};
+      const kind = it.kind || 'image';
+      const src = it.url;
+
+      if (lbImg) {
+        lbImg.style.display = kind === 'image' ? '' : 'none';
+        if (kind === 'image') lbImg.src = src;
+        else lbImg.src = '';
+      }
+
+      if (lbVideo) {
+        lbVideo.style.display = kind === 'video' ? '' : 'none';
+        if (kind === 'video') {
+          lbVideo.src = src;
+          try { lbVideo.currentTime = 0; } catch (_) {}
+          lbVideo.play().catch(() => {});
+        } else {
+          try { lbVideo.pause(); } catch (_) {}
+          lbVideo.src = '';
+        }
+      }
+
+      // Hide arrows if only 1 item
+      if (lbPrev) lbPrev.style.display = n > 1 ? '' : 'none';
+      if (lbNext) lbNext.style.display = n > 1 ? '' : 'none';
+
+      lb.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function openLightboxAt(index, list) {
+      if (!lb) return;
+      currentList = Array.isArray(list) ? list : [];
+      showAtIndex(index);
+    }
+
+    function closeLightbox() {
+      if (!lb) return;
+      lb.classList.remove('open');
+      document.body.style.overflow = '';
+
+      if (lbImg) lbImg.src = '';
+      if (lbVideo) {
+        try { lbVideo.pause(); } catch (_) {}
+        lbVideo.src = '';
+        lbVideo.style.display = 'none';
+      }
+    }
+
+    function tileHtml(item, label) {
+      const url = item && item.public_url;
+      if (!url) return '';
+
+      const isVideo = looksLikeVideo(item, url);
+      const title = label || (isVideo ? 'Video' : 'Photo');
+
+      if (isVideo) {
+        return `
+          <div class="tile" data-kind="video" data-url="${escapeHtml(url)}" data-title="${escapeHtml(title)}" role="button" tabindex="0" aria-label="View video full screen">
+            <video src="${escapeHtml(url)}" muted playsinline preload="metadata"></video>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="tile" data-kind="image" data-url="${escapeHtml(url)}" data-title="${escapeHtml(title)}" role="button" tabindex="0" aria-label="View photo full screen">
+          <img src="${escapeHtml(url)}" alt="Installation photo" loading="lazy" decoding="async" />
+        </div>
+      `;
+    }
+
+    function renderSections(categories, filter) {
+      if (!root) return;
+
+      const tv = categories && categories.tv_mounting;
+      const cam = categories && categories.cameras;
+
+      const sections = [];
+
+      function sectionHtml(key, cat) {
+        if (!cat) return '';
+        const items = Array.isArray(cat.items) ? cat.items : [];
+        if (!items.length) return '';
+
+        const title = cat.title || key;
+        const blurb = cat.blurb || '';
+        const tiles = items.map((it) => tileHtml(it, title)).join('');
+
+        return `
+          <section class="section" data-service="${escapeHtml(key)}">
+            <div class="section-head">
+              <div>
+                <h3>${escapeHtml(title)}</h3>
+                <p>${escapeHtml(blurb)}</p>
+              </div>
+              <p>${items.length} items</p>
+            </div>
+            <div class="masonry">${tiles}</div>
+          </section>
+        `;
+      }
+
+      if (filter === 'tv') {
+        sections.push(sectionHtml('tv_mounting', tv));
+      } else if (filter === 'cam') {
+        sections.push(sectionHtml('cameras', cam));
+      } else {
+        sections.push(sectionHtml('tv_mounting', tv));
+        sections.push(sectionHtml('cameras', cam));
+      }
+
+      const html = sections.filter(Boolean).join('');
+      if (!html) {
+        root.innerHTML = `<div class="empty">No items available yet. Check back soon.</div>`;
+        return;
+      }
+
+      root.innerHTML = html;
+
+      // Build a flat list of currently visible items in DOM order
+      currentList = [];
+      root.querySelectorAll('.tile').forEach((tile, idx) => {
+        const url = tile.getAttribute('data-url') || '';
+        const kind = tile.getAttribute('data-kind') || 'image';
+        tile.setAttribute('data-idx', String(idx));
+        if (url) currentList.push({ url, kind });
+      });
+
+      root.querySelectorAll('.tile').forEach((tile) => {
+        const url = tile.getAttribute('data-url');
+        const kind = tile.getAttribute('data-kind') || 'image';
+        const idx = Number.parseInt(tile.getAttribute('data-idx') || '0', 10);
+
+        const open = () => openLightboxAt(idx, currentList);
+
+        tile.addEventListener('click', open);
+        tile.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+          }
+        });
+      });
+    }
+
+    async function fetchJson(url) {
+      const resp = await fetch(url, { method: 'GET' });
+      const text = await resp.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      return { resp, text, data };
+    }
+
+    async function load() {
+      if (!root) return;
+      root.innerHTML = `<div class="empty">Loading gallery…</div>`;
+
+      let r = null;
+
+      for (const origin of BACKEND_ORIGINS) {
+        const url = `${origin}/api/proof-gallery`;
+        const attempt = await fetchJson(url);
+        if (attempt.resp.ok && attempt.data && attempt.data.ok) {
+          r = attempt;
+          break;
+        }
+      }
+
+      if (!r) {
+        root.innerHTML = `<div class="error">Unable to load gallery right now. Please refresh in a moment.</div>`;
+        return;
+      }
+
+      const categories = r.data.categories || {};
+      let currentFilter = 'all';
+
+      function applyFilter(next) {
+        currentFilter = next;
+        setPressed(next);
+        renderSections(categories, next);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      if (filterAll) filterAll.onclick = () => applyFilter('all');
+      if (filterTv) filterTv.onclick = () => applyFilter('tv');
+      if (filterCam) filterCam.onclick = () => applyFilter('cam');
+
+      applyFilter(currentFilter);
+    }
+
+    if (lb) lb.addEventListener('click', closeLightbox);
+    if (lbX) {
+      lbX.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeLightbox();
+      });
+    }
+    if (lbPrev) {
+      lbPrev.addEventListener('click', (e) => {
+        e.preventDefault();
+        showAtIndex(currentIndex - 1);
+      });
+    }
+    if (lbNext) {
+      lbNext.addEventListener('click', (e) => {
+        e.preventDefault();
+        showAtIndex(currentIndex + 1);
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (!lb || !lb.classList.contains('open')) return;
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft') showAtIndex(currentIndex - 1);
+      if (e.key === 'ArrowRight') showAtIndex(currentIndex + 1);
+    });
+
+    // Tap/click left/right side of media to navigate
+    const media = document.querySelector('.lightbox-media');
+    if (media) {
+      media.addEventListener('click', (e) => {
+        if (!lb || !lb.classList.contains('open')) return;
+        const rect = media.getBoundingClientRect();
+        const x = (e && e.clientX) || 0;
+        const rel = (x - rect.left) / Math.max(1, rect.width);
+        if (rel < 0.33) showAtIndex(currentIndex - 1);
+        else if (rel > 0.66) showAtIndex(currentIndex + 1);
+      });
+    }
+
+    load().catch(() => {
+      if (!root) return;
+      root.innerHTML = `<div class="error">Unable to load gallery right now. Please refresh in a moment.</div>`;
+    });
+  })();
+  </script>
+</body>
+</html>

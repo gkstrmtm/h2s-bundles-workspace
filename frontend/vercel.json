@@ -1,4 +1,5 @@
 {
+  "version": 2,
   "public": true,
   "cleanUrls": true,
   "trailingSlash": false,
@@ -75,6 +76,18 @@
     {
       "source": "/bundles",
       "destination": "/bundles.html"
+    },
+    {
+      "source": "/reviews",
+      "destination": "https://h2s-backend.vercel.app/reviews.html"
+    },
+    {
+      "source": "/gallery",
+      "destination": "/gallery.html"
+    },
+    {
+      "source": "/portal",
+      "destination": "/portal.html"
     }
   ],
   "headers": [
@@ -107,6 +120,15 @@
     },
     {
       "source": "/bundles.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/gallery.html",
       "headers": [
         {
           "key": "Cache-Control",
