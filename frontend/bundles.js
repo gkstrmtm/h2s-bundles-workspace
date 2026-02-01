@@ -302,8 +302,8 @@ function renderProofHeroMedia(targetEl, asset) {
 
     if (renderMode === 'fit_blur') {
       const bg = kind === 'video'
-        ? `<img class="hero-media-bg" src="${poster}" alt="" />`
-        : `<img class="hero-media-bg" src="${url}" alt="" />`;
+        ? `<img class="hero-media-bg" decoding="async" fetchpriority="high" src="${poster}" alt="" />`
+        : `<img class="hero-media-bg" decoding="async" fetchpriority="high" src="${url}" alt="" />`;
 
       const fgStyle = [
         t.objectPosition ? `object-position: ${t.objectPosition}` : '',
@@ -314,7 +314,7 @@ function renderProofHeroMedia(targetEl, asset) {
 
       const fg = kind === 'video'
         ? `<video class="hero-media-fg" autoplay muted loop playsinline preload="metadata" poster="${poster}"${fgStyleAttr} src="${url}"></video>`
-        : `<img class="hero-media-fg" loading="eager" decoding="async"${fgStyleAttr} src="${url}" alt="" />`;
+        : `<img class="hero-media-fg" loading="eager" decoding="async" fetchpriority="high"${fgStyleAttr} src="${url}" alt="" />`;
 
       targetEl.innerHTML = `${bg}<div class="hero-media-overlay"></div>${fg}`;
       // Adaptive overlay + gentle tone adjustment (best-effort; silent if it fails).
@@ -335,7 +335,7 @@ function renderProofHeroMedia(targetEl, asset) {
       return true;
     }
 
-    targetEl.innerHTML = `<div class="hero-media-overlay"></div><img loading="eager" decoding="async"${styleAttr} src="${url}" alt="" />`;
+    targetEl.innerHTML = `<div class="hero-media-overlay"></div><img loading="eager" decoding="async" fetchpriority="high"${styleAttr} src="${url}" alt="" />`;
     try { scheduleAdaptiveHeroTone(targetEl, url); } catch (_) {}
     return true;
   } catch (_) {
@@ -525,18 +525,32 @@ function scheduleAdaptiveHeroTone(heroMediaEl, analysisUrl) {
     heroMediaEl.dataset.heroToneToken = token;
     heroMediaEl.dataset.heroToneUrl = url;
 
-    analyzeImageTone(url).then((stats) => {
+    const run = () => {
       try {
-        if (!stats) return;
         if (heroMediaEl.dataset.heroToneToken !== token) return;
         if (heroMediaEl.dataset.heroToneUrl !== url) return;
+      } catch (_) { return; }
 
-        const tone = computeAdaptiveHeroTone(stats);
-        applyAdaptiveHeroToneToDom(heroMediaEl, tone);
-      } catch (_) {}
-    }).catch(() => {
-      // silent
-    });
+      analyzeImageTone(url).then((stats) => {
+        try {
+          if (!stats) return;
+          if (heroMediaEl.dataset.heroToneToken !== token) return;
+          if (heroMediaEl.dataset.heroToneUrl !== url) return;
+
+          const tone = computeAdaptiveHeroTone(stats);
+          applyAdaptiveHeroToneToDom(heroMediaEl, tone);
+        } catch (_) {}
+      }).catch(() => {
+        // silent
+      });
+    };
+
+    // Tone analysis is nice-to-have; schedule after main render/LCP.
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(run, { timeout: 2500 });
+    } else {
+      setTimeout(run, 1200);
+    }
   } catch (_) {}
 }
 
@@ -947,7 +961,7 @@ function renderProofTiles(targetEl, assets, opts) {
     return `
       <div class="proof-tile">
         ${badges}
-        <img loading="lazy" decoding="async"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}" alt="${escapeHtml(altText)}" onerror="this.parentElement.style.display='none';" />
+        <img loading="lazy" decoding="async" fetchpriority="low"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}" alt="${escapeHtml(altText)}" onerror="this.parentElement.style.display='none';" />
       </div>
     `;
   }).join('');

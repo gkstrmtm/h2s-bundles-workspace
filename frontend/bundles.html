@@ -9,6 +9,18 @@
 <!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) - start -->
 <script>
 (function(){
+  // Performance: only enable verbose boot instrumentation when explicitly requested.
+  try {
+    var qs = String(window.location && window.location.search || '');
+    var host = String(window.location && window.location.hostname || '');
+    var enabled = (qs.indexOf('debug_boot=1') !== -1) || (qs.indexOf('boot=1') !== -1) || (host === 'localhost') || (host === '127.0.0.1') || (host.indexOf('vercel.app') !== -1);
+    if (!enabled) {
+      // Keep a lightweight hook so bundles.js can signal execution when debugging.
+      window.__H2S_BUNDLES_START = window.__H2S_BUNDLES_START || function(){};
+      return;
+    }
+  } catch(_e) {}
+
   window.__H2S_BOOT = {start: performance.now(), events: []};
   function log(msg, detail) {
     var t = performance.now();
@@ -120,6 +132,7 @@ body{background:#fff;}
 <!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
 <link rel="preconnect" href="https://checkout.stripe.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="dns-prefetch" href="https://connect.facebook.net">
 <link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
@@ -151,137 +164,7 @@ body{background:#fff;}
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=2384221445259822&ev=PageView&noscript=1"/></noscript>
 
-<!-- H2S Backend Tracking - Deferred -->
-<script>
-(function() {
-  function __h2sStartTracking() {
-  const ls = window.localStorage;
-  
-  function uuidv4Fallback() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
-  
-  function getOrCreateVisitorId() {
-    let vid = ls.getItem('h2s_visitor_id');
-    if (!vid) {
-      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_visitor_id', vid);
-    }
-    return vid;
-  }
-  
-  function getOrCreateSessionId() {
-    let sid = ls.getItem('h2s_session_id');
-    if (!sid) {
-      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_session_id', sid);
-    }
-    return sid;
-  }
-  
-  async function sendBackend(event_type, params={}) {
-    const visitor_id = getOrCreateVisitorId();
-    const session_id = getOrCreateSessionId();
-    
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(visitor_id)) {
-      ls.removeItem('h2s_visitor_id');
-      return sendBackend(event_type, params);
-    }
-    if (!uuidRegex.test(session_id)) {
-      ls.removeItem('h2s_session_id');
-      return sendBackend(event_type, params);
-    }
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const utm_source = urlParams.get('utm_source') || null;
-    const utm_medium = urlParams.get('utm_medium') || null;
-    const utm_campaign = urlParams.get('utm_campaign') || null;
-    const utm_term = urlParams.get('utm_term') || null;
-    const utm_content = urlParams.get('utm_content') || null;
-    
-    function normalizePathname(p) {
-      const s = (p || '').toString().trim();
-      if (!s) return '/';
-      if (s === '/') return '/';
-      return s.replace(/\/+$/g, '');
-    }
-
-    const payload = {
-      event_type,
-      visitor_id,
-      session_id,
-      occurred_at: new Date().toISOString(),
-      page_url: location.href,
-      page_path: normalizePathname(location.pathname),
-      referrer: document.referrer || '(direct)',
-      user_agent: navigator.userAgent,
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      utm_term,
-      utm_content,
-      ...params
-    };
-    
-    const endpoint = 'https://h2s-backend.vercel.app/api/track';
-    const body = JSON.stringify(payload);
-    const isLocalPreview = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
-
-    try {
-      if (isLocalPreview) {
-        await fetch(endpoint, {
-          method: 'POST',
-          mode: 'no-cors',
-          credentials: 'omit',
-          body,
-          cache: 'no-store',
-          keepalive: true
-        });
-        return { ok: true, via: 'no-cors' };
-      }
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        mode: 'cors',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        credentials: 'omit',
-        cache: 'no-store',
-        keepalive: true
-      });
-
-      if (res.ok) return { ok: true };
-
-      const txt = await res.text();
-      let errorDetails = txt;
-      try {
-        const errorJson = JSON.parse(txt);
-        errorDetails = errorJson.error || errorJson.details || txt;
-        if (String(errorDetails).includes('invalid input syntax for type uuid')) {
-          ls.removeItem('h2s_visitor_id');
-          ls.removeItem('h2s_session_id');
-        }
-      } catch (e) {}
-
-      return { ok: false, error: errorDetails, status: res.status };
-    } catch (err) {
-      return { ok: false, error: err && err.message ? err.message : String(err) };
-    }
-  }
-  
-  window.h2sSendBackend = sendBackend;
-  window.__H2S_TRACKING_READY__ = true;
-  }
-  
-  // Load after page interactive (don't block main thread)
-  if(document.readyState==='complete'){__h2sStartTracking();}else{window.addEventListener('load',__h2sStartTracking,{once:true});}
-})();
-</script>
+<!-- H2S Backend Tracking is intentionally moved near the end of <body> to avoid blocking CSS parse / early paint. -->
 
 <!-- Full Styles -->
 <style>
@@ -4674,6 +4557,138 @@ window.scrollReviews = function(direction) {
 </script>
 
 <script defer src="bundles.js?v=SOLID_RENDER_JAN20_V1"></script>
+
+<!-- H2S Backend Tracking - Deferred (moved below for LCP/TTI) -->
+<script>
+(function() {
+  function __h2sStartTracking() {
+  const ls = window.localStorage;
+  
+  function uuidv4Fallback() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  function getOrCreateVisitorId() {
+    let vid = ls.getItem('h2s_visitor_id');
+    if (!vid) {
+      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_visitor_id', vid);
+    }
+    return vid;
+  }
+  
+  function getOrCreateSessionId() {
+    let sid = ls.getItem('h2s_session_id');
+    if (!sid) {
+      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_session_id', sid);
+    }
+    return sid;
+  }
+  
+  async function sendBackend(event_type, params={}) {
+    const visitor_id = getOrCreateVisitorId();
+    const session_id = getOrCreateSessionId();
+    
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(visitor_id)) {
+      ls.removeItem('h2s_visitor_id');
+      return sendBackend(event_type, params);
+    }
+    if (!uuidRegex.test(session_id)) {
+      ls.removeItem('h2s_session_id');
+      return sendBackend(event_type, params);
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const utm_source = urlParams.get('utm_source') || null;
+    const utm_medium = urlParams.get('utm_medium') || null;
+    const utm_campaign = urlParams.get('utm_campaign') || null;
+    const utm_term = urlParams.get('utm_term') || null;
+    const utm_content = urlParams.get('utm_content') || null;
+    
+    function normalizePathname(p) {
+      const s = (p || '').toString().trim();
+      if (!s) return '/';
+      if (s === '/') return '/';
+      return s.replace(/\/+$/g, '');
+    }
+
+    const payload = {
+      event_type,
+      visitor_id,
+      session_id,
+      occurred_at: new Date().toISOString(),
+      page_url: location.href,
+      page_path: normalizePathname(location.pathname),
+      referrer: document.referrer || '(direct)',
+      user_agent: navigator.userAgent,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_term,
+      utm_content,
+      ...params
+    };
+    
+    const endpoint = 'https://h2s-backend.vercel.app/api/track';
+    const body = JSON.stringify(payload);
+    const isLocalPreview = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
+
+    try {
+      if (isLocalPreview) {
+        await fetch(endpoint, {
+          method: 'POST',
+          mode: 'no-cors',
+          credentials: 'omit',
+          body,
+          cache: 'no-store',
+          keepalive: true
+        });
+        return { ok: true, via: 'no-cors' };
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        credentials: 'omit',
+        cache: 'no-store',
+        keepalive: true
+      });
+
+      if (res.ok) return { ok: true };
+
+      const txt = await res.text();
+      let errorDetails = txt;
+      try {
+        const errorJson = JSON.parse(txt);
+        errorDetails = errorJson.error || errorJson.details || txt;
+        if (String(errorDetails).includes('invalid input syntax for type uuid')) {
+          ls.removeItem('h2s_visitor_id');
+          ls.removeItem('h2s_session_id');
+        }
+      } catch (e) {}
+
+      return { ok: false, error: errorDetails, status: res.status };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  }
+  
+  window.h2sSendBackend = sendBackend;
+  window.__H2S_TRACKING_READY__ = true;
+  }
+  
+  // Load after page interactive (don't block main thread)
+  if(document.readyState==='complete'){__h2sStartTracking();}else{window.addEventListener('load',__h2sStartTracking,{once:true});}
+})();
+</script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
