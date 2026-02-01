@@ -132,7 +132,9 @@ body{background:#fff;}
 <!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
 <link rel="preconnect" href="https://checkout.stripe.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
 <link rel="dns-prefetch" href="https://connect.facebook.net">
 <link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
@@ -1730,6 +1732,16 @@ body.modal-open {
 
 .cta-bridge-inner svg {
   display: none;
+}
+
+/* Mobile: ensure CTA bridge stays readable even if a dark background is applied behind it */
+@media (max-width: 768px) {
+  .cta-bridge {
+    background: #fff;
+  }
+  .cta-bridge-inner p {
+    color: var(--ink) !important;
+  }
 }
 
 @keyframes bounce {

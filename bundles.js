@@ -1012,7 +1012,7 @@ function renderProofTiles(targetEl, assets, opts) {
   return true;
 }
 
-async function updateProofSections() {6
+async function updateProofSections() {
   try {
     await loadProofData();
 
