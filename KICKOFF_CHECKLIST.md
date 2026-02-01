@@ -130,6 +130,8 @@ Reference: `BUNDLES_LIGHTHOUSE_ANALYSIS.md`
 
 ## Deployment
 
+Reference: `FINAL_DEPLOYMENT_GUIDE.md`
+
 ### Frontend (shop + portal static)
 VS Code tasks:
 - “Deploy Frontend (safe TLS)”
