@@ -21,16 +21,6 @@
   ],
   "rewrites": [
     {
-      "source": "/reviews",
-      "has": [
-        {
-          "type": "host",
-          "value": "shop.homesforsmart.com"
-        }
-      ],
-      "destination": "https://h2s-backend.vercel.app/reviews.html"
-    },
-    {
       "source": "/api/:path*",
       "destination": "https://h2s-backend.vercel.app/api/:path*"
     },
@@ -45,8 +35,14 @@
       "destination": "https://h2s-backend.vercel.app/portal.html"
     },
     {
-      "source": "/dashboard",
-      "destination": "/dash.html"
+      "source": "/reviews",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-backend.vercel.app/reviews.html"
     },
     {
       "source": "/",
@@ -59,16 +55,26 @@
       "destination": "/bundles.html"
     },
     {
+      "source": "/bundles",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/bundles.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/dash.html"
+    },
+    {
       "source": "/",
       "destination": "/bundles.html"
     },
     {
       "source": "/bundles",
       "destination": "/bundles.html"
-    },
-    {
-      "source": "/reviews",
-      "destination": "https://h2s-backend.vercel.app/reviews.html"
     }
   ],
   "headers": [
