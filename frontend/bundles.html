@@ -59,8 +59,35 @@
 
 <!-- Scroll Lock Utils (Required by modals/drawers) -->
 <script>
-window.H2S_lockScroll=function(){document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';var s=Array.from(document.querySelectorAll('div')).find(d=>d.scrollHeight>d.clientHeight&&(getComputedStyle(d).overflowY==='auto'||getComputedStyle(d).overflowY==='scroll'));if(s){s.dataset.wasOverflow=s.style.overflow;s.style.overflow='hidden';window._ghlScrollContainer=s;}};
-window.H2S_unlockScroll=function(){document.body.style.overflow='';document.documentElement.style.overflow='';if(window._ghlScrollContainer){window._ghlScrollContainer.style.overflow=window._ghlScrollContainer.dataset.wasOverflow||'';delete window._ghlScrollContainer;}};
+(function(){
+  // NOTE: Do not “guess” a scroll container to lock.
+  // That behavior can accidentally lock the drawer body itself on mobile (no scroll anywhere).
+  var lockCount = 0;
+  var prev = null;
+
+  window.H2S_lockScroll = function(){
+    try {
+      lockCount++;
+      if (lockCount > 1) return;
+      prev = {
+        bodyOverflow: document.body.style.overflow,
+        htmlOverflow: document.documentElement.style.overflow
+      };
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } catch (_) {}
+  };
+
+  window.H2S_unlockScroll = function(){
+    try {
+      lockCount = Math.max(0, lockCount - 1);
+      if (lockCount > 0) return;
+      document.body.style.overflow = (prev && typeof prev.bodyOverflow === 'string') ? prev.bodyOverflow : '';
+      document.documentElement.style.overflow = (prev && typeof prev.htmlOverflow === 'string') ? prev.htmlOverflow : '';
+      prev = null;
+    } catch (_) {}
+  };
+})();
 </script>
 
 <!-- Critical CSS - Inline for instant paint -->
@@ -732,6 +759,7 @@ body.modal-open {
   padding: 72px 16px 56px;
   text-align: center;
   position: relative;
+  overflow: hidden;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
@@ -739,9 +767,47 @@ body.modal-open {
   transition: padding-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.hero.has-proof-hero {
+  background-image: none;
+}
+
+.hero-media {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-media-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 20, 32, 0.65) 0%, rgba(11, 20, 32, 0.50) 35%, rgba(11, 20, 32, 0.70) 100%);
+}
+
+.hero-media img,
+.hero-media video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-media-bg {
+  filter: blur(28px);
+  transform: scale(1.08);
+  opacity: 0.85;
+}
+
+.hero-media-fg {
+  object-fit: contain;
+}
+
 .hero-inner {
   max-width: 640px;
   margin: 0 auto;
+  position: relative;
+  z-index: 2;
 }
 
 .hero h1 {
@@ -3690,6 +3756,7 @@ body.modal-open {
 <!-- END STATIC SUCCESS PAGE -->
 <!-- HERO -->
 <section class="hero">
+  <div class="hero-media" id="proofHeroMedia" aria-hidden="true"></div>
   <div class="hero-inner">
     <h1>Get Your TV Mounted<br>This Week, Not Next Month.</h1>
     <p>Professional TV mounting & security cameras. Book online, we handle the rest. Licensed, insured, same-week slots.</p>

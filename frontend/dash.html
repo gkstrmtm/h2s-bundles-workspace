@@ -14224,7 +14224,7 @@ details[open] .ob-chevron {
                     } else {
                         html += `<div onclick="proofPacks.assignAssetToSlot('bundles', 'hero', 'tv_mounting')" style="padding:60px;text-align:center;border:3px dashed #cbd5e1;border-radius:12px;background:#f8fafc;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(59,130,246,0.15)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='';this.style.boxShadow=''">
                             <div style="font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:8px;">Click to Assign Hero Banner</div>
-                            <div style="font-size:12px;color:#64748b;">Choose from compatible TV Mounting assets</div>
+                            <div style="font-size:12px;color:#64748b;">Choose from TV Mounting assets</div>
                             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">16:9 aspect ratio &bull; result or lifestyle shots</div>
                         </div>`;
                     }
@@ -14563,7 +14563,7 @@ details[open] .ob-chevron {
                     { 
                         label: 'Assign to Hero Banner', 
                         icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11A1.5 1.5 0 0 1 15 2.5v11a1.5 1.5 0 1 1-3 0v-11a.5.5 0 0 0-.5-.5h-11a.5.5 0 0 0-.5.5v11a.5.5 0 0 1-1.5 0v-11z"/><path d="M14.5 3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-1h13v1zm-13 10v-9h13v9h-13z"/></svg>',
-                        action: () => this.assignAssetToSlot('bundles', 'hero', asset.service || 'tv_mounting', assetId) 
+                        action: () => this.assignAssetToSlot('bundles', 'hero', 'tv_mounting', assetId) 
                     },
                     { 
                         label: 'Edit Asset', 
@@ -15052,26 +15052,37 @@ details[open] .ob-chevron {
                 }
             },
 
-            async assignAssetToSlot(surface, slotKey, service) {
-                console.log(`[assignAssetToSlot] surface=${surface}, slotKey=${slotKey}, service=${service}`);
+            async assignAssetToSlot(surface, slotKey, service, optionalAssetId = null) {
+                // Back-compat: older UI paths used "hero_carousel". Canonical slot key is "hero".
+                if (slotKey === 'hero_carousel') slotKey = 'hero';
+                console.log(`[assignAssetToSlot] surface=${surface}, slotKey=${slotKey}, service=${service}, assetId=${optionalAssetId}`);
                 
                 // Show loading indicator
-                const loadingToast = showToast('Loading compatible assets...', 'info');
+                const loadingToast = optionalAssetId
+                    ? showToast('Assigning asset...', 'info')
+                    : showToast(slotKey === 'hero' ? 'Loading assets...' : 'Loading compatible assets...', 'info');
                 
                 // Small delay to ensure assets are loaded
                 if (!this.state.assets?.items || this.state.assets.items.length === 0) {
                     await this.refreshAssets();
                 }
                 
+                // --- DIRECT ASSIGNMENT SHORTCUT (Context Menu Support) ---
+                if (optionalAssetId) {
+                    await this.performSlotAssignment(surface, slotKey, service, optionalAssetId);
+                    return;
+                }
+
                 // Show asset picker modal with filtered assets
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 
                 // Smart filtering based on slot requirements
                 const slotRequirements = {
                     'hero': {
-                        shot_types: ['result', 'lifestyle', 'process'],
-                        aspect_ratio_target: 16/9,
-                        aspect_ratio_tolerance: 0.15
+                        // Allow ALL shot types and ANY aspect ratio. We can crop or fit later.
+                        shot_types: [],
+                        aspect_ratio_target: null,
+                        aspect_ratio_tolerance: null
                     },
                     'mid_proof_rail': {
                         shot_types: ['result', 'lifestyle'],
@@ -15084,8 +15095,12 @@ details[open] .ob-chevron {
                 
                 // Filter assets by service and requirements
                 const compatibleAssets = items.filter(asset => {
-                    if (asset.service !== service) return false;
                     if (!asset.storage_path) return false; // Exclude broken assets
+
+                    // Hero: show full library (both services). The hero assignment itself writes to both.
+                    if (slotKey !== 'hero') {
+                        if (asset.service !== service) return false;
+                    }
                     
                     // Check shot type if specified
                     if (requirements.shot_types && requirements.shot_types.length > 0) {
@@ -15107,7 +15122,11 @@ details[open] .ob-chevron {
                 console.log(`[assignAssetToSlot] Found ${compatibleAssets.length} compatible assets`);
                 
                 if (compatibleAssets.length === 0) {
-                    showToast(`No compatible ${service === 'tv_mounting' ? 'TV Mounting' : 'Cameras'} assets found. Upload assets matching requirements first.`, 'error');
+                    if (slotKey === 'hero') {
+                        showToast('No assets found in the library. Upload more assets first.', 'error');
+                    } else {
+                        showToast(`No compatible ${service === 'tv_mounting' ? 'TV Mounting' : 'Cameras'} assets found. Upload assets matching requirements first.`, 'error');
+                    }
                     return;
                 }
                 
@@ -15123,7 +15142,7 @@ details[open] .ob-chevron {
                 header.innerHTML = `
                     <div>
                         <h3 style="margin:0;font-size:18px;font-weight:700;color:#111827;">Assign to ${slotKey === 'hero' ? 'Hero Banner' : 'Recent Installs'}</h3>
-                        <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">${compatibleAssets.length} compatible ${service === 'tv_mounting' ? 'TV Mounting' : 'Camera'} assets</p>
+                        <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">${compatibleAssets.length} ${slotKey === 'hero' ? 'library' : 'compatible '}${slotKey === 'hero' ? 'assets' : (service === 'tv_mounting' ? 'TV Mounting' : 'Camera') + ' assets'}</p>
                     </div>
                     <button onclick="this.closest('[data-modal]').style.opacity='0';setTimeout(()=>this.closest('[data-modal]').remove(),300)" style="background:none;border:none;font-size:28px;color:#9ca3af;cursor:pointer;padding:4px 12px;line-height:1;transition:color 0.2s;border-radius:6px;" onmouseover="this.style.background='#f3f4f6';this.style.color='#111827'" onmouseout="this.style.background='none';this.style.color='#9ca3af'">&times;</button>
                 `;
@@ -15215,21 +15234,33 @@ details[open] .ob-chevron {
             },
 
             async performSlotAssignment(surface, slotKey, service, assetId) {
+                // Back-compat: older UI paths used "hero_carousel". Canonical slot key is "hero".
+                if (slotKey === 'hero_carousel') slotKey = 'hero';
+
                 // Pre-flight check: If assigning to Hero, ensure 16:9 or offer to crop
                 if (slotKey === 'hero') {
                     const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                     const asset = items.find(a => a.asset_id === assetId);
                     if (asset && asset.width_px && asset.height_px) {
+                         const hasHeroCrop = (asset.smart_crop_details && asset.smart_crop_details.hero_banner);
                          const aspect = asset.width_px / asset.height_px;
-                         // Target 16:9 = 1.77
-                         if (Math.abs(aspect - 1.77) > 0.1) {
-                            if (confirm('This asset is not 16:9 (Hero Banner format). Would you like to crop it first?')) {
-                                 this.editAsset(assetId);
-                                 setTimeout(() => {
+                         // Only prompt if no hero crop exists and raw aspect is far from 16:9.
+                         if (!hasHeroCrop && Math.abs(aspect - 1.77) > 0.1) {
+                            const useFitBlur = confirm(
+                                'This asset is not 16:9.\n\nOK: Use Fit + Blur (no crop, always fills the frame)\nCancel: Edit framing now (crop to 16:9)'
+                            );
+                            if (!useFitBlur) {
+                                this.editAsset(assetId);
+                                setTimeout(() => {
                                     showToast('Select "Bundle Hero" preview, crop to fit, then save.', 'info');
-                                 }, 500);
-                                 return; // Stop assignment
-                             }
+                                }, 500);
+                                return; // Stop assignment
+                            }
+                            try {
+                                await this.ensureHeroFitBlurMode(asset);
+                            } catch (e) {
+                                console.warn('[performSlotAssignment] Failed to persist Fit+Blur mode; continuing assignment anyway.', e);
+                            }
                          }
                     }
                 }
@@ -15237,19 +15268,22 @@ details[open] .ob-chevron {
                 try {
                     const toast = showToast('Assigning asset...', 'info');
                     
-                    const { base } = this.getConfig();
-                    await this.fetchJson('/api/admin/proof-slots', {
+                    const targets = (slotKey === 'hero')
+                        ? ['tv_mounting', 'cameras']
+                        : [service || 'tv_mounting'];
+
+                    await Promise.all(targets.map(svc => this.fetchJson('/api/admin/proof-slots', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             surface,
                             slot_key: slotKey,
-                            service,
+                            service: svc,
                             asset_id: assetId,
                             priority: 100,
                             status: 'active'
                         })
-                    });
+                    })));
                     
                     showToast('Asset assigned successfully!', 'success');
                     
@@ -15260,6 +15294,9 @@ details[open] .ob-chevron {
                         livePreviewContainer.style.transition = 'opacity 0.3s ease';
                     }
                     
+                    // Give the write a moment to propagate before reading back.
+                    await new Promise(r => setTimeout(r, 600));
+
                     // Refresh live preview to show the new assignment
                     await this.refreshLivePreview();
                     
@@ -15274,6 +15311,31 @@ details[open] .ob-chevron {
                     console.error('[performSlotAssignment] Error:', e);
                     showToast(`Assignment failed: ${e.message}`, 'error');
                 }
+            },
+
+            async ensureHeroFitBlurMode(asset) {
+                if (!asset || !asset.asset_id) return;
+
+                const base = (asset.smart_crop_details && typeof asset.smart_crop_details === 'object') ? asset.smart_crop_details : {};
+                const prevHero = (base.hero_banner && typeof base.hero_banner === 'object') ? base.hero_banner : {};
+                const prevGeom = (prevHero.geometry && typeof prevHero.geometry === 'object') ? prevHero.geometry : null;
+
+                const merged = {
+                    ...base,
+                    hero_banner: {
+                        ...prevHero,
+                        render_mode: 'fit_blur',
+                        geometry: prevGeom || { tilt_deg: 0, scale_pct: 100, pan_x_pct: 50, pan_y_pct: 50 },
+                    }
+                };
+
+                await this.fetchJson('/api/admin/proof-assets', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asset_id: asset.asset_id, smart_crop_details: merged }),
+                });
+
+                asset.smart_crop_details = merged;
             },
 
             async refreshAssets() {
@@ -19282,7 +19344,7 @@ details[open] .ob-chevron {
                         // For Phase 1, we will map the *primary* destination to slot_key so the frontend at least works.
                         if (globalSlot) {
                              if (dests.includes('content_body')) globalSlot.value = 'content_body';
-                             else if (dests.includes('hero')) globalSlot.value = 'hero_carousel';
+                                else if (dests.includes('hero')) globalSlot.value = 'hero';
                              else if (dests.includes('proof_rail')) globalSlot.value = 'mid_proof_rail';
                              else if (dests.includes('gallery')) globalSlot.value = 'gallery';
                              else globalSlot.value = 'mid_proof_rail'; // Default

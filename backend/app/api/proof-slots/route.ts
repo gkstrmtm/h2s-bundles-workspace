@@ -239,9 +239,27 @@ export async function GET(request: Request) {
       pre_cta: { tv_mounting: [], cameras: [] },
     };
 
+    const pickSlotRow = (rows: any[], slotKey: string, service: string) => {
+      const candidates = (rows || []).filter((r: any) => r?.slot_key === slotKey && r?.service === service);
+      if (!candidates.length) return null;
+      const scoreTs = (v: any) => {
+        const t = Date.parse(String(v || ''));
+        return Number.isFinite(t) ? t : 0;
+      };
+      return candidates.sort((a: any, b: any) => {
+        const ap = typeof a?.priority === 'number' ? a.priority : Number(a?.priority || 0);
+        const bp = typeof b?.priority === 'number' ? b.priority : Number(b?.priority || 0);
+        if (bp !== ap) return bp - ap;
+        const bu = scoreTs(b?.updated_at);
+        const au = scoreTs(a?.updated_at);
+        if (bu !== au) return bu - au;
+        return scoreTs(b?.created_at) - scoreTs(a?.created_at);
+      })[0];
+    };
+
     for (const slotKey of ['hero', 'mid_proof_rail', 'pre_cta']) {
       for (const service of ['tv_mounting', 'cameras']) {
-        const slot = (slotRows || []).find((r: any) => r.slot_key === slotKey && r.service === service);
+        const slot = pickSlotRow(slotRows || [], slotKey, service);
         if (!slot) continue;
 
         let assets: any[] = [];
@@ -269,21 +287,23 @@ export async function GET(request: Request) {
           }
         }
 
-        // Apply intelligence: compute quality + slot fitness; performance gate for hero
+        // Apply intelligence: compute quality + slot fitness.
+        // IMPORTANT: if an asset is explicitly assigned via slot.asset_id, it must never
+        // be filtered out by heuristics (shot_type, time_of_day, media_kind, etc).
         const ranked = assets
           .map((a: any) => {
-            const quality = typeof a.quality_score === 'number' && a.quality_score > 0
-              ? a.quality_score
-              : computeQualityScore(a);
-            const fit = slotFitness(slotKey, a);
-            const perfGate = slotKey === 'hero'
-              ? (typeof a.file_size_kb === 'number' ? a.file_size_kb <= 250 : a.media_kind === 'photo')
-              : true;
+            const quality =
+              typeof a.quality_score === 'number' && a.quality_score > 0 ? a.quality_score : computeQualityScore(a);
+
+            const fitRaw = slotFitness(slotKey, a);
+            const isExplicit = Boolean(slot.asset_id);
+            const fit = Number.isFinite(fitRaw) ? fitRaw : isExplicit ? 1000 : fitRaw;
+
             return {
               ...a,
               quality_score: quality,
               slot_fitness_score: fit,
-              allowed_for_slot: perfGate && Number.isFinite(fit),
+              allowed_for_slot: isExplicit ? true : Number.isFinite(fitRaw),
             };
           })
           .filter((a: any) => a.allowed_for_slot)
@@ -311,6 +331,8 @@ export async function GET(request: Request) {
             duration_seconds: a.duration_seconds,
             file_size_kb: a.file_size_kb,
             has_audio: a.has_audio,
+            video_thumbnail_url: a.video_thumbnail_url,
+            video_thumbnail_timestamp: a.video_thumbnail_timestamp,
             quality_score: a.quality_score,
             slot_fitness_score: a.slot_fitness_score,
             smart_crop_details: a.smart_crop_details,

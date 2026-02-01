@@ -81,6 +81,7 @@ let _proofInitPromise = null;
 let _proofSlots = null;
 let _proofSupabaseUrl = '';
 let _proofSupabaseAnonKey = '';
+let _proofHydratePromise = null;
 let _proofLogged = Object.create(null);
 let _proofLocalInitialized = false;
 let _proofLocalAssets = [];
@@ -209,51 +210,421 @@ function getProofObjectPosition(smart) {
   return '50% 50%';
 }
 
-function buildProofMediaStyle(asset) {
+function getHeroBannerDetails(asset) {
   try {
-    // Match the ProofPacks "resting card truth" logic from Dash.html.
-    const rotateBase = Number(asset?.video_rotate_deg || 0);
-    const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
+    const d = getProofSmartCropDetails(asset);
+    const hb = d?.hero_banner;
+    if (hb && typeof hb === 'object') return hb;
+    if (typeof hb === 'string') {
+      const parsed = safeJsonParse(hb);
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (_) {}
+  return {};
+}
 
-    const smart = getProofSmartCropDetails(asset);
+function pickSlotAssetsByService(slotGroup, primary, secondary) {
+  try {
+    if (!slotGroup) return [];
+    if (Array.isArray(slotGroup)) return slotGroup;
+
+    const p = String(primary || '').trim();
+    const s = String(secondary || '').trim();
+
+    if (p && Array.isArray(slotGroup[p]) && slotGroup[p].length) return slotGroup[p];
+    if (s && Array.isArray(slotGroup[s]) && slotGroup[s].length) return slotGroup[s];
+
+    // Common fallback keys
+    if (Array.isArray(slotGroup.items) && slotGroup.items.length) return slotGroup.items;
+    if (Array.isArray(slotGroup.assets) && slotGroup.assets.length) return slotGroup.assets;
+
+    // Last resort: accept any array value on the group.
+    for (const k of Object.keys(slotGroup || {})) {
+      if (Array.isArray(slotGroup[k]) && slotGroup[k].length) return slotGroup[k];
+    }
+  } catch (_) {}
+  return [];
+}
+
+function buildHeroTransformCss(heroBanner) {
+  try {
+    const geom = (heroBanner && typeof heroBanner.geometry === 'object') ? heroBanner.geometry : {};
+    const panX = clampNumber(
+      geom?.pan_x_pct ?? geom?.panX_pct ?? geom?.panX ?? heroBanner?.pan_x_pct ?? heroBanner?.panX_pct,
+      0,
+      100,
+      50
+    );
+    const panY = clampNumber(
+      geom?.pan_y_pct ?? geom?.panY_pct ?? geom?.panY ?? heroBanner?.pan_y_pct ?? heroBanner?.panY_pct,
+      0,
+      100,
+      50
+    );
+
+    // Hero crop uses 0..100 focal + optional zoom/scale_pct.
+    const scalePct = Number.isFinite(Number(geom?.scale_pct)) ? Number(geom.scale_pct) : NaN;
+    const zoom = Number.isFinite(Number(heroBanner?.zoom))
+      ? Number(heroBanner.zoom)
+      : (Number.isFinite(scalePct) ? (scalePct / 100) : 1);
+    const clampedZoom = clampNumber(zoom, 0.5, 3.0, 1);
+
+    return {
+      objectPosition: `${panX}% ${panY}%`,
+      transformOrigin: `${panX}% ${panY}%`,
+      transform: clampedZoom !== 1 ? `scale(${clampedZoom}) translateZ(0)` : ''
+    };
+  } catch (_) {}
+  return { objectPosition: '50% 50%', transformOrigin: '50% 50%', transform: '' };
+}
+
+function renderProofHeroMedia(targetEl, asset) {
+  try {
+    if (!targetEl) return false;
+    if (!asset) {
+      targetEl.innerHTML = '';
+      return false;
+    }
+
+    const baseUrl = asset?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, asset?.storage_bucket, asset?.storage_path);
+    const url = appendCacheBust(baseUrl, getProofAssetVersionToken(asset));
+    if (!url) {
+      targetEl.innerHTML = '';
+      return false;
+    }
+
+    const kind = String(asset?.media_kind || 'photo');
+    const heroBanner = getHeroBannerDetails(asset);
+    const renderMode = String(heroBanner?.render_mode || '').trim().toLowerCase();
+    const t = buildHeroTransformCss(heroBanner);
+
+    const posterBase = asset?.video_thumbnail_url ? String(asset.video_thumbnail_url) : '';
+    const poster = appendCacheBust(posterBase || '', getProofAssetVersionToken(asset)) || videoPosterDataUri();
+
+    // Reset any prior adaptive styling (safe even if elements don't exist yet).
+    try {
+      delete targetEl.dataset.heroToneToken;
+      delete targetEl.dataset.heroToneUrl;
+      const heroSectionEl = targetEl.closest('section.hero');
+      if (heroSectionEl) heroSectionEl.style.removeProperty('--heroTone');
+    } catch (_) {}
+
+    if (renderMode === 'fit_blur') {
+      const bg = kind === 'video'
+        ? `<img class="hero-media-bg" src="${poster}" alt="" />`
+        : `<img class="hero-media-bg" src="${url}" alt="" />`;
+
+      const fgStyle = [
+        t.objectPosition ? `object-position: ${t.objectPosition}` : '',
+        t.transformOrigin ? `transform-origin: ${t.transformOrigin}` : '',
+        t.transform ? `transform: ${t.transform}` : ''
+      ].filter(Boolean).join('; ');
+      const fgStyleAttr = fgStyle ? ` style="${fgStyle};"` : '';
+
+      const fg = kind === 'video'
+        ? `<video class="hero-media-fg" autoplay muted loop playsinline preload="metadata" poster="${poster}"${fgStyleAttr} src="${url}"></video>`
+        : `<img class="hero-media-fg" loading="eager" decoding="async"${fgStyleAttr} src="${url}" alt="" />`;
+
+      targetEl.innerHTML = `${bg}<div class="hero-media-overlay"></div>${fg}`;
+      // Adaptive overlay + gentle tone adjustment (best-effort; silent if it fails).
+      try { scheduleAdaptiveHeroTone(targetEl, kind === 'video' ? poster : url); } catch (_) {}
+      return true;
+    }
+
+    const style = [
+      t.objectPosition ? `object-position: ${t.objectPosition}` : '',
+      t.transformOrigin ? `transform-origin: ${t.transformOrigin}` : '',
+      t.transform ? `transform: ${t.transform}` : ''
+    ].filter(Boolean).join('; ');
+    const styleAttr = style ? ` style="${style};"` : '';
+
+    if (kind === 'video') {
+      targetEl.innerHTML = `<div class="hero-media-overlay"></div><video autoplay muted loop playsinline preload="metadata" poster="${poster}"${styleAttr} src="${url}"></video>`;
+      try { scheduleAdaptiveHeroTone(targetEl, poster || url); } catch (_) {}
+      return true;
+    }
+
+    targetEl.innerHTML = `<div class="hero-media-overlay"></div><img loading="eager" decoding="async"${styleAttr} src="${url}" alt="" />`;
+    try { scheduleAdaptiveHeroTone(targetEl, url); } catch (_) {}
+    return true;
+  } catch (_) {
+    try { if (targetEl) targetEl.innerHTML = ''; } catch (_) {}
+    return false;
+  }
+}
+
+const _heroToneCache = new Map();
+
+function clamp01(n) {
+  return Math.max(0, Math.min(1, Number(n) || 0));
+}
+
+function computeAdaptiveHeroTone(stats) {
+  // Conservative and capped so it's not "too aggressive".
+  const mean = clamp01(stats?.mean ?? 0.5);
+  const std = clamp01(stats?.std ?? 0.18);
+  const pBright = clamp01(stats?.pBright ?? 0.15);
+
+  // Base overlay strength around 0.62, then adjust for bright highlights and low contrast.
+  let overlay = 0.62;
+  overlay += (mean - 0.5) * 0.55;          // brighter image -> stronger overlay
+  overlay += (pBright - 0.18) * 0.60;      // many highlights -> stronger overlay
+  overlay -= (std - 0.18) * 0.25;          // high contrast -> slightly less overlay
+  overlay = clampNumber(overlay, 0.45, 0.82, 0.62);
+
+  // Gentle brightness + contrast adjustments for the background only.
+  let brightness = 1.0;
+  if (mean > 0.62) brightness = clampNumber(1 - (mean - 0.62) * 0.35, 0.90, 1.0, 0.96);
+  else if (mean < 0.38) brightness = clampNumber(1 + (0.38 - mean) * 0.25, 1.0, 1.08, 1.04);
+
+  // If the image is flat/low-contrast, bump contrast a bit; otherwise leave it alone.
+  let contrast = 1.0 + clampNumber((0.18 - std) * 0.55, 0, 0.12, 0);
+  contrast = clampNumber(contrast, 1.0, 1.12, 1.0);
+
+  // Very gentle saturation bump only when the image is especially flat.
+  // Keeps it subtle so we don't "color grade" the photo.
+  let saturate = 1.0 + clampNumber((0.16 - std) * 0.35, 0, 0.08, 0);
+  saturate = clampNumber(saturate, 1.0, 1.08, 1.0);
+
+  const top = clampNumber(overlay + 0.08, 0.35, 0.90, overlay);
+  const mid = clampNumber(overlay - 0.06, 0.30, 0.85, overlay);
+  const bot = clampNumber(overlay + 0.12, 0.35, 0.92, overlay);
+
+  return { overlayTop: top, overlayMid: mid, overlayBot: bot, brightness, contrast, saturate };
+}
+
+async function analyzeImageTone(url) {
+  try {
+    const key = String(url || '').trim();
+    if (!key) return null;
+    if (_heroToneCache.has(key)) return _heroToneCache.get(key);
+
+    const p = new Promise((resolve) => {
+      const img = new Image();
+      // Best-effort: if CORS isn't allowed, we'll catch the canvas error and fallback.
+      img.crossOrigin = 'anonymous';
+      img.decoding = 'async';
+      img.referrerPolicy = 'no-referrer';
+      img.onload = () => {
+        try {
+          const W = 48;
+          const H = 48;
+          const canvas = document.createElement('canvas');
+          canvas.width = W;
+          canvas.height = H;
+          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          if (!ctx) return resolve(null);
+
+          // Sample center-weighted crop (roughly behind text).
+          const sw = img.naturalWidth || img.width || W;
+          const sh = img.naturalHeight || img.height || H;
+          const cropW = Math.max(1, Math.floor(sw * 0.55));
+          const cropH = Math.max(1, Math.floor(sh * 0.55));
+          const sx = Math.max(0, Math.floor((sw - cropW) / 2));
+          const sy = Math.max(0, Math.floor((sh - cropH) / 2));
+
+          ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, W, H);
+          const data = ctx.getImageData(0, 0, W, H).data;
+
+          let sum = 0;
+          let sum2 = 0;
+          let bright = 0;
+          const n = W * H;
+
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i] / 255;
+            const g = data[i + 1] / 255;
+            const b = data[i + 2] / 255;
+            // Rec.709 luminance
+            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            sum += lum;
+            sum2 += lum * lum;
+            if (lum >= 0.75) bright++;
+          }
+
+          const mean = sum / n;
+          const variance = Math.max(0, (sum2 / n) - (mean * mean));
+          const std = Math.sqrt(variance);
+          const pBright = bright / n;
+          resolve({ mean, std, pBright });
+        } catch (_) {
+          resolve(null);
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = key;
+    });
+
+    _heroToneCache.set(key, p);
+    return p;
+  } catch (_) {
+    return null;
+  }
+}
+
+function applyAdaptiveHeroToneToDom(heroMediaEl, tone) {
+  try {
+    if (!heroMediaEl || !tone) return;
+
+    const filter = `brightness(${tone.brightness}) contrast(${tone.contrast}) saturate(${tone.saturate || 1})`;
+
+    const overlayEl = heroMediaEl.querySelector('.hero-media-overlay');
+    if (overlayEl) {
+      overlayEl.style.background = `linear-gradient(180deg, rgba(11, 20, 32, ${tone.overlayTop}) 0%, rgba(11, 20, 32, ${tone.overlayMid}) 35%, rgba(11, 20, 32, ${tone.overlayBot}) 100%)`;
+    }
+
+    const bgEl = heroMediaEl.querySelector('.hero-media-bg');
+    if (bgEl) {
+      // Preserve blur while applying tone.
+      bgEl.style.filter = `blur(28px) ${filter}`;
+    }
+
+    // Fit+Blur foreground media element: apply same gentle tone.
+    const fgEl = heroMediaEl.querySelector('.hero-media-fg');
+    if (fgEl) {
+      fgEl.style.filter = filter;
+    }
+
+    // Cover (single) media element: apply gentle tone.
+    const coverEl = heroMediaEl.querySelector('video:not(.hero-media-fg), img:not(.hero-media-bg):not(.hero-media-fg)');
+    if (coverEl) {
+      coverEl.style.filter = filter;
+    }
+  } catch (_) {}
+}
+
+function anyOverlayOpenFast() {
+  try {
+    return !!(
+      document.getElementById('menuDrawer')?.classList.contains('open') ||
+      document.getElementById('cartDrawer')?.classList.contains('open') ||
+      document.getElementById('modal')?.classList.contains('show') ||
+      document.getElementById('quoteModal')?.classList.contains('show') ||
+      document.getElementById('tvSizeModal')?.classList.contains('show')
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function ensureScrollNotStuck() {
+  try {
+    if (anyOverlayOpenFast()) return;
+    const html = document.documentElement;
+    const body = document.body;
+
+    const overflowLocked = (body && body.style && body.style.overflow === 'hidden') || (html && html.style && html.style.overflow === 'hidden');
+    const classLocked = (body && body.classList && body.classList.contains('modal-open')) || (html && html.classList && html.classList.contains('modal-open'));
+
+    if (overflowLocked || classLocked) {
+      H2S_forceUnlockScroll();
+    }
+  } catch (_) {
+    // silent
+  }
+}
+
+function scheduleAdaptiveHeroTone(heroMediaEl, analysisUrl) {
+  try {
+    if (!heroMediaEl) return;
+    const url = String(analysisUrl || '').trim();
+    if (!url) return;
+
+    const token = String(Date.now()) + ':' + String(Math.random()).slice(2);
+    heroMediaEl.dataset.heroToneToken = token;
+    heroMediaEl.dataset.heroToneUrl = url;
+
+    analyzeImageTone(url).then((stats) => {
+      try {
+        if (!stats) return;
+        if (heroMediaEl.dataset.heroToneToken !== token) return;
+        if (heroMediaEl.dataset.heroToneUrl !== url) return;
+
+        const tone = computeAdaptiveHeroTone(stats);
+        applyAdaptiveHeroToneToDom(heroMediaEl, tone);
+      } catch (_) {}
+    }).catch(() => {
+      // silent
+    });
+  } catch (_) {}
+}
+
+function buildProofMediaStyle(asset, context = 'proof_rail') {
+  try {
+    const all = asset?.smart_crop_details || {};
+    let data = null;
     
-    // DO NOT force objectFit/objectPosition here - let CSS defaults (cover) handle frame fill.
-    // Transforms below handle repositioning within the filled frame.
-    // Keeping objectFit/objectPosition logic for backward compat, but typically omitted from output.
-    const mode = normalizeCropMode(smart?.mode);
-    const objectFit = mode === 'contain' ? 'contain' : ''; // Empty = use CSS default (cover)
-    const objectPosition = mode === 'contain' ? (smart?.objectPosition || '') : '';
+    if (context && all[context]) data = all[context];
+    if (!data && all.geometry) data = all;
+    if (!data) data = {};
 
-    const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
-    // Expanded physics limits to match Editor V2 (Jan 2026)
-    const panX = clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -150, 150, 0);
-    const panY = clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -150, 150, 0);
-    const tilt = clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
-    const scalePct = clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 300, 100);
-    const scale = scalePct / 100;
+    const geom = data.geometry || {};
+    const isEdited = !!data.geometry;
 
     const filterParts = [];
     const bw = String(asset?.filter_bw || '') === '1' || asset?.filter_bw === true;
     if (bw) filterParts.push('grayscale(100%)');
 
-    const b = Number(asset?.filter_brightness || 100);
-    const c = Number(asset?.filter_contrast || 100);
-    const s = Number(asset?.filter_saturation || 100);
+    const b = Number(asset?.filter_brightness || asset?.brightness_pct || 100);
+    const c = Number(asset?.filter_contrast || asset?.contrast_pct || 100);
+    const s = Number(asset?.filter_saturation || asset?.saturation_pct || 100);
     if (Number.isFinite(b) && b !== 100) filterParts.push(`brightness(${clampNumber(b, 0, 200, 100)}%)`);
     if (Number.isFinite(c) && c !== 100) filterParts.push(`contrast(${clampNumber(c, 0, 200, 100)}%)`);
     if (Number.isFinite(s) && s !== 100) filterParts.push(`saturate(${clampNumber(s, 0, 200, 100)}%)`);
 
-    const needsTransform = rotateDeg !== 0 || tilt !== 0 || panX !== 0 || panY !== 0 || scale !== 1;
+    if (!isEdited) {
+       // Legacy: Unedited assets default to cover
+       return [
+          'object-fit: cover',
+          'object-position: 50% 50%',
+           filterParts.length ? `filter: ${filterParts.join(' ')}` : ''
+       ].filter(Boolean).join('; ');
+    }
+    
+    // Check if new system (context specific) -> Use Object Position
+    const useObjectPosition = (context === 'hero_banner' || context === 'proof_rail');
+    
+    // Safe extraction
+    let panX = geom.pan_x_pct ?? geom.panX ?? (useObjectPosition ? 50 : 0);
+    let panY = geom.pan_y_pct ?? geom.panY ?? (useObjectPosition ? 50 : 0);
+    let tilt = geom.tilt_deg ?? geom.tilt ?? 0;
+    let scalePct = geom.scale_pct ?? geom.scale ?? 100;
+
+    // Clamp
+    tilt = clampNumber(tilt, -45, 45, 0);
+    scalePct = clampNumber(scalePct, 10, 500, 100);
+    const scale = scalePct / 100;
+    
+    const rotateBase = Number(asset?.video_rotate_deg || 0);
+    const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
+
+    if (useObjectPosition) {
+       // NEW RENDER
+       panX = clampNumber(panX, 0, 100, 50);
+       panY = clampNumber(panY, 0, 100, 50);
+       
+       const transform = `rotate(${rotateDeg + tilt}deg) scale(${scale})`;
+       return [
+         'object-fit: cover',
+         `object-position: ${panX}% ${panY}%`,
+         `transform: ${transform}`,
+         filterParts.length ? `filter: ${filterParts.join(' ')}` : ''
+       ].filter(Boolean).join('; ');
+    }
+
+    // Edited: V2 Physics
+    const panXVal = clampNumber(panX, -300, 300, 0);
+    const panYVal = clampNumber(panY, -300, 300, 0);
+    const needsTransform = rotateDeg !== 0 || tilt !== 0 || panXVal !== 0 || panYVal !== 0 || scale !== 1;
     const transform = needsTransform
-      ? `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale}) translateZ(0)`
+      ? `translate(${panXVal}%, ${panYVal}%) rotate(${rotateDeg + tilt}deg) scale(${scale})`
       : '';
 
     const parts = [
-      objectFit ? `object-fit: ${objectFit}` : '',
-      objectPosition ? `object-position: ${objectPosition}` : '',
+      'object-fit: contain',
+      'object-position: 50% 50%',
       needsTransform ? `transform: ${transform}` : '',
       needsTransform ? 'will-change: transform' : '',
-      needsTransform ? 'backface-visibility: hidden' : '',
       filterParts.length ? `filter: ${filterParts.join(' ')}` : ''
     ].filter(Boolean);
 
@@ -441,7 +812,8 @@ async function hydrateProofEditsFromSupabase() {
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const inList = chunk.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
-      const url = `${base}/rest/v1/proof_assets?select=asset_id,smart_crop_details&asset_id=in.(${inList})`;
+      // Fetch smart_crop_details AND video_thumbnail_url for freshness
+      const url = `${base}/rest/v1/proof_assets?select=asset_id,smart_crop_details,video_thumbnail_url&asset_id=in.(${inList})`;
       const res = await fetch(url, { method: 'GET', headers, credentials: 'omit', cache: 'no-store' }).catch(() => null);
       if (!res || !res.ok) continue;
       const rows = await res.json().catch(() => null);
@@ -449,7 +821,11 @@ async function hydrateProofEditsFromSupabase() {
       rows.forEach(r => {
         const aid = String(r?.asset_id || '').trim();
         if (!aid) return;
-        map.set(aid, r?.smart_crop_details ?? null);
+        // Store the relevant updates
+        map.set(aid, {
+          smart: r?.smart_crop_details ?? null,
+          thumb: r?.video_thumbnail_url ?? null
+        });
       });
     }
 
@@ -459,7 +835,11 @@ async function hydrateProofEditsFromSupabase() {
       (arr || []).forEach(a => {
         const aid = String(a?.asset_id || '').trim();
         if (!aid || !map.has(aid)) return;
-        a.smart_crop_details = map.get(aid);
+        const updates = map.get(aid);
+        // Apply smart crop if present
+        if (updates.smart) a.smart_crop_details = updates.smart;
+        // Apply video thumbnail if present
+        if (updates.thumb) a.video_thumbnail_url = updates.thumb;
       });
     };
 
@@ -519,31 +899,30 @@ async function loadProofData() {
       }
     } catch (_) {}
 
-    // proof-slots API omits edit metadata (smart_crop_details). Hydrate from Supabase so
-    // dashboard edits actually reflect on the live bundles page.
-    try { 
-      console.log('[Bundles] Hydrating smart_crop_details from Supabase...');
-      await hydrateProofEditsFromSupabase(); 
-      console.log('[Bundles] Hydration complete. Checking assets...');
-      
-      // Debug: Log which assets have smart_crop_details
-      let hydrated = 0;
-      ['hero', 'mid_proof_rail', 'pre_cta'].forEach(k => {
-        const group = _proofSlots[k];
-        if (!group) return;
-        ['tv_mounting', 'cameras'].forEach(svc => {
-          (group[svc] || []).forEach(a => {
-            if (a.smart_crop_details) {
-              hydrated++;
-              console.log(`  ✓ Asset ${a.asset_id} has smart_crop_details:`, a.smart_crop_details);
-            }
-          });
+    // proof-slots API can omit edit metadata (smart_crop_details).
+    // IMPORTANT: Don't block initial paint / hero LCP on hydration.
+    // Hydrate in the background and re-render proof sections once done.
+    try {
+      if (!_proofHydratePromise) {
+        const dbg = (() => {
+          try { return String(new URLSearchParams(location.search).get('debug') || '').toLowerCase(); } catch (_) { return ''; }
+        })();
+
+        _proofHydratePromise = Promise.resolve().then(() => {
+          // Yield to let the browser paint before hydration work.
+          return new Promise((resolve) => setTimeout(resolve, 0));
+        }).then(() => hydrateProofEditsFromSupabase()).then(() => {
+          try {
+            if (dbg.includes('proof')) console.log('[Bundles] Proof hydration complete');
+          } catch (_) {}
+          try { updateProofSections(); } catch (_) {}
+        }).catch((e) => {
+          try {
+            if (dbg.includes('proof')) console.warn('[Bundles] Proof hydration failed', e);
+          } catch (_) {}
         });
-      });
-      console.log(`[Bundles] ${hydrated} assets hydrated with smart_crop_details`);
-    } catch (e) {
-      console.error('[Bundles] Hydration failed:', e);
-    }
+      }
+    } catch (_) {}
 
     return { supabaseUrl: _proofSupabaseUrl, slots: _proofSlots };
   })();
@@ -592,14 +971,7 @@ function renderProofTiles(targetEl, assets, opts) {
     const style = buildProofMediaStyle(a);
     const styleAttr = style ? ` style="${style}"` : '';
     
-    // Debug logging for the problematic asset
-    if (a.asset_id === 'd7769fe4-4b9a-444a-b5a8-2724aac3fd72') {
-      console.log('[renderProofTiles] Rendering TV asset:', a.asset_id);
-      console.log('  Has smart_crop_details:', !!a.smart_crop_details);
-      console.log('  Smart crop data:', a.smart_crop_details);
-      console.log('  Generated style:', style);
-      console.log('  Style attr:', styleAttr);
-    }
+    // NOTE: Avoid always-on per-asset debug logging (performance).
 
     if (kind === 'video') {
       const preload = String(opts?.videoPreload || 'none');
@@ -633,6 +1005,46 @@ async function updateProofSections() {6
     const mode = getProofMode();
     ensureLocalProofControls();
     const hasRemote = !!(_proofSlots && _proofSupabaseUrl);
+
+    // Hero (storefront top section)
+    try {
+      const heroMedia = byId('proofHeroMedia');
+      const heroSectionEl = document.querySelector('section.hero');
+      if (heroMedia && heroSectionEl) {
+        const primary = getPrimaryServiceFromCart();
+        const secondary = primary === 'tv_mounting' ? 'cameras' : 'tv_mounting';
+
+        let heroAsset = null;
+        if (hasRemote) {
+          const group = _proofSlots?.hero;
+          const list = pickSlotAssetsByService(group, primary, secondary);
+          heroAsset = (list && list.length) ? list[0] : null;
+        } else if (mode === 'local') {
+          heroAsset = (dedupeAssets(_proofLocalAssets) || [])[0] || null;
+        }
+
+        if (!heroAsset && mode) {
+          heroAsset = (getDemoProofAssets(1) || [])[0] || null;
+        }
+
+        const ok = renderProofHeroMedia(heroMedia, heroAsset);
+        heroSectionEl.classList.toggle('has-proof-hero', !!ok);
+
+        if (ok && hasRemote) {
+          logProofImpressionOnce('hero:' + primary, {
+            event_type: 'impression',
+            surface: 'bundles',
+            slot_key: 'hero',
+            service: primary,
+            session_id: SESSION_ID,
+            page_url: location.href,
+            meta: { count: 1 }
+          });
+        }
+      }
+    } catch (_) {
+      // Never block funnel
+    }
 
     // Mid-page rail
     const railSection = byId('proofRailSection');
@@ -1899,13 +2311,25 @@ if(document.readyState === 'loading'){
     console.log('🟢 [INIT] Calling init()');
     performance.mark('before_init_call');
     try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
+
+    // MOBILE SAFETY: if something called H2S_lockScroll but no overlay is open, unlock.
+    setTimeout(() => { try { ensureScrollNotStuck(); } catch (_) {} }, 300);
+    setTimeout(() => { try { ensureScrollNotStuck(); } catch (_) {} }, 1500);
   });
 } else {
   console.log('🟢 [INIT] DOM already loaded');
   console.log('🟢 [INIT] Calling init() immediately');
   performance.mark('before_init_call');
   try{ init(); }catch(e){ logger.error('[Init] Failed:', e); }
+
+  setTimeout(() => { try { ensureScrollNotStuck(); } catch (_) {} }, 300);
+  setTimeout(() => { try { ensureScrollNotStuck(); } catch (_) {} }, 1500);
 }
+
+// BFCache restore / iOS Safari back navigation can resurrect old locked styles.
+window.addEventListener('pageshow', () => {
+  setTimeout(() => { try { ensureScrollNotStuck(); } catch (_) {} }, 300);
+});
 
 // Fire Meta Pixel ViewContent quickly after DOM is ready
 document.addEventListener('DOMContentLoaded', function(){

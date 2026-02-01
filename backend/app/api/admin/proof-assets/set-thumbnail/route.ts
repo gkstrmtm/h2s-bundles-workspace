@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
@@ -36,7 +39,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload thumbnail to Supabase Storage
-    const fileName = `thumbnails/${assetId}_${Date.now()}.jpg`;
+    const ts = Number.parseFloat(String(timestamp || '').trim());
+    const tsSafe = Number.isFinite(ts) ? String(ts).replace(/\./g, '_') : String(Date.now());
+    const fileName = `thumbnails/${assetId}_${tsSafe}.jpg`;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -80,7 +85,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { error: updateError } = await client
-      .from('h2s_proof_assets')
+      .from('proof_assets')
       .update(updatePayload)
       .eq('asset_id', assetId);
 

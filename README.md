@@ -2,6 +2,10 @@
 
 Production backend API and frontend for Home2Smart home services business.
 
+## Kickoff / Handoff
+
+- Primary handoff doc: [KICKOFF_CHECKLIST.md](KICKOFF_CHECKLIST.md)
+
 ## 📁 Repository Structure
 
 ```

@@ -22,6 +22,9 @@ ca_file="$cache_root/macos-keychain-certs.pem"
 
 if $refresh || [[ ! -s "$ca_file" ]]; then
   tmp="$(mktemp)"
+  # Ensure any exported CA bundle is not world-readable.
+  # (Certs aren't private keys, but corporate/root CAs still shouldn't be broadly exposed.)
+  umask 077
   # System keychains (these calls can fail on some macOS setups; ignore and keep going).
   security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$tmp" 2>/dev/null || true
   security find-certificate -a -p /Library/Keychains/System.keychain >>"$tmp" 2>/dev/null || true
@@ -35,6 +38,7 @@ if $refresh || [[ ! -s "$ca_file" ]]; then
   fi
 
   mv "$tmp" "$ca_file"
+  chmod 600 "$ca_file" 2>/dev/null || true
 fi
 
 export NODE_EXTRA_CA_CERTS="$ca_file"
