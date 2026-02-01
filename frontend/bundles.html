@@ -107,7 +107,7 @@
 *,*::before,*::after{box-sizing:border-box;}
 html,body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a2332;min-height:100%;}
 body{background:#fff;}
-.hero{background:linear-gradient(135deg,#0a2a5a 0%,#1a4d8f 100%);color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
+.hero{background-color:#0a2a5a;background-image:linear-gradient(135deg,rgba(10,42,90,0.55) 0%,rgba(26,77,143,0.50) 100%),var(--hero-bg-url,none);background-size:cover;background-position:center;background-repeat:no-repeat;color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
 .hero h1{font-size:clamp(32px,7vw,56px);font-weight:900;margin:0 0 20px;letter-spacing:-0.03em;line-height:1.1;}
 .hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
 .hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
@@ -639,7 +639,10 @@ body.modal-open {
 /* === HERO === */
 .hero {
   background-color: var(--cobalt);
-  background-image: linear-gradient(160deg, var(--cobalt) 0%, #0b1420 100%);
+  background-image: linear-gradient(160deg, rgba(10,42,90,0.55) 0%, rgba(11,20,32,0.55) 100%), var(--hero-bg-url, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   color: #fff;
   padding: 72px 16px 56px;
   text-align: center;
@@ -716,6 +719,27 @@ body.modal-open {
   gap: 12px;
   max-width: 480px;
   margin: 0 auto 24px;
+}
+
+/* Optional hero banner media (populated by bundles.js from proof slot: hero) */
+.hero-media {
+  max-width: 640px;
+  margin: 0 auto 18px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  aspect-ratio: 4 / 3;
+  height: clamp(180px, 55vw, 320px);
+}
+
+.hero-media img,
+.hero-media video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 /* Ghost buttons on hero (dark background) need light styling */
@@ -1702,7 +1726,7 @@ body.modal-open {
 
 /* === CTA BRIDGE === */
 .cta-bridge {
-  background: transparent;
+  background: #fff;
   padding: 18px 20px;
   text-align: center;
   border-top: 1px solid var(--border);
@@ -3663,6 +3687,9 @@ body.modal-open {
         Browse Camera Options
       </button>
     </div>
+
+    <!-- Hero banner media (optional) -->
+    <div class="hero-media" id="heroMedia" style="display:none;" aria-hidden="true"></div>
     
     <!-- Hero Review Carousel -->
     <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
@@ -4366,7 +4393,7 @@ body.modal-open {
 
     <!-- Proof (pre-CTA) -->
     <div id="proofMini" class="proof-mini" style="display:none;">
-      <div class="proof-mini-title">Proof from real installs</div>
+      <div class="proof-mini-title">Check out our recent work</div>
       <div id="proofMiniTrack" class="proof-mini-track" aria-label="Recent installation proof"></div>
     </div>
     

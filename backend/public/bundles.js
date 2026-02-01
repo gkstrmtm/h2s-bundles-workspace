@@ -1059,12 +1059,14 @@ async function init(){
             allReviews = data.reviews;
             reviewsLoadedFromAPI = true;
             
-            // Populate heroReviews from allReviews
-            heroReviews = allReviews.slice(0, 5).map(r => ({
-              text: r.text && r.text.trim() ? r.text.trim() : '',
-              author: r.name || 'Customer',
-              stars: r.rating || 5
+            // Populate heroReviews from allReviews (support multiple field shapes)
+            const nextHero = allReviews.slice(0, 5).map(r => ({
+              text: String(r?.review_text ?? r?.text ?? '').trim(),
+              author: String(r?.display_name ?? r?.name ?? r?.author ?? 'Customer').trim() || 'Customer',
+              stars: clampNumber(Number(r?.rating ?? r?.stars ?? 5), 1, 5, 5)
             })).filter(r => r.text.length > 0);
+
+            if (nextHero.length > 0) heroReviews = nextHero;
 
             // Initialize hero reviews immediately for real names/words
             if(!isSpecialView){
@@ -2412,9 +2414,9 @@ async function loadHeroReviews() {
     
     if (data.ok && data.reviews && data.reviews.length > 0) {
       const newReviews = data.reviews.slice(0, 5).map(r => ({
-        text: r.text && r.text.trim() ? r.text.trim() : '',
-        author: r.name || 'Customer',
-        stars: r.rating || 5
+        text: String(r?.review_text ?? r?.text ?? '').trim(),
+        author: String(r?.display_name ?? r?.name ?? r?.author ?? 'Customer').trim() || 'Customer',
+        stars: clampNumber(Number(r?.rating ?? r?.stars ?? 5), 1, 5, 5)
       })).filter(r => r.text.length > 0);
       
       if(newReviews.length > 0){
@@ -2430,7 +2432,16 @@ async function loadHeroReviews() {
 
 function renderHeroReviews(){
   const container = byId('heroReviews');
-  if (!container || heroReviews.length === 0) return;
+  if (!container || !Array.isArray(heroReviews) || heroReviews.length === 0) return;
+
+  heroReviews = heroReviews
+    .map(r => ({
+      text: String(r?.text || '').trim(),
+      author: String(r?.author || 'Customer').trim() || 'Customer',
+      stars: clampNumber(Number(r?.stars || 5), 1, 5, 5)
+    }))
+    .filter(r => r.text.length > 0);
+  if (heroReviews.length === 0) return;
   
   // Build review slides HTML
   const reviewsHTML = heroReviews.map((review, index) => {
@@ -2438,8 +2449,8 @@ function renderHeroReviews(){
     return `
     <div class="hero-review-slide ${index === currentHeroReviewIndex ? 'active' : ''}" data-index="${index}">
       <div class="hero-review-stars">${'&#9733;'.repeat(review.stars)}</div>
-      ${hasText ? `<div class="hero-review-text">"${review.text}"</div>` : ''}
-      <div class="hero-review-author">&mdash; ${review.author}</div>
+      ${hasText ? `<div class="hero-review-text">"${escapeHtml(review.text)}"</div>` : ''}
+      <div class="hero-review-author">&mdash; ${escapeHtml(review.author)}</div>
     </div>
   `;
   }).join('');
@@ -2456,15 +2467,18 @@ function renderHeroReviews(){
 }
 
 function initHeroReviews() {
-  // OPTIMIZATION: If static content is already present (Instant Paint), do not re-render
+  // If HTML ships with a single placeholder slide, re-render immediately so we
+  // can show multiple reviews + dots/rotation without waiting on the network.
   const container = document.getElementById('heroReviews');
-  const hasStaticContent = container && container.querySelector('.hero-review-slide.active');
-  if (!hasStaticContent) renderHeroReviews();
+  const staticSlides = container ? container.querySelectorAll('.hero-review-slide').length : 0;
+  if (staticSlides < 2) renderHeroReviews();
 
   // Defer auto-rotation: start only after idle or first interaction
   const startRotation = () => {
     if (heroReviewInterval) clearInterval(heroReviewInterval);
-    heroReviewInterval = setInterval(nextHeroReview, 5000);
+    if (Array.isArray(heroReviews) && heroReviews.length > 1) {
+      heroReviewInterval = setInterval(nextHeroReview, 5000);
+    }
   };
   const interactionHandler = () => { startRotation(); window.removeEventListener('pointerdown', interactionHandler, {passive:true}); };
   window.addEventListener('pointerdown', interactionHandler, {passive:true, once:true});
@@ -2479,6 +2493,7 @@ function initHeroReviews() {
 }
 
 function nextHeroReview() {
+  if (!Array.isArray(heroReviews) || heroReviews.length < 2) return;
   currentHeroReviewIndex = (currentHeroReviewIndex + 1) % heroReviews.length;
   showHeroReview(currentHeroReviewIndex);
 }
@@ -2486,13 +2501,15 @@ function nextHeroReview() {
 function goToHeroReview(index) {
   // Stop propagation so clicking dots doesn't navigate away
   event?.stopPropagation();
+
+  if (!Array.isArray(heroReviews) || heroReviews.length === 0) return;
   
   currentHeroReviewIndex = index;
   showHeroReview(index);
   
   // Reset auto-rotate timer
   if (heroReviewInterval) clearInterval(heroReviewInterval);
-  heroReviewInterval = setInterval(nextHeroReview, 5000);
+  if (heroReviews.length > 1) heroReviewInterval = setInterval(nextHeroReview, 5000);
 }
 
 function showHeroReview(index) {

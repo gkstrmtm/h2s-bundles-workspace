@@ -110,7 +110,6 @@ function svgPlaceholderDataUri(label) {
   <rect x="40" y="40" width="880" height="640" rx="22" fill="rgba(255,255,255,0.08)" stroke="rgba(255,255,255,0.20)"/>
   <text x="80" y="120" fill="#ffffff" font-size="44" font-family="system-ui, -apple-system, Segoe UI, Roboto" font-weight="800">Work history preview</text>
   <text x="80" y="175" fill="rgba(255,255,255,0.85)" font-size="26" font-family="system-ui, -apple-system, Segoe UI, Roboto">${escapeHtml(safe)}</text>
-  <text x="80" y="640" fill="rgba(255,255,255,0.7)" font-size="22" font-family="system-ui, -apple-system, Segoe UI, Roboto">Enable real photos by uploading Proof Packs (admin) or use ?proof=local to preview files.</text>
 </svg>`;
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
@@ -142,9 +141,23 @@ function capVideos(assets, maxVideos) {
   return out;
 }
 
-function videoPosterDataUri() {
-  // Small neutral poster so video tiles don't look broken before play.
-  return svgPlaceholderDataUri('Tap to play');
+function videoPosterDataUri(label) {
+  // Customer-safe neutral poster so video tiles never show internal/admin text.
+  const safe = String(label || 'Tap to play').slice(0, 36);
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a2a5a"/>
+      <stop offset="1" stop-color="#1493ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="720" rx="28" fill="url(#g)"/>
+  <circle cx="480" cy="360" r="86" fill="rgba(255,255,255,0.18)"/>
+  <polygon points="452,312 452,408 540,360" fill="#ffffff"/>
+  <text x="480" y="520" text-anchor="middle" fill="rgba(255,255,255,0.92)" font-size="28" font-family="system-ui, -apple-system, Segoe UI, Roboto" font-weight="700">${escapeHtml(safe)}</text>
+</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
 function clampNumber(n, min, max, fallback = 0) {
@@ -2134,12 +2147,16 @@ async function init(){
             allReviews = data.reviews;
             reviewsLoadedFromAPI = true;
 
-            // Populate heroReviews from allReviews
-            heroReviews = allReviews.slice(0, 5).map(r => ({
-              text: r.text && r.text.trim() ? r.text.trim() : '',
-              author: r.name || 'Customer',
-              stars: r.rating || 5
-            })).filter(r => r.text.length > 0);
+            // Populate heroReviews from allReviews (support multiple field shapes)
+            const nextHero = allReviews.slice(0, 5).map(r => {
+              const text = String(r?.review_text ?? r?.text ?? '').trim();
+              const author = String(r?.display_name ?? r?.name ?? r?.author ?? 'Customer').trim() || 'Customer';
+              const stars = clampNumber(Number(r?.rating ?? r?.stars ?? 5), 1, 5, 5);
+              return { text, author, stars };
+            }).filter(r => r.text.length > 0);
+
+            // Only replace fallbacks if we got real, non-empty reviews.
+            if (nextHero.length > 0) heroReviews = nextHero;
           } else {
             // Backend returned 0 reviews; keep fallbacks and ensure carousel isn't empty.
             if (allReviews.length === 0 && Array.isArray(heroReviews) && heroReviews.length > 0) {
@@ -3524,9 +3541,9 @@ async function loadHeroReviews() {
     
     if (data.ok && data.reviews && data.reviews.length > 0) {
       const newReviews = data.reviews.slice(0, 5).map(r => ({
-        text: r.text && r.text.trim() ? r.text.trim() : '',
-        author: r.name || 'Customer',
-        stars: r.rating || 5
+        text: String(r?.review_text ?? r?.text ?? '').trim(),
+        author: String(r?.display_name ?? r?.name ?? r?.author ?? 'Customer').trim() || 'Customer',
+        stars: clampNumber(Number(r?.rating ?? r?.stars ?? 5), 1, 5, 5)
       })).filter(r => r.text.length > 0);
       
       if(newReviews.length > 0){
@@ -3542,7 +3559,17 @@ async function loadHeroReviews() {
 
 function renderHeroReviews(){
   const container = byId('heroReviews');
-  if (!container || heroReviews.length === 0) return;
+  if (!container || !Array.isArray(heroReviews) || heroReviews.length === 0) return;
+
+  // Ensure we never render blank hero slides.
+  heroReviews = heroReviews
+    .map(r => ({
+      text: String(r?.text || '').trim(),
+      author: String(r?.author || 'Customer').trim() || 'Customer',
+      stars: clampNumber(Number(r?.stars || 5), 1, 5, 5)
+    }))
+    .filter(r => r.text.length > 0);
+  if (heroReviews.length === 0) return;
   
   // Build review slides HTML
   const reviewsHTML = heroReviews.map((review, index) => {
@@ -3550,8 +3577,8 @@ function renderHeroReviews(){
     return `
     <div class="hero-review-slide ${index === currentHeroReviewIndex ? 'active' : ''}" data-index="${index}">
       <div class="hero-review-stars">${'&#9733;'.repeat(review.stars)}</div>
-      ${hasText ? `<div class="hero-review-text">"${review.text}"</div>` : ''}
-      <div class="hero-review-author">&mdash; ${review.author}</div>
+      ${hasText ? `<div class="hero-review-text">"${escapeHtml(review.text)}"</div>` : ''}
+      <div class="hero-review-author">&mdash; ${escapeHtml(review.author)}</div>
     </div>
   `;
   }).join('');
@@ -3568,15 +3595,18 @@ function renderHeroReviews(){
 }
 
 function initHeroReviews() {
-  // OPTIMIZATION: If static content is already present (Instant Paint), do not re-render
+  // If HTML ships with a single placeholder slide, re-render immediately so we
+  // can show multiple reviews + dots/rotation without waiting on the network.
   const container = document.getElementById('heroReviews');
-  const hasStaticContent = container && container.querySelector('.hero-review-slide.active');
-  if (!hasStaticContent) renderHeroReviews();
+  const staticSlides = container ? container.querySelectorAll('.hero-review-slide').length : 0;
+  if (staticSlides < 2) renderHeroReviews();
 
   // Defer auto-rotation: start only after idle or first interaction
   const startRotation = () => {
     if (heroReviewInterval) clearInterval(heroReviewInterval);
-    heroReviewInterval = setInterval(nextHeroReview, 5000);
+    if (Array.isArray(heroReviews) && heroReviews.length > 1) {
+      heroReviewInterval = setInterval(nextHeroReview, 5000);
+    }
   };
   const interactionHandler = () => { startRotation(); window.removeEventListener('pointerdown', interactionHandler, {passive:true}); };
   window.addEventListener('pointerdown', interactionHandler, {passive:true, once:true});
@@ -3591,6 +3621,7 @@ function initHeroReviews() {
 }
 
 function nextHeroReview() {
+  if (!Array.isArray(heroReviews) || heroReviews.length < 2) return;
   currentHeroReviewIndex = (currentHeroReviewIndex + 1) % heroReviews.length;
   showHeroReview(currentHeroReviewIndex);
 }
@@ -3598,13 +3629,15 @@ function nextHeroReview() {
 function goToHeroReview(index) {
   // Stop propagation so clicking dots doesn't navigate away
   event?.stopPropagation();
+
+  if (!Array.isArray(heroReviews) || heroReviews.length === 0) return;
   
   currentHeroReviewIndex = index;
   showHeroReview(index);
   
   // Reset auto-rotate timer
   if (heroReviewInterval) clearInterval(heroReviewInterval);
-  heroReviewInterval = setInterval(nextHeroReview, 5000);
+  if (heroReviews.length > 1) heroReviewInterval = setInterval(nextHeroReview, 5000);
 }
 
 function showHeroReview(index) {

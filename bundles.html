@@ -718,6 +718,27 @@ body.modal-open {
   margin: 0 auto 24px;
 }
 
+/* Optional hero banner media (populated by bundles.js from proof slot: hero) */
+.hero-media {
+  max-width: 640px;
+  margin: 0 auto 18px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  aspect-ratio: 4 / 3;
+  height: clamp(180px, 55vw, 320px);
+}
+
+.hero-media img,
+.hero-media video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 /* Ghost buttons on hero (dark background) need light styling */
 .hero .btn-ghost {
   background: transparent;
@@ -1702,7 +1723,7 @@ body.modal-open {
 
 /* === CTA BRIDGE === */
 .cta-bridge {
-  background: transparent;
+  background: #fff;
   padding: 18px 20px;
   text-align: center;
   border-top: 1px solid var(--border);
@@ -3663,6 +3684,9 @@ body.modal-open {
         Browse Camera Options
       </button>
     </div>
+
+    <!-- Hero banner media (optional) -->
+    <div class="hero-media" id="heroMedia" style="display:none;" aria-hidden="true"></div>
     
     <!-- Hero Review Carousel -->
     <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
@@ -4366,7 +4390,7 @@ body.modal-open {
 
     <!-- Proof (pre-CTA) -->
     <div id="proofMini" class="proof-mini" style="display:none;">
-      <div class="proof-mini-title">Proof from real installs</div>
+      <div class="proof-mini-title">Check out our recent work</div>
       <div id="proofMiniTrack" class="proof-mini-track" aria-label="Recent installation proof"></div>
     </div>
     

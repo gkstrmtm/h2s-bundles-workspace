@@ -808,15 +808,29 @@ export async function GET(request: Request) {
 
     // Some features (training, candidates, tasks, hours, etc.) live in the Mgmt DB.
     // Prefer Mgmt creds when present, but don't hard-fail if they're not configured.
-    const supabaseMgmt = (() => {
+    const supabaseMain = getSupabase();
+    const supabaseMgmtClient = (() => {
       try {
         return getSupabaseMgmt();
       } catch {
-        return getSupabase();
+        return null;
       }
     })();
+    const supabaseMgmt = supabaseMgmtClient || supabaseMain;
 
     switch (action) {
+      case 'ping':
+        {
+          return NextResponse.json(
+            {
+              ok: true,
+              service: 'h2s-backend',
+              endpoint: 'api/v1',
+              ts: new Date().toISOString()
+            },
+            { status: 200, headers: corsHeaders(request) }
+          );
+        }
       case 'observed_paths':
         {
           const auth = requireAdminToken(request);
@@ -962,51 +976,115 @@ export async function GET(request: Request) {
         break;
 
       case 'candidates':
-        const { data: candidates } = await getSupabase()
-          .from('Candidate_Master')
-          .select('*, AI_Candidate_Profiles(*)')
-          .order('Updated_At', { ascending: false });
-        result = candidates;
+        {
+          const runQuery = async (client: ReturnType<typeof getSupabase>) =>
+            client
+              .from('Candidate_Master')
+              .select('*, AI_Candidate_Profiles(*)')
+              .order('Updated_At', { ascending: false });
+
+          const { data: candidates, error: candidatesError } = await runQuery(supabaseMgmt);
+
+          if (candidatesError && supabaseMgmtClient) {
+            const { data: fallback, error: fallbackError } = await runQuery(supabaseMain);
+            if (!fallbackError) {
+              result = fallback || [];
+              break;
+            }
+          }
+
+          if (candidatesError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load candidates: ${candidatesError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = candidates || [];
+        }
         break;
 
       case 'aiProfiles':
         // Return candidates with AI profiles for the Reports tab
-        const { data: profileCandidates } = await getSupabase()
-          .from('Candidate_Master')
-          .select('*, AI_Candidate_Profiles(*)')
-          .order('Updated_At', { ascending: false });
-        
-        // Transform to match Dashboard expectations, filter out candidates without profiles
-        const profiles = profileCandidates
-          ?.filter(c => c.AI_Candidate_Profiles && Object.keys(c.AI_Candidate_Profiles).length > 0)
-          .map(c => ({
-            ...c.AI_Candidate_Profiles,
-            Candidate_ID: c.Candidate_ID,
-            First_Name: c.First_Name,
-            Last_Name: c.Last_Name,
-            Phone: c.Phone,
-            Email: c.Email,
-            Current_Stage: c.Current_Stage,
-            Interview_Date: c.Interview_Date
-          })) || [];
-        
-        result = profiles;
+        {
+          const runQuery = async (client: ReturnType<typeof getSupabase>) =>
+            client
+              .from('Candidate_Master')
+              .select('*, AI_Candidate_Profiles(*)')
+              .order('Updated_At', { ascending: false });
+
+          const { data: profileCandidates, error: profileCandidatesError } = await runQuery(supabaseMgmt);
+          if (profileCandidatesError && supabaseMgmtClient) {
+            const { data: fallback, error: fallbackError } = await runQuery(supabaseMain);
+            if (!fallbackError) {
+              // Transform to match Dashboard expectations, filter out candidates without profiles
+              const profiles = fallback
+                ?.filter((c: any) => c.AI_Candidate_Profiles && Object.keys(c.AI_Candidate_Profiles).length > 0)
+                .map((c: any) => ({
+                  ...c.AI_Candidate_Profiles,
+                  Candidate_ID: c.Candidate_ID,
+                  First_Name: c.First_Name,
+                  Last_Name: c.Last_Name,
+                  Phone: c.Phone,
+                  Email: c.Email,
+                  Current_Stage: c.Current_Stage,
+                  Interview_Date: c.Interview_Date
+                })) || [];
+
+              result = profiles;
+              break;
+            }
+          }
+
+          if (profileCandidatesError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load AI profiles: ${profileCandidatesError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          // Transform to match Dashboard expectations, filter out candidates without profiles
+          const profiles = profileCandidates
+            ?.filter((c: any) => c.AI_Candidate_Profiles && Object.keys(c.AI_Candidate_Profiles).length > 0)
+            .map((c: any) => ({
+              ...c.AI_Candidate_Profiles,
+              Candidate_ID: c.Candidate_ID,
+              First_Name: c.First_Name,
+              Last_Name: c.Last_Name,
+              Phone: c.Phone,
+              Email: c.Email,
+              Current_Stage: c.Current_Stage,
+              Interview_Date: c.Interview_Date
+            })) || [];
+
+          result = profiles;
+        }
         break;
 
       case 'tasks':
-        const { data: tasks } = await getSupabase()
-          .from('Tasks')
-          .select('*')
-          .neq('Status', 'ARCHIVED')
-          .order('Priority', { ascending: true });
-        result = tasks;
+        {
+          const { data: tasks, error: tasksError } = await supabaseMgmt
+            .from('Tasks')
+            .select('*')
+            .neq('Status', 'ARCHIVED')
+            .order('Priority', { ascending: true });
+
+          if (tasksError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load tasks: ${tasksError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = tasks || [];
+        }
         break;
 
       case 'hours':
         const hoursVaName = searchParams.get('vaName');
         const requestId = `get_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
-        let hoursQuery = getSupabase()
+        let hoursQuery = supabaseMgmt
           .from('VA_Hours_Log')
           .select('*')
           .order('Date', { ascending: false });

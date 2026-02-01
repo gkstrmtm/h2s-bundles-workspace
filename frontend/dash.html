@@ -10242,7 +10242,7 @@ details[open] .ob-chevron {
             }
         }
 
-        const API_BASE = (() => {
+        let API_BASE = (() => {
             try {
                 const maybe = (typeof window !== 'undefined' && typeof window.API_URL === 'string')
                     ? window.API_URL.trim()
@@ -10261,9 +10261,79 @@ details[open] .ob-chevron {
             }
         })();
 
-        const API_URL = `${API_BASE}/api/v1`;
-        const TRACK_API = `${API_BASE}/api/track`;
-        const TRACK_PING_API = `${API_BASE}/api/track-ping`;
+        let API_URL = `${API_BASE}/api/v1`;
+        let TRACK_API = `${API_BASE}/api/track`;
+        let TRACK_PING_API = `${API_BASE}/api/track-ping`;
+
+        function applyApiBase(base) {
+            API_BASE = base;
+            API_URL = `${API_BASE}/api/v1`;
+            TRACK_API = `${API_BASE}/api/track`;
+            TRACK_PING_API = `${API_BASE}/api/track-ping`;
+            try {
+                window.__H2S_API_BASE = API_BASE;
+            } catch {
+            }
+        }
+
+        let _apiReadyPromise = null;
+
+        async function pingApiBase(base) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            try {
+                const url = `${base}/api/v1?action=ping&_ts=${Date.now()}`;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    cache: 'no-store',
+                    signal: controller.signal
+                });
+
+                if (!response.ok) {
+                    return { ok: false, reason: `HTTP ${response.status}` };
+                }
+
+                const contentType = String(response.headers.get('content-type') || '');
+                if (!contentType.includes('application/json')) {
+                    return { ok: false, reason: 'Non-JSON response' };
+                }
+
+                const data = await response.json().catch(() => null);
+                if (!data || data.ok !== true) {
+                    return { ok: false, reason: (data && data.error) ? String(data.error) : 'Ping failed' };
+                }
+
+                return { ok: true };
+            } catch (e) {
+                return { ok: false, reason: e && e.name === 'AbortError' ? 'Timeout' : 'Fetch failed' };
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        async function ensureApiReady() {
+            if (_apiReadyPromise) return _apiReadyPromise;
+            _apiReadyPromise = (async () => {
+                const candidates = [];
+                candidates.push(API_BASE);
+                if (API_BASE !== DEFAULT_API_HOST) candidates.push(DEFAULT_API_HOST);
+                // If we're hosted on portal/vercel, also try same-origin as a fallback.
+                if (API_BASE !== '' && isPortalHosted()) candidates.push('');
+
+                for (const base of candidates) {
+                    const result = await pingApiBase(base);
+                    if (result.ok) {
+                        applyApiBase(base);
+                        return { ok: true, base };
+                    }
+                }
+
+                // No base worked; keep whatever we started with.
+                applyApiBase(API_BASE);
+                return { ok: false, base: API_BASE };
+            })();
+            return _apiReadyPromise;
+        }
         
         let candidates = [];
         let autoRefreshInterval = null;
@@ -10501,30 +10571,32 @@ details[open] .ob-chevron {
             dashboardInitialized = true;
             appInstanceId = Date.now();
 
-            setupTabs();
-            // Only load pipeline if it's the active pane
-            const pipelinePane = document.getElementById('pipeline-pane');
-            if (pipelinePane && pipelinePane.classList.contains('active')) {
-                loadPipeline();
-            }
-            initHoursForm();
-            setupForms();
-            startAutoRefresh();
-            loadKnowledgeProfile(); // Load user-specific profile
-            // Only load training if it's the active pane (unlikely on init, but safe)
-            const trainingPane = document.getElementById('training-pane');
-            if (trainingPane && trainingPane.classList.contains('active')) {
-                loadTrainingResources();
-            }
-            // Only load tasks if it's the active pane
-            const tasksPane = document.getElementById('tasks-pane');
-            if (tasksPane && tasksPane.classList.contains('active')) {
-                loadTasks();
-            }
-            
-            // Show logout button when logged in
-            const logoutBtn = document.getElementById('logoutBtn');
-            if (logoutBtn) logoutBtn.style.display = 'block';
+            ensureApiReady().then(() => {
+                setupTabs();
+                // Only load pipeline if it's the active pane
+                const pipelinePane = document.getElementById('pipeline-pane');
+                if (pipelinePane && pipelinePane.classList.contains('active')) {
+                    loadPipeline();
+                }
+                initHoursForm();
+                setupForms();
+                startAutoRefresh();
+                loadKnowledgeProfile(); // Load user-specific profile
+                // Only load training if it's the active pane (unlikely on init, but safe)
+                const trainingPane = document.getElementById('training-pane');
+                if (trainingPane && trainingPane.classList.contains('active')) {
+                    loadTrainingResources();
+                }
+                // Only load tasks if it's the active pane
+                const tasksPane = document.getElementById('tasks-pane');
+                if (tasksPane && tasksPane.classList.contains('active')) {
+                    loadTasks();
+                }
+
+                // Show logout button when logged in
+                const logoutBtn = document.getElementById('logoutBtn');
+                if (logoutBtn) logoutBtn.style.display = 'block';
+            });
         }
 
         // Initialize on page load (user gate will show first)
@@ -10949,7 +11021,10 @@ details[open] .ob-chevron {
             }
             
             try {
-                const response = await fetch(`${API_URL}?action=candidates&stage=all`);
+                const response = await fetch(`${API_URL}?action=candidates&stage=all`, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
                 
                 if (data.ok) {
@@ -10978,7 +11053,7 @@ details[open] .ob-chevron {
                 container.style.display = 'block';
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-text" style="color: var(--danger);">Error loading candidates. Check console for details.</div>
+                        <div class="empty-text" style="color: var(--danger);">Error loading candidates: ${escapeHtml(error && error.message ? error.message : 'Unknown error')}</div>
                     </div>
                 `;
             }
@@ -22012,7 +22087,7 @@ details[open] .ob-chevron {
             
             try {
                 // Fetch candidates and extract profiles since aiProfiles endpoint might be unavailable
-                const response = await fetch(`${API_URL}?action=candidates&stage=all`);
+                const response = await fetch(`${API_URL}?action=candidates&stage=all`, { cache: 'no-store' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 
@@ -22053,7 +22128,7 @@ details[open] .ob-chevron {
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-text" style="color: var(--danger);">Error loading AI profiles. Check console for details.</div>
+                        <div class="empty-text" style="color: var(--danger);">Error loading AI profiles: ${escapeHtml(error && error.message ? error.message : 'Unknown error')}</div>
                     </div>
                 `;
             }
@@ -22649,7 +22724,7 @@ details[open] .ob-chevron {
                 const vaNameParam = currentUserKey && currentUserKey !== 'DEMO' 
                     ? `&vaName=${encodeURIComponent(currentUserKey)}` 
                     : '';
-                const response = await fetch(`${API_URL}?action=hours${vaNameParam}`);
+                const response = await fetch(`${API_URL}?action=hours${vaNameParam}`, { cache: 'no-store' });
                 
                 // Check HTTP status
                 if (!response.ok) {
@@ -22683,7 +22758,7 @@ details[open] .ob-chevron {
                 if (!silent) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-text" style="color: var(--danger);">Network error loading hours. Please check your connection and refresh.</div>
+                            <div class="empty-text" style="color: var(--danger);">Error loading hours: ${escapeHtml(error && error.message ? error.message : 'Unknown error')}. Please refresh.</div>
                         </div>
                     `;
                 }
@@ -24104,7 +24179,10 @@ async function loadRecommendationsForFilter() {
             }
             
             try {
-                const response = await fetch(`${API_URL}?action=training`);
+                const response = await fetch(`${API_URL}?action=training`, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
                 
                 if (data.ok) {
@@ -24134,7 +24212,7 @@ async function loadRecommendationsForFilter() {
                 container.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-icon">!</div>
-                        <div class="empty-text" style="color: var(--danger);">Error loading training resources. Check console for details.</div>
+                        <div class="empty-text" style="color: var(--danger);">Error loading training resources: ${escapeHtml(error && error.message ? error.message : 'Unknown error')}</div>
                     </div>
                 `;
             }
