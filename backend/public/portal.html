@@ -6,12 +6,18 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
-<meta name="build-id" content="SHA-VERIFY-FINAL-1768341239">
-<!-- VERSION: 2026-01-13-SHA-VERIFY-FINAL-1768341239
+<meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
+<!-- VERSION: 2026-01-27-234022 -->
+
+<script>console.log('PORTAL VERSION: 2026-01-27-234022');</script>
 
 <!-- DEPLOYMENT VERIFICATION -->
 <script>
-console.log("[BUILD_ID]", "SHA-VERIFY-FINAL-1768341239", "2026-01-13 21:31:21", "FILE:", "portal.html");
+console.log("[BUILD_ID]", "MARK_DONE_HYBRID_SCHEMA-2026-01-15-0330", "2026-01-15 06:30:00", "FILE:", "portal.html");
+
+// Proof marker required for live page-source verification
+var PORTAL_BUILD = "PORTAL_BUILD_639041236418272610";
+console.log("[PORTAL_BUILD]", PORTAL_BUILD);
 
 // ==== GLOBAL ERROR HANDLERS FOR COMPLETE JOB DEBUGGING ====
 window.addEventListener('error', (event) => {
@@ -6856,6 +6862,18 @@ a:focus-visible{
             Professional Profile
           </h3>
           <div style="display:grid;gap:20px">
+            <!-- Name & Email Display -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--gap-md);">
+              <div>
+                 <label class="label" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Name</label>
+                 <div id="pfNameDisplay" style="padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#f1f5f9; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">--</div>
+              </div>
+              <div>
+                 <label class="label" style="display:block;margin-bottom:var(--gap-sm);font-weight:600;color:var(--text);font-size:14px">Email</label>
+                 <div id="pfEmailDisplay" style="padding:10px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#f1f5f9; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">--</div>
+              </div>
+            </div>
+
             <!-- Profile Photo Upload -->
             <div>
               <label class="label" style="display:block;margin-bottom:var(--control-gap);font-weight:600;color:var(--text);font-size:14px">
@@ -9759,17 +9777,17 @@ function renderMenuItems() {
     box.innerHTML = `
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px 4px">Main</div>
       <button class="menu-item" data-go="dash" type="button"><span>Dashboard</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="customers" type="button"><span>Customers</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="schedule" type="button"><span>Schedule</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" data-go="training" type="button"><span>Training</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
-      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" data-go="training" type="button"><span>Training</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+      <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Profile</div>
-      <button class="menu-item" data-go="profile" type="button"><span>Account</span><span style="color:#64748b;font-size:18px">&#10095;</span></button>
+      <button class="menu-item" data-go="profile" type="button"><span>Account</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       <button class="menu-item" id="signOut" type="button" style="background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:#fca5a5"><span>Sign out</span></button>
     `;
   }
@@ -9820,7 +9838,15 @@ async function hydrateMe() {
   const cachedMe = getCache('me');
   if (cachedMe) {
     me = cachedMe;
-    document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+
+    // Normalize profile fields
+    const realName = me.name || me.pro_name || me.full_name || me.tech_name || me.display_name || 'Pro';
+    const realEmail = me.email || me.pro_email || me.tech_email || '';
+    
+    if(document.getElementById("pfNameDisplay")) document.getElementById("pfNameDisplay").textContent = realName;
+    if(document.getElementById("pfEmailDisplay")) document.getElementById("pfEmailDisplay").textContent = realEmail;
+
+    document.getElementById("portalTitle").textContent = realName ? ("Hi, " + realName.split(" ")[0]) : "Pro portal";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9857,7 +9883,15 @@ async function hydrateMe() {
     setCache('me', me);
     localStorage.setItem(`h2s_me_${token}`, JSON.stringify(me));
     
-    document.getElementById("portalTitle").textContent = me && me.name ? ("Hi, " + me.name.split(" ")[0]) : "Pro portal";
+    // Normalize profile fields
+    const realName = me.name || me.pro_name || me.full_name || me.tech_name || me.display_name || 'Pro';
+    const realEmail = me.email || me.pro_email || me.tech_email || '';
+    
+    // Update UI
+    if(document.getElementById("pfNameDisplay")) document.getElementById("pfNameDisplay").textContent = realName;
+    if(document.getElementById("pfEmailDisplay")) document.getElementById("pfEmailDisplay").textContent = realEmail;
+
+    document.getElementById("portalTitle").textContent = realName ? ("Hi, " + realName.split(" ")[0]) : "Pro portal";
     document.getElementById("pfHomeAddress").value = me.home_address || "";
     document.getElementById("pfHomeCity").value = me.home_city || "";
     document.getElementById("pfHomeState").value = me.home_state || "";
@@ -9988,7 +10022,7 @@ function renderPaginationControls(type, totalItems, container) {
   const prevBtn = document.createElement('button');
   prevBtn.className = 'btn secondary';
   prevBtn.style.padding = '8px 16px';
-  prevBtn.textContent = '? Prev';
+  prevBtn.innerHTML = '&larr; Prev';
   prevBtn.disabled = state.page === 1;
   if (state.page === 1) prevBtn.style.opacity = '0.5';
   
@@ -10007,7 +10041,7 @@ function renderPaginationControls(type, totalItems, container) {
   const nextBtn = document.createElement('button');
   nextBtn.className = 'btn secondary';
   nextBtn.style.padding = '8px 16px';
-  nextBtn.textContent = 'Next ?';
+  nextBtn.innerHTML = 'Next &rarr;';
   nextBtn.disabled = state.page === totalPages;
   if (state.page === totalPages) nextBtn.style.opacity = '0.5';
   
@@ -10411,6 +10445,44 @@ function normalizeJobFields(job) {
   
   // Create normalized copy
   const normalized = { ...job };
+
+  // Line items: portal rendering assumes Array.isArray(line_items).
+  // Backend may send JSON string or object-map depending on source/schema.
+  function normalizeLineItems(v) {
+    if (!v) return null;
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (!s) return null;
+      try {
+        return normalizeLineItems(JSON.parse(s));
+      } catch (_) {
+        return null;
+      }
+    }
+    if (typeof v === 'object') {
+      if (Array.isArray(v.items)) return v.items;
+      // If it's an object map, use values
+      const vals = Object.values(v).filter(x => x && (typeof x === 'object' || typeof x === 'string'));
+      if (vals.length > 0) return vals;
+    }
+    return null;
+  }
+
+  if (!Array.isArray(normalized.line_items) || normalized.line_items.length === 0) {
+    const li = normalizeLineItems(job.line_items || job.lines || job.line_items_json || job.lineItems);
+    if (li) normalized.line_items = li;
+  }
+
+  // Service naming: some jobs use service_title/bundle_name instead of service_name
+  if (!normalized.service_name) {
+    normalized.service_name = job.service_title || job.bundle_name || job.service || null;
+  }
+
+  // Description: ensure we have a usable value for the modal summary fallback
+  if (!normalized.description) {
+    normalized.description = job.service_description || job.description || job.service_title || job.service_name || null;
+  }
   
   // Phone: try customer_phone, phone, contact_phone
   if (!normalized.customer_phone) {
@@ -10616,7 +10688,8 @@ function showJobDetails(job) {
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -10635,7 +10708,7 @@ function showJobDetails(job) {
   const phoneEl = $("md-customer-phone");
   const customerName = job.customer_name || job.metadata?.customer_name || "";
   if (customerPhone) {
-    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> ? ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+    phoneEl.innerHTML = `${customerName ? `<span style="font-weight:600;color:#e0f2fe">${esc(customerName)}</span> &bull; ` : ''}<a href="tel:${esc(customerPhone)}" style="color:#1A9BFF;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:6px;transition:opacity 160ms ease-out" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
       ${esc(customerPhone)}
     </a>`;
@@ -10645,7 +10718,8 @@ function showJobDetails(job) {
   
   // ? INTELLIGENCE: Service summary + bullets from line items
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
@@ -10722,7 +10796,7 @@ function showJobDetails(job) {
             <span>View ${customerPhotos.length} Customer Photo${customerPhotos.length > 1 ? 's' : ''}</span>
           </button>
           <div style="margin-top:10px;font-size:12px;color:#9BB0CC;line-height:1.5;">
-            ${timingMsg} ? Customer shared ${photoContext} to help with installation planning.
+            ${timingMsg} &bull; Customer shared ${photoContext} to help with installation planning.
           </div>
         `;
       } else {
@@ -10881,8 +10955,19 @@ function showJobDetails(job) {
     `;
   }
   
-  if (job.distance_miles) {
-    detailsHTML += `<div class="hr"></div><div class="subl">Distance</div><p>${Math.round(job.distance_miles * 10) / 10} miles from your location</p>`;
+  {
+    let d = job.distance_miles;
+    if (d === undefined || d === null) d = job.distance_mi;
+    if (d === undefined || d === null) d = job._calculatedDistance;
+    if (d === undefined || d === null) d = job._debug_geo && job._debug_geo.dist_calc;
+    if (d === undefined || d === null) d = job.distance;
+    if (typeof d === 'string') {
+      const n = Number(d);
+      d = isFinite(n) ? n : null;
+    }
+    if (d !== null && d !== undefined) {
+      detailsHTML += `<div class="hr"></div><div class="subl">Distance</div><p>${Math.round(d * 10) / 10} miles from your location</p>`;
+    }
   }
   
   // Insert details before buttons
@@ -10927,6 +11012,9 @@ function showJobDetails(job) {
 // Offer-focused details with payout breakdown and Accept action
 function showOfferDetails(job) {
   if (!job) { toast("Job details not available"); return; }
+
+  // Normalize field/type variations before any rendering decisions.
+  job = normalizeJobFields(job);
 
   console.log('[OFFER MODAL] ===== FULL JOB DATA =====');
   console.log('[OFFER MODAL] job_id:', job.job_id);
@@ -10986,7 +11074,8 @@ function showOfferDetails(job) {
   
   // ? SERVICE SUMMARY under title
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc);
     const el = $("md-service-summary");
     if (s.summary) {
       el.textContent = s.summary;
@@ -11024,7 +11113,8 @@ function showOfferDetails(job) {
   
   // ? INTELLIGENCE: Service summary + bullets
   (function(){
-    const s = buildServiceSummary(job.line_items, job.description, job.camera_details);
+    const desc = job.service_description || job.description || job.job_details || job.bundle_description || '';
+    const s = buildServiceSummary(job.line_items, desc, job.camera_details);
     const summaryLine = s.summary ? `<div style=\"margin-bottom:6px;color:var(--h2s-text-main);font-weight:600\">${esc(s.summary)}</div>` : '';
     const bullets = s.bulletsHtml ? `<div style=\"line-height:1.5;color:#64748b\">${s.bulletsHtml}</div>` : '';
     $("md-res").innerHTML = (summaryLine || bullets) ? (summaryLine + bullets) : `<span style=\"opacity:.7\">None specified</span>`;
@@ -12145,6 +12235,22 @@ async function loadJobs() {
     
     const out = await GET("portal_jobs", payload);
     // console.log('[DEBUG] API Response:', out);
+    if (out.ok) {
+       const allJobs = [...(out.offers||[]), ...(out.upcoming||[])];
+       /* PATCH START: Enhanced payload verification */
+       console.log("[CARD_PAYLOAD_DEBUG]", allJobs.slice(0,5).map(j => ({ 
+         id: j.job_id, 
+         service_address_type: typeof j.service_address, 
+         service_address_value: j.service_address,
+         address_type: typeof j.address,
+         address_value: j.address,
+         city: j.service_city, 
+         state: j.service_state, 
+         zip: j.service_zip,
+         coords: { lat: j.geo_lat, lng: j.geo_lng }
+       })));
+       /* PATCH END */
+    }
     /* if (out.upcoming) {
         console.log('UPCOMING_LIST_RAW', out.upcoming);
         if (out.upcoming.length > 0) {
@@ -12289,7 +12395,11 @@ function renderOffers(list) {
   //? LOCATION INTELLIGENCE: Calculate distances asynchronously ONLY if no distance from API
   Promise.all(paginatedList.map(async (j) => {
     // Only calculate if API didn't provide distance
-    if (!j.distance_miles) {
+    const hasApiDistance =
+      !(j.distance_miles === undefined || j.distance_miles === null) ||
+      !(j.distance_mi === undefined || j.distance_mi === null) ||
+      !!(j._debug_geo && j._debug_geo.dist_calc);
+    if (!hasApiDistance) {
       const dist = await getDistanceToJob(j);
       if (dist !== null) {
         j._calculatedDistance = dist;
@@ -12328,8 +12438,13 @@ function renderOffersSync(list, box) {
     // Use calculated distance if available, otherwise backend distance
     // FIXED: Handle 0 or 0.01 correctly by checking for null/undefined explicitly
     let distance = j._calculatedDistance;
-    if (distance === undefined || distance === null) {
-      distance = j.distance_miles;
+    if (distance === undefined || distance === null) distance = j.distance_miles;
+    if (distance === undefined || distance === null) distance = j.distance_mi;
+    if (distance === undefined || distance === null) distance = j._debug_geo && j._debug_geo.dist_calc;
+    if (distance === undefined || distance === null) distance = j.distance;
+    if (typeof distance === 'string') {
+      const n = Number(distance);
+      distance = isFinite(n) ? n : null;
     }
     
     const maxRadius = me && me.service_radius_miles ? asNum(me.service_radius_miles) : 0;
@@ -12350,10 +12465,10 @@ function renderOffersSync(list, box) {
     
     // FIXED: Check if distance is a valid number (including 0), not just truthy
     let distDisplay = 'N/A';
-    if (j.distance_state === 'job_location_pending') {
-      distDisplay = '<span style="color:#94a3b8;font-style:italic">Location pending</span>';
-    } else if (j.distance_state === 'pro_location_pending') {
-      distDisplay = '<span style="color:#94a3b8;font-style:italic">Your location pending</span>';
+    if (j.distance_state === 'job_location_pending' && (distance === null || distance === undefined)) {
+      distDisplay = '';
+    } else if (j.distance_state === 'pro_location_pending' && (distance === null || distance === undefined)) {
+      distDisplay = '';
     } else if (distance !== null && distance !== undefined) {
       if (distance < 0.25) {
         distDisplay = '0.0 mi (On-site)';
@@ -12377,14 +12492,15 @@ function renderOffersSync(list, box) {
     {
       console.log(`[OFFER CARD ${j.job_id}] line_items:`, j.line_items);
       console.log(`[OFFER CARD ${j.job_id}] description:`, j.description);
-      const summary = buildServiceSummary(j.line_items, j.description, j.camera_details);
+      const desc = j.service_description || j.description || j.job_details || j.bundle_description || '';
+      const summary = buildServiceSummary(j.line_items, desc, j.camera_details);
       console.log(`[OFFER CARD ${j.job_id}] summary result:`, summary);
       const summaryLine = summary.summary ? `<div style="font-size:13px;font-weight:600;color:var(--h2s-text-main);margin-top:4px">${esc(summary.summary)}</div>` : '';
       const bullets = summary.bulletsHtml ? `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4">${summary.bulletsHtml}</div>` : '';
       serviceDetails = summaryLine + bullets;
       console.log(`[OFFER CARD ${j.job_id}] serviceDetails HTML length:`, serviceDetails.length);
-      if (!serviceDetails && j.description) {
-        serviceDetails = `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(j.description)}</div>`;
+      if (!serviceDetails && desc) {
+        serviceDetails = `<div style="font-size:13px;color:#64748b;margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(desc)}</div>`;
         console.log(`[OFFER CARD ${j.job_id}] Using fallback description`);
       }
     }
@@ -12792,7 +12908,7 @@ async function renderUpcoming(list) {
   // ? PERFORMANCE: Use DocumentFragment for batch DOM updates
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
-    const sigLabel = signatureOnFile[j.job_id] ? "Signature ? saved" : "Signature";
+    const sigLabel = signatureOnFile[j.job_id] ? "Signature Saved" : "Signature";
     const statusLabel = (j.status || "").toLowerCase();
     const isOpen = statusLabel === "open";
     
@@ -12913,7 +13029,10 @@ async function renderUpcoming(list) {
     }
 
     // ? ADDRESS & PAYOUT - Use same fields as Pending Offers
-    const address = j.address || j.service_address || j.service_city || j.city || "Location pending";
+    /* PATCH START: fix address contract + routing */
+    // NEVER coerce objects - only use string fields
+    const address = (typeof j.address_text === 'string' && j.address_text) ? j.address_text : "";
+    /* PATCH END */
     let payoutHtml = '';
     if (j.payout_estimated) {
         payoutHtml = `<div style="font-size:13px;color:var(--h2s-accent-positive);font-weight:600">$${j.payout_estimated}</div>`;
@@ -12951,7 +13070,7 @@ async function renderUpcoming(list) {
     if (hasPhotos && hasSignature) {
         // Ready to complete
         primaryBtnHtml = `
-        <button class="${doneBtnClass}" data-done="${esc(j.job_id)}" title="${doneBtnTitle}" style="background:var(--h2s-primary-cta);border:none;color:var(--h2s-text-main);font-weight:600;font-size:15px;height:44px;border-radius:9999px;width:100%;transition:all 0.2s;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:8px" type="button">
+        <button class="${doneBtnClass}" data-done="${esc(j.assign_id || j.assignment_id || '')}" title="${doneBtnTitle}" style="background:var(--h2s-primary-cta);border:none;color:var(--h2s-text-main);font-weight:600;font-size:15px;height:44px;border-radius:9999px;width:100%;transition:all 0.2s;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:8px" type="button">
             Complete Job
         </button>`;
         
@@ -12998,7 +13117,7 @@ async function renderUpcoming(list) {
       ${secondaryRowHtml}
       <div style="text-align:center;margin-top:6px">
         <button class="btn ghost" data-details="${esc(j.job_id)}" type="button" style="background:transparent;border:none;color:var(--h2s-text-muted);font-size:12px;font-weight:500;padding:4px 0;cursor:pointer">
-          View details ?
+          View details &rarr;
         </button>
       </div>
     `;
@@ -13189,7 +13308,9 @@ async function renderUpcoming(list) {
     }
     
     if (doneBtn) {
-      const jobId = doneBtn.dataset.done;
+      const assignId = doneBtn.dataset.done;
+      // Photo/signature gating is keyed by job_id in this portal.
+      const jobId = doneBtn.closest('.item') ? (doneBtn.closest('.item').querySelector('button[data-details]')?.dataset?.details || '') : '';
       
       // ? ENFORCE WORKFLOW: Photos -> Signature -> Complete
       if (!photoOnFile[jobId]) {
@@ -13313,41 +13434,73 @@ async function renderUpcoming(list) {
       modal.querySelector('#final-complete-confirm').onclick = async () => {
         modal.remove();
 
-        // ==== INSTRUMENTATION: START ====
+        /* PATCH START: Complete Job handler remove global deps */
+        // Safe token retrieval
+        function getTokenSafe() {
+          return localStorage.getItem(LS_TOKEN) || sessionStorage.getItem(LS_TOKEN) || window.token || "";
+        }
+        
+        // Safe user retrieval
+        function getActiveUserSafe() {
+          // 1) Prefer window.me if exists
+          if (window.me && (window.me.id || window.me.pro_id || window.me.email)) {
+            return window.me;
+          }
+          // 2) Return null (session missing)
+          return null;
+        }
+        
         const cid = `complete_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        console.log(`[CLICK_COMPLETE_START] cid=${cid} job_id=${jobId} hasPhotos=${!!photoOnFile[jobId]} hasSignature=${!!signatureOnFile[jobId]}`);
+        const token = getTokenSafe();
+        const user = getActiveUserSafe();
+        
+        console.log(`[COMPLETE_START] cid=${cid} assign_id=${assignId}`);
+        
+        // Validate required fields before sending
+        if (!assignId) {
+          console.log(`[COMPLETE_FAIL] cid=${cid} error=missing_assign_id`);
+          toast('❌ Error: Assignment ID missing. Refresh and retry.');
+          return;
+        }
+        
+        if (!token) {
+          console.log(`[COMPLETE_FAIL] cid=${cid} error=missing_token`);
+          toast('❌ Session missing. Refresh and login again.');
+          return;
+        }
         
         try {
           loading(true);
           
-          // ==== NO OPTIMISTIC UPDATE - Wait for backend confirmation ====
-          // (This prevents UI "flash" if backend fails)
+          const payload = { assign_id: String(assignId).trim(), cid };
+          /* PATCH END */
           
-          // Send to backend
-          const payload = {token, job_id: jobId};
-          console.log(`[CLICK_COMPLETE_REQUEST] cid=${cid} endpoint=portal_mark_done payload=`, JSON.stringify(payload));
+          // Direct fetch so we can log HTTP status + backend error_code deterministically.
+          const endpoint = `${VERCEL_API}/portal_mark_done`;
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`,
+              'X-Cid': cid
+            },
+            body: JSON.stringify(payload)
+          });
+          let out = null;
+          try {
+            out = await res.json();
+          } catch (e) {
+            out = { ok: false, error: 'Invalid JSON response', error_code: 'bad_response' };
+          }
           
-          const out = await POST("portal_mark_done", payload);
-          
-          console.log(`[CLICK_COMPLETE_RESPONSE] cid=${cid} status=${out.ok ? 'OK' : 'ERROR'} response=`, JSON.stringify(out));
-          
-          if (!out.ok) { 
-            console.error(`[CLICK_COMPLETE_ERROR] cid=${cid} error=`, out.error, 'error_code=', out.error_code, 'full_response=', out);
+          if (!res.ok || !out.ok) {
+            console.log(`[COMPLETE_FAIL] cid=${cid} error=${out.error || 'request_failed'}`);
             toast(`❌ Failed: ${out.error || "Could not mark done"} (cid: ${cid})`);
             loading(false);
             return;
           }
           
-          // CRITICAL: Verify backend actually persisted status='done'
-          if (!out.status_persisted || out.job_status !== 'done') {
-            console.error(`[CLICK_COMPLETE_STATUS_MISMATCH] cid=${cid} status_persisted=${out.status_persisted} job_status=${out.job_status}`);
-            toast(`⚠️ Completion may not have persisted - check job status`);
-          }
-          
-          console.log(`[CLICK_COMPLETE_SUCCESS] cid=${cid} backend_cid=${out.cid} status_persisted=${out.status_persisted} job_status=${out.job_status}`);
-          
-          // NO OPTIMISTIC UI UPDATE - Immediately refetch from source of truth
-          console.log(`[CLICK_COMPLETE_REFETCH] cid=${cid} reloading jobs from API to reflect backend state`);
+          console.log(`[COMPLETE_OK] cid=${cid} payout_ledger_id=${out.payout_ledger_id || 'null'}`);
           toast("✅ Job Completed!");
           
           // Immediate refetch to get authoritative state
@@ -13385,7 +13538,7 @@ function renderCompleted(list) {
   const fragment = document.createDocumentFragment();
   paginatedList.forEach(j => {
     // ? ADDRESS & PAYOUT
-    const address = j.address || j.service_city || j.city || "Location pending";
+    const address = j.address || j.service_city || j.city || "";
     let payoutHtml = '';
     if (j.payout_estimated) {
         payoutHtml = `<div style="font-size:13px;color:var(--h2s-accent-positive);font-weight:600">$${j.payout_estimated}</div>`;
@@ -13789,11 +13942,11 @@ function renderPayoutsDashboard(data) {
       // State badge styling
       let stateBadge = '';
       if (String(r.state).toLowerCase() === 'approved') {
-        stateBadge = '<span style="background:rgba(16,185,129,.15);color:#10b981;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">? Approved</span>';
+        stateBadge = '<span style="background:rgba(16,185,129,.15);color:#10b981;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Approved</span>';
       } else if (String(r.state).toLowerCase() === 'pending') {
-        stateBadge = '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">? Pending</span>';
+        stateBadge = '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Pending</span>';
       } else if (String(r.state).toLowerCase() === 'paid') {
-        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">?? Paid</span>';
+        stateBadge = '<span style="background:rgba(139,92,246,.15);color:#8b5cf6;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600">Paid</span>';
       }
       
       const row = document.createElement("div");
@@ -14540,13 +14693,13 @@ async function loadReviews() {
     
     reviews.forEach(r => {
       const avgStars = ((r.stars_tech || 0) + (r.stars_service || 0)) / 2;
-      const starsDisplay = "?".repeat(Math.round(avgStars));
-      
+      const starsDisplay = "★".repeat(Math.round(avgStars));
+
       const el = document.createElement("div");
       el.className = "item";
       el.innerHTML = `
         <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-        <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
+        <div class="meta">${esc(r.display_name)} • ${r.verified ? "✓ Verified" : ""} • ${new Date(r.created_at).toLocaleDateString()}</div>
         ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
         ${r.comment_service ? `<div style="margin-top:8px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
         ${r.tags.length ? `<div style="margin-top:8px;font-size:13px;opacity:.8">${r.tags.map(t => "#" + esc(t)).join(" ")}</div>` : ""}
@@ -14603,13 +14756,13 @@ function renderReviews(reviews) {
   
   reviews.forEach(r => {
     const avgStars = ((r.stars_tech || 0) + (r.stars_service || 0)) / 2;
-    const starsDisplay = "?".repeat(Math.round(avgStars));
-    
+    const starsDisplay = "★".repeat(Math.round(avgStars));
+
     const el = document.createElement("div");
     el.className = "item";
     el.innerHTML = `
       <h3>${starsDisplay} ${avgStars.toFixed(1)} / 5.0</h3>
-      <div class="meta">${esc(r.display_name)} ? ${r.verified ? "? Verified" : ""} ? ${new Date(r.created_at).toLocaleDateString()}</div>
+      <div class="meta">${esc(r.display_name)} • ${r.verified ? "✓ Verified" : ""} • ${new Date(r.created_at).toLocaleDateString()}</div>
       ${r.comment_tech ? `<div style="margin-top:8px"><strong>Tech:</strong> ${esc(r.comment_tech)}</div>` : ""}
       ${r.comment_service ? `<div style="margin-top:4px"><strong>Service:</strong> ${esc(r.comment_service)}</div>` : ""}
       <div id="replies-${esc(r.review_id)}" style="margin-top:8px"></div>
@@ -16055,12 +16208,12 @@ async function adminLoadPros() {
       const distLabel = c.distance_miles === "" ? "Unknown distance" : 
                        c.out_of_radius ? `${c.distance_miles} mi (${c.over_miles} mi over radius)` : 
                        `${c.distance_miles} mi`;
-      const ratingLabel = c.rating > 0 ? `? ${c.rating.toFixed(1)}` : "No rating";
+      const ratingLabel = c.rating > 0 ? `★ ${c.rating.toFixed(1)}` : "No rating";
       
       el.innerHTML = `
         <div>
           <strong>${esc(c.name || c.pro_id)}</strong><br>
-          <span class="meta">${esc(c.email)} ? ${distLabel} ? ${ratingLabel}</span>
+          <span class="meta">${esc(c.email)} • ${distLabel} • ${ratingLabel}</span>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn secondary" data-offer="${esc(c.pro_id)}" type="button">Assign (offer)</button>
@@ -17298,7 +17451,7 @@ function renderBuyList(buyList, jobId) {
   resultsDiv.classList.add('slide-down');
   
   // Update status indicator with animation
-  $("adBuyListStatus").innerHTML = '<span class="fade-in" style="color: #10b981; font-weight: 600; font-size: 15px;">? Order ready to place</span>';
+  $("adBuyListStatus").innerHTML = '<span class="fade-in" style="color: #10b981; font-weight: 600; font-size: 15px;">Order ready to place</span>';
   
   console.log("[renderBuyList] Complete - displayed", buyList.items.length, "items");
 }
@@ -18155,7 +18308,7 @@ window.openTimeOffModal = function() {
   }
   
   if (reasonSelect) reasonSelect.value = "Vacation";
-  if (hintEl) hintEl.innerHTML = `?? You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
+  if (hintEl) hintEl.innerHTML = `You can request time off up to <strong>${maxDate.toLocaleDateString('en-US',{month:'long',year:'numeric'})}</strong>`;
   if (dateDisplay) dateDisplay.textContent = 'Choose a date';
   
   // Render quick-pick chips
@@ -20857,15 +21010,13 @@ function openAnnouncementsModal() {
   modal.style.display = "block";
   
   if (proAnnouncementsCache.length === 0) {
-    listBox.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0">No announcements at this time.</p>';
+    listBox.innerHTML = '<p style="color:#64748b;text-align:center;padding:40px 0">You know what I\'m worried about?</p>';
     return;
   }
   
-  const icons = {info:'&#128227;', update:'&#128227;', warning:'&#9888;', urgent:'&#10071;'};
   const colors = {info:'#3b82f6', update:'#10b981', warning:'#f59e0b', urgent:'#ef4444'};
   
   listBox.innerHTML = proAnnouncementsCache.map(a => {
-    const icon = icons[a.type] || '&#128227;';
     const color = colors[a.type] || '#3b82f6';
     const isUnread = !viewedAnnouncementIds.has(String(a.announcement_id));
     const createdDate = new Date(a.created_at).toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'});
@@ -20893,8 +21044,7 @@ function openAnnouncementsModal() {
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
               <span style="font-size:24px">${icon}</span>
               <h3 style="margin:0;font-size:18px;font-weight:700;color:#e0f2fe">${a.title}</h3>
-              ${isUnread?'<span style="background:#3b82f6;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;font-weight:600">NEW</span>':''}
-            </div>
+              $iv>
             <div style="font-size:12px;color:#64748b;margin-bottom:8px">${createdDate}${a.created_by?' &bull; By '+a.created_by:''}</div>
           </div>
         </div>
@@ -20903,7 +21053,7 @@ function openAnnouncementsModal() {
         
         ${videoEmbed}
         
-        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">&#10003; Read</div>'}
+        ${isUnread?`<button onclick="markAnnouncementAsViewed('${a.announcement_id}')" style="background:#3b82f6;border:none;color:#fff;padding:10px 20px;border-radius:8px;cursor:pointer;font-weight:600;margin-top:12px;transition:all 0.2s" onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">Mark as Read</button>`:'<div style="color:#64748b;font-size:13px;margin-top:8px">Read</div>'}
       </div>
     `;
   }).join('');
@@ -20935,7 +21085,7 @@ async function markAnnouncementAsViewed(announcementId) {
       // Show subtle success feedback
       const toastEl = document.createElement('div');
       toastEl.style.cssText = 'position:fixed;bottom:24px;right:24px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:14px 20px;border-radius:12px;box-shadow:0 8px 24px rgba(16,185,129,0.4);z-index:99999;font-size:14px;font-weight:600;animation:slideInUp 0.3s ease';
-      toastEl.textContent = '? Marked as read';
+      toastEl.textContent = 'Marked as read';
       document.body.appendChild(toastEl);
       setTimeout(() => {
         toastEl.style.animation = 'slideOutDown 0.3s ease';
@@ -21427,8 +21577,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   
   if (!hasLineItems && !hasDescription) {
     console.log('[buildServiceSummary] NO DATA - using fallback');
-    out.summary = 'Service (details pending)';
-    out.bulletsHtml = '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+    out.summary = 'Smart Home Service';
+    out.bulletsHtml = '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (no-data-fallback):', out);
     return out;
   }
@@ -21436,8 +21586,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   if (!hasLineItems) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     const descText = String(description).trim();
-    out.summary = descText.split('\n')[0].slice(0, 120) || 'Service (details pending)';
-    out.bulletsHtml = out.summary !== 'Service (details pending)' ? `&bull; ${escHtml(out.summary)}` : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+    out.summary = descText.split('\n')[0].slice(0, 120) || 'Smart Home Service';
+    out.bulletsHtml = out.summary !== 'Smart Home Service' ? `&bull; ${escHtml(out.summary)}` : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (description-fallback):', out);
     return out;
   }
@@ -21544,8 +21694,23 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   }
   ['mount','soundbar','camera','doorbell','thermostat','outlet','wiring'].forEach(k => push(groups[k]));
 
-  out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Service (details pending)';
-  out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; We\'re still pulling job details. Check back shortly.</span>';
+  // Generic fallback: if nothing matched known categories, use item name/title.
+  if (parts.length === 0) {
+    const firstNamed = (lineItems || []).find(it => it && (it.bundle_summary || it.title || it.name || it.sku || it.service_id));
+    const name = firstNamed ? (firstNamed.bundle_summary || firstNamed.title || firstNamed.name || firstNamed.sku || firstNamed.service_id) : '';
+    const descText = hasDescription ? String(description).trim() : '';
+    const descFirstLine = descText ? descText.split('\n')[0].slice(0, 120) : '';
+
+    out.summary = String(name || descFirstLine || 'Smart Home Service');
+    out.bulletsHtml = out.summary !== 'Smart Home Service'
+      ? `&bull; ${escHtml(out.summary)}`
+      : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
+    console.log('[buildServiceSummary] OUTPUT (generic-fallback):', out);
+    return out;
+  }
+
+  out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Smart Home Service';
+  out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
 }
@@ -22072,51 +22237,30 @@ window.submitFeedback = async function() {
 
 // console.log('[Customer Photos] Tech portal viewer loaded');
 
-// ==== DYNAMIC BUILD ID VERIFICATION ====
-const apiBase = 'https://h2s-backend.vercel.app';
-fetch(`${apiBase}/api/build-id`).then(r => r.json()).then(data => {
-  const buildFooter = document.querySelector('div[style*="position:fixed"][style*="bottom:0"]');
-  if (buildFooter && data.buildId) {
-    buildFooter.textContent = `BUILD: ${data.buildId} (LIVE @ ${new Date().toLocaleTimeString()})`;
-    console.log('[BUILD_ID_LIVE]', data.buildId, 'fetched at', data.timestamp);
-  }
-}).catch(e => console.error('[BUILD_ID_FETCH_ERROR]', e));
-// ==== END DYNAMIC BUILD ID VERIFICATION ====
+// ==== DYNAMIC BUILD ID + BACKEND HEALTH (defer until DOM is ready) ====
+document.addEventListener('DOMContentLoaded', () => {
+  const apiBase = 'https://h2s-backend.vercel.app';
+  console.log('[Portal] Checking backend health...');
 
-// ==== BACKEND HEALTH CHECK ====
-(async function() {
-  try {
-    const apiBase = 'https://h2s-backend.vercel.app';
-    const resp = await fetch(`${apiBase}/api/health`, { 
-      method: 'GET',
-      headers: { 'Cache-Control': 'no-cache' }
-    });
-    const health = await resp.json();
-    
-    if (health.ok) {
-      console.log('[HEALTH]', 'build_id=', health.build_id, 'supabase_host=', health.supabase_host, 'token_secret_present=', health.token_secret_present);
-      
-      // Update footer with backend build ID
-      const footer = document.getElementById('buildFooter');
-      if (footer) {
-        footer.innerHTML = `
-          PORTAL: SHA-VERIFY-FINAL-1768341239 | 
-          BACKEND: ${health.build_id} | 
-          TOKEN: ${health.token_secret_present ? '✓' : '✗'}
-        `;
+  (async function() {
+    try {
+      const resp = await fetch(`${apiBase}/api/health?_cb=${Date.now()}`, {
+        method: 'GET',
+        cache: 'no-store'
+      });
+      const health = await resp.json();
+      if (health && health.ok) {
+        console.log('[HEALTH]', 'build_id=', health.build_id, 'supabase_host=', health.supabase_host);
+      } else {
+        console.error('[HEALTH] Backend health check failed:', health);
       }
-    } else {
-      console.error('[HEALTH] Backend health check failed:', health);
+    } catch (err) {
+      console.error('[HEALTH] Failed to fetch backend health:', err);
     }
-  } catch (err) {
-    console.error('[HEALTH] Failed to fetch backend health:', err);
-  }
-})();
-// ==== END BACKEND HEALTH CHECK ====
+  })();
+});
+// ==== END DYNAMIC BUILD ID + BACKEND HEALTH ====
 </script>
-<div id="buildFooter" style="position:fixed;bottom:0;left:0;right:0;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:11px;text-align:center;padding:4px;z-index:99999;pointer-events:none;">
-    PORTAL: SHA-VERIFY-FINAL-1768341239 | Fetching backend info...
-</div>
 </body>
 </html>
 

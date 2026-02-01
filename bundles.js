@@ -3590,7 +3590,7 @@ function renderHeroReviews(){
   container.innerHTML = reviewsHTML + `<div class="hero-review-dots">${dotsHTML}</div>`;
   
   container.onclick = () => {
-    window.location.href = 'https://home2smart.com/reviews';
+    window.location.href = '/reviews';
   };
 }
 

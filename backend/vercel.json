@@ -1,5 +1,23 @@
 {
   "public": true,
   "cleanUrls": false,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/dashboard",
+      "destination": "/dash.html"
+    },
+    {
+      "source": "/dash",
+      "destination": "/dash.html"
+    },
+    {
+      "source": "/portal",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/",
+      "destination": "/portal.html"
+    }
+  ]
 }

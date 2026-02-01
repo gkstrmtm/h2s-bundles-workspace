@@ -610,6 +610,84 @@ export function getWeekStart(dateIso: string): string {
     return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Send review request to customer after job completion
+ * Time-aware: only sends between 8am-10pm local time
+ */
+async function sendReviewRequest(opts: {
+  jobId: string;
+  customerEmail: string | null | undefined;
+  customerPhone: string | null | undefined;
+  customerName: string;
+  serviceName: string;
+  completedAtIso: string;
+}): Promise<void> {
+  const { jobId, customerEmail, customerPhone, customerName, serviceName, completedAtIso } = opts;
+  
+  if (!customerEmail || !String(customerEmail).includes('@')) {
+    console.log(`[REVIEW_REQUEST_SKIP] jobId=${jobId} reason=no_email`);
+    return;
+  }
+
+  // Time-aware scheduling: check if current time is within 8am-10pm EST
+  const now = new Date();
+  const estHour = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' })).getHours();
+  
+  if (estHour < 8 || estHour >= 22) {
+    console.log(`[REVIEW_REQUEST_DEFERRED] jobId=${jobId} hour=${estHour} reason=outside_hours`);
+    // TODO: Queue for later delivery (8am next day)
+    return;
+  }
+
+  const reviewUrl = 'https://shop.home2smart.com/reviews';
+  
+  const emailHtml = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1a2332;">
+      <div style="background: linear-gradient(135deg, #0a2a5a 0%, #1a4d8f 100%); padding: 32px 24px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 900;">Thank You, ${customerName}!</h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 12px 0 0; font-size: 16px;">We hope you're enjoying your ${serviceName}</p>
+      </div>
+      
+      <div style="padding: 32px 24px; background: #ffffff;">
+        <h2 style="color: #0a2a5a; font-size: 22px; margin: 0 0 16px;">Share Your Experience</h2>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6; margin: 0 0 24px;">
+          Your feedback helps us improve and helps other homeowners make confident decisions. It only takes a minute!
+        </p>
+        
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${reviewUrl}" style="display: inline-block; background: #1493ff; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 700; font-size: 16px;">
+            Leave a Review
+          </a>
+        </div>
+        
+        <p style="color: #64748b; font-size: 14px; margin: 24px 0 0;">
+          You can also upload photos of your installation to show off the great work!
+        </p>
+      </div>
+      
+      <div style="padding: 24px; background: #f8fafc; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #64748b; font-size: 13px; margin: 0;">
+          Home2Smart | Professional TV Mounting & Smart Home Installation
+        </p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await sendMail({
+      to: customerEmail,
+      subject: `How was your ${serviceName} experience?`,
+      html: emailHtml,
+      category: 'review_request',
+      idempotencyKey: `review_request:${jobId}`,
+      meta: { jobId, customerName, serviceName }
+    });
+    console.log(`[REVIEW_REQUEST_SENT] jobId=${jobId} to=${customerEmail}`);
+  } catch (err: any) {
+    console.error(`[REVIEW_REQUEST_FAILED] jobId=${jobId} error=${err.message}`);
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Main Orchestration
 // ----------------------------------------------------------------------------
@@ -756,6 +834,17 @@ export async function ensureCompletionSideEffects(opts: {
   }
 
   console.log(`[COMPLETION_ORCH_DONE] jobId=${jobId}`);
+  
+  // 7. Send Review Request (time-aware, customer-focused)
+  await sendReviewRequest({
+    jobId,
+    customerEmail: job.customer_email || job.email,
+    customerPhone: job.customer_phone || job.phone,
+    customerName: job.customer_name || job.name || 'Customer',
+    serviceName: job.service_name || job.title || 'service',
+    completedAtIso
+  });
+  
   return { ok: true, payoutId };
 }
 /* PS PATCH: completion orchestration shared + service-week bucketing — end */

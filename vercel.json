@@ -60,6 +60,10 @@
     {
       "source": "/shop",
       "destination": "/bundles.html"
+    },
+    {
+      "source": "/reviews",
+      "destination": "https://h2s-backend.vercel.app/reviews.html"
     }
   ],
   "headers": [
