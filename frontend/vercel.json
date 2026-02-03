@@ -1,7 +1,7 @@
 {
   "version": 2,
   "public": true,
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
     {
@@ -15,7 +15,7 @@
       "permanent": false
     },
     {
-      "source": "/Dash.html",
+      "source": "/dash.html",
       "destination": "/dash",
       "permanent": false
     }
@@ -24,6 +24,80 @@
     {
       "source": "/api/:path*",
       "destination": "https://h2s-backend.vercel.app/api/:path*"
+    },
+    {
+      "source": "/dash",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dash/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dashboard",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/Dash",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/Dash/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/Dash.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dash.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dash.html",
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
     },
     {
       "source": "/:path*",
@@ -67,7 +141,15 @@
     },
     {
       "source": "/dashboard",
-      "destination": "/dash.html"
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dash",
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+    },
+    {
+      "source": "/dash/(.*)",
+      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
     },
     {
       "source": "/",
@@ -92,7 +174,7 @@
   ],
   "headers": [
     {
-      "source": "/(portal|portal.html|dash|dashboard|\\-|dash.html|dashboard-design-system.css|bundles.js)",
+      "source": "/portal",
       "headers": [
         {
           "key": "Cache-Control",
@@ -101,11 +183,92 @@
       ]
     },
     {
-      "source": "/(.*)",
+      "source": "/portal.html",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=3600, s-maxage=3600"
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dash",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dash/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/Dash",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/Dash/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dashboard",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/-",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dash.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/Dash.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dashboard-design-system.css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         }
       ]
     },

@@ -10,8 +10,10 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
+    <meta name="h2s-dash-build" content="2026-02-03T05:30:00Z">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
+            const DASH_BUILD_STAMP = '2026-02-03T05:30:00Z';
             // Suppress vendor console spam
             (function() {
                 const originalError = console.error;
@@ -9106,6 +9108,7 @@ details[open] .ob-chevron {
                             <div>
                                 <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Proof Packs</div>
                                 <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload proof photos and videos for your bundles page. The system handles rotation automatically.</div>
+                                <div id="ppDashBuildStampInline" class="u-text-xs u-muted" style="margin-top:6px;">Dash build: 2026-02-03T05:30:00Z</div>
                             </div>
                             <div class="button-group u-flex u-wrap u-gap-12"></div>
                         </div>
@@ -9150,7 +9153,7 @@ details[open] .ob-chevron {
                         </div>
                         
                         <!-- Hidden for backend -->
-                        <input type="hidden" id="ppPackSelect" value="default" />
+                        <input type="hidden" id="ppPackSelect" value="" />
                         <input type="hidden" id="ppSurface" value="bundles" />
                         <input type="hidden" id="ppWeekOf" value="" />
                         <input type="hidden" id="ppPackTitle" value="" />
@@ -9161,7 +9164,7 @@ details[open] .ob-chevron {
                             <div class="card-header u-mb-2" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Upload</div>
 
                             <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="border: 1px solid #e5e7eb; border-radius: 16px; padding: 60px 32px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: #fafafa;">
-                                <div style="max-width: 400px; margin: 0 auto;">
+                                <div id="ppDropzonePrompt" style="max-width: 400px; margin: 0 auto;">
                                     <p style="font-size: 17px; font-weight: 500; color: #1e293b; margin-bottom: 8px;">Drop files here</p>
                                     <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">or click to browse</p>
                                     <div id="ppConvertToMp4Wrapper" class="u-text-sm u-muted u-mt-1" style="display:none;">
@@ -9170,6 +9173,11 @@ details[open] .ob-chevron {
                                             Convert to MP4 (applies rotation/trim)
                                         </label>
                                     </div>
+                                </div>
+
+                                <!-- Inline previews live INSIDE the dropzone so files "pop up" immediately -->
+                                <div id="ppFilePreviews" class="u-mt-3" style="display:none; text-align:left;">
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                                 </div>
                                 <input id="ppFileInput" class="pp-hidden-file-input" type="file" accept="image/*,video/*" multiple />
                                 <input id="ppCameraPhotoInput" class="pp-hidden-file-input" type="file" accept="image/*" capture="environment" />
@@ -9183,10 +9191,6 @@ details[open] .ob-chevron {
                                     <div id="ppUploadProgressBar" style="background:linear-gradient(90deg,#3b82f6,#2563eb);height:100%;width:0%;transition:width 0.3s ease;"></div>
                                 </div>
                                 <div class="u-text-xs u-muted u-mt-1" id="ppUploadProgressText" style="text-align:center;"></div>
-                            </div>
-
-                            <div id="ppFilePreviews" class="u-mt-3" style="display:none;">
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                             </div>
 
                             <div id="ppFileSummary" class="u-mt-3" style="display:none;"></div>
@@ -9248,10 +9252,13 @@ details[open] .ob-chevron {
                             <input type="hidden" id="ppFilterContrastVal" value="100" />
                             <input type="hidden" id="ppFilterSaturationVal" value="100" />
 
-                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:none;"></div>
-                            <button onclick="proofPacks.uploadAndAssign()" id="ppUploadBtn" style="display:none;"></button>
+                            <div class="pp-upload-actions u-mt-3" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                                <button id="ppUploadBtn" class="btn btn-primary" type="button" onclick="proofPacks.uploadAndAssign()" disabled style="min-width:220px; display:inline-flex; align-items:center; justify-content:center;">Upload</button>
+                                <button id="ppClearStagedBtn" class="btn btn-secondary" type="button" onclick="proofPacks.clearStagedFiles()" style="min-width:180px; display:none;">Clear queue</button>
+                            </div>
 
-                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:none;"></div>
+                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:block;"></div>
+                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:block;"></div>
                             <div id="ppDetectedKind" style="display:none;"></div>
 
                             <!-- Meters removed for cleaner UI -->
@@ -9451,6 +9458,7 @@ details[open] .ob-chevron {
                                         <label class="form-label" for="ppBackendUrl">Backend URL</label>
                                         <input id="ppBackendUrl" class="form-input" placeholder="https://h2s-backend.vercel.app" />
                                         <span class="form-help">Where the Proof Packs API is hosted.</span>
+                                        <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-02T00:00:00Z</span>
                                     </div>
                                     <div class="form-field u-mt-2">
                                         <label class="form-label" for="ppAdminKey">Admin key (optional)</label>
@@ -13396,9 +13404,19 @@ details[open] .ob-chevron {
                         this.updateProofTypeOptions();
                         this.ensureDefaults();
                         this.updateAdvice();
+                        this.syncUploadActions();
                         // Service category is upload metadata only. Library is independent.
                     });
                     serviceEl.dataset.bound = 'true';
+                }
+
+                const intentEl = document.getElementById('ppIntent');
+                if (intentEl && !intentEl.dataset.bound) {
+                    intentEl.addEventListener('change', () => {
+                        this.updateAdvice();
+                        this.syncUploadActions();
+                    });
+                    intentEl.dataset.bound = 'true';
                 }
                 if (packEl && !packEl.dataset.bound) {
                     packEl.addEventListener('change', () => {
@@ -13503,7 +13521,7 @@ details[open] .ob-chevron {
                 }
 
                 const fileInput = document.getElementById('ppFileInput');
-                if (fileInput && !fileInput.dataset.bound) {
+                if (fileInput && !fileInput.dataset.bound && !fileInput.dataset.ppStagingBound) {
                     fileInput.setAttribute('multiple', 'multiple');
                     fileInput.addEventListener('change', (e) => {
                         const files = Array.from(e.target?.files || []);
@@ -13551,6 +13569,8 @@ details[open] .ob-chevron {
                     dz.addEventListener('click', (e) => {
                         // Ignore clicks on the explicit action chips (labels)
                         if (e?.target?.closest && e.target.closest('.pp-mobile-capture-actions')) return;
+                        // Ignore clicks inside the preview/staging UI so buttons/selects work.
+                        if (e?.target?.closest && e.target.closest('#ppFilePreviews')) return;
                         fileInput?.click();
                     });
                     dz.addEventListener('keydown', (e) => {
@@ -16414,7 +16434,17 @@ details[open] .ob-chevron {
                                 <h3 class="editor-title">Edit Media</h3>
                                 <div class="editor-subtitle">ID: ${assetId} | ${isVideo ? 'Video' : 'Image'} Asset</div>
                             </div>
-                            <div class="editor-status">
+                            <div class="editor-status" style="gap:12px;">
+                                <div class="editor-select" style="min-width:180px;">
+                                    <label style="display:block; font-size:11px; font-weight:700; color:#64748b; margin-bottom:4px; letter-spacing:0.5px; text-transform:uppercase;">Service</label>
+                                    <div class="editor-select-trigger" style="padding:8px 10px;">
+                                        <select id="ppEditService" style="border:none; width:100%; background:transparent; font-size:13px; outline:none; color:inherit;">
+                                            <option value="tv_mounting" ${(String(asset?.service || '').trim() !== 'cameras') ? 'selected' : ''}>TV Mounting</option>
+                                            <option value="cameras" ${(String(asset?.service || '').trim() === 'cameras') ? 'selected' : ''}>Cameras</option>
+                                        </select>
+                                        <svg width="12" height="12" viewBox="0 0 12 12" style="opacity:0.5;"><path d="M2 4L6 8L10 4" stroke="currentColor" fill="none"/></svg>
+                                    </div>
+                                </div>
                                 <span class="editor-badge">${isVideo ? 'HD Video' : 'HQ Image'}</span>
                                 <button class="editor-close" onclick="proofPacks.cancelEdit()" title="Close" aria-label="Close">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -18328,6 +18358,7 @@ details[open] .ob-chevron {
                     saturation = 100,
                     cropping = {},
                     destinations = [],
+                    service = null,
                     bakedImageDataUrl = '',
                     bakedWidthPx = null,
                     bakedHeightPx = null,
@@ -18345,6 +18376,7 @@ details[open] .ob-chevron {
                             asset_id: assetId,
                             intent: intent,
                             weight: weight,
+                            service: service,
                             smart_crop_details: cropping,
                             frontend_destinations: destinations,
                             baked_image_data_url: bakedImageDataUrl,
@@ -18375,6 +18407,7 @@ details[open] .ob-chevron {
                             trim_start_sec: trimStartSec || undefined,
                             trim_end_sec: trimEndSec || undefined,
                             filter_bw: filterBw ? '1' : '0',
+                            service: service,
                         },
                         description: 'Video Re-encode'
                     };
@@ -18393,6 +18426,9 @@ details[open] .ob-chevron {
                 // This prevents "400 - No fields to update" when only metadata changes or when state is stale.
                 if (intent !== null) patchPayload.customer_intent = intent;
                 if (weight !== null) patchPayload.psychological_weight = weight;
+
+                // Allow re-categorizing assets for the shop gallery.
+                if (service !== null) patchPayload.service = service;
                 
                 // Rotation metadata update (only if not re-encoding)
                 if (rotateDeg && rotateDeg !== '0' && rotateDeg !== currentRotateDeg) {
@@ -18652,6 +18688,7 @@ details[open] .ob-chevron {
                 // Classification: Read and validate intent/weight
                 const intentEl = document.getElementById('ppEditIntent');
                 const featuredEl = document.getElementById('ppEditFeatured');
+                const serviceEl = document.getElementById('ppEditService');
                 
                 // Validate intent is a valid enum value
                 const VALID_INTENTS = ['working_shot', 'action_proof', 'result_proof', ''];
@@ -18666,6 +18703,14 @@ details[open] .ob-chevron {
                 if (updateWeight !== null && updateWeight !== 5 && updateWeight !== 50) {
                     console.warn('[Editor] Invalid weight value:', updateWeight, '- resetting to 5');
                     updateWeight = 5;
+                }
+
+                // Validate service enum
+                const VALID_SERVICES = ['tv_mounting', 'cameras'];
+                let updateService = serviceEl ? String(serviceEl.value || '').trim() : null;
+                if (updateService !== null && !VALID_SERVICES.includes(updateService)) {
+                    console.warn('[Editor] Invalid service value:', updateService, '- leaving unchanged');
+                    updateService = null;
                 }
 
                 // Production Geometry
@@ -18858,6 +18903,7 @@ details[open] .ob-chevron {
                           filterBw,
                           intent: updateIntent,
                           weight: updateWeight,
+                          service: updateService,
                           brightness,
                           contrast,
                           saturation,
@@ -19136,8 +19182,7 @@ details[open] .ob-chevron {
                 try {
                     if (statusEl) statusEl.textContent = 'Replacing media...';
 
-                    const pack = this.getSelectedPack();
-                    if (!pack?.pack_id) throw new Error('Select a pack first');
+                    const pack = await this.ensurePackForUpload({ service: String(targetAsset?.service || document.getElementById('ppService')?.value || '').trim() });
 
                     const surface = document.getElementById('ppSurface')?.value || 'bundles';
                     const service = String(targetAsset?.service || document.getElementById('ppService')?.value || '').trim();
@@ -19447,15 +19492,44 @@ details[open] .ob-chevron {
             async onMultipleFilesSelected(files) {
                 if (files.length === 0) return;
                 
-                // Filter for supported files
+                const invalid = [];
+
+                // Filter for supported files + validate
+                const inferKind = (f) => {
+                    const mime = String(f?.type || '').toLowerCase();
+                    const name = String(f?.name || '').toLowerCase();
+                    if (mime.startsWith('image/')) return 'image';
+                    if (mime.startsWith('video/')) return 'video';
+                    if (/\.(png|jpe?g|gif|webp|bmp|heic|heif|tiff?)$/.test(name)) return 'image';
+                    if (/\.(mp4|mov|m4v|webm|avi|mkv)$/.test(name)) return 'video';
+                    return '';
+                };
+
                 let supported = files.filter(f => {
-                    const mime = (f.type || '').toLowerCase();
-                    return mime.includes('image/') || mime.includes('video/');
+                    const mime = (f?.type || '').toLowerCase();
+                    const kind = inferKind(f);
+                    const looksSupported = !!kind || mime.includes('image/') || mime.includes('video/');
+                    if (!looksSupported) {
+                        invalid.push(`${f?.name || 'file'} (unsupported type)`);
+                        return false;
+                    }
+
+                    const v = this.validateFile(f);
+                    if (!v?.valid) {
+                        invalid.push(`${f?.name || 'file'} (${v?.error || 'invalid'})`);
+                        return false;
+                    }
+                    return true;
                 });
                 
                 if (supported.length === 0) {
                     this.showToast('No supported files found (images or videos only)', 'error');
                     return;
+                }
+
+                if (invalid.length) {
+                    this.showToast(`Skipped ${invalid.length} invalid file(s).`, 'warning');
+                    console.warn('[ProofPacks] Skipped invalid files:', invalid);
                 }
 
                 // FILE DUPE INTELLIGENCE
@@ -19503,6 +19577,27 @@ details[open] .ob-chevron {
                 this.renderStagingUI();
             },
 
+            setDropzonePreviewMode(isPreviewMode) {
+                const dz = document.getElementById('ppDropzone');
+                const prompt = document.getElementById('ppDropzonePrompt');
+                const previews = document.getElementById('ppFilePreviews');
+
+                if (!dz) return;
+
+                if (isPreviewMode) {
+                    if (prompt) prompt.style.display = 'none';
+                    // Make room for cards inside the dropzone.
+                    dz.style.padding = '16px';
+                    dz.style.cursor = 'default';
+                    if (previews) previews.style.display = 'block';
+                } else {
+                    if (prompt) prompt.style.display = 'block';
+                    dz.style.padding = '60px 32px';
+                    dz.style.cursor = 'pointer';
+                    if (previews) previews.style.display = 'none';
+                }
+            },
+
             renderStagingUI() {
                 const files = this.state.stagedFiles || [];
                 const container = document.getElementById('ppFilePreviews');
@@ -19511,9 +19606,15 @@ details[open] .ob-chevron {
                 const service = document.getElementById('ppService')?.value || 'tv_mounting';
                 
                 if (!container || !grid) return;
+
+                if (!files.length) {
+                    grid.innerHTML = '';
+                    this.setDropzonePreviewMode(false);
+                    return;
+                }
                 
                 grid.innerHTML = '';
-                container.style.display = 'block';
+                this.setDropzonePreviewMode(true);
                 
                 // Use a proper grid layout for "consolidation"
                 grid.style.display = 'grid';
@@ -19524,7 +19625,10 @@ details[open] .ob-chevron {
                 const isTv = service === 'tv_mounting';
                 
                 files.forEach((file, idx) => {
-                    const isImage = file.type.startsWith('image/');
+                    const mime = String(file?.type || '').toLowerCase();
+                    const nameLower = String(file?.name || '').toLowerCase();
+                    const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/i.test(nameLower);
+                    const isVideo = mime.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi)$/i.test(nameLower);
                     const card = document.createElement('div');
                     card.style.cssText = `
                         background: #fff;
@@ -19543,11 +19647,21 @@ details[open] .ob-chevron {
                     const thumbRow = document.createElement('div');
                     thumbRow.style.cssText = "height: 120px; background: #f1f5f9; position: relative; overflow: hidden; border-bottom: 1px solid #e2e8f0; display:flex; align-items:center; justify-content:center;";
                     
-                    if (isImage) {
-                        const url = URL.createObjectURL(file);
-                        thumbRow.innerHTML = `<img src="${this.escapeHtml(url)}" style="width:100%; height:100%; object-fit: cover;" />`;
+                    try {
+                        if (file && file._ppObjectUrl && typeof file._ppObjectUrl === 'string') {
+                            // reuse
+                        } else if (file) {
+                            file._ppObjectUrl = URL.createObjectURL(file);
+                        }
+                    } catch (_) {}
+
+                    const objUrl = (file && file._ppObjectUrl) ? String(file._ppObjectUrl) : '';
+                    if (isImage && objUrl) {
+                        thumbRow.innerHTML = `<img src="${this.escapeHtml(objUrl)}" style="width:100%; height:100%; object-fit: cover; display:block;" />`;
+                    } else if (isVideo && objUrl) {
+                        thumbRow.innerHTML = `<video src="${this.escapeHtml(objUrl)}" muted playsinline preload="metadata" style="width:100%; height:100%; object-fit: cover; display:block;"></video>`;
                     } else {
-                        thumbRow.innerHTML = `<span style="font-size:14px; font-weight:900; letter-spacing:0.08em; color:#334155;">VID</span>`;
+                        thumbRow.innerHTML = `<span style="font-size:12px; font-weight:900; letter-spacing:0.08em; color:#334155;">${this.escapeHtml((mime || '').startsWith('video/') || isVideo ? 'VIDEO' : 'FILE')}</span>`;
                     }
                     
                     // Overlay Status (Checkmark/X)
@@ -19562,7 +19676,7 @@ details[open] .ob-chevron {
                     
                     const metaRow = document.createElement('div');
                     metaRow.style.cssText = "display:flex; justify-content:space-between; margin-bottom: 6px; font-size:11px; color:#64748b;";
-                    metaRow.innerHTML = `<span>${Math.round(file.size/1024)} KB</span>`;
+                    metaRow.innerHTML = `<span style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(String(file.name || 'upload'))}</span><span>${Math.round(file.size/1024)} KB</span>`;
                     controls.appendChild(metaRow);
                     
                     // Shot Type Selector
@@ -19573,18 +19687,29 @@ details[open] .ob-chevron {
                     shotSel.className = 'form-select';
                     shotSel.style.cssText = "font-size:12px; padding:4px 6px; width:100%; border:1px solid #cbd5e1; border-radius:4px;";
                     
-                    const mainShot = document.getElementById('ppShotType');
-                    if (mainShot) {
-                        Array.from(mainShot.options).forEach(opt => {
-                            if (opt.value) { 
-                                const o = document.createElement('option');
-                                o.value = opt.value;
-                                o.textContent = opt.textContent;
-                                shotSel.appendChild(o);
-                            }
-                        });
-                        shotSel.value = mainShot.value || 'after';
-                    }
+                    const globalShotVal = String(document.getElementById('ppShotType')?.value || '').trim();
+                    const shotOptions = (service === 'cameras')
+                        ? [
+                            { v: 'mount', t: 'Mounted' },
+                            { v: 'pov_view', t: 'POV View' },
+                            { v: 'motion_track', t: 'Motion Tracking' },
+                            { v: 'night_vision', t: 'Night Vision' },
+                            { v: 'after', t: 'Finished Result' },
+                          ]
+                        : [
+                            { v: 'after', t: 'Finished Install (After)' },
+                            { v: 'during', t: 'During Install' },
+                            { v: 'before', t: 'Before' },
+                            { v: 'wire_conceal', t: 'Wire Conceal' },
+                            { v: 'stud_secure', t: 'Stud + Secure' },
+                          ];
+                    shotOptions.forEach(opt => {
+                        const o = document.createElement('option');
+                        o.value = opt.v;
+                        o.textContent = opt.t;
+                        shotSel.appendChild(o);
+                    });
+                    shotSel.value = globalShotVal || (service === 'cameras' ? 'mount' : 'after');
                     shotWrap.appendChild(shotSel);
                     controls.appendChild(shotWrap);
 
@@ -19685,6 +19810,31 @@ details[open] .ob-chevron {
 
                     controls.appendChild(intentWrap);
 
+                    // Per-file Save (explicit confirmation)
+                    const actions = document.createElement('div');
+                    actions.style.cssText = 'display:flex; gap:8px; align-items:center; margin-top:10px;';
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.id = `ppStagedSaveBtn_${idx}`;
+                    saveBtn.type = 'button';
+                    saveBtn.className = 'btn btn-primary';
+                    saveBtn.style.cssText = 'flex: 1; min-width: 0; height: 34px; font-size: 12px; padding: 0 10px; display:inline-flex; align-items:center; justify-content:center;';
+                    saveBtn.textContent = 'Save to library';
+                    saveBtn.onclick = (e) => {
+                        try { e?.preventDefault?.(); } catch (_) {}
+                        try { e?.stopPropagation?.(); } catch (_) {}
+                        this.uploadSingleStagedFile(idx);
+                    };
+
+                    const statePill = document.createElement('div');
+                    statePill.id = `ppStagedSaveState_${idx}`;
+                    statePill.style.cssText = 'font-size:11px; color:#64748b; font-weight:700; white-space:nowrap;';
+                    statePill.textContent = 'Not saved';
+
+                    actions.appendChild(saveBtn);
+                    actions.appendChild(statePill);
+                    controls.appendChild(actions);
+
                     // Time of Day (Conditional)
                     if (!isTv) {
                          const todSel = document.createElement('select');
@@ -19736,14 +19886,143 @@ details[open] .ob-chevron {
                          e.stopPropagation();
                          this.startBackgroundUpload(); 
                      };
+                     uploadBtn.style.display = 'inline-flex';
+                     uploadBtn.disabled = files.length === 0;
                      uploadBtn.classList.remove('btn-secondary');
                      uploadBtn.classList.add('btn-primary');
+                }
+
+                const clearBtn = document.getElementById('ppClearStagedBtn');
+                if (clearBtn) {
+                    clearBtn.style.display = files.length ? 'inline-flex' : 'none';
                 }
 
                 // Show "Staged" status
                 const statusEl = document.getElementById('ppUploadStatus');
                 if (statusEl) {
                     statusEl.textContent = `${files.length} files ready. Review and click Upload.`;
+                    statusEl.style.display = 'block';
+                }
+
+                this.syncUploadActions();
+            },
+
+            async uploadSingleStagedFile(idx) {
+                const files = Array.isArray(this.state?.stagedFiles) ? this.state.stagedFiles : [];
+                const file = files[idx];
+                if (!file) return;
+
+                const btn = document.getElementById(`ppStagedSaveBtn_${idx}`);
+                const pill = document.getElementById(`ppStagedSaveState_${idx}`);
+                const statusOverlay = document.getElementById(`ppStagedStatus_${idx}`);
+
+                if (btn) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.75';
+                    btn.textContent = 'Saving...';
+                }
+                if (pill) {
+                    pill.textContent = 'Saving…';
+                    pill.style.color = '#2563eb';
+                }
+                if (statusOverlay) {
+                    statusOverlay.style.opacity = '1';
+                    statusOverlay.innerHTML = '<span style="font-size:12px; color:#2563eb; font-weight:900; letter-spacing:0.08em;">UPLOADING</span>';
+                }
+
+                // Collect staged overrides
+                const stagedShot = document.getElementById(`ppStagedShot_${idx}`);
+                const stagedTod = document.getElementById(`ppStagedTod_${idx}`);
+                const stagedIntent = document.getElementById(`ppStagedIntent_${idx}`);
+                const stagedWeight = document.getElementById(`ppStagedWeight_${idx}`);
+
+                const dests = [];
+                ['hero', 'proof_rail', 'content_body', 'gallery'].forEach(k => {
+                    const chk = document.getElementById(`ppStagedDest_${idx}_${k}`);
+                    if (chk && chk.checked) dests.push(k);
+                });
+
+                // Temporarily hijack global inputs so uploadAndAssignInternal uses per-file overrides
+                const globalShot = document.getElementById('ppShotType');
+                const globalTod = document.getElementById('ppTimeOfDay');
+                const globalSlot = document.getElementById('ppSlotKey');
+
+                const oldShot = globalShot?.value;
+                const oldTod = globalTod?.value;
+                const oldSlot = globalSlot?.value;
+
+                try {
+                    this.showUploadProgress(true);
+
+                    if (globalShot && stagedShot) globalShot.value = stagedShot.value;
+                    if (globalTod && stagedTod) globalTod.value = stagedTod.value;
+
+                    // Map a primary destination into slot_key for legacy wiring
+                    if (globalSlot) {
+                        if (dests.includes('hero')) globalSlot.value = 'hero';
+                        else if (dests.includes('proof_rail')) globalSlot.value = 'mid_proof_rail';
+                        else if (String(stagedIntent?.value || '') === 'working_shot') globalSlot.value = 'pre_cta';
+                        else globalSlot.value = 'mid_proof_rail';
+                    }
+
+                    this.state.file = file;
+                    this.state.analysis = await this.analyzeFile(file);
+                    this.state.file._intentMeta = {
+                        customer_intent: stagedIntent?.value || 'result_proof',
+                        frontend_destinations: dests,
+                        psychological_weight: stagedWeight?.value || 5,
+                    };
+
+                    await this.uploadAndAssignInternal();
+
+                    if (pill) {
+                        pill.textContent = 'Saved';
+                        pill.style.color = '#10b981';
+                    }
+                    if (statusOverlay) {
+                        statusOverlay.style.opacity = '1';
+                        statusOverlay.innerHTML = '<span style="font-size:16px; color:#10b981; font-weight:900; letter-spacing:0.08em;">OK</span>';
+                    }
+
+                    // Remove from queue and re-render
+                    try {
+                        this.state.stagedFiles = files.filter((_, i) => i !== idx);
+                    } catch (_) {}
+
+                    try { await this.refreshAssets(); } catch (_) {}
+
+                    if (Array.isArray(this.state?.stagedFiles) && this.state.stagedFiles.length) this.renderStagingUI();
+                    else this.clearStagedFiles();
+
+                    this.showToast(`${file.name} saved`, 'success');
+                } catch (err) {
+                    const msg = err?.message || String(err);
+                    if (pill) {
+                        pill.textContent = 'Error';
+                        pill.style.color = '#ef4444';
+                    }
+                    if (statusOverlay) {
+                        statusOverlay.style.opacity = '1';
+                        statusOverlay.innerHTML = '<span style="font-size:16px; color:#ef4444; font-weight:900; letter-spacing:0.08em;">ERR</span>';
+                    }
+                    this.showToast(`Failed to save ${file.name}: ${msg}`, 'error');
+                } finally {
+                    // restore global fields
+                    try {
+                        if (globalShot) globalShot.value = oldShot;
+                        if (globalTod) globalTod.value = oldTod;
+                        if (globalSlot) globalSlot.value = oldSlot;
+                    } catch (_) {}
+
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.style.opacity = '1';
+                        btn.textContent = 'Save to library';
+                    }
+
+                    this.state.file = null;
+                    this.state.analysis = null;
+                    this.syncUploadActions();
                 }
             },
 
@@ -19767,6 +20046,11 @@ details[open] .ob-chevron {
                 const progressBar = document.getElementById('ppUploadProgressBar');
                 const progressText = document.getElementById('ppUploadProgressText');
                 const uploadBtn = document.getElementById('ppUploadBtn');
+
+                try {
+                    if (statusEl) statusEl.style.display = 'block';
+                    if (warnEl) warnEl.style.display = 'block';
+                } catch (_) {}
                 
                 if (uploadBtn) {
                     uploadBtn.style.opacity = '0.7';
@@ -19777,12 +20061,28 @@ details[open] .ob-chevron {
                 if (statusEl) {
                     statusEl.textContent = `${files.length} file(s) queued`;
                     statusEl.style.opacity = '1';
+                    statusEl.style.display = 'block';
+                    statusEl.style.color = '';
                 }
-                if (warnEl) warnEl.style.opacity = '0';
+                if (warnEl) {
+                    warnEl.style.opacity = '1';
+                    warnEl.style.display = 'block';
+                    warnEl.textContent = '';
+                }
                 
                 let succeeded = 0;
                 let failed = 0;
                 const errors = [];
+
+                // Make newly uploaded assets appear in the library during batch uploads.
+                // Throttle to avoid spamming the API / UI.
+                let lastAssetsRefreshAt = 0;
+                const refreshAssetsThrottled = async () => {
+                    const now = Date.now();
+                    if (now - lastAssetsRefreshAt < 1500) return;
+                    lastAssetsRefreshAt = now;
+                    try { await this.refreshAssets(); } catch (_) {}
+                };
                 
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
@@ -19798,6 +20098,7 @@ details[open] .ob-chevron {
                     
                     try {
                         // INTELLIGENT OVERRIDES: Read from Staging UI if available
+                        const stagedService = document.getElementById(`ppStagedService_${i}`);
                         const stagedShot = document.getElementById(`ppStagedShot_${i}`);
                         const stagedTod = document.getElementById(`ppStagedTod_${i}`);
                         // NEW fields
@@ -19813,13 +20114,17 @@ details[open] .ob-chevron {
                         
                         // Temporarily hijack the global inputs so uploadAndAssignInternal picks them up
                         // This is a bit hacky but avoids rewriting the entire upload logic stack
+                        const globalService = document.getElementById('ppService');
                         const globalShot = document.getElementById('ppShotType');
                         const globalTod = document.getElementById('ppTimeOfDay');
                         const globalSlot = document.getElementById('ppSlotKey');
 
+                        const oldService = globalService?.value;
                         const oldShot = globalShot?.value;
                         const oldTod = globalTod?.value;
                         const oldSlot = globalSlot?.value;
+
+                        if (globalService && stagedService) globalService.value = stagedService.value;
                         
                         if (globalShot && stagedShot) globalShot.value = stagedShot.value;
                         if (globalTod && stagedTod) globalTod.value = stagedTod.value;
@@ -19829,11 +20134,10 @@ details[open] .ob-chevron {
                         // OR we send this new data via a special mechanism.
                         // For Phase 1, we will map the *primary* destination to slot_key so the frontend at least works.
                         if (globalSlot) {
-                             if (dests.includes('content_body')) globalSlot.value = 'content_body';
-                                else if (dests.includes('hero')) globalSlot.value = 'hero';
-                             else if (dests.includes('proof_rail')) globalSlot.value = 'mid_proof_rail';
-                             else if (dests.includes('gallery')) globalSlot.value = 'gallery';
-                             else globalSlot.value = 'mid_proof_rail'; // Default
+                                if (dests.includes('hero')) globalSlot.value = 'hero';
+                                else if (dests.includes('proof_rail')) globalSlot.value = 'mid_proof_rail';
+                                else if (String(stagedIntent?.value || '') === 'working_shot') globalSlot.value = 'pre_cta';
+                                else globalSlot.value = 'mid_proof_rail';
                         }
 
                         // Set state file for uploadAndAssign
@@ -19851,6 +20155,7 @@ details[open] .ob-chevron {
                         succeeded++;
                         
                          // Restore properties (optional, mainly for sanitation)
+                        if (globalService) globalService.value = oldService;
                         if (globalShot) globalShot.value = oldShot;
                         if (globalTod) globalTod.value = oldTod;
                         if (globalSlot) globalSlot.value = oldSlot;
@@ -19869,6 +20174,9 @@ details[open] .ob-chevron {
                             // Fallback to old method
                             this.updatePreviewStatus(i, 'success');
                         }
+
+                        // Update the library while uploads are running ("photos pop up").
+                        refreshAssetsThrottled();
                         
                         // Brief pause
                         await new Promise(resolve => setTimeout(resolve, 100));
@@ -19904,6 +20212,31 @@ details[open] .ob-chevron {
                 this.state.stagedFiles = null;
                 this.state.file = null;
                 this.state.analysis = null;
+
+                // Final status summary
+                try {
+                    const total = succeeded + failed;
+                    if (statusEl) {
+                        statusEl.style.display = 'block';
+                        statusEl.style.opacity = '1';
+                        statusEl.style.color = failed ? '#ef4444' : '#10b981';
+                        statusEl.textContent = `Done: ${succeeded}/${total} uploaded${failed ? ` (${failed} failed)` : ''}.`;
+                    }
+
+                    if (warnEl) {
+                        warnEl.style.display = 'block';
+                        warnEl.style.opacity = '1';
+                        if (errors.length) {
+                            warnEl.innerHTML = `<div class="warning-text" style="color:#b45309; font-weight:700;">Some uploads failed:</div>`
+                                + `<ul style="margin:6px 0 0; padding-left:18px;">${errors.slice(0, 8).map(e => `<li style=\"margin:2px 0;\">${this.escapeHtml(e)}</li>`).join('')}</ul>`
+                                + (errors.length > 8 ? `<div class="u-text-xs u-muted" style="margin-top:6px;">(${errors.length - 8} more not shown)</div>` : '');
+                        } else {
+                            warnEl.textContent = '';
+                        }
+                    }
+                } catch (_) {}
+
+                this.syncUploadActions();
                 
                 if (succeeded > 0) {
                     this.showToast(`Batch complete: ${succeeded} uploaded`, 'success');
@@ -19917,18 +20250,10 @@ details[open] .ob-chevron {
             },
 
             async onFileSelected(file) {
-                // Validate file before processing
-                const validation = this.validateFile(file);
-                if (!validation.valid) {
-                    const warnEl = document.getElementById('ppUploadWarning');
-                    if (warnEl) {
-                        warnEl.innerHTML = `<span class="error-text" style="color:#dc2626; font-weight:800;">❌ ${this.escapeHtml(validation.error)}</span>`;
-                    }
-                    if (typeof showToast === 'function') {
-                        showToast(validation.error, 'error');
-                    }
-                    return;
-                }
+                // Always use staging UI so the file preview "pops up" inside the dropzone.
+                // This also enables mixed multi-file workflows even when the user selects a single file.
+                await this.onMultipleFilesSelected([file]);
+                return;
 
                 // Clean up previous preview URL (avoid leaking object URLs)
                 try {
@@ -19964,6 +20289,7 @@ details[open] .ob-chevron {
                     if (mp4Wrapper) mp4Wrapper.style.display = 'none';
                     this.ensureDefaults();
                     this.updateAdvice();
+                    this.syncUploadActions();
                     return;
                 }
 
@@ -20103,6 +20429,7 @@ details[open] .ob-chevron {
 
                     this.ensureDefaults();
                     this.updateAdvice();
+                    this.syncUploadActions();
                 } catch (e) {
                     console.error(e);
                     if (detectedKind) detectedKind.textContent = 'Detected: unknown';
@@ -20118,36 +20445,13 @@ details[open] .ob-chevron {
                     }
                     this.ensureDefaults();
                     this.updateAdvice();
+                    this.syncUploadActions();
                 }
             },
 
             checkImageQuality(analysis) {
-                const w = analysis?.width_px || 0;
-                const h = analysis?.height_px || 0;
-                const warnEl = document.getElementById('ppUploadWarning');
-                
-                if (!w || !h || !warnEl) return;
-                
-                const context = document.getElementById('ppPreviewContext')?.value || 'proof_rail';
-                const minDimensions = {
-                    proof_rail: 800,
-                    hero: 1200,
-                    gallery: 600,
-                    grid: 600,
-                    carousel: 1920
-                };
-                
-                const minRequired = minDimensions[context] || 800;
-                const minDim = Math.min(w, h);
-                
-                if (minDim < minRequired) {
-                    warnEl.innerHTML = `<span class="warning-text" style="color:#f59e0b; font-weight:800;">⚠️ Low resolution: ${w}x${h}px. Recommended minimum: ${minRequired}px for sharp display in ${context} context.</span>`;
-                    if (typeof showToast === 'function') {
-                        showToast(`Low resolution image detected (${w}x${h}). Consider using ${minRequired}px+ for best quality.`, 'warning');
-                    }
-                } else {
-                    warnEl.innerHTML = '';
-                }
+                // No-op by request: do not validate or warn about image resolution.
+                return;
             },
 
             validateFile(file) {
@@ -20155,22 +20459,18 @@ details[open] .ob-chevron {
                     return { valid: false, error: 'No file selected' };
                 }
 
-                const maxSizeMB = 15;
-                const sizeMB = file.size / (1024 * 1024);
-                if (sizeMB > maxSizeMB) {
-                    return { 
-                        valid: false, 
-                        error: `File too large: ${sizeMB.toFixed(1)}MB (max ${maxSizeMB}MB). Please compress or resize the image.`
+                const mime = String(file.type || '').toLowerCase();
+                const name = String(file.name || '').toLowerCase();
+                const isImage = mime.startsWith('image/') || (!mime && /\.(png|jpe?g|gif|webp|bmp|heic|heif|tiff?)$/.test(name));
+                const isVideo = mime.startsWith('video/') || (!mime && /\.(mp4|mov|m4v|webm|avi|mkv)$/.test(name));
+                if (!isImage && !isVideo) {
+                    return {
+                        valid: false,
+                        error: `Invalid file type: ${file.type || 'unknown'}. Please upload image/* or video/* files.`
                     };
                 }
 
-                const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif', 'video/mp4', 'video/quicktime', 'video/x-msvideo'];
-                if (!validTypes.includes(file.type)) {
-                    return {
-                        valid: false,
-                        error: `Invalid file type: ${file.type}. Please upload JPG, PNG, WebP, HEIC, or MP4 files.`
-                    };
-                }
+                // No size validation by request.
 
                 return { valid: true };
             },
@@ -20399,13 +20699,98 @@ details[open] .ob-chevron {
                 }
             },
 
+            syncUploadActions() {
+                const uploadBtn = document.getElementById('ppUploadBtn');
+                const clearBtn = document.getElementById('ppClearStagedBtn');
+                const statusEl = document.getElementById('ppUploadStatus');
+                const warnEl = document.getElementById('ppUploadWarning');
+
+                const staged = Array.isArray(this.state?.stagedFiles) ? this.state.stagedFiles : [];
+                const hasBatch = staged.length > 0;
+                const hasSingle = !!this.state?.file && !hasBatch;
+                const intent = String(document.getElementById('ppIntent')?.value || '').trim();
+
+                if (uploadBtn) {
+                    if (hasBatch) {
+                        uploadBtn.style.display = 'inline-flex';
+                        uploadBtn.disabled = false;
+                        uploadBtn.textContent = `Upload ${staged.length} Assets`;
+                        uploadBtn.onclick = (e) => {
+                            try { e?.preventDefault?.(); } catch (_) {}
+                            try { e?.stopPropagation?.(); } catch (_) {}
+                            this.startBackgroundUpload();
+                        };
+                    } else if (hasSingle) {
+                        uploadBtn.style.display = 'inline-flex';
+                        uploadBtn.disabled = !intent;
+                        uploadBtn.textContent = 'Upload 1 Asset';
+                        uploadBtn.onclick = (e) => {
+                            try { e?.preventDefault?.(); } catch (_) {}
+                            try { e?.stopPropagation?.(); } catch (_) {}
+                            this.uploadAndAssign();
+                        };
+                    } else {
+                        uploadBtn.style.display = 'none';
+                        uploadBtn.disabled = true;
+                        uploadBtn.textContent = 'Upload';
+                    }
+                }
+
+                if (clearBtn) {
+                    clearBtn.style.display = hasBatch ? 'inline-flex' : 'none';
+                }
+
+                if (statusEl) statusEl.style.display = 'block';
+                if (warnEl) warnEl.style.display = 'block';
+            },
+
+            clearStagedFiles() {
+                // Best-effort: revoke object URLs we created for previews.
+                try {
+                    const staged = Array.isArray(this.state?.stagedFiles) ? this.state.stagedFiles : [];
+                    staged.forEach(f => {
+                        try {
+                            if (f && f._ppObjectUrl) {
+                                URL.revokeObjectURL(String(f._ppObjectUrl));
+                                delete f._ppObjectUrl;
+                            }
+                        } catch (_) {}
+                    });
+                } catch (_) {}
+
+                try { this.state.stagedFiles = null; } catch (_) {}
+
+                try {
+                    const container = document.getElementById('ppFilePreviews');
+                    const grid = document.getElementById('ppPreviewGrid');
+                    if (grid) grid.innerHTML = '';
+                    if (container) container.style.display = 'none';
+                } catch (_) {}
+
+                try { this.setDropzonePreviewMode(false); } catch (_) {}
+
+                try { this.showUploadProgress(false); } catch (_) {}
+
+                try {
+                    const statusEl = document.getElementById('ppUploadStatus');
+                    if (statusEl) {
+                        statusEl.textContent = '';
+                        statusEl.style.color = '';
+                    }
+                    const warnEl = document.getElementById('ppUploadWarning');
+                    if (warnEl) warnEl.textContent = '';
+                } catch (_) {}
+
+                this.syncUploadActions();
+            },
+
             renderFilePreviews(files) {
                 const container = document.getElementById('ppFilePreviews');
                 const grid = document.getElementById('ppPreviewGrid');
                 if (!container || !grid) return;
 
                 grid.innerHTML = '';
-                container.style.display = 'block';
+                this.setDropzonePreviewMode(true);
 
                 files.forEach((file, idx) => {
                     const isImage = file.type.startsWith('image/');
@@ -20517,14 +20902,24 @@ details[open] .ob-chevron {
                     });
                 }
 
-                // Show filter panel when files selected
+                // Show filter panel when files selected (without overriding onchange).
+                // This listener is also a safety net so staging still works even if later init code fails.
                 const fileInput = document.getElementById('ppFileInput');
-                if (fileInput) {
-                    const originalHandler = fileInput.onchange;
-                    fileInput.onchange = (e) => {
-                        if (originalHandler) originalHandler.call(fileInput, e);
-                        this.showQuickFilters(true);
-                    };
+                if (fileInput && !fileInput.dataset.ppStagingBound) {
+                    fileInput.addEventListener('change', (e) => {
+                        try {
+                            const files = Array.from(e?.target?.files || []);
+                            if (files.length) {
+                                this.onMultipleFilesSelected(files);
+                                this.showQuickFilters(true);
+                            }
+                        } catch (err) {
+                            console.error('[ProofPacks] file select handler failed:', err);
+                        } finally {
+                            try { this.syncUploadActions(); } catch (_) {}
+                        }
+                    });
+                    fileInput.dataset.ppStagingBound = 'true';
                 }
             },
 
@@ -20610,23 +21005,92 @@ details[open] .ob-chevron {
             },
 
             getSelectedPack() {
-                // No more pack selection UI - always use a default pack
-                // Backend expects pack_id and week_of, so provide defaults
                 const service = document.getElementById('ppService')?.value || 'tv_mounting';
-                
-                // Try to find existing pack or create default structure
-                if (this.state.packs && this.state.packs.length > 0) {
-                    // Use first pack if exists
-                    return this.state.packs[0];
+                const packSelect = document.getElementById('ppPackSelect');
+                const selectedId = String(packSelect?.value || '').trim();
+                const packs = Array.isArray(this.state?.packs) ? this.state.packs : [];
+
+                if (selectedId) {
+                    const found = packs.find(p => String(p?.pack_id || '').trim() === selectedId);
+                    if (found) return found;
+
+                    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+                    if (uuidRe.test(selectedId)) return { pack_id: selectedId, week_of: '', title: '', service };
                 }
-                
-                // Return minimal pack structure for backend compatibility
-                return {
-                    pack_id: 'default',
-                    week_of: this.getCurrentWeekOf(),
-                    title: service,
-                    service: service,
+
+                if (packs.length) return packs[0];
+                return null;
+            },
+
+            async ensurePackForUpload(opts = {}) {
+                const surface = document.getElementById('ppSurface')?.value || 'bundles';
+                const service = String(opts?.service || document.getElementById('ppService')?.value || 'tv_mounting').trim();
+                const packSelect = document.getElementById('ppPackSelect');
+                const storedPackId = this.safeGetItem(this.getPackStorageKey(surface, service));
+
+                const tryPick = (packs) => {
+                    const selectedId = String(packSelect?.value || '').trim();
+                    if (selectedId) {
+                        const found = packs.find(p => String(p?.pack_id || '').trim() === selectedId);
+                        if (found) return found;
+                    }
+                    if (storedPackId) {
+                        const found = packs.find(p => String(p?.pack_id || '').trim() === String(storedPackId).trim());
+                        if (found) return found;
+                    }
+                    if (packs.length) return packs[0];
+                    return null;
                 };
+
+                // 1) Use already-loaded packs
+                let packs = Array.isArray(this.state?.packs) ? this.state.packs : [];
+                let picked = tryPick(packs);
+                if (picked?.pack_id) {
+                    if (packSelect) packSelect.value = String(picked.pack_id);
+                    this.safeSetItem(this.getPackStorageKey(surface, service), String(picked.pack_id));
+                    return picked;
+                }
+
+                // 2) Load packs from backend
+                try {
+                    const packsResp = await this.fetchJson(`/api/admin/proof-packs?surface=${encodeURIComponent(surface)}&service=${encodeURIComponent(service)}`);
+                    packs = Array.isArray(packsResp?.packs) ? packsResp.packs : (Array.isArray(packsResp) ? packsResp : []);
+                    this.state.packs = packs;
+                    picked = tryPick(packs);
+                    if (picked?.pack_id) {
+                        if (packSelect) packSelect.value = String(picked.pack_id);
+                        this.safeSetItem(this.getPackStorageKey(surface, service), String(picked.pack_id));
+                        return picked;
+                    }
+                } catch (_) {
+                    // continue to create
+                }
+
+                // 3) Auto-create pack (prevents uuid="default" crashes)
+                const weekOf = this.getCurrentWeekOf();
+                const resp = await this.fetchJson('/api/admin/proof-packs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        surface,
+                        service,
+                        week_of: weekOf,
+                        title: null,
+                        status: 'draft',
+                    }),
+                });
+                const created = resp?.pack || resp;
+                if (!created?.pack_id) throw new Error('Failed to create a rotation pack');
+
+                try {
+                    const current = Array.isArray(this.state?.packs) ? this.state.packs : [];
+                    this.state.packs = [created, ...current];
+                } catch (_) {
+                    this.state.packs = [created];
+                }
+                if (packSelect) packSelect.value = String(created.pack_id);
+                this.safeSetItem(this.getPackStorageKey(surface, service), String(created.pack_id));
+                return created;
             },
             
             getCurrentWeekOf() {
@@ -20849,7 +21313,7 @@ details[open] .ob-chevron {
                 const warnEl = document.getElementById('ppUploadWarning');
                 const service = document.getElementById('ppService')?.value || '';
                 const surface = document.getElementById('ppSurface')?.value || 'bundles';
-                const pack = this.getSelectedPack(); // Now always returns a pack
+                const pack = await this.ensurePackForUpload();
 
                 const file = this.state.file;
                 if (!file) {
@@ -20992,8 +21456,8 @@ details[open] .ob-chevron {
                             const { base } = this.getConfig();
                             if (status === 404 || status === 405) {
                                 throw new Error(
-                                    `Backend does not support staged uploads yet (status ${status}). ` +
-                                    `Current Backend URL: ${base}. Use your Vercel preview backend URL and click Save.`,
+                                    `Upload failed: this backend deployment is missing staged upload endpoints (HTTP ${status}). ` +
+                                    `Backend URL: ${base}. Deploy the latest backend or switch to the correct backend URL in Proof Packs settings.`,
                                 );
                             }
                             throw e;
@@ -26885,6 +27349,13 @@ async function loadRecommendationsForFilter() {
             },
             
             async init() {
+                try {
+                    const stamp = document.getElementById('ppDashBuildStamp');
+                    const loadedAt = new Date().toISOString();
+                    if (stamp) stamp.textContent = `Dash build: ${DASH_BUILD_STAMP} (loaded: ${loadedAt})`;
+                    const stampInline = document.getElementById('ppDashBuildStampInline');
+                    if (stampInline) stampInline.textContent = `Dash build: ${DASH_BUILD_STAMP} (loaded: ${loadedAt})`;
+                } catch (_) {}
                 // Calculate intelligent defaults before loading saved values
                 await this.calculateIntelligentDefaults();
                 this.loadFromStorage();

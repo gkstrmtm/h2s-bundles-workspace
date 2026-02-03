@@ -81,6 +81,13 @@ function parseTrimWindow(startInput: unknown, endInput: unknown): { startSec: nu
   return { startSec, endSec, durationSec };
 }
 
+function parseService(input: unknown): 'tv_mounting' | 'cameras' | null {
+  const raw = String(input ?? '').trim();
+  if (!raw) return null;
+  if (raw === 'tv_mounting' || raw === 'cameras') return raw;
+  return null;
+}
+
 function parseImageDataUrl(input: unknown): { mime: string; base64: string } | null {
   const raw = String(input ?? '').trim();
   if (!raw) return null;
@@ -238,6 +245,7 @@ export async function POST(request: Request) {
     const updateIntent = (body as any).intent;
     const updateWeight = (body as any).weight;
     const updateSmartCrop = (body as any).smart_crop_details;
+    const updateService = parseService((body as any).service);
     const simpleUpdate: Record<string, any> = {};
 
     // Map intent to database fields (if schema differs) or same column
@@ -253,6 +261,10 @@ export async function POST(request: Request) {
     // Always save smart_crop_details if provided. This is the "Visual Truth".
     if (updateSmartCrop && typeof updateSmartCrop === 'object') {
         simpleUpdate.smart_crop_details = updateSmartCrop;
+    }
+
+    if (updateService) {
+      simpleUpdate.service = updateService;
     }
 
     const rotateDeg = parseRotateDeg((body as any).rotate_deg);

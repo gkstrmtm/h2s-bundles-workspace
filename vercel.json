@@ -2,22 +2,17 @@
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
   "public": true,
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
     {
-      "source": "/dash",
-      "destination": "/Dash",
-      "permanent": false
-    },
-    {
       "source": "/dashboard",
-      "destination": "/Dash",
+      "destination": "/dash",
       "permanent": false
     },
     {
       "source": "/-",
-      "destination": "/Dash",
+      "destination": "/dash",
       "permanent": false
     },
     {
@@ -50,6 +45,22 @@
       "destination": "/Dash.html"
     },
     {
+      "source": "/dash.html",
+      "destination": "/Dash.html"
+    },
+    {
+      "source": "/Dash.html",
+      "destination": "/Dash.html"
+    },
+    {
+      "source": "/Dash",
+      "destination": "/Dash.html"
+    },
+    {
+      "source": "/Dash/(.*)",
+      "destination": "/Dash.html"
+    },
+    {
       "source": "/portal",
       "destination": "/portal.html"
     },
@@ -68,6 +79,19 @@
   ],
   "headers": [
     {
+      "source": "/Dash.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
+        }
+      ]
+    },
+    {
       "source": "/portal",
       "headers": [
         {
@@ -85,7 +109,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         },
         {
           "key": "Vary",
@@ -98,7 +122,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         },
         {
           "key": "Vary",
@@ -111,20 +135,7 @@
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "public, max-age=0, s-maxage=0, must-revalidate"
-        },
-        {
-          "key": "Vary",
-          "value": "Host"
-        }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=3600, s-maxage=3600"
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
         },
         {
           "key": "Vary",
