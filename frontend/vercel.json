@@ -33,7 +33,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash/(.*)",
@@ -43,7 +43,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dashboard",
@@ -53,7 +53,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash",
@@ -63,7 +63,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash/(.*)",
@@ -73,7 +73,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash.html",
@@ -83,7 +83,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash.html",
@@ -93,11 +93,11 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash.html",
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/funnel",
@@ -201,15 +201,15 @@
     },
     {
       "source": "/dashboard",
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash",
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash/(.*)",
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/",
