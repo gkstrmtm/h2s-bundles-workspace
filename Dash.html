@@ -10,10 +10,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
+    <meta name="h2s-source-file" content="Dash.html">
     <meta name="h2s-dash-build" content="2026-02-03T05:30:00Z">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
             const DASH_BUILD_STAMP = '2026-02-03T05:30:00Z';
+            const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
                 const originalError = console.error;
@@ -58,6 +60,33 @@
             // Server-injected API base URL (available when served via Apps Script template)
             // Falls back on client if not injected.
             try { window.API_URL = '<?= API_URL ?>'; } catch (e) { /* not templated */ }
+
+            // Tangible "which file is this?" marker
+            // Visit /Dash.html?about=1 to show.
+            window.__h2sShowAboutBadge = function __h2sShowAboutBadge() {
+                try {
+                    const badge = document.getElementById('h2sAboutBadge');
+                    const lines = document.getElementById('h2sAboutLines');
+                    if (!badge || !lines) return;
+                    const build = document.querySelector('meta[name="h2s-dash-build"]')?.getAttribute('content') || DASH_BUILD_STAMP || '';
+                    const src = document.querySelector('meta[name="h2s-source-file"]')?.getAttribute('content') || H2S_SOURCE_FILE || '';
+                    const host = location.host;
+                    const path = location.pathname + location.search + location.hash;
+                    lines.textContent = [
+                        `host: ${host}`,
+                        `path: ${path}`,
+                        `source: ${src}`,
+                        `build: ${build}`,
+                    ].join('\n');
+                    badge.style.display = 'block';
+                } catch { /* ignore */ }
+            };
+
+            document.addEventListener('DOMContentLoaded', () => {
+                try {
+                    if (location.search.includes('about=1')) window.__h2sShowAboutBadge();
+                } catch { /* ignore */ }
+            });
         </script>
     
     <!-- Preconnect -->
@@ -8418,6 +8447,15 @@ details[open] .ob-chevron {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body style="background: #0a2a5a !important; background-color: #0a2a5a !important;">
+
+    <!-- Visible only when ?about=1 is present -->
+    <div id="h2sAboutBadge" style="display:none; position:fixed; right:12px; bottom:12px; z-index:2147483647; background:rgba(15,23,42,0.92); color:#e2e8f0; border:1px solid rgba(148,163,184,0.35); padding:10px 12px; border-radius:10px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; box-shadow: 0 16px 40px rgba(0,0,0,0.35);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px;">
+            <div style="font-weight:900; color:#fff;">H2S About</div>
+            <button type="button" onclick="document.getElementById('h2sAboutBadge').style.display='none'" style="background:transparent; border:0; color:#cbd5e1; cursor:pointer; font-weight:900;">×</button>
+        </div>
+        <pre id="h2sAboutLines" style="margin:0; white-space:pre-wrap;"></pre>
+    </div>
 
     <!-- USER SELECTION GATE -->
     <div id="userGate">
