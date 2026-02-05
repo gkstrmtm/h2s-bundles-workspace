@@ -475,16 +475,17 @@
     }
 
     function tileHtml(item, label) {
-      const url = item && item.public_url;
+      const url = (item && (item.media_url || item.public_url)) || '';
       if (!url) return '';
 
       const isVideo = looksLikeVideo(item, url);
       const title = label || (isVideo ? 'Video' : 'Photo');
 
       if (isVideo) {
+        const poster = (item && item.video_thumbnail_url) ? String(item.video_thumbnail_url) : '';
         return `
           <div class="tile" data-kind="video" data-url="${escapeHtml(url)}" data-title="${escapeHtml(title)}" role="button" tabindex="0" aria-label="View video full screen">
-            <video src="${escapeHtml(url)}" muted playsinline preload="metadata"></video>
+            <video src="${escapeHtml(url)}" ${poster ? `poster="${escapeHtml(poster)}"` : ''} muted playsinline preload="none"></video>
           </div>
         `;
       }

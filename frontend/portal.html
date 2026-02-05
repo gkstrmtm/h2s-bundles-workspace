@@ -13033,25 +13033,38 @@ details[open] .ob-chevron {
             },
 
             publicStorageUrl(bucket, storagePath, options = {}) {
-                const base = String(this.state.supabase?.url || '').trim().replace(/\/+$/g, '');
                 const b = String(bucket || '').trim();
                 const pRaw = String(storagePath || '').trim();
-                if (!base || !b || !pRaw) return '';
+                if (!b || !pRaw) return '';
 
                 const p = pRaw.replace(/^\/+/, '');
+
+                // Prefer same-domain backend proxy to avoid browser DNS/CORS dependency on *.supabase.co
+                try {
+                    const { base } = (typeof this.getConfig === 'function') ? this.getConfig() : { base: '' };
+                    const origin = String(base || location?.origin || '').trim().replace(/\/+$/g, '');
+                    if (origin) {
+                        return `${origin}/api/proof-asset-media?bucket=${encodeURIComponent(b)}&path=${encodeURIComponent(p)}`;
+                    }
+                } catch {
+                    // ignore
+                }
+
+                // Hosted builds: use relative proxy rather than falling back to direct Supabase.
+                try {
+                    if (typeof isPortalHosted === 'function' && isPortalHosted()) {
+                        return `/api/proof-asset-media?bucket=${encodeURIComponent(b)}&path=${encodeURIComponent(p)}`;
+                    }
+                } catch {
+                    // ignore
+                }
+
+                // Fallback: Supabase public URL (legacy)
+                const sbBase = String(this.state.supabase?.url || '').trim().replace(/\/+$/g, '');
+                if (!sbBase) return '';
                 const encodedBucket = encodeURIComponent(b);
                 const encodedPath = p.split('/').map(seg => encodeURIComponent(seg)).join('/');
-                
-                let url = `${base}/storage/v1/object/public/${encodedBucket}/${encodedPath}`;
-                
-                // Add Supabase image transformation for thumbnails (faster loading)
-                if (options.thumbnail && (pRaw.match(/\.(jpg|jpeg|png|webp)$/i))) {
-                    const w = options.width || 240;
-                    const h = options.height || 240;
-                    url += `?width=${w}&height=${h}&resize=cover&quality=80`;
-                }
-                
-                return url;
+                return `${sbBase}/storage/v1/object/public/${encodedBucket}/${encodedPath}`;
             },
 
             slotLabel(slotKey) {
@@ -14481,6 +14494,7 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No asset provided');
                     return '';
                 }
+                if (asset.media_url) return asset.media_url;
                 if (asset.direct_url) return asset.direct_url;
                 
                 const bucket = asset.storage_bucket || 'proof';
@@ -14489,12 +14503,18 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No storage_path for asset:', asset.asset_id);
                     return '';
                 }
-                
-                // Use Supabase public URL directly
-                const supabaseHost = 'ulbzmgmxrqyipclrbohi.supabase.co';
-                const url = `https://${supabaseHost}/storage/v1/object/public/${bucket}/${path}`;
-                console.log('[buildAssetUrl] Built URL:', url);
-                return url;
+
+                const baseUrl = this.publicStorageUrl(bucket, path);
+                if (!baseUrl) return '';
+                try {
+                    const u = new URL(baseUrl, String(location?.origin || 'https://example.com'));
+                    const t = String(asset?.updated_at || asset?.created_at || '').trim();
+                    if (t) u.searchParams.set('t', t);
+                    return u.toString();
+                } catch {
+                    const t = String(asset?.updated_at || asset?.created_at || '').trim();
+                    return t ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${encodeURIComponent(t)}` : baseUrl;
+                }
             },
 
             editAssetFromLive(assetId, placement = 'rail') {
@@ -18425,8 +18445,26 @@ details[open] .ob-chevron {
                     const surface = document.getElementById('ppSurface')?.value || 'bundles';
                     const service = String(targetAsset?.service || document.getElementById('ppService')?.value || '').trim();
 
-                    const analysis = await this.analyzeFile(file);
+                    let analysis = await this.analyzeFile(file);
                     const media_kind = String(analysis?.media_kind || '').trim() || (file?.type?.startsWith('video/') ? 'video' : 'photo');
+
+                    // Always optimize images on replace (WebP/AVIF) when enabled.
+                    try {
+                        const optOn = this.getOptimizeImagesPreference();
+                        if (optOn && media_kind !== 'video' && this.isImageFile(file)) {
+                            const fmt = this.getImageFormatPreference();
+                            const q = this.getImageQualityPreference();
+                            const maxDim = this.getImageMaxDimPreference();
+                            if (statusEl) statusEl.textContent = 'Optimizing image…';
+                            const converted = await this.convertImageFile(file, { format: fmt, quality: q, maxDim });
+                            if (converted) {
+                                file = converted;
+                                analysis = await this.analyzeFile(file);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[ProofPacks] Replace image optimization failed; using original:', e);
+                    }
 
                     const existingKind = String(targetAsset?.media_kind || '').trim();
                     if (existingKind && existingKind !== media_kind) {

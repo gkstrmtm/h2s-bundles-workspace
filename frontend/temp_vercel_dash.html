@@ -14167,6 +14167,7 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No asset provided');
                     return '';
                 }
+                if (asset.media_url) return asset.media_url;
                 if (asset.direct_url) return asset.direct_url;
                 
                 const bucket = asset.storage_bucket || 'proof';
@@ -14175,12 +14176,18 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No storage_path for asset:', asset.asset_id);
                     return '';
                 }
-                
-                // Use Supabase public URL directly
-                const supabaseHost = 'ulbzmgmxrqyipclrbohi.supabase.co';
-                const url = `https://${supabaseHost}/storage/v1/object/public/${bucket}/${path}`;
-                console.log('[buildAssetUrl] Built URL:', url);
-                return url;
+
+                const baseUrl = (typeof this.publicStorageUrl === 'function') ? this.publicStorageUrl(bucket, path) : '';
+                if (!baseUrl) return '';
+                try {
+                    const u = new URL(baseUrl, String(location?.origin || 'https://example.com'));
+                    const t = String(asset?.updated_at || asset?.created_at || '').trim();
+                    if (t) u.searchParams.set('t', t);
+                    return u.toString();
+                } catch {
+                    const t = String(asset?.updated_at || asset?.created_at || '').trim();
+                    return t ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${encodeURIComponent(t)}` : baseUrl;
+                }
             },
 
             editAssetFromLive(assetId, placement = 'rail') {

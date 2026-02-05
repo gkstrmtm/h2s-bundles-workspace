@@ -4,6 +4,47 @@ import { getSupabase } from '@/lib/supabase';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+function tryParseSupabasePublicObjectUrl(rawUrl: string) {
+  try {
+    const marker = '/storage/v1/object/public/';
+    const idx = rawUrl.indexOf(marker);
+    if (idx < 0) return null;
+    const tailRaw = rawUrl.substring(idx + marker.length).replace(/^\/+/, '');
+    const tail = tailRaw.split('?')[0].split('#')[0];
+    const parts = tail.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    const bucket = decodeURIComponent(parts[0]);
+    const path = parts
+      .slice(1)
+      .map((seg) => decodeURIComponent(seg))
+      .join('/');
+    if (!bucket || !path) return null;
+    return { bucket, path };
+  } catch {
+    return null;
+  }
+}
+
+function tryParseProofAssetProxyUrl(rawUrl: string) {
+  try {
+    const u = new URL(rawUrl);
+    if (!String(u.pathname || '').includes('/api/proof-asset-media')) return null;
+    const bucket = String(u.searchParams.get('bucket') || '').trim();
+    const path = String(u.searchParams.get('path') || '').trim();
+    if (!bucket || !path) return null;
+    return { bucket, path };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeBucketPath(bucket: string, path: string) {
+  const b = String(bucket || '').trim().replace(/^\/+|\/+$/g, '');
+  const p = String(path || '').trim().replace(/^\/+/, '');
+  if (!b || !p) return null;
+  return { bucket: b, path: p };
+}
+
 function corsHeaders(request?: Request) {
   const origin = String(request?.headers?.get('origin') || '').trim();
   const allowOrigin = origin || '*';
@@ -42,6 +83,12 @@ export async function GET(request: Request) {
   const isVisibleParam = searchParams.get('is_visible');
   const isVisible = isVisibleParam === null ? null : (String(isVisibleParam).toLowerCase() === 'true' || String(isVisibleParam) === '1');
 
+  // Resolver mode: allow looking up an asset by storage_bucket/storage_path or by a URL.
+  // This enables Dash workflows where the user pastes a public/proxy URL and we need the asset_id.
+  const storageBucket = String(searchParams.get('storage_bucket') || searchParams.get('bucket') || '').trim();
+  const storagePath = String(searchParams.get('storage_path') || searchParams.get('path') || '').trim();
+  const resolveUrl = String(searchParams.get('url') || '').trim();
+
   let client;
   try {
     client = getSupabase();
@@ -56,6 +103,32 @@ export async function GET(request: Request) {
     }
     const asset = Array.isArray(data) && data.length ? data[0] : null;
     return NextResponse.json({ ok: true, asset }, { headers: corsHeaders(request) });
+  }
+
+  const resolved = (() => {
+    const direct = normalizeBucketPath(storageBucket, storagePath);
+    if (direct) return direct;
+    if (!resolveUrl) return null;
+    const parsed = tryParseProofAssetProxyUrl(resolveUrl) || tryParseSupabasePublicObjectUrl(resolveUrl);
+    if (!parsed) return null;
+    return normalizeBucketPath(parsed.bucket, parsed.path);
+  })();
+
+  if (resolved?.bucket && resolved?.path) {
+    const { data, error } = await client
+      .from('proof_assets')
+      .select('*')
+      .eq('storage_bucket', resolved.bucket)
+      .eq('storage_path', resolved.path)
+      .limit(1);
+    if (error) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500, headers: corsHeaders(request) });
+    }
+    const asset = Array.isArray(data) && data.length ? data[0] : null;
+    return NextResponse.json(
+      { ok: true, asset, resolved: { storage_bucket: resolved.bucket, storage_path: resolved.path } },
+      { headers: corsHeaders(request) }
+    );
   }
 
   if (!packId) {

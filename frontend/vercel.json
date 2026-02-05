@@ -100,6 +100,36 @@
       "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
     },
     {
+      "source": "/funnel",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/funnel-track",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/funnel-track.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
+    },
+    {
       "source": "/:path*",
       "has": [
         {
@@ -118,6 +148,36 @@
         }
       ],
       "destination": "https://h2s-backend.vercel.app/reviews.html"
+    },
+    {
+      "source": "/funnel",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/funnel-track",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/funnel-track.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/funnel-track.html"
     },
     {
       "source": "/",

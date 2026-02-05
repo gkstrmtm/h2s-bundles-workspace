@@ -6747,6 +6747,67 @@
             grid-template-columns: 1fr auto;
             gap: 16px;
             align-items: start;
+            border: 1px dashed #cbd5e1;
+            border-radius: 18px;
+            padding: 22px;
+            background: radial-gradient(1200px 260px at 20% 0%, rgba(59,130,246,0.10), transparent 60%),
+                        radial-gradient(800px 220px at 100% 40%, rgba(16,185,129,0.08), transparent 55%),
+                        #fbfdff;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+
+        #ppDropzone.dropzone:hover {
+            border-color: #93c5fd;
+            box-shadow: 0 8px 30px rgba(15,23,42,0.08);
+        }
+
+        #ppDropzone.dropzone.is-preview {
+            grid-template-columns: 1fr;
+            padding: 14px;
+            border-style: solid;
+            background: #ffffff;
+        }
+
+        #ppDropzonePrompt {
+            text-align: left;
+        }
+
+        .pp-dropzone-left {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+        }
+
+        .pp-dropzone-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(59,130,246,0.10);
+            color: #2563eb;
+            border: 1px solid rgba(59,130,246,0.18);
+            flex: 0 0 auto;
+        }
+
+        .pp-dropzone-title {
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            margin: 0 0 4px 0;
+        }
+
+        .pp-dropzone-sub {
+            font-size: 13px;
+            color: #475569;
+            margin: 0;
+        }
+
+        .pp-dropzone-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #64748b;
         }
 
         #ppDropzone .pp-upload-actions {
@@ -9163,15 +9224,59 @@ details[open] .ob-chevron {
                         <div class="card u-mt-3" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                             <div class="card-header u-mb-2" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Upload</div>
 
-                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="border: 1px solid #e5e7eb; border-radius: 16px; padding: 60px 32px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: #fafafa;">
-                                <div id="ppDropzonePrompt" style="max-width: 400px; margin: 0 auto;">
-                                    <p style="font-size: 17px; font-weight: 500; color: #1e293b; margin-bottom: 8px;">Drop files here</p>
-                                    <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">or click to browse</p>
+                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="cursor: pointer;">
+                                <div id="ppDropzonePrompt" style="max-width: 820px; margin: 0 auto;">
+                                    <div class="pp-dropzone-left">
+                                        <div class="pp-dropzone-icon" aria-hidden="true">
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                <polyline points="17 8 12 3 7 8"/>
+                                                <line x1="12" y1="3" x2="12" y2="15"/>
+                                            </svg>
+                                        </div>
+                                        <div style="flex:1; min-width:240px;">
+                                            <p class="pp-dropzone-title">Drop files to add to your library</p>
+                                            <p class="pp-dropzone-sub">Click anywhere to browse. Right‑click assets in the Library to optimize/replace.</p>
+                                            <div class="pp-dropzone-hint">Defaults are tuned for speed: WebP/AVIF + resize + quality.</div>
+                                        </div>
+                                    </div>
                                     <div id="ppConvertToMp4Wrapper" class="u-text-sm u-muted u-mt-1" style="display:none;">
                                         <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                             <input id="ppConvertToMp4" type="checkbox" checked />
                                             Convert to MP4 (applies rotation/trim)
                                         </label>
+                                    </div>
+                                    <div id="ppOptimizeImagesWrapper" class="u-text-sm u-muted u-mt-1" style="display:block;">
+                                        <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                            <input id="ppOptimizeImages" type="checkbox" checked />
+                                            Optimize images (WebP/AVIF + compress)
+                                        </label>
+                                        <div class="u-text-xs u-muted u-mt-1" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Format
+                                                <select id="ppImageFormat" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
+                                                    <option value="auto" selected>Auto</option>
+                                                    <option value="avif">AVIF</option>
+                                                    <option value="webp">WebP</option>
+                                                </select>
+                                            </label>
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Quality
+                                                <input id="ppImageQuality" type="range" min="35" max="95" value="72" style="width:120px;" />
+                                                <span id="ppImageQualityLabel" style="min-width:30px; text-align:right; font-variant-numeric: tabular-nums;">72</span>
+                                            </label>
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Max px
+                                                <select id="ppImageMaxDim" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
+                                                    <option value="0">Original</option>
+                                                    <option value="2560">2560</option>
+                                                    <option value="1920" selected>1920</option>
+                                                    <option value="1600">1600</option>
+                                                    <option value="1280">1280</option>
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <div class="u-text-xs u-muted" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
                                     </div>
                                 </div>
 
@@ -9238,7 +9343,8 @@ details[open] .ob-chevron {
                             </div>
                             
                             <!-- Hidden fields for backend compatibility -->
-                            <input type="hidden" id="ppShotType" value="after" />
+                            <!-- NOTE: This must be a <select> because the Proof Packs UI dynamically populates options + hints. -->
+                            <select id="ppShotType" style="display:none;"></select>
                             <div id="ppShotTypeHint" class="u-text-xs u-muted" style="margin-top:4px; padding:6px 10px; background:#f8fafc; border-left:3px solid #3b82f6; border-radius:4px; display:none;"></div>
                             <input type="hidden" id="ppTimeOfDay" value="day" />
                             <input type="hidden" id="ppSlotKey" value="mid_proof_rail" />
@@ -9253,7 +9359,6 @@ details[open] .ob-chevron {
                             <input type="hidden" id="ppFilterSaturationVal" value="100" />
 
                             <div class="pp-upload-actions u-mt-3" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                                <button id="ppUploadBtn" class="btn btn-primary" type="button" onclick="proofPacks.uploadAndAssign()" disabled style="min-width:220px; display:inline-flex; align-items:center; justify-content:center;">Upload</button>
                                 <button id="ppClearStagedBtn" class="btn btn-secondary" type="button" onclick="proofPacks.clearStagedFiles()" style="min-width:180px; display:none;">Clear queue</button>
                             </div>
 
@@ -9270,6 +9375,26 @@ details[open] .ob-chevron {
                         </div>
 
                         <!-- Library (Always Visible) -->
+                        <div class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background:#f8fafc;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 800; color:#0f172a; letter-spacing:0.2px;">Quick Asset Tools</div>
+                                    <div class="u-text-xs u-muted" style="margin-top:2px; max-width: 760px; line-height:1.5;">
+                                        Paste an <strong>asset_id</strong> (best) or a storage URL. Use this to open an asset in the editor or optimize it to WebP/AVIF.
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                    <input id="ppQuickAssetInput" type="text" placeholder="asset_id (e.g. 9c1b...) or storage URL" style="min-width: 320px; max-width: 520px; width: min(520px, 70vw); height: 40px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13px; background: white;" />
+                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOpenAsset()" style="height:40px;">Open</button>
+                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'download' })" style="height:40px;">Optimize + Download</button>
+                                    <button class="pp-btn-primary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'replace' })" style="height:40px;">Optimize + Replace</button>
+                                </div>
+                            </div>
+                            <div class="u-text-xs u-muted" style="margin-top:10px; opacity:0.92;">
+                                Tip: The optimization settings above (Format/Quality/Max px) apply here too.
+                            </div>
+                        </div>
+
                         <div id="ppLibraryWorkspace" class="u-mt-4">
                             <div class="card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                                 <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Bundles Page</div>
@@ -10862,6 +10987,22 @@ details[open] .ob-chevron {
                 paneElement.classList.add('active');
                 // Force show with inline style as backup (CSS will override with !important)
                 paneElement.style.display = 'block';
+
+                // Proof Packs UX: focus the Quick Asset input (only if user isn't already typing)
+                if (targetTab === 'proofpacks') {
+                    setTimeout(() => {
+                        try {
+                            const quickEl = document.getElementById('ppQuickAssetInput');
+                            if (!quickEl) return;
+                            const active = document.activeElement;
+                            const isTyping = !!(active && active !== document.body && ['INPUT', 'TEXTAREA', 'SELECT'].includes(String(active.tagName || '').toUpperCase()));
+                            if (isTyping) return;
+                            if (!String(quickEl.value || '').trim()) quickEl.focus();
+                        } catch {
+                            // ignore
+                        }
+                    }, 80);
+                }
                 
                 // Track tab view event
                 if (typeof trackEvent === 'function') {
@@ -11334,6 +11475,10 @@ details[open] .ob-chevron {
                 service: 'h2s_pp_service',
                 mode: 'h2s_pp_mode',
                 convertToMp4: 'h2s_pp_convert_to_mp4',
+                optimizeImages: 'h2s_pp_optimize_images',
+                imageFormat: 'h2s_pp_image_format',
+                imageQuality: 'h2s_pp_image_quality',
+                imageMaxDim: 'h2s_pp_image_max_dim',
                 rotateDeg: 'h2s_pp_video_rotate_deg',
                 trimStartSec: 'h2s_pp_trim_start_sec',
                 trimEndSec: 'h2s_pp_trim_end_sec',
@@ -11413,7 +11558,8 @@ details[open] .ob-chevron {
                 const rotateBase = Number(asset?.video_rotate_deg || 0);
                 const rotateDeg = (rotateBase === 90 || rotateBase === 180 || rotateBase === 270) ? rotateBase : 0;
 
-                const smart = this.getAssetSmartCropDetails(asset);
+                if (asset.media_url) return asset.media_url;
+                if (asset.direct_url) return asset.direct_url;
                 const mode = this.normalizeCropMode(smart?.mode);
 
                 // PS PATCH 2026-01-29: Sync with bundles.js logic.
@@ -11421,23 +11567,25 @@ details[open] .ob-chevron {
                 const objectFit = mode === 'contain' ? 'contain' : 'cover';
                 const objectPosition = mode === 'contain' ? (smart?.objectPosition || 'center center') : '50% 50%';
                 const geom = (smart && typeof smart.geometry === 'object') ? smart.geometry : {};
-                
-                // Use expanded limits
-                const panX = this.clampNumber(geom?.pan_x_pct ?? geom?.panX ?? 0, -150, 150, 0);
-                const panY = this.clampNumber(geom?.pan_y_pct ?? geom?.panY ?? 0, -150, 150, 0);
-                const tilt = this.clampNumber(geom?.tilt_deg ?? geom?.tilt ?? 0, -45, 45, 0);
-                const scalePct = this.clampNumber(geom?.scale_pct ?? geom?.scale ?? 100, 50, 300, 100);
-                const scale = scalePct / 100;
 
-                const transform = `translate(${panX}%, ${panY}%) rotate(${rotateDeg + tilt}deg) scale(${scale}) translateZ(0)`;
+                let url = this.publicStorageUrl(bucket, path);
+                if (!url) return '';
 
-                // Filters (saved metadata)
-                const filterParts = [];
-                const bw = String(asset?.filter_bw || '') === '1' || asset?.filter_bw === true;
-                if (bw) filterParts.push('grayscale(100%)');
-                const b = Number(asset?.filter_brightness || 100);
-                const c = Number(asset?.filter_contrast || 100);
-                const s = Number(asset?.filter_saturation || 100);
+                // Cache-bust if we know it changed.
+                try {
+                    if (asset.updated_at) {
+                        const ts = new Date(asset.updated_at).getTime();
+                        if (!isNaN(ts)) {
+                            const u = new URL(url, String(location?.origin || 'https://example.com'));
+                            u.searchParams.set('t', String(ts));
+                            url = u.toString();
+                        }
+                    }
+                } catch {
+                    // ignore
+                }
+
+                return url;
                 if (Number.isFinite(b) && b !== 100) filterParts.push(`brightness(${b}%)`);
                 if (Number.isFinite(c) && c !== 100) filterParts.push(`contrast(${c}%)`);
                 if (Number.isFinite(s) && s !== 100) filterParts.push(`saturate(${s}%)`);
@@ -11655,6 +11803,418 @@ details[open] .ob-chevron {
                 if (el && typeof el.checked === 'boolean') return !!el.checked;
                 const raw = this.safeGetItem(this.storageKeys.convertToMp4);
                 return raw ? raw === '1' : true;
+            },
+
+            getOptimizeImagesPreference() {
+                const el = document.getElementById('ppOptimizeImages');
+                if (el && typeof el.checked === 'boolean') return !!el.checked;
+                const raw = this.safeGetItem(this.storageKeys.optimizeImages);
+                return raw ? raw === '1' : true;
+            },
+
+            getImageFormatPreference() {
+                const el = document.getElementById('ppImageFormat');
+                const raw = String((el?.value || this.safeGetItem(this.storageKeys.imageFormat) || 'auto')).trim().toLowerCase();
+                return (raw === 'avif' || raw === 'webp' || raw === 'auto') ? raw : 'auto';
+            },
+
+            getImageQualityPreference() {
+                const el = document.getElementById('ppImageQuality');
+                const raw = String((el?.value || this.safeGetItem(this.storageKeys.imageQuality) || '72')).trim();
+                const n = this.clampNumber(raw, 35, 95, 72);
+                return n;
+            },
+
+            getImageMaxDimPreference() {
+                const el = document.getElementById('ppImageMaxDim');
+                const raw = String((el?.value || this.safeGetItem(this.storageKeys.imageMaxDim) || '1920')).trim();
+                const n = this.clampNumber(raw, 0, 6000, 1920);
+                return n;
+            },
+
+            _supportsCanvasMimeCache: {},
+            async supportsCanvasMime(mime) {
+                const key = String(mime || '').toLowerCase();
+                if (!key) return false;
+                if (typeof this._supportsCanvasMimeCache[key] === 'boolean') return this._supportsCanvasMimeCache[key];
+
+                // Feature detect by attempting to encode a 1x1 pixel canvas.
+                const canvas = document.createElement('canvas');
+                canvas.width = 1;
+                canvas.height = 1;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    this._supportsCanvasMimeCache[key] = false;
+                    return false;
+                }
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, 1, 1);
+
+                const ok = await new Promise(resolve => {
+                    try {
+                        canvas.toBlob((blob) => {
+                            resolve(!!blob && String(blob.type || '').toLowerCase() === key);
+                        }, key, 0.8);
+                    } catch {
+                        resolve(false);
+                    }
+                });
+
+                this._supportsCanvasMimeCache[key] = !!ok;
+                return !!ok;
+            },
+
+            isImageFile(file) {
+                const mime = String(file?.type || '').toLowerCase();
+                const name = String(file?.name || '').toLowerCase();
+                if (mime.startsWith('image/')) return true;
+                return /\.(png|jpe?g|gif|webp|avif|bmp|heic|heif|tiff?)$/i.test(name);
+            },
+
+            async convertImageFile(file, { format, quality, maxDim } = {}) {
+                const srcFile = file;
+                if (!srcFile) return null;
+
+                const q = this.clampNumber(quality, 35, 95, 72) / 100;
+                const maxPx = this.clampNumber(maxDim, 0, 6000, 1920);
+                const pref = String(format || 'auto').toLowerCase();
+
+                let targetMime = 'image/webp';
+                if (pref === 'avif') targetMime = 'image/avif';
+                else if (pref === 'webp') targetMime = 'image/webp';
+                else {
+                    // auto
+                    targetMime = (await this.supportsCanvasMime('image/avif')) ? 'image/avif' : 'image/webp';
+                }
+                if (!(await this.supportsCanvasMime(targetMime))) {
+                    targetMime = 'image/webp';
+                }
+
+                const bitmap = await createImageBitmap(srcFile, { imageOrientation: 'from-image' });
+                const srcW = bitmap.width || 0;
+                const srcH = bitmap.height || 0;
+                if (!srcW || !srcH) throw new Error('Invalid image dimensions');
+
+                let outW = srcW;
+                let outH = srcH;
+                if (maxPx > 0) {
+                    const maxSide = Math.max(srcW, srcH);
+                    if (maxSide > maxPx) {
+                        const scale = maxPx / maxSide;
+                        outW = Math.max(1, Math.round(srcW * scale));
+                        outH = Math.max(1, Math.round(srcH * scale));
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = outW;
+                canvas.height = outH;
+                const ctx = canvas.getContext('2d', { alpha: true });
+                if (!ctx) throw new Error('Canvas not available');
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(bitmap, 0, 0, outW, outH);
+                try { bitmap.close && bitmap.close(); } catch { /* ignore */ }
+
+                const blob = await new Promise((resolve, reject) => {
+                    try {
+                        canvas.toBlob((b) => {
+                            if (!b) return reject(new Error('Image encode failed'));
+                            resolve(b);
+                        }, targetMime, q);
+                    } catch (e) {
+                        reject(e);
+                    }
+                });
+
+                const base = String(srcFile.name || 'image').replace(/\.[^.]+$/, '');
+                const ext = (String(blob.type || '').toLowerCase() === 'image/avif') ? 'avif' : 'webp';
+                const outName = `${base}.${ext}`;
+                const outFile = new File([blob], outName, { type: blob.type || targetMime, lastModified: Date.now() });
+                // Preserve original identity for dupe checks + UI.
+                outFile._ppOriginalName = srcFile.name;
+                outFile._ppOriginalSize = srcFile.size;
+                outFile._ppWasOptimized = true;
+                return outFile;
+            },
+
+            guessExtFromMime(mime) {
+                const m = String(mime || '').toLowerCase();
+                if (m.includes('avif')) return 'avif';
+                if (m.includes('webp')) return 'webp';
+                if (m.includes('png')) return 'png';
+                if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+                if (m.includes('gif')) return 'gif';
+                return 'bin';
+            },
+
+            downloadFile(fileOrBlob, filename) {
+                try {
+                    const blob = (fileOrBlob instanceof Blob) ? fileOrBlob : new Blob([fileOrBlob]);
+                    const name = String(filename || fileOrBlob?.name || 'download');
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = name;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => {
+                        try { URL.revokeObjectURL(url); } catch (_) {}
+                    }, 1500);
+                } catch (e) {
+                    console.warn('[downloadFile] Failed:', e);
+                }
+            },
+
+            tryParseSupabasePublicObjectUrl(url) {
+                try {
+                    const raw = String(url || '').trim();
+                    if (!raw) return null;
+                    const u = new URL(raw);
+                    const marker = '/storage/v1/object/public/';
+                    const idx = u.pathname.indexOf(marker);
+                    if (idx < 0) return null;
+                    const rest = u.pathname.slice(idx + marker.length);
+                    const parts = rest.split('/').filter(Boolean);
+                    if (!parts.length) return null;
+                    const bucket = decodeURIComponent(parts[0]);
+                    const path = parts.slice(1).map(seg => decodeURIComponent(seg)).join('/');
+                    if (!bucket || !path) return null;
+                    return { bucket, path };
+                } catch {
+                    return null;
+                }
+            },
+
+            tryParseProofAssetProxyUrl(url) {
+                try {
+                    const raw = String(url || '').trim();
+                    if (!raw) return null;
+                    const u = new URL(raw, String(location?.origin || 'https://example.com'));
+                    if (!String(u.pathname || '').includes('/api/proof-asset-media')) return null;
+                    const bucket = u.searchParams.get('bucket') || '';
+                    const path = u.searchParams.get('path') || '';
+                    if (!bucket || !path) return null;
+                    return { bucket, path };
+                } catch {
+                    return null;
+                }
+            },
+
+            getQuickAssetInputValue() {
+                const el = document.getElementById('ppQuickAssetInput');
+                return String(el?.value || '').trim();
+            },
+
+            async fetchAssetById(assetId) {
+                const id = String(assetId || '').trim();
+                if (!id) return null;
+                const resp = await this.fetchJson(`/api/admin/proof-assets?asset_id=${encodeURIComponent(id)}`, { method: 'GET' });
+                const fetched = (resp && typeof resp.asset === 'object' && resp.asset)
+                    ? resp.asset
+                    : (Array.isArray(resp?.assets) ? resp.assets[0] : null);
+                return (fetched && typeof fetched === 'object') ? fetched : null;
+            },
+
+            async resolveAssetFromUrlOrPath(raw) {
+                const v = String(raw || '').trim();
+                if (!v) return null;
+
+                const looksLikeUrl = /^https?:\/\//i.test(v);
+                const parsed = looksLikeUrl
+                    ? (this.tryParseProofAssetProxyUrl(v) || this.tryParseSupabasePublicObjectUrl(v))
+                    : null;
+
+                // Support quick manual input: "bucket/path" or "proof:bucket/path"
+                const parsedBucketPath = (() => {
+                    if (looksLikeUrl) return null;
+                    const s = v.replace(/^proof\s*:\s*/i, '').trim();
+                    const parts = s.split('/').filter(Boolean);
+                    if (parts.length < 2) return null;
+                    const bucket = parts[0];
+                    const path = parts.slice(1).join('/');
+                    return { bucket, path };
+                })();
+
+                const query = (() => {
+                    if (parsed?.bucket && parsed?.path) return `url=${encodeURIComponent(v)}`;
+                    if (parsedBucketPath?.bucket && parsedBucketPath?.path) {
+                        return `storage_bucket=${encodeURIComponent(parsedBucketPath.bucket)}&storage_path=${encodeURIComponent(parsedBucketPath.path)}`;
+                    }
+                    if (looksLikeUrl) return `url=${encodeURIComponent(v)}`;
+                    return '';
+                })();
+                if (!query) return null;
+
+                const resp = await this.fetchJson(`/api/admin/proof-assets?${query}`, { method: 'GET' });
+                const fetched = (resp && typeof resp.asset === 'object' && resp.asset)
+                    ? resp.asset
+                    : (Array.isArray(resp?.assets) ? resp.assets[0] : null);
+                return (fetched && typeof fetched === 'object') ? fetched : null;
+            },
+
+            async optimizeAssetObject(asset, opts = { mode: 'replace' }) {
+                const mode = String(opts?.mode || 'replace');
+                if (!asset) throw new Error('Missing asset');
+                const assetId = String(asset?.asset_id || '').trim();
+                const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+                if (!assetId) throw new Error('Missing asset_id');
+                if (kind === 'video') throw new Error('Optimize only supports images right now.');
+
+                const url = this.buildAssetUrl(asset);
+                if (!url) throw new Error('Missing asset URL');
+
+                const res = await fetch(url, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+                if (!res.ok) throw new Error(`Fetch failed (HTTP ${res.status})`);
+                const blob = await res.blob();
+
+                const inferredType = String(blob?.type || asset?.content_type || 'image/jpeg');
+                const storagePath = String(asset?.storage_path || 'asset').trim();
+                const baseNameRaw = storagePath.split('/').pop() || `asset_${assetId}`;
+                const baseName = baseNameRaw.replace(/\.[^.]+$/, '') || `asset_${assetId}`;
+                const srcFile = new File([blob], `${baseName}.${this.guessExtFromMime(inferredType)}`, { type: inferredType, lastModified: Date.now() });
+
+                const converted = await this.convertImageFile(srcFile, {
+                    format: this.getImageFormatPreference(),
+                    quality: this.getImageQualityPreference(),
+                    maxDim: this.getImageMaxDimPreference(),
+                });
+                if (!converted) throw new Error('Conversion failed');
+
+                if (mode === 'download') {
+                    this.downloadFile(converted, converted.name || `${baseName}.webp`);
+                    return { ok: true, mode: 'download' };
+                }
+
+                // Replace using existing pipeline (signed PUT + PATCH proof-assets).
+                this.state = this.state || {};
+                this.state.replace = { assetId: String(assetId), asset };
+                await this.onReplaceFileSelected(converted);
+                return { ok: true, mode: 'replace' };
+            },
+
+            async quickOpenAsset() {
+                const raw = this.getQuickAssetInputValue();
+                if (!raw) {
+                    showToast('Paste an asset_id (or URL) first', 'error');
+                    return;
+                }
+
+                const looksLikeUrl = /^https?:\/\//i.test(raw);
+                if (!looksLikeUrl) {
+                    this.beginEditAssetMedia(raw);
+                    return;
+                }
+
+                try {
+                    showToast('Resolving asset…', 'info');
+                    const resolved = await this.resolveAssetFromUrlOrPath(raw);
+                    if (resolved?.asset_id) {
+                        this.beginEditAssetMedia(String(resolved.asset_id));
+                        return;
+                    }
+                    showToast('Could not resolve URL to an asset. Paste the asset_id instead.', 'warning');
+                } catch (e) {
+                    console.error('[quickOpenAsset] Resolve failed:', e);
+                    showToast(`Resolve failed: ${String(e?.message || 'Unknown error')}`, 'error');
+                }
+            },
+
+            async quickOptimizeAsset(opts = { mode: 'replace' }) {
+                const mode = String(opts?.mode || 'replace');
+                const raw = this.getQuickAssetInputValue();
+                if (!raw) {
+                    showToast('Paste an asset_id (or URL) first', 'error');
+                    return;
+                }
+
+                const looksLikeUrl = /^https?:\/\//i.test(raw);
+                if (!looksLikeUrl) {
+                    try {
+                        showToast(mode === 'download' ? 'Optimizing (download)…' : 'Optimizing + replacing…', 'info');
+                        const asset = await this.fetchAssetById(raw);
+                        if (!asset) throw new Error('Asset not found');
+                        await this.optimizeAssetObject(asset, { mode });
+                        showToast(mode === 'download' ? 'Optimized file downloaded' : 'Optimized + replaced', 'success');
+                        try { await this.refreshAssets(); } catch (_) {}
+                        try { await this.refreshLivePreview(); } catch (_) {}
+                    } catch (e) {
+                        console.error('[quickOptimizeAsset] Failed:', e);
+                        showToast(`Optimize failed: ${String(e?.message || 'Unknown error')}`, 'error');
+                    }
+                    return;
+                }
+
+                if (mode !== 'download') {
+                    try {
+                        showToast('Resolving asset…', 'info');
+                        const resolved = await this.resolveAssetFromUrlOrPath(raw);
+                        if (!resolved?.asset_id) throw new Error('Asset not found');
+                        showToast('Optimizing + replacing…', 'info');
+                        await this.optimizeAssetObject(resolved, { mode: 'replace' });
+                        showToast('Optimized + replaced', 'success');
+                        try { await this.refreshAssets(); } catch (_) {}
+                        try { await this.refreshLivePreview(); } catch (_) {}
+                    } catch (e) {
+                        console.error('[quickOptimizeAsset] URL replace failed:', e);
+                        showToast(`Optimize failed: ${String(e?.message || 'Unknown error')}`, 'error');
+                    }
+                    return;
+                }
+
+                try {
+                    showToast('Optimizing (download)…', 'info');
+                    const parsed = this.tryParseProofAssetProxyUrl(raw) || this.tryParseSupabasePublicObjectUrl(raw);
+                    const fetchUrl = (parsed?.bucket && parsed?.path)
+                        ? this.publicStorageUrl(parsed.bucket, parsed.path)
+                        : raw;
+
+                    const res = await fetch(fetchUrl, { method: 'GET', cache: 'no-store', credentials: 'omit' });
+                    if (!res.ok) throw new Error(`Fetch failed (HTTP ${res.status})`);
+                    const blob = await res.blob();
+                    const inferredType = String(blob?.type || 'image/jpeg');
+                    const baseName = 'asset';
+                    const srcFile = new File([blob], `${baseName}.${this.guessExtFromMime(inferredType)}`, { type: inferredType, lastModified: Date.now() });
+
+                    const converted = await this.convertImageFile(srcFile, {
+                        format: this.getImageFormatPreference(),
+                        quality: this.getImageQualityPreference(),
+                        maxDim: this.getImageMaxDimPreference(),
+                    });
+                    if (!converted) throw new Error('Conversion failed');
+
+                    this.downloadFile(converted, converted.name || `${baseName}.webp`);
+                    showToast('Optimized file downloaded', 'success');
+                } catch (e) {
+                    console.error('[quickOptimizeAsset] URL failed:', e);
+                    showToast(`Optimize failed: ${String(e?.message || 'Unknown error')}`, 'error');
+                }
+            },
+
+            async optimizeLibraryAsset(assetId, opts = { mode: 'replace' }) {
+                const mode = String(opts?.mode || 'replace');
+                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
+                const asset = items.find(a => String(a?.asset_id || '') === String(assetId));
+                if (!asset) {
+                    showToast('Asset not found. Refresh and try again.', 'error');
+                    return;
+                }
+
+                const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+                if (kind === 'video') {
+                    showToast('Optimize only supports images right now.', 'error');
+                    return;
+                }
+
+                try {
+                    showToast(mode === 'download' ? 'Optimizing (download)…' : 'Optimizing + replacing…', 'info');
+                    await this.optimizeAssetObject(asset, { mode });
+                    showToast(mode === 'download' ? 'Optimized file downloaded' : 'Optimized + replaced', 'success');
+                } catch (e) {
+                    console.error('[optimizeLibraryAsset] Failed:', e);
+                    showToast(`Optimize failed: ${String(e?.message || 'Unknown error')}`, 'error');
+                }
             },
 
             getRotateDegPreference() {
@@ -13129,25 +13689,41 @@ details[open] .ob-chevron {
             },
 
             publicStorageUrl(bucket, storagePath, options = {}) {
-                const base = String(this.state.supabase?.url || '').trim().replace(/\/+$/g, '');
                 const b = String(bucket || '').trim();
                 const pRaw = String(storagePath || '').trim();
-                if (!base || !b || !pRaw) return '';
+                if (!b || !pRaw) return '';
 
                 const p = pRaw.replace(/^\/+/, '');
+
+                // Prefer backend proxy so Dash is DNS/CORS-proof.
+                try {
+                    const { base } = this.getConfig();
+                    const baseOrigin = String(base || '').trim().replace(/\/+$/g, '');
+                    if (baseOrigin) {
+                        const qs = new URLSearchParams({ bucket: b, path: p });
+                        return `${baseOrigin}/api/proof-asset-media?${qs.toString()}`;
+                    }
+                } catch {
+                    // ignore
+                }
+
+                // If portal-hosted, never fall back to direct Supabase URLs in the browser.
+                // Relative proxy still works with same-origin rewrites.
+                try {
+                    if (typeof isPortalHosted === 'function' && isPortalHosted()) {
+                        const qs = new URLSearchParams({ bucket: b, path: p });
+                        return `/api/proof-asset-media?${qs.toString()}`;
+                    }
+                } catch {
+                    // ignore
+                }
+
+                // Fallback: direct Supabase URL (only if proxy base isn't configured)
+                const sbBase = String(this.state.supabase?.url || '').trim().replace(/\/+$/g, '');
+                if (!sbBase) return '';
                 const encodedBucket = encodeURIComponent(b);
                 const encodedPath = p.split('/').map(seg => encodeURIComponent(seg)).join('/');
-                
-                let url = `${base}/storage/v1/object/public/${encodedBucket}/${encodedPath}`;
-                
-                // Add Supabase image transformation for thumbnails (faster loading)
-                if (options.thumbnail && (pRaw.match(/\.(jpg|jpeg|png|webp)$/i))) {
-                    const w = options.width || 240;
-                    const h = options.height || 240;
-                    url += `?width=${w}&height=${h}&resize=cover&quality=80`;
-                }
-                
-                return url;
+                return `${sbBase}/storage/v1/object/public/${encodedBucket}/${encodedPath}`;
             },
 
             slotLabel(slotKey) {
@@ -13184,6 +13760,12 @@ details[open] .ob-chevron {
                 const service = document.getElementById('ppService')?.value || 'tv_mounting';
                 const shotEl = document.getElementById('ppShotType');
                 if (!shotEl) return;
+                // Guard: hosted builds previously used a hidden <input> here.
+                // We require a real <select> so options/selectedIndex exist.
+                if (!(shotEl instanceof HTMLSelectElement)) {
+                    console.warn('[Proof Packs] ppShotType is not a <select>; skipping updateProofTypeOptions to avoid crash.');
+                    return;
+                }
 
                 // Minimum options, maximum signal.
                 // Values are stored as simple tags (often multi-term) so backend ranking can use `includes()`.
@@ -13222,6 +13804,11 @@ details[open] .ob-chevron {
                 const showHint = () => {
                     const hintEl = document.getElementById('ppShotTypeHint');
                     if (!hintEl) return;
+                    if (!shotEl.options || typeof shotEl.selectedIndex !== 'number') {
+                        hintEl.textContent = '';
+                        hintEl.style.display = 'none';
+                        return;
+                    }
                     const selected = shotEl.options[shotEl.selectedIndex];
                     if (!selected) return;
                     const hint = selected?.dataset?.hint || '';
@@ -13238,6 +13825,82 @@ details[open] .ob-chevron {
                         shotEl.value = prev;
                         showHint();
                     }
+                }
+            },
+
+            getFileExtension(pathLike) {
+                const raw = String(pathLike || '').trim();
+                if (!raw) return '';
+                const q = raw.split('?')[0];
+                const last = q.split('/').pop() || '';
+                const idx = last.lastIndexOf('.');
+                return (idx >= 0 ? last.slice(idx + 1) : '').toLowerCase();
+            },
+
+            getOptimizationInfo(asset) {
+                const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+                if (kind === 'video') {
+                    return { kind, isOptimized: true, ext: this.getFileExtension(asset?.storage_path), label: 'video', reason: 'video' };
+                }
+                const ext = this.getFileExtension(asset?.storage_path);
+                const isOptimized = (ext === 'webp' || ext === 'avif');
+                const label = ext ? ext.toUpperCase() : 'UNKNOWN';
+                return {
+                    kind,
+                    ext,
+                    isOptimized,
+                    label,
+                    reason: isOptimized ? 'storage_path_ext' : 'not_webp_or_avif'
+                };
+            },
+
+            async probeContentType(url, timeoutMs = 4500) {
+                const u = String(url || '').trim();
+                if (!u) return null;
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), timeoutMs);
+                try {
+                    const r = await fetch(u, { method: 'HEAD', cache: 'no-store', credentials: 'omit', signal: ctrl.signal });
+                    if (!r.ok) return null;
+                    return String(r.headers.get('content-type') || '').toLowerCase();
+                } catch {
+                    return null;
+                } finally {
+                    clearTimeout(t);
+                }
+            },
+
+            async verifyAndUpdateOptimizationBadge(asset, badgeId, label = 'Asset') {
+                try {
+                    if (!asset || !badgeId) return;
+                    const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+                    if (kind === 'video') return;
+
+                    const el = document.getElementById(badgeId);
+                    if (!el) return;
+
+                    const url = this.buildAssetUrl(asset);
+                    const ct = await this.probeContentType(url);
+                    if (!ct) {
+                        // Likely CORS/HEAD blocked; leave ext-based badge.
+                        return;
+                    }
+
+                    const isWebp = ct.includes('image/webp');
+                    const isAvif = ct.includes('image/avif');
+                    const ok = isWebp || isAvif;
+                    const fmt = ok ? (isAvif ? 'AVIF' : 'WEBP') : (ct.split(';')[0] || ct).toUpperCase();
+
+                    el.textContent = `Format: ${fmt}${ok ? '' : ' (not optimized)'}`;
+                    el.style.background = ok ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)';
+
+                    if (!ok) {
+                        console.warn(`[Optimize Verify] ${label} is not WebP/AVIF`, { asset_id: asset.asset_id, storage_path: asset.storage_path, content_type: ct, url });
+                    } else {
+                        console.log(`[Optimize Verify] ${label} OK`, { asset_id: asset.asset_id, storage_path: asset.storage_path, content_type: ct, url });
+                    }
+                } catch (e) {
+                    console.warn('[Optimize Verify] Failed to verify asset', e);
                 }
             },
 
@@ -13273,6 +13936,32 @@ details[open] .ob-chevron {
                 // Auto-load library immediately - always visible
                 this.refreshAssets();
                 this.refreshLivePreview();
+
+                // Quick Asset Tools: Enter hotkeys
+                // - Enter: Open
+                // - Ctrl/Cmd+Enter: Optimize + Replace
+                // - Alt+Enter: Optimize + Download
+                const quickEl = document.getElementById('ppQuickAssetInput');
+                if (quickEl && !quickEl.dataset.boundQuickAsset) {
+                    quickEl.addEventListener('keydown', (e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const ctrlOrCmd = !!(e.ctrlKey || e.metaKey);
+                        const alt = !!e.altKey;
+                        if (alt) {
+                            this.quickOptimizeAsset({ mode: 'download' });
+                            return;
+                        }
+                        if (ctrlOrCmd) {
+                            this.quickOptimizeAsset({ mode: 'replace' });
+                            return;
+                        }
+                        this.quickOpenAsset();
+                    });
+                    quickEl.dataset.boundQuickAsset = 'true';
+                }
 
                 // Subtle, conditional refresh for Library mode: when the tab regains focus/visibility,
                 // refresh only if the library is stale or empty. No manual button.
@@ -13467,6 +14156,79 @@ details[open] .ob-chevron {
                     }
                 }
 
+                const optImagesEl = document.getElementById('ppOptimizeImages');
+                const imgFmtEl = document.getElementById('ppImageFormat');
+                const imgQualEl = document.getElementById('ppImageQuality');
+                const imgQualLabel = document.getElementById('ppImageQualityLabel');
+                const imgMaxEl = document.getElementById('ppImageMaxDim');
+
+                const syncOptUi = () => {
+                    try {
+                        const on = optImagesEl ? !!optImagesEl.checked : true;
+                        [imgFmtEl, imgQualEl, imgMaxEl].forEach(el => {
+                            if (!el) return;
+                            el.disabled = !on;
+                            el.style.opacity = on ? '1' : '0.55';
+                            el.style.pointerEvents = on ? '' : 'none';
+                        });
+                    } catch (_) {}
+                };
+
+                if (optImagesEl) {
+                    const stored = this.safeGetItem(this.storageKeys.optimizeImages);
+                    if (stored) optImagesEl.checked = stored === '1';
+                    if (!optImagesEl.dataset.bound) {
+                        optImagesEl.addEventListener('change', () => {
+                            this.safeSetItem(this.storageKeys.optimizeImages, optImagesEl.checked ? '1' : '0');
+                            syncOptUi();
+                        });
+                        optImagesEl.dataset.bound = 'true';
+                    }
+                }
+
+                if (imgFmtEl) {
+                    const stored = this.safeGetItem(this.storageKeys.imageFormat);
+                    if (stored) imgFmtEl.value = String(stored);
+                    if (!imgFmtEl.dataset.bound) {
+                        imgFmtEl.addEventListener('change', () => {
+                            this.safeSetItem(this.storageKeys.imageFormat, String(imgFmtEl.value || 'auto'));
+                        });
+                        imgFmtEl.dataset.bound = 'true';
+                    }
+                }
+
+                if (imgMaxEl) {
+                    const stored = this.safeGetItem(this.storageKeys.imageMaxDim);
+                    if (stored) imgMaxEl.value = String(stored);
+                    if (!imgMaxEl.dataset.bound) {
+                        imgMaxEl.addEventListener('change', () => {
+                            this.safeSetItem(this.storageKeys.imageMaxDim, String(imgMaxEl.value || '1920'));
+                        });
+                        imgMaxEl.dataset.bound = 'true';
+                    }
+                }
+
+                if (imgQualEl) {
+                    const stored = this.safeGetItem(this.storageKeys.imageQuality);
+                    if (stored) imgQualEl.value = String(stored);
+                    const syncLabel = () => {
+                        if (imgQualLabel) imgQualLabel.textContent = String(imgQualEl.value || '');
+                    };
+                    syncLabel();
+                    if (!imgQualEl.dataset.bound) {
+                        imgQualEl.addEventListener('input', () => {
+                            syncLabel();
+                        });
+                        imgQualEl.addEventListener('change', () => {
+                            this.safeSetItem(this.storageKeys.imageQuality, String(imgQualEl.value || '72'));
+                            syncLabel();
+                        });
+                        imgQualEl.dataset.bound = 'true';
+                    }
+                }
+
+                syncOptUi();
+
                 const rotateEl = document.getElementById('ppVideoRotate');
                 const rotateField = document.getElementById('ppRotateField');
                 if (rotateEl) {
@@ -13567,8 +14329,8 @@ details[open] .ob-chevron {
                 const dz = document.getElementById('ppDropzone');
                 if (dz && !dz.dataset.bound) {
                     dz.addEventListener('click', (e) => {
-                        // Ignore clicks on the explicit action chips (labels)
-                        if (e?.target?.closest && e.target.closest('.pp-mobile-capture-actions')) return;
+                        // Ignore clicks on interactive controls inside the dropzone (toggles/selects/buttons)
+                        if (e?.target?.closest && e.target.closest('button, input, select, textarea, label')) return;
                         // Ignore clicks inside the preview/staging UI so buttons/selects work.
                         if (e?.target?.closest && e.target.closest('#ppFilePreviews')) return;
                         fileInput?.click();
@@ -14308,6 +15070,23 @@ details[open] .ob-chevron {
                         const isVideo = activeHero.media_kind === 'video';
                         const heroMode = String(activeHero.smart_crop_details?.hero_banner?.render_mode || '').toLowerCase();
                         const poster = activeHero.video_thumbnail_url ? ` poster="${activeHero.video_thumbnail_url}"` : '';
+                        const heroOpt = this.getOptimizationInfo(activeHero);
+                        const heroOptBadgeId = `ppHeroOpt_${String(activeHero.asset_id || '').replace(/[^a-zA-Z0-9_-]/g, '')}`;
+                        if (String(activeHero?.media_kind || activeHero?.kind || '').toLowerCase() !== 'video') {
+                            if (!heroOpt.isOptimized) {
+                                console.warn('[Hero Format] Not WebP/AVIF (by storage_path ext)', {
+                                    asset_id: activeHero.asset_id,
+                                    storage_path: activeHero.storage_path,
+                                    ext: heroOpt.ext
+                                });
+                            } else {
+                                console.log('[Hero Format] WebP/AVIF (by storage_path ext)', {
+                                    asset_id: activeHero.asset_id,
+                                    storage_path: activeHero.storage_path,
+                                    ext: heroOpt.ext
+                                });
+                            }
+                        }
                         const mediaHtml = (heroMode === 'fit_blur')
                             ? (() => {
                                 const bgMedia = isVideo
@@ -14336,12 +15115,18 @@ details[open] .ob-chevron {
                                 <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.85);color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;pointer-events:none;">
                                     ${activeHero.service === 'tv_mounting' ? 'TV Mounting' : 'Cameras'}
                                 </div>
+                                <div id="${heroOptBadgeId}" style="position:absolute;top:12px;left:12px;background:${heroOpt.isOptimized ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)'};color:white;padding:6px 10px;border-radius:6px;font-size:11px;font-weight:800;letter-spacing:0.2px;pointer-events:none;">
+                                    Format: ${heroOpt.label}${heroOpt.isOptimized ? '' : ' (not optimized)'}
+                                </div>
                                 <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.95));padding:16px;color:white;pointer-events:none;">
                                     <div style="font-size:13px;font-weight:700;margin-bottom:4px;">Click to edit framing</div>
                                     <div style="font-size:11px;opacity:0.9;">${activeHero.shot_type || 'result'} | 16:9 aspect ratio</div>
                                 </div>
                             </div>
                         `;
+
+                        // Best-effort verification: check actual response Content-Type (may fail if HEAD/CORS blocked).
+                        setTimeout(() => this.verifyAndUpdateOptimizationBadge(activeHero, heroOptBadgeId, 'Hero'), 0);
                     } else {
                         html += `<div onclick="proofPacks.assignAssetToSlot('bundles', 'hero', 'tv_mounting')" style="padding:60px;text-align:center;border:3px dashed #cbd5e1;border-radius:12px;background:#f8fafc;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(59,130,246,0.15)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='';this.style.boxShadow=''">
                             <div style="font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:8px;">Click to Assign Hero Banner</div>
@@ -14711,6 +15496,7 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No asset provided');
                     return '';
                 }
+                if (asset.media_url) return asset.media_url;
                 if (asset.direct_url) return asset.direct_url;
                 
                 const bucket = asset.storage_bucket || 'proof';
@@ -14719,22 +15505,24 @@ details[open] .ob-chevron {
                     console.warn('[buildAssetUrl] No storage_path for asset:', asset.asset_id);
                     return '';
                 }
-                
-                // Use Supabase public URL directly
-                const supabaseHost = 'ulbzmgmxrqyipclrbohi.supabase.co';
-                let url = `https://${supabaseHost}/storage/v1/object/public/${bucket}/${path}`;
-                
-                // FORCE CACHE BUSTING if the asset has a "last updated" timestamp from a recent save.
-                // We typically get this from the database trigger or the local update.
-                // If the asset object has an updated_at string, we can hash it or use it directly.
-                if (asset.updated_at) {
-                     const ts = new Date(asset.updated_at).getTime();
-                     if (!isNaN(ts)) {
-                         url += `?t=${ts}`;
-                     }
+
+                let url = this.publicStorageUrl(bucket, path);
+                if (!url) return '';
+
+                // Cache-bust when we know it changed.
+                try {
+                    if (asset.updated_at) {
+                        const ts = new Date(asset.updated_at).getTime();
+                        if (!isNaN(ts)) {
+                            const u = new URL(url, String(location?.origin || 'https://example.com'));
+                            u.searchParams.set('t', String(ts));
+                            url = u.toString();
+                        }
+                    }
+                } catch {
+                    // ignore
                 }
 
-                console.log('[buildAssetUrl] Built URL:', url);
                 return url;
             },
 
@@ -14782,6 +15570,7 @@ details[open] .ob-chevron {
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 const asset = items.find(a => a.asset_id === assetId);
                 const isVideo = asset && asset.media_kind === 'video';
+                const isImage = !!asset && !isVideo;
                 
                 const menuItems = [
                         // Hero Banner: allow ANY asset; warn later if low-res.
@@ -14802,6 +15591,19 @@ details[open] .ob-chevron {
                         icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg>',
                         action: () => this.beginEditAssetMedia(assetId, 'proof_rail') 
                     },
+                    ...(isImage ? [{
+                        label: 'Optimize + Replace (WebP/AVIF)',
+                        icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm3.5 8.5H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 1 0v3.5h3a.5.5 0 0 1 0 1Z"/></svg>',
+                        action: () => this.optimizeLibraryAsset(assetId, { mode: 'replace' })
+                    }, {
+                        label: 'Optimize + Download (WebP/AVIF)',
+                        icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5V13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.6a.5.5 0 0 1 1 0V13a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.6a.5.5 0 0 1 .5-.5Z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3Z"/></svg>',
+                        action: () => this.optimizeLibraryAsset(assetId, { mode: 'download' })
+                    }, {
+                        label: 'Replace Media…',
+                        icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>',
+                        action: () => this.beginReplaceAssetMedia(assetId)
+                    }] : []),
                     ...(isVideo ? [{ 
                         label: 'Set Custom Thumbnail', 
                         icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/><path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/></svg>',
@@ -14891,6 +15693,7 @@ details[open] .ob-chevron {
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 const asset = items.find(a => a.asset_id === assetId);
                 const isVideo = asset && asset.media_kind === 'video';
+                const isImage = !!asset && !isVideo;
                 
                 const menuItems = [
                     { 
@@ -14902,6 +15705,15 @@ details[open] .ob-chevron {
                         label: 'Set Thumbnail', 
                         icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/><path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/></svg>',
                         action: () => this.openThumbnailPicker(assetId, asset) 
+                    }] : []),
+                    ...(isImage ? [{
+                        label: 'Optimize + Replace (WebP/AVIF)',
+                        icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm3.5 8.5H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 1 0v3.5h3a.5.5 0 0 1 0 1Z"/></svg>',
+                        action: () => this.optimizeLibraryAsset(assetId, { mode: 'replace' })
+                    }, {
+                        label: 'Replace Media…',
+                        icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>',
+                        action: () => this.beginReplaceAssetMedia(assetId)
                     }] : []),
                     // Only show placement-specific actions if not in global library
                     ...(placement !== 'library' ? [{ 
@@ -16050,12 +16862,8 @@ details[open] .ob-chevron {
                 // Prevents auto-baking a new cropped image when the user didn't touch framing.
                 this.state._userDidCrop = false;
 
-                // Ensure Supabase config is loaded so we can build a public preview URL.
-                const sb = await this.ensureSupabaseConfig();
-                if (!sb?.ok || !sb?.url) {
-                    showToast('Supabase config unavailable (no preview URL). Click Refresh and verify backend env.', 'error');
-                    return;
-                }
+                // Prefer proxy-based media URLs (no client-side Supabase dependency).
+                // Only fall back to loading Supabase config if we can't build a preview URL.
 
                 // If the asset has a preserved original, always edit against the original
                 // so we can re-crop without quality loss.
@@ -16077,11 +16885,27 @@ details[open] .ob-chevron {
 
                 // const isVideo = (asset.media_kind || asset.kind || '').toLowerCase() === 'video'; // Already declared above
 
-                const baseUrl = this.publicStorageUrl(bucket, path);
-                const url = baseUrl ? `${baseUrl}?v=${Date.now()}` : '';
+                let baseUrl = this.publicStorageUrl(bucket, path);
+                if (!baseUrl) {
+                    const sb = await this.ensureSupabaseConfig();
+                    if (sb?.ok && sb?.url) {
+                        baseUrl = this.publicStorageUrl(bucket, path);
+                    }
+                }
+
+                let url = '';
+                if (baseUrl) {
+                    try {
+                        const u = new URL(baseUrl, String(location?.origin || 'https://example.com'));
+                        u.searchParams.set('v', String(Date.now()));
+                        url = u.toString();
+                    } catch {
+                        url = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}v=${Date.now()}`;
+                    }
+                }
 
                 if (!url) {
-                    showToast('Missing preview URL (check Supabase config / storage path).', 'error');
+                    showToast('Missing preview URL (check storage path / proxy configuration).', 'error');
                     return;
                 }
 
@@ -19187,8 +20011,27 @@ details[open] .ob-chevron {
                     const surface = document.getElementById('ppSurface')?.value || 'bundles';
                     const service = String(targetAsset?.service || document.getElementById('ppService')?.value || '').trim();
 
-                    const analysis = await this.analyzeFile(file);
+                    let analysis = await this.analyzeFile(file);
                     const media_kind = String(analysis?.media_kind || '').trim() || (file?.type?.startsWith('video/') ? 'video' : 'photo');
+
+                    // Always optimize images on replace (WebP/AVIF) when the preference is enabled.
+                    // This keeps the system free of "regular" JPEG/PNG uploads long-term.
+                    try {
+                        const optOn = this.getOptimizeImagesPreference();
+                        if (optOn && media_kind !== 'video' && this.isImageFile(file)) {
+                            const fmt = this.getImageFormatPreference();
+                            const q = this.getImageQualityPreference();
+                            const maxDim = this.getImageMaxDimPreference();
+                            if (statusEl) statusEl.textContent = 'Optimizing image…';
+                            const converted = await this.convertImageFile(file, { format: fmt, quality: q, maxDim });
+                            if (converted) {
+                                file = converted;
+                                analysis = await this.analyzeFile(file);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('[ProofPacks] Replace image optimization failed; using original:', e);
+                    }
 
                     const existingKind = String(targetAsset?.media_kind || '').trim();
                     if (existingKind && existingKind !== media_kind) {
@@ -19500,7 +20343,7 @@ details[open] .ob-chevron {
                     const name = String(f?.name || '').toLowerCase();
                     if (mime.startsWith('image/')) return 'image';
                     if (mime.startsWith('video/')) return 'video';
-                    if (/\.(png|jpe?g|gif|webp|bmp|heic|heif|tiff?)$/.test(name)) return 'image';
+                    if (/\.(png|jpe?g|gif|webp|avif|bmp|heic|heif|tiff?)$/.test(name)) return 'image';
                     if (/\.(mp4|mov|m4v|webm|avi|mkv)$/.test(name)) return 'video';
                     return '';
                 };
@@ -19532,13 +20375,56 @@ details[open] .ob-chevron {
                     console.warn('[ProofPacks] Skipped invalid files:', invalid);
                 }
 
+                // Optional: Optimize images locally before staging/upload.
+                try {
+                    const optOn = this.getOptimizeImagesPreference();
+                    if (optOn) {
+                        const fmt = this.getImageFormatPreference();
+                        const q = this.getImageQualityPreference();
+                        const maxDim = this.getImageMaxDimPreference();
+                        const imageCount = supported.filter(f => this.isImageFile(f)).length;
+                        if (imageCount > 0) {
+                            const statusEl = document.getElementById('ppUploadStatus');
+                            if (statusEl) statusEl.textContent = `Optimizing ${imageCount} image(s)...`;
+                            const next = [];
+                            for (const f of supported) {
+                                if (!this.isImageFile(f)) {
+                                    next.push(f);
+                                    continue;
+                                }
+                                // Skip tiny images; they won't benefit and conversion can lose crisp UI overlays.
+                                if ((f?.size || 0) < 60 * 1024) {
+                                    next.push(f);
+                                    continue;
+                                }
+                                try {
+                                    const converted = await this.convertImageFile(f, { format: fmt, quality: q, maxDim });
+                                    next.push(converted || f);
+                                } catch (e) {
+                                    console.warn('[ProofPacks] Image optimization failed, using original:', f?.name, e);
+                                    next.push(f);
+                                }
+                            }
+                            supported = next;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[ProofPacks] Optimize images step failed:', e);
+                }
+
                 // FILE DUPE INTELLIGENCE
                 const skipped = [];
                 const libraryItems = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 
                 supported = supported.filter(file => {
                     // Check 1: Is it already in Staging? (Prevent double-drop)
-                    const existingStage = (this.state.stagedFiles || []).find(s => s.name === file.name && s.size === file.size);
+                    const keyName = file?._ppOriginalName || file.name;
+                    const keySize = file?._ppOriginalSize || file.size;
+                    const existingStage = (this.state.stagedFiles || []).find(s => {
+                        const n = s?._ppOriginalName || s.name;
+                        const z = s?._ppOriginalSize || s.size;
+                        return n === keyName && z === keySize;
+                    });
                     if (existingStage) {
                         skipped.push(file.name);
                         return false;
@@ -19547,7 +20433,8 @@ details[open] .ob-chevron {
                     // Check 2: Is it already in the Library? (Prevent re-upload)
                     // Note: 'storage_path' usually ends with the filename.
                     const existingLib = libraryItems.find(item => {
-                        return String(item.storage_path || '').endsWith(file.name);
+                        const p = String(item.storage_path || '');
+                        return p.endsWith(file.name) || p.endsWith(keyName);
                     });
                     
                     if (existingLib) {
@@ -19585,15 +20472,12 @@ details[open] .ob-chevron {
                 if (!dz) return;
 
                 if (isPreviewMode) {
+                    dz.classList.add('is-preview');
                     if (prompt) prompt.style.display = 'none';
-                    // Make room for cards inside the dropzone.
-                    dz.style.padding = '16px';
-                    dz.style.cursor = 'default';
                     if (previews) previews.style.display = 'block';
                 } else {
+                    dz.classList.remove('is-preview');
                     if (prompt) prompt.style.display = 'block';
-                    dz.style.padding = '60px 32px';
-                    dz.style.cursor = 'pointer';
                     if (previews) previews.style.display = 'none';
                 }
             },
@@ -19602,7 +20486,6 @@ details[open] .ob-chevron {
                 const files = this.state.stagedFiles || [];
                 const container = document.getElementById('ppFilePreviews');
                 const grid = document.getElementById('ppPreviewGrid');
-                const uploadBtn = document.getElementById('ppUploadBtn');
                 const service = document.getElementById('ppService')?.value || 'tv_mounting';
                 
                 if (!container || !grid) return;
@@ -19627,7 +20510,7 @@ details[open] .ob-chevron {
                 files.forEach((file, idx) => {
                     const mime = String(file?.type || '').toLowerCase();
                     const nameLower = String(file?.name || '').toLowerCase();
-                    const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|heic|heif)$/i.test(nameLower);
+                    const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|avif|bmp|heic|heif)$/i.test(nameLower);
                     const isVideo = mime.startsWith('video/') || /\.(mp4|mov|m4v|webm|avi)$/i.test(nameLower);
                     const card = document.createElement('div');
                     card.style.cssText = `
@@ -19676,7 +20559,15 @@ details[open] .ob-chevron {
                     
                     const metaRow = document.createElement('div');
                     metaRow.style.cssText = "display:flex; justify-content:space-between; margin-bottom: 6px; font-size:11px; color:#64748b;";
-                    metaRow.innerHTML = `<span style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(String(file.name || 'upload'))}</span><span>${Math.round(file.size/1024)} KB</span>`;
+                    try {
+                        const was = !!file?._ppWasOptimized;
+                        const origKb = Math.round((file?._ppOriginalSize || 0) / 1024);
+                        const curKb = Math.round((file?.size || 0) / 1024);
+                        const right = was && origKb ? `${curKb} KB (from ${origKb} KB)` : `${curKb} KB`;
+                        metaRow.innerHTML = `<span style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(String(file.name || 'upload'))}${was ? ' <span style=\"color:#2563eb; font-weight:800;\">OPT</span>' : ''}</span><span>${right}</span>`;
+                    } catch (_) {
+                        metaRow.innerHTML = `<span style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${this.escapeHtml(String(file.name || 'upload'))}</span><span>${Math.round(file.size/1024)} KB</span>`;
+                    }
                     controls.appendChild(metaRow);
                     
                     // Shot Type Selector
@@ -19876,21 +20767,6 @@ details[open] .ob-chevron {
                         });
                     }
                 });
-                
-                // Update upload button
-                if (uploadBtn) {
-                     // Cloning to remove old listeners is safer, but just unbinding via property reset works for simple handlers
-                     uploadBtn.textContent = `Upload ${files.length} Assets`;
-                     uploadBtn.onclick = (e) => {
-                         e.preventDefault(); 
-                         e.stopPropagation();
-                         this.startBackgroundUpload(); 
-                     };
-                     uploadBtn.style.display = 'inline-flex';
-                     uploadBtn.disabled = files.length === 0;
-                     uploadBtn.classList.remove('btn-secondary');
-                     uploadBtn.classList.add('btn-primary');
-                }
 
                 const clearBtn = document.getElementById('ppClearStagedBtn');
                 if (clearBtn) {
@@ -19900,7 +20776,7 @@ details[open] .ob-chevron {
                 // Show "Staged" status
                 const statusEl = document.getElementById('ppUploadStatus');
                 if (statusEl) {
-                    statusEl.textContent = `${files.length} files ready. Review and click Upload.`;
+                    statusEl.textContent = `${files.length} files staged. Use “Save to library” on each card.`;
                     statusEl.style.display = 'block';
                 }
 
@@ -20700,7 +21576,6 @@ details[open] .ob-chevron {
             },
 
             syncUploadActions() {
-                const uploadBtn = document.getElementById('ppUploadBtn');
                 const clearBtn = document.getElementById('ppClearStagedBtn');
                 const statusEl = document.getElementById('ppUploadStatus');
                 const warnEl = document.getElementById('ppUploadWarning');
@@ -20709,32 +21584,6 @@ details[open] .ob-chevron {
                 const hasBatch = staged.length > 0;
                 const hasSingle = !!this.state?.file && !hasBatch;
                 const intent = String(document.getElementById('ppIntent')?.value || '').trim();
-
-                if (uploadBtn) {
-                    if (hasBatch) {
-                        uploadBtn.style.display = 'inline-flex';
-                        uploadBtn.disabled = false;
-                        uploadBtn.textContent = `Upload ${staged.length} Assets`;
-                        uploadBtn.onclick = (e) => {
-                            try { e?.preventDefault?.(); } catch (_) {}
-                            try { e?.stopPropagation?.(); } catch (_) {}
-                            this.startBackgroundUpload();
-                        };
-                    } else if (hasSingle) {
-                        uploadBtn.style.display = 'inline-flex';
-                        uploadBtn.disabled = !intent;
-                        uploadBtn.textContent = 'Upload 1 Asset';
-                        uploadBtn.onclick = (e) => {
-                            try { e?.preventDefault?.(); } catch (_) {}
-                            try { e?.stopPropagation?.(); } catch (_) {}
-                            this.uploadAndAssign();
-                        };
-                    } else {
-                        uploadBtn.style.display = 'none';
-                        uploadBtn.disabled = true;
-                        uploadBtn.textContent = 'Upload';
-                    }
-                }
 
                 if (clearBtn) {
                     clearBtn.style.display = hasBatch ? 'inline-flex' : 'none';

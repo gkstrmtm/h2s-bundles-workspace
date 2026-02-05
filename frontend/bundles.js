@@ -76,6 +76,8 @@ window.H2S_META_ENDPOINT = DASH_URL;
 const PROOF_SLOTS_API = API.replace('/api/shop', '/api/proof-slots');
 const PROOF_EVENT_API = API.replace('/api/shop', '/api/proof-event');
 const PROOF_ASSET_API = API.replace('/api/shop', '/api/proof-asset');
+const PROOF_ASSET_MEDIA_API = API.replace('/api/shop', '/api/proof-asset-media');
+const PROOF_ASSET_EDITS_API = API.replace('/api/shop', '/api/proof-asset-edits');
 const SUPABASE_CONFIG_API = API.replace('/api/shop', '/api/get_supabase_config');
 
 // Hero underlay: this must be the specific curated hero image asset.
@@ -91,7 +93,7 @@ async function fetchHeroUnderlayUrl() {
       // 1) Try to resolve from slots if present.
       const fromSlots = findProofAssetById(_proofSlots, HERO_UNDERLAY_ASSET_ID);
       if (fromSlots) {
-        const baseUrl = fromSlots?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, fromSlots?.storage_bucket, fromSlots?.storage_path);
+        const baseUrl = resolveProofAssetMediaUrl(fromSlots) || fromSlots?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, fromSlots?.storage_bucket, fromSlots?.storage_path);
         const url = appendCacheBust(baseUrl, getProofAssetVersionToken(fromSlots));
         if (url) return url;
       }
@@ -106,7 +108,7 @@ async function fetchHeroUnderlayUrl() {
       if (!res || !res.ok) return '';
       const data = await res.json().catch(() => null);
       const a = data?.asset;
-      const base = String(a?.public_url || a?.direct_url || '').trim();
+      const base = resolveProofAssetMediaUrl(a) || String(a?.public_url || a?.direct_url || '').trim();
       if (!base) return '';
       const token = String(a?.updated_at || a?.created_at || '').trim();
       return appendCacheBust(base, token);
@@ -352,7 +354,7 @@ function renderProofHeroMedia(targetEl, asset) {
       return false;
     }
 
-    const baseUrl = asset?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, asset?.storage_bucket, asset?.storage_path);
+    const baseUrl = resolveProofAssetMediaUrl(asset) || asset?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, asset?.storage_bucket, asset?.storage_path);
     const url = appendCacheBust(baseUrl, getProofAssetVersionToken(asset));
     if (!url) {
       targetEl.innerHTML = '';
@@ -364,7 +366,7 @@ function renderProofHeroMedia(targetEl, asset) {
     const renderMode = String(heroBanner?.render_mode || '').trim().toLowerCase();
     const t = buildHeroTransformCss(heroBanner);
 
-    const posterBase = asset?.video_thumbnail_url ? String(asset.video_thumbnail_url) : '';
+    const posterBase = resolveProofThumbnailUrlFromAsset(asset) || (asset?.video_thumbnail_url ? String(asset.video_thumbnail_url) : '');
     const poster = appendCacheBust(posterBase || '', getProofAssetVersionToken(asset)) || videoPosterDataUri();
 
     // Reset any prior adaptive styling (safe even if elements don't exist yet).
@@ -785,8 +787,91 @@ function safeJsonParse(text) {
   try { return JSON.parse(text); } catch (_) { return null; }
 }
 
+function normalizeHttpBaseUrl(raw) {
+  try {
+    let u = String(raw || '').trim();
+    if (!u) return '';
+    u = u.replace(/\/+$/, '');
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.startsWith('//')) return 'https:' + u;
+
+    // If caller gives a bare host (e.g. ulbz...supabase.co), make it absolute.
+    if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\:\d+)?(\/.*)?$/i.test(u)) {
+      return 'https://' + u;
+    }
+
+    return u;
+  } catch (_) {
+    return '';
+  }
+}
+
+function buildProofAssetProxyUrl(bucket, path) {
+  try {
+    const b = String(bucket || '').replace(/^\/+|\/+$/g, '');
+    const p = String(path || '').replace(/^\/+/, '');
+    if (!b || !p) return '';
+    return `${PROOF_ASSET_MEDIA_API}?bucket=${encodeURIComponent(b)}&path=${encodeURIComponent(p)}`;
+  } catch (_) {
+    return '';
+  }
+}
+
+function tryParseSupabasePublicObjectUrl(rawUrl) {
+  try {
+    const u = String(rawUrl || '').trim();
+    if (!u) return null;
+    const url = new URL(u);
+    const marker = '/storage/v1/object/public/';
+    const idx = url.pathname.indexOf(marker);
+    if (idx < 0) return null;
+    const tail = url.pathname.substring(idx + marker.length).replace(/^\/+/, '');
+    const parts = tail.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    const bucket = parts[0];
+    const path = parts.slice(1).join('/');
+    if (!bucket || !path) return null;
+    return { bucket, path };
+  } catch (_) {
+    return null;
+  }
+}
+
+function resolveProofThumbnailUrlFromAsset(asset) {
+  try {
+    const thumb = String(asset?.video_thumbnail_url || '').trim();
+    if (!thumb) return '';
+
+    const parsed = tryParseSupabasePublicObjectUrl(thumb);
+    if (parsed && parsed.bucket && parsed.path) {
+      const proxy = buildProofAssetProxyUrl(parsed.bucket, parsed.path);
+      if (proxy) return proxy;
+    }
+
+    // If it's already absolute (non-supabase or already proxied), keep it.
+    if (/^https?:\/\//i.test(thumb)) return thumb;
+  } catch (_) {}
+  return '';
+}
+
+function resolveProofAssetMediaUrl(asset) {
+  try {
+    const direct = String(asset?.public_url || asset?.direct_url || '').trim();
+    if (direct && (direct.startsWith('data:') || direct.startsWith('blob:'))) return direct;
+
+    const bucket = asset?.storage_bucket || asset?.storageBucket;
+    const path = asset?.storage_path || asset?.storagePath;
+    const proxy = buildProofAssetProxyUrl(bucket, path);
+    if (proxy) return proxy;
+
+    // Last resort: use direct/public if present.
+    if (direct) return normalizeHttpBaseUrl(direct) || direct;
+  } catch (_) {}
+  return '';
+}
+
 function buildSupabasePublicUrl(supabaseUrl, bucket, path) {
-  const base = String(supabaseUrl || '').replace(/\/+$/, '');
+  const base = normalizeHttpBaseUrl(supabaseUrl);
   const b = String(bucket || '').replace(/^\/+|\/+$/g, '');
   const p = String(path || '').replace(/^\/+/, '');
   if (!base || !b || !p) return '';
@@ -841,35 +926,34 @@ function collectProofSlotAssetIds(slots) {
 
 async function hydrateProofEditsFromSupabase() {
   try {
-    if (!_proofSlots || !_proofSupabaseUrl || !_proofSupabaseAnonKey) return;
+    if (!_proofSlots) return;
 
     const ids = collectProofSlotAssetIds(_proofSlots);
     if (!ids.length) return;
 
-    const base = String(_proofSupabaseUrl || '').replace(/\/+$/, '');
-    const key = String(_proofSupabaseAnonKey || '').trim();
-    if (!base || !key) return;
-
-    const headers = {
-      apikey: key,
-      Authorization: `Bearer ${key}`
-    };
-
-    const chunkSize = 40;
+    const chunkSize = 120;
     const map = new Map();
 
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
-      const inList = chunk.map(id => `"${String(id).replace(/"/g, '')}"`).join(',');
-      const url = `${base}/rest/v1/proof_assets?select=asset_id,smart_crop_details&asset_id=in.(${inList})`;
-      const res = await fetch(url, { method: 'GET', headers, credentials: 'omit', cache: 'no-store' }).catch(() => null);
+
+      const res = await fetch(PROOF_ASSET_EDITS_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'omit',
+        cache: 'no-store',
+        body: JSON.stringify({ asset_ids: chunk }),
+      }).catch(() => null);
+
       if (!res || !res.ok) continue;
-      const rows = await res.json().catch(() => null);
-      if (!Array.isArray(rows)) continue;
-      rows.forEach(r => {
-        const aid = String(r?.asset_id || '').trim();
-        if (!aid) return;
-        map.set(aid, r?.smart_crop_details ?? null);
+      const data = await res.json().catch(() => null);
+      const edits = data?.edits && typeof data.edits === 'object' ? data.edits : null;
+      if (!edits) continue;
+
+      Object.keys(edits).forEach((aid) => {
+        const id = String(aid || '').trim();
+        if (!id) return;
+        map.set(id, edits[aid]);
       });
     }
 
@@ -927,7 +1011,7 @@ async function loadProofData() {
     try {
       if (cfgRes && cfgRes.ok) {
         const cfg = await cfgRes.json();
-        if (cfg && cfg.ok && cfg.url) _proofSupabaseUrl = String(cfg.url);
+        if (cfg && cfg.ok && cfg.url) _proofSupabaseUrl = normalizeHttpBaseUrl(String(cfg.url)) || String(cfg.url);
         if (cfg && cfg.ok && cfg.anonKey) _proofSupabaseAnonKey = String(cfg.anonKey);
       }
     } catch (_) {}
@@ -995,7 +1079,7 @@ function renderProofTiles(targetEl, assets, opts) {
   }
 
   const html = list.map((a) => {
-    const baseUrl = a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
+    const baseUrl = resolveProofAssetMediaUrl(a) || a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
     const url = appendCacheBust(baseUrl, getProofAssetVersionToken(a));
     if (!url) return '';
     const kind = String(a.media_kind || 'photo');
@@ -1023,7 +1107,7 @@ function renderProofTiles(targetEl, assets, opts) {
     if (kind === 'video') {
       const preload = String(opts?.videoPreload || 'none');
       // Use custom thumbnail if available, otherwise use default poster
-      const customPoster = a.video_thumbnail_url ? String(a.video_thumbnail_url) : '';
+      const customPoster = resolveProofThumbnailUrlFromAsset(a) || (a.video_thumbnail_url ? String(a.video_thumbnail_url) : '');
       const poster = customPoster || String(opts?.videoPoster || '') || videoPosterDataUri();
       return `
         <div class="proof-tile">
@@ -4725,11 +4809,15 @@ function showCheckoutModal() {
     try { toggleCart(); } catch (_e) { try { cartDrawer.classList.remove('open'); } catch(_e2) {} }
   }
 
+  let preName = (user?.name || user?.full_name || user?.display_name || '').trim();
+  let preEmail = (user?.email || '').trim();
   const prePhone = user?.phone || '';
   
   let preAddress = '', preCity = '', preState = '', preZip = '';
   try {
     const saved = JSON.parse(localStorage.getItem('h2s_guest_checkout') || '{}');
+    if (!preName && saved.name) preName = String(saved.name).trim();
+    if (!preEmail && saved.email) preEmail = String(saved.email).trim();
     if(saved.address) preAddress = saved.address;
     if(saved.city) preCity = saved.city;
     if(saved.state) preState = saved.state;
@@ -4738,6 +4826,8 @@ function showCheckoutModal() {
 
   try {
     const pending = JSON.parse(sessionStorage.getItem('h2s_pending_account') || '{}');
+    if (!preName && pending.name) preName = String(pending.name).trim();
+    if (!preEmail && pending.email) preEmail = String(pending.email).trim();
     if(pending.address) preAddress = pending.address;
     if(pending.city) preCity = pending.city;
     if(pending.state) preState = pending.state;

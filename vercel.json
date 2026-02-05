@@ -34,6 +34,16 @@
     },
     {
       "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/frontend/bundles.html"
+    },
+    {
+      "source": "/",
       "destination": "/index.html"
     },
     {
@@ -66,15 +76,39 @@
     },
     {
       "source": "/bundles",
-      "destination": "/bundles.html"
+      "destination": "/frontend/bundles.html"
+    },
+    {
+      "source": "/bundles.html",
+      "destination": "/frontend/bundles.html"
+    },
+    {
+      "source": "/bundles.js",
+      "destination": "/frontend/bundles.js"
     },
     {
       "source": "/shop",
-      "destination": "/bundles.html"
+      "destination": "/frontend/bundles.html"
+    },
+    {
+      "source": "/gallery",
+      "destination": "/frontend/gallery.html"
+    },
+    {
+      "source": "/gallery.html",
+      "destination": "/frontend/gallery.html"
     },
     {
       "source": "/reviews",
       "destination": "https://h2s-backend.vercel.app/reviews.html"
+    },
+    {
+      "source": "/funnel",
+      "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/funnel-track",
+      "destination": "/funnel-track.html"
     }
   ],
   "headers": [
@@ -158,6 +192,32 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/gallery",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
+        }
+      ]
+    },
+    {
+      "source": "/gallery.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, s-maxage=0, must-revalidate"
+        },
+        {
+          "key": "Vary",
+          "value": "Host"
         }
       ]
     },

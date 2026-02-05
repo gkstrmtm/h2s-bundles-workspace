@@ -20,6 +20,14 @@ function buildPublicUrl(bucket: string, path: string) {
     .join('/')}`;
 }
 
+function buildProxyUrl(bucket: string, path: string) {
+  const b = String(bucket || '').replace(/^\/+|\/+$/g, '');
+  const p = String(path || '').replace(/^\/+/, '');
+  if (!b || !p) return '';
+  // Relative path so it works from shop domain (which rewrites /api/* to backend).
+  return `/api/proof-asset-media?bucket=${encodeURIComponent(b)}&path=${encodeURIComponent(p)}`;
+}
+
 function clampInt(v: string | null, def: number, min: number, max: number) {
   const n = Number.parseInt(String(v ?? ''), 10);
   if (!Number.isFinite(n)) return def;
@@ -74,14 +82,41 @@ export async function GET(request: Request) {
 
       const rows: any[] = Array.isArray(data) ? (data as any[]) : [];
       out[service] = rows.map((row: any) => {
-        const publicUrl = row.direct_url || buildPublicUrl(row.storage_bucket, row.storage_path);
+        const proxyUrl = buildProxyUrl(row.storage_bucket, row.storage_path);
+        const publicUrl = proxyUrl || row.direct_url || buildPublicUrl(row.storage_bucket, row.storage_path);
+
+        // If the thumbnail URL points at Supabase public storage, proxy it too.
+        const thumbUrl = (() => {
+          try {
+            const t = String(row.video_thumbnail_url || '').trim();
+            if (!t) return '';
+            const marker = '/storage/v1/object/public/';
+            const idx = t.indexOf(marker);
+            if (idx < 0) return t;
+            const tail = t.substring(idx + marker.length).replace(/^\/+/, '');
+            const parts = tail.split('/').filter(Boolean);
+            if (parts.length < 2) return t;
+            const bucket = parts[0];
+            const path = parts.slice(1).join('/');
+            return buildProxyUrl(bucket, path) || t;
+          } catch (_) {
+            return String(row.video_thumbnail_url || '').trim();
+          }
+        })();
+
         return {
           asset_id: row.asset_id,
           service: row.service,
           shot_type: row.shot_type,
           time_of_day: row.time_of_day,
           media_kind: row.media_kind,
+          storage_bucket: row.storage_bucket,
+          storage_path: row.storage_path,
+          direct_url: row.direct_url,
+          media_url: publicUrl,
           public_url: publicUrl,
+          video_thumbnail_url: thumbUrl,
+          video_thumbnail_timestamp: row.video_thumbnail_timestamp,
           width_px: row.width_px,
           height_px: row.height_px,
           created_at: row.created_at,
