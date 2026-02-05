@@ -9,6 +9,12 @@ set -euo pipefail
 #   ./scripts/vercel-safe.sh --prod
 #   ./scripts/vercel-safe.sh --refresh-ca --prod
 
+platform="$(uname -s 2>/dev/null || echo unknown)"
+case "${platform}" in
+  Darwin*) is_macos=true ;;
+  *) is_macos=false ;;
+esac
+
 refresh=false
 if [[ "${1:-}" == "--refresh-ca" ]]; then
   refresh=true
@@ -19,6 +25,11 @@ cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/h2s"
 mkdir -p "$cache_root"
 
 ca_file="$cache_root/macos-keychain-certs.pem"
+
+if ! $is_macos; then
+  echo "[vercel-safe] Non-macOS (${platform}) detected; skipping Keychain CA export." >&2
+  exec vercel "$@"
+fi
 
 if $refresh || [[ ! -s "$ca_file" ]]; then
   tmp="$(mktemp)"
