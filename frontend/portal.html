@@ -13816,6 +13816,14 @@ details[open] .ob-chevron {
                     bar.innerHTML = `
                         <span class="bulk-count" id="ppBulkCount">0 selected</span>
                         <div style="display:flex; gap:12px;">
+                            <button class="bulk-btn bulk-btn-secondary" onclick="proofPacks.bulkOptimizeSelected()" title="Convert selected image assets to WebP/AVIF and replace in-place">
+                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm3.5 8.5H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 1 0v3.5h3a.5.5 0 0 1 0 1Z"/></svg>
+                                Optimize Selected
+                            </button>
+                            <button class="bulk-btn bulk-btn-secondary" onclick="proofPacks.bulkOptimizeAllLoaded()" title="Convert all currently loaded image assets to WebP/AVIF and replace in-place">
+                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 8a.5.5 0 0 1 .5-.5h6.5V5.354a.5.5 0 0 1 .854-.353l3 3a.5.5 0 0 1 0 .707l-3 3A.5.5 0 0 1 11.5 11.646V8.5H5A.5.5 0 0 1 4.5 8z"/><path d="M1 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1a.5.5 0 0 1-1 0V4a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1a.5.5 0 0 1 1 0v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V4z"/></svg>
+                                Optimize All Loaded
+                            </button>
                             <button class="bulk-btn" onclick="proofPacks.bulkSetLive()">
                                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>
                                 Set Live
@@ -14089,6 +14097,388 @@ details[open] .ob-chevron {
                     console.error(e);
                     showToast(`Delete failed: ${e.message}`, 'error');
                 }
+            },
+
+
+            // Bulk Optimize (WebP/AVIF)
+            ensureBulkOptimizeModal() {
+                const existing = document.getElementById('ppBulkOptimizeModal');
+                if (existing) return existing;
+
+                const wrap = document.createElement('div');
+                wrap.id = 'ppBulkOptimizeModal';
+                wrap.style.cssText = `
+                    position: fixed;
+                    inset: 0;
+                    background: rgba(15, 23, 42, 0.55);
+                    z-index: 20000;
+                    display: none;
+                    align-items: center;
+                    justify-content: center;
+                    padding: 18px;
+                `;
+                wrap.innerHTML = `
+                    <div style="width: min(720px, 100%); background: white; border-radius: 14px; border: 1px solid #e2e8f0; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden;">
+                        <div style="padding: 16px 18px; border-bottom: 1px solid #eef2f7; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                            <div>
+                                <div style="font-weight: 900; font-size: 14px; color:#0f172a; letter-spacing: 0.2px;">Bulk Optimize (WebP/AVIF)</div>
+                                <div id="ppBulkOptSubtitle" style="margin-top: 2px; font-size: 12px; color:#64748b;">Preparing…</div>
+                            </div>
+                            <div style="display:flex; gap:10px; align-items:center;">
+                                <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#334155; user-select:none;">
+                                    <input id="ppBulkOptSkipOptimized" type="checkbox" checked />
+                                    Skip WebP/AVIF
+                                </label>
+                                <button id="ppBulkOptCancel" class="pp-btn-secondary" type="button" style="padding:8px 12px;">Cancel</button>
+                                <button id="ppBulkOptClose" class="pp-btn-secondary" type="button" style="padding:8px 12px; display:none;">Close</button>
+                            </div>
+                        </div>
+
+                        <div style="padding: 16px 18px;">
+                            <div style="display:flex; gap:12px; align-items:center;">
+                                <div style="flex:1; background:#f1f5f9; border-radius: 999px; height: 10px; overflow:hidden; border: 1px solid #e2e8f0;">
+                                    <div id="ppBulkOptBar" style="height:100%; width:0%; background: linear-gradient(90deg, #3b82f6, #2563eb); transition: width 0.2s ease;"></div>
+                                </div>
+                                <div id="ppBulkOptPct" style="width:64px; text-align:right; font-variant-numeric: tabular-nums; font-size: 12px; color:#334155; font-weight:800;">0%</div>
+                            </div>
+
+                            <div style="display:flex; gap:12px; align-items:flex-start; margin-top: 12px;">
+                                <div style="flex: 1;">
+                                    <div id="ppBulkOptLine1" style="font-size: 12px; color:#0f172a; font-weight: 800;">Starting…</div>
+                                    <div id="ppBulkOptLine2" style="margin-top: 4px; font-size: 12px; color:#64748b;">—</div>
+                                    <div id="ppBulkOptCounts" style="margin-top: 8px; font-size: 12px; color:#334155; font-variant-numeric: tabular-nums;">Done: 0 • OK: 0 • Skipped: 0 • Failed: 0</div>
+                                </div>
+                                <div style="width: 260px; border: 1px solid #e2e8f0; border-radius: 12px; overflow:hidden; background:#0b1220;">
+                                    <div id="ppBulkOptThumb" style="width:100%; aspect-ratio: 4/3; background:#0b1220; display:flex; align-items:center; justify-content:center; color: rgba(255,255,255,0.8); font-size:12px;">Preview</div>
+                                </div>
+                            </div>
+
+                            <div id="ppBulkOptLogWrap" style="margin-top: 14px; border: 1px solid #e2e8f0; border-radius: 12px; overflow:hidden;">
+                                <div style="padding:10px 12px; background:#f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: 900; color:#334155;">Results</div>
+                                <div id="ppBulkOptLog" style="max-height: 180px; overflow:auto; padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 11px; line-height: 1.35; background: white;"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(wrap);
+                return wrap;
+            },
+
+            showBulkOptimizeModal(show) {
+                const el = this.ensureBulkOptimizeModal();
+                el.style.display = show ? 'flex' : 'none';
+            },
+
+            updateBulkOptimizeUi(state) {
+                const pct = Math.max(0, Math.min(100, Number(state?.pct || 0)));
+                const bar = document.getElementById('ppBulkOptBar');
+                const pctEl = document.getElementById('ppBulkOptPct');
+                const sub = document.getElementById('ppBulkOptSubtitle');
+                const l1 = document.getElementById('ppBulkOptLine1');
+                const l2 = document.getElementById('ppBulkOptLine2');
+                const counts = document.getElementById('ppBulkOptCounts');
+                const log = document.getElementById('ppBulkOptLog');
+                const closeBtn = document.getElementById('ppBulkOptClose');
+                const cancelBtn = document.getElementById('ppBulkOptCancel');
+
+                if (bar) bar.style.width = `${pct}%`;
+                if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+                if (sub) sub.textContent = String(state?.subtitle || '');
+                if (l1) l1.textContent = String(state?.line1 || '');
+                if (l2) l2.textContent = String(state?.line2 || '');
+                if (counts) counts.textContent = `Done: ${state?.done || 0} • OK: ${state?.ok || 0} • Skipped: ${state?.skipped || 0} • Failed: ${state?.failed || 0}`;
+
+                if (log && Array.isArray(state?.logLines)) {
+                    log.textContent = state.logLines.join('\n');
+                    log.scrollTop = log.scrollHeight;
+                }
+
+                const finished = !!state?.finished;
+                if (closeBtn) closeBtn.style.display = finished ? 'inline-flex' : 'none';
+                if (cancelBtn) cancelBtn.style.display = finished ? 'none' : 'inline-flex';
+            },
+
+            isAssetOptimizedByExt(asset) {
+                const p = String(asset?.storage_path || '').toLowerCase();
+                return p.endsWith('.webp') || p.endsWith('.avif');
+            },
+
+            isImageFile(file) {
+                const t = String(file?.type || '').toLowerCase();
+                if (t.startsWith('image/')) return true;
+                const n = String(file?.name || '').toLowerCase();
+                return n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.png') || n.endsWith('.webp') || n.endsWith('.avif') || n.endsWith('.gif');
+            },
+
+            getOptimizeImagesPreference() {
+                return true;
+            },
+
+            getImageFormatPreference() {
+                return 'auto';
+            },
+
+            getImageQualityPreference() {
+                return 0.72;
+            },
+
+            getImageMaxDimPreference() {
+                return 1920;
+            },
+
+            async convertImageFile(file, { format, quality, maxDim } = {}) {
+                if (!file) return null;
+                if (!this.isImageFile(file)) return null;
+
+                const q = this.clampNumber(quality ?? this.getImageQualityPreference(), 0.35, 0.95, 0.72);
+                const maxPx = this.clampNumber(maxDim ?? this.getImageMaxDimPreference(), 0, 6000, 1920);
+                const fmtRaw = String(format || this.getImageFormatPreference() || 'auto').toLowerCase();
+
+                let outMime = 'image/webp';
+                if (fmtRaw === 'avif') outMime = 'image/avif';
+                else if (fmtRaw === 'webp') outMime = 'image/webp';
+                else {
+                    try {
+                        const testCanvas = document.createElement('canvas');
+                        const ok = testCanvas.toDataURL('image/avif').startsWith('data:image/avif');
+                        outMime = ok ? 'image/avif' : 'image/webp';
+                    } catch {
+                        outMime = 'image/webp';
+                    }
+                }
+
+                const bitmap = await createImageBitmap(file);
+                const w0 = bitmap.width || 0;
+                const h0 = bitmap.height || 0;
+                if (!w0 || !h0) return null;
+
+                let w = w0;
+                let h = h0;
+                if (maxPx > 0 && (w0 > maxPx || h0 > maxPx)) {
+                    const s = maxPx / Math.max(w0, h0);
+                    w = Math.max(1, Math.round(w0 * s));
+                    h = Math.max(1, Math.round(h0 * s));
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d', { alpha: false });
+                if (!ctx) return null;
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(bitmap, 0, 0, w, h);
+
+                const blob = await new Promise((resolve) => {
+                    try { canvas.toBlob((b) => resolve(b), outMime, q); } catch { resolve(null); }
+                });
+
+                if (!blob) {
+                    outMime = 'image/webp';
+                    const blob2 = await new Promise((resolve) => {
+                        try { canvas.toBlob((b) => resolve(b), outMime, q); } catch { resolve(null); }
+                    });
+                    if (!blob2) return null;
+                    const outName2 = String(file?.name || 'image').replace(/\.[^.]+$/, '') + '.webp';
+                    return new File([blob2], outName2, { type: outMime });
+                }
+
+                const ext = outMime.includes('avif') ? '.avif' : '.webp';
+                const outName = String(file?.name || 'image').replace(/\.[^.]+$/, '') + ext;
+                return new File([blob], outName, { type: outMime });
+            },
+
+            async optimizeAssetObject(asset, opts = { mode: 'replace' }) {
+                const id = String(asset?.asset_id || '').trim();
+                if (!id) throw new Error('Missing asset_id');
+                const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+                if (kind === 'video') throw new Error('Video skipped');
+
+                const pack = this.getSelectedPack();
+                if (!pack?.pack_id) throw new Error('Select a pack first');
+
+                const url = this.buildAssetUrl(asset);
+                if (!url) throw new Error('No asset URL');
+
+                const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+                if (!res.ok) throw new Error(`Fetch failed (HTTP ${res.status})`);
+                const blob = await res.blob();
+                const mime = String(blob?.type || asset?.content_type || 'image/jpeg');
+                const ext = mime.includes('png') ? '.png' : mime.includes('webp') ? '.webp' : mime.includes('avif') ? '.avif' : '.jpg';
+                const srcFile = new File([blob], `asset-${id}${ext}`, { type: mime });
+
+                this.state.replace = { assetId: id, asset };
+                await this.onReplaceFileSelected(srcFile);
+            },
+
+            async runBulkOptimize(assets) {
+                const list = Array.isArray(assets) ? assets.filter(Boolean) : [];
+                if (!list.length) {
+                    showToast('No assets to optimize.', 'warning');
+                    return;
+                }
+
+                if (this._bulkOptimize && this._bulkOptimize.running) {
+                    showToast('Bulk optimize already running.', 'warning');
+                    this.showBulkOptimizeModal(true);
+                    return;
+                }
+
+                const pack = this.getSelectedPack();
+                if (!pack?.pack_id) {
+                    showToast('Select a pack first (bulk optimize works on a pack).', 'warning');
+                    return;
+                }
+
+                const modal = this.ensureBulkOptimizeModal();
+                const cancelBtn = modal.querySelector('#ppBulkOptCancel');
+                const closeBtn = modal.querySelector('#ppBulkOptClose');
+                const thumb = modal.querySelector('#ppBulkOptThumb');
+                const skipEl = modal.querySelector('#ppBulkOptSkipOptimized');
+
+                const state = {
+                    running: true,
+                    cancelled: false,
+                    finished: false,
+                    total: list.length,
+                    done: 0,
+                    ok: 0,
+                    skipped: 0,
+                    failed: 0,
+                    pct: 0,
+                    subtitle: `${list.length} assets queued`,
+                    line1: 'Starting…',
+                    line2: '',
+                    logLines: [],
+                };
+                this._bulkOptimize = state;
+
+                const pushLog = (line) => {
+                    const s = String(line || '').trim();
+                    if (!s) return;
+                    state.logLines.push(s);
+                    if (state.logLines.length > 400) state.logLines = state.logLines.slice(state.logLines.length - 400);
+                };
+
+                const setThumb = (asset) => {
+                    try {
+                        if (!thumb) return;
+                        const u = this.buildAssetUrl(asset);
+                        if (!u) {
+                            thumb.innerHTML = '<div style="padding:14px; color: rgba(255,255,255,0.85); font-size:12px;">No preview</div>';
+                            return;
+                        }
+                        thumb.innerHTML = `<img src="${this.escapeHtml(u)}" style="width:100%; height:100%; object-fit: cover; display:block;" />`;
+                    } catch {
+                        // ignore
+                    }
+                };
+
+                const update = () => {
+                    state.pct = state.total ? (state.done / state.total) * 100 : 0;
+                    this.updateBulkOptimizeUi(state);
+                };
+
+                const finish = async () => {
+                    state.running = false;
+                    state.finished = true;
+                    state.subtitle = state.cancelled ? 'Cancelled' : 'Complete';
+                    state.line1 = state.cancelled ? 'Stopped by user' : 'All done';
+                    state.line2 = `OK: ${state.ok} • Skipped: ${state.skipped} • Failed: ${state.failed}`;
+                    update();
+                    try { await this.refreshAssets(); } catch (_) {}
+                    try { await this.refreshLivePreview(); } catch (_) {}
+                };
+
+                if (cancelBtn) {
+                    cancelBtn.onclick = () => {
+                        state.cancelled = true;
+                        pushLog('[cancel] requested');
+                        update();
+                    };
+                }
+                if (closeBtn) {
+                    closeBtn.onclick = () => {
+                        this.showBulkOptimizeModal(false);
+                    };
+                }
+
+                this.showBulkOptimizeModal(true);
+                update();
+
+                for (let i = 0; i < list.length; i++) {
+                    if (state.cancelled) break;
+                    const asset = list[i];
+                    const id = String(asset?.asset_id || '').trim();
+                    const kind = String(asset?.media_kind || asset?.kind || '').toLowerCase();
+
+                    state.subtitle = `${i + 1} / ${list.length}`;
+                    state.line1 = `Optimizing ${id || '(unknown id)'}`;
+                    state.line2 = String(asset?.storage_path || '').slice(-120);
+                    setThumb(asset);
+                    update();
+
+                    if (!id) {
+                        state.failed++;
+                        state.done++;
+                        pushLog(`[fail] missing asset_id`);
+                        update();
+                        continue;
+                    }
+
+                    if (kind === 'video') {
+                        state.skipped++;
+                        state.done++;
+                        pushLog(`[skip] ${id} video`);
+                        update();
+                        continue;
+                    }
+
+                    const skipOptimized = skipEl ? !!skipEl.checked : true;
+                    if (skipOptimized && this.isAssetOptimizedByExt(asset)) {
+                        state.skipped++;
+                        state.done++;
+                        pushLog(`[skip] ${id} already .webp/.avif`);
+                        update();
+                        continue;
+                    }
+
+                    try {
+                        await this.optimizeAssetObject(asset, { mode: 'replace' });
+                        state.ok++;
+                        pushLog(`[ok]   ${id}`);
+                    } catch (e) {
+                        state.failed++;
+                        pushLog(`[fail] ${id} ${String(e?.message || e).slice(0, 140)}`);
+                    }
+
+                    state.done++;
+                    update();
+                }
+
+                await finish();
+            },
+
+            async bulkOptimizeSelected() {
+                const ids = Array.from(this.state.selectedIds || []);
+                if (!ids.length) {
+                    showToast('Select at least one asset first.', 'warning');
+                    return;
+                }
+                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
+                const assets = ids.map((id) => items.find((a) => String(a?.asset_id || '') === String(id))).filter(Boolean);
+                await this.runBulkOptimize(assets);
+            },
+
+            async bulkOptimizeAllLoaded() {
+                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
+                if (!items.length) {
+                    showToast('No loaded assets. Refresh first.', 'warning');
+                    return;
+                }
+                const imagesOnly = items.filter((a) => String(a?.media_kind || a?.kind || '').toLowerCase() !== 'video');
+                if (!confirm(`Optimize ${imagesOnly.length} loaded image assets to WebP/AVIF? This may take a while.`)) return;
+                await this.runBulkOptimize(imagesOnly);
             },
 
 
