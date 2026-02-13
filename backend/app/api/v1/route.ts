@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDb1, getSupabaseDispatch, getSupabaseMgmt } from '@/lib/supabase';
 import OpenAI from 'openai';
+import taskCreator from '@/lib/task_creator';
+import { sendMail } from '@/lib/mail';
+
+const {
+  canGenerateTaskDetails,
+  getMinWords,
+  getTaskCategories,
+  missingOutcomeQuestion,
+  normalizeText
+} = taskCreator as any;
 
 type TrackingEventRow = {
   visitor_id?: string | null;
@@ -20,6 +30,247 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
+function tryParseJsonObject(raw: unknown): { ok: true; value: any } | { ok: false; error: string } {
+  const text = String(raw || '').trim();
+  if (!text) return { ok: false, error: 'Empty response' };
+
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    // Try to salvage JSON if the model wrapped it in text/code fences.
+    const first = text.indexOf('{');
+    const last = text.lastIndexOf('}');
+    if (first >= 0 && last > first) {
+      const slice = text.slice(first, last + 1);
+      try {
+        return { ok: true, value: JSON.parse(slice) };
+      } catch {
+        return { ok: false, error: 'Failed to parse JSON (salvage attempt failed)' };
+      }
+    }
+    return { ok: false, error: 'Failed to parse JSON (no object found)' };
+  }
+}
+
+function safeTrim(raw: unknown): string {
+  return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+}
+
+function isWeakOfferTitle(title: string): boolean {
+  const s = safeTrim(title);
+  if (!s) return true;
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(s)) return true;
+  const lower = s.toLowerCase();
+  const words = lower.split(/\s+/).filter(Boolean);
+  if (s.length < 10) return true;
+  if (words.length <= 1 && s.length <= 14) return true;
+  const bad = new Set(['offer', 'special offer', 'special', 'test', 'tmp', 'temp', 'new', 'dates', 'date', 'twit', 'tbd', 'asdf']);
+  if (bad.has(lower)) return true;
+  if (lower.replace(/[^a-z]/g, '').length < 6) return true;
+  return false;
+}
+
+function normalizeOfferTitleCandidate(title: string): string {
+  const s = safeTrim(title);
+  if (!s) return '';
+  // Strip quotes / trailing punctuation, keep it readable.
+  const cleaned = s
+    .replace(/^['"“”]+/, '')
+    .replace(/['"“”]+$/, '')
+    .replace(/[\s\-–—:]+$/g, '')
+    .trim();
+  if (!cleaned) return '';
+  // Keep titles short and scannable.
+  return cleaned.length > 72 ? cleaned.slice(0, 71).trim() : cleaned;
+}
+
+function uniqTitles(titles: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of titles) {
+    const norm = normalizeOfferTitleCandidate(t);
+    const key = norm.toLowerCase();
+    if (!norm) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(norm);
+  }
+  return out;
+}
+
+function guessOccasionLabel(offerData: any): string {
+  const startRaw = safeTrim(offerData?.offerStartDate || offerData?.startDate || offerData?.start || '');
+  const endRaw = safeTrim(offerData?.offerEndDate || offerData?.endDate || offerData?.end || '');
+  const tryDate = (x: string) => {
+    try {
+      const d = x ? new Date(x) : null;
+      return d && !isNaN(d.getTime()) ? d : null;
+    } catch {
+      return null;
+    }
+  };
+  const d = tryDate(startRaw) || tryDate(endRaw) || new Date();
+  const m = d.getMonth(); // 0..11
+
+  const map: Record<number, string[]> = {
+    0: ['New Year', 'Winter'],
+    1: ['Valentine\'s', 'Winter'],
+    2: ['Spring Kickoff', 'March'],
+    3: ['Spring Refresh', 'April'],
+    4: ['Memorial Day', 'Early Summer'],
+    5: ['Summer', 'June'],
+    6: ['Summer', 'July'],
+    7: ['Back-to-School', 'Late Summer'],
+    8: ['Fall', 'September'],
+    9: ['Fall', 'October'],
+    10: ['Holiday', 'Thanksgiving'],
+    11: ['Holiday', 'Year-End']
+  };
+
+  const picked = map[m] || ['Seasonal'];
+  return picked[0];
+}
+
+function guessServiceLabel(offerData: any): string {
+  const headline = safeTrim(offerData?.headline || offerData?.oneSentencePromise || offerData?.intendedGoal || '');
+  const items = Array.isArray(offerData?.lineItems) ? offerData.lineItems : [];
+  const names = [headline, ...items.map((x: any) => safeTrim(x?.name || x?.serviceName || x?.service || ''))]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (names.includes('tv')) return 'TV Mount';
+  if (names.includes('doorbell')) return 'Doorbell';
+  if (names.includes('camera')) return 'Camera';
+  if (names.includes('wifi') || names.includes('mesh')) return 'Wi‑Fi Upgrade';
+  if (names.includes('smart home') || names.includes('smart')) return 'Smart Home';
+  return 'Home Upgrade';
+}
+
+function fallbackOfferTitleSuggestions(offerData: any): string[] {
+  const occasion = guessOccasionLabel(offerData);
+  const service = guessServiceLabel(offerData);
+  const market = safeTrim(offerData?.market || '').toUpperCase();
+  const dealWords = ['Grand Slam', 'Boost', 'Bundle', 'Special', 'Upgrade', 'Fast-Track'];
+  const vibes = ['VIP', 'Pro', 'Clean Install', 'No-Surprises', 'Same-Day'];
+
+  const base: string[] = [];
+  base.push(`${occasion} ${service} ${dealWords[0]} Offer`);
+  base.push(`${occasion} ${service} ${dealWords[2]}`);
+  base.push(`${vibes[0]} ${service} ${dealWords[4]}`);
+  base.push(`${vibes[4]} ${service} ${dealWords[5]}`);
+  base.push(`${service} ${dealWords[1]} (${occasion})`);
+  if (market) base.push(`${market} ${occasion} ${service} Bundle`);
+  return uniqTitles(base);
+}
+
+function clipString(value: any, max = 600): string {
+  const s = safeTrim(value == null ? '' : value);
+  if (!s) return '';
+  if (s.length <= max) return s;
+  return s.slice(0, Math.max(0, max - 1)) + '…';
+}
+
+function slimOfferDataForTitle(offerData: any): any {
+  const o: any = (offerData && typeof offerData === 'object') ? offerData : {};
+
+  const out: any = {
+    name: clipString(o.name || o.offerName || o.offer_name, 120),
+    category: clipString(o.category, 80),
+    market: clipString(o.market, 80),
+    primaryAvatar: clipString(o.primaryAvatar, 120),
+    intendedGoal: clipString(o.intendedGoal, 240),
+    headline: clipString(o.headline, 240),
+    oneSentencePromise: clipString(o.oneSentencePromise, 240),
+    offerStartDate: clipString(o.offerStartDate, 40),
+    offerEndDate: clipString(o.offerEndDate, 40),
+    scarcityMechanism: clipString(o.scarcityMechanism, 160),
+    riskReversal: clipString(o.riskReversal, 200),
+    whatsIncluded: clipString(o.whatsIncluded, 500),
+    eligibilityRules: clipString(o.eligibilityRules, 300),
+    redemptionRules: clipString(o.redemptionRules, 300)
+  };
+
+  // Common arrays (keep short)
+  if (Array.isArray(o.lineItems)) {
+    out.lineItems = o.lineItems.slice(0, 12).map((li: any) => ({
+      name: clipString(li?.name || li?.serviceName || li?.service, 120),
+      qty: Number(li?.qty || 1) || 1,
+      notes: clipString(li?.notes, 160)
+    })).filter((x: any) => x.name);
+  }
+  if (Array.isArray(o.hooks)) out.hooks = o.hooks.slice(0, 12).map((x: any) => clipString(x, 120)).filter(Boolean);
+  if (Array.isArray(o.proofIdeas)) out.proofIdeas = o.proofIdeas.slice(0, 8).map((x: any) => clipString(x, 140)).filter(Boolean);
+  if (Array.isArray(o.objectionsRebuttals)) out.objectionsRebuttals = o.objectionsRebuttals.slice(0, 8).map((x: any) => clipString(x, 160)).filter(Boolean);
+
+  // Final cleanup: drop empty keys.
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v == null) delete out[k];
+    else if (typeof v === 'string' && !v.trim()) delete out[k];
+    else if (Array.isArray(v) && v.length === 0) delete out[k];
+  }
+
+  return out;
+}
+
+async function aiOfferTitleSuggestions(openaiClient: OpenAI | null, offerData: any, currentTitle: string): Promise<string[]> {
+  const fallback = fallbackOfferTitleSuggestions(offerData);
+  if (!openaiClient) return fallback;
+
+  const service = guessServiceLabel(offerData);
+  const occasion = guessOccasionLabel(offerData);
+
+  const prompt = `You are a senior direct-response marketer for Home2Smart (TV mounts, doorbells, cameras, smart home installs).
+
+Goal: Generate 6 unique, memorable, "worldly" offer titles that a real operator would recognize in a library.
+
+Constraints:
+- 3 to 8 words per title
+- Must include at least one of: season/occasion (e.g., "Valentine's", "Holiday", "Spring") OR a strong descriptor (e.g., "VIP", "Same-Day", "Pro")
+- Must clearly hint the service (ex: TV Mount, Doorbell, Camera, Wi‑Fi Upgrade)
+- Avoid boring/generic titles like "Special Offer" or "Offer Brief".
+- No emojis, no profanity, no ALL CAPS.
+- Keep under 72 characters.
+
+If current title is provided, do NOT return it.
+
+Return VALID JSON ONLY in this exact shape:
+{ "titles": ["string"] }
+
+Helpful seed:
+- Occasion: ${occasion}
+- Service: ${service}
+- Current title: ${safeTrim(currentTitle) || '(none)'}
+
+OFFER_DATA_JSON:
+${JSON.stringify(slimOfferDataForTitle(offerData))}`;
+
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'Return JSON only. No markdown.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.8,
+      max_tokens: 300,
+      response_format: { type: 'json_object' }
+    });
+
+    const parsed = tryParseJsonObject(completion.choices?.[0]?.message?.content || '');
+    if (!parsed.ok) return fallback;
+    const raw = parsed.value;
+    const titles = Array.isArray(raw?.titles) ? raw.titles : [];
+    const cleaned = uniqTitles(titles);
+    const filtered = cleaned.filter(t => safeTrim(t).toLowerCase() !== safeTrim(currentTitle).toLowerCase());
+    return filtered.length ? filtered : fallback;
+  } catch {
+    // Any OpenAI failure (bad key, rate limit, too-large payload, network) should never crash the API.
+    return fallback;
+  }
+}
+
 // Helper to handle CORS
 function corsHeaders(request?: Request): Record<string, string> {
   // Allow specific origins or use wildcard for non-credential requests
@@ -27,16 +278,39 @@ function corsHeaders(request?: Request): Record<string, string> {
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
+    'https://portal.home2smart.com',
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
     'http://localhost:8080'
   ];
   
   const allowOrigin = allowedOrigins.includes(origin) ? origin : '*';
+
+  // Build an allow-headers list that is resilient to casing and future custom headers.
+  // Browsers send requested headers in Access-Control-Request-Headers during preflight.
+  const requestedHeadersRaw = request?.headers.get('access-control-request-headers') || '';
+  const requestedHeaders = requestedHeadersRaw
+    .split(',')
+    .map(h => h.trim())
+    .filter(Boolean);
+
+  const baseAllowed = [
+    'Content-Type',
+    'Authorization',
+    'X-H2S-Admin-Token',
+    'x-h2s-admin-token',
+    'X-H2S-Admin-Key',
+    'x-h2s-admin-key',
+    'X-H2S-Bootstrap-Secret',
+    'x-h2s-bootstrap-secret'
+  ];
+
+  const allowHeaders = Array.from(new Set([...baseAllowed, ...requestedHeaders])).join(', ');
   
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-H2S-Admin-Token',
+    'Access-Control-Allow-Headers': allowHeaders,
   };
   
   if (allowOrigin !== '*') {
@@ -46,47 +320,209 @@ function corsHeaders(request?: Request): Record<string, string> {
   return headers;
 }
 
+type DashboardAuthUser = {
+  userId: string;
+  username: string;
+  displayName: string;
+  role: 'VA' | 'ADMIN';
+};
+
+const DASHBOARD_SESSION_TOKEN_HEADER = 'authorization';
+const DASHBOARD_SESSION_TTL_DAYS = 14;
+
+function normalizeDashboardUsername(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .replace(/[^a-z0-9 _\-@\.]/gi, '')
+    .trim()
+    .toUpperCase();
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const b64 = Buffer.from(binary, 'binary').toString('base64');
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(b64url: string): Uint8Array {
+  const s = String(b64url || '').trim();
+  if (!s) return new Uint8Array();
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+  const buf = Buffer.from(b64 + pad, 'base64');
+  return new Uint8Array(buf);
+}
+
+function constantTimeEquals(a: string, b: string): boolean {
+  const x = String(a || '');
+  const y = String(b || '');
+  if (x.length !== y.length) return false;
+  let out = 0;
+  for (let i = 0; i < x.length; i++) out |= x.charCodeAt(i) ^ y.charCodeAt(i);
+  return out === 0;
+}
+
+function getBearerToken(request: Request): string {
+  const raw = String(request.headers.get(DASHBOARD_SESSION_TOKEN_HEADER) || '').trim();
+  const m = raw.match(/^Bearer\s+(.+)$/i);
+  return m ? String(m[1] || '').trim() : '';
+}
+
+async function sha256Base64Url(text: string): Promise<string> {
+  const enc = new TextEncoder();
+  const data = enc.encode(String(text || ''));
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return bytesToBase64Url(new Uint8Array(digest));
+}
+
+async function pbkdf2Sha256Base64Url(pin: string, saltBytes: Uint8Array, iterations = 120000): Promise<string> {
+  const enc = new TextEncoder();
+  // Normalize to avoid TS BufferSource typing edge-cases (SharedArrayBuffer vs ArrayBuffer).
+  const salt = Uint8Array.from(saltBytes || []);
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(String(pin || '')), { name: 'PBKDF2' }, false, [
+    'deriveBits'
+  ]);
+
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt,
+      iterations
+    },
+    keyMaterial,
+    256
+  );
+
+  return bytesToBase64Url(new Uint8Array(bits));
+}
+
+function randomTokenBase64Url(bytesLen = 32): string {
+  const bytes = new Uint8Array(bytesLen);
+  crypto.getRandomValues(bytes);
+  return bytesToBase64Url(bytes);
+}
+
+async function getDashboardAuthUserFromSession(request: Request): Promise<DashboardAuthUser | null> {
+  const token = getBearerToken(request);
+  if (!token) return null;
+
+  let db;
+  try {
+    db = getDeliverablesDb();
+  } catch {
+    return null;
+  }
+
+  try {
+    const tokenHash = await sha256Base64Url(token);
+
+    const { data: session, error: sessionError } = await db
+      .from('Dashboard_Sessions')
+      .select('Session_ID, User_ID, Expires_At')
+      .eq('Token_Hash', tokenHash)
+      .maybeSingle();
+
+    if (sessionError || !session) return null;
+
+    const expiresAt = session.Expires_At ? new Date(session.Expires_At) : null;
+    if (!expiresAt || isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return null;
+
+    const { data: user, error: userError } = await db
+      .from('Dashboard_Users')
+      .select('User_ID, Username, Display_Name, Role, Is_Disabled')
+      .eq('User_ID', session.User_ID)
+      .maybeSingle();
+
+    if (userError || !user) return null;
+    if (user.Is_Disabled) return null;
+
+    // Best-effort: update last seen
+    try {
+      await db
+        .from('Dashboard_Sessions')
+        .update({ Last_Seen_At: new Date().toISOString() })
+        .eq('Session_ID', session.Session_ID);
+    } catch {
+      // ignore
+    }
+
+    const role = String(user.Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+
+    return {
+      userId: String(user.User_ID),
+      username: String(user.Username || '').trim().toUpperCase(),
+      displayName: String(user.Display_Name || user.Username || '').trim(),
+      role
+    };
+  } catch {
+    return null;
+  }
+}
+
 function getConfiguredAdminToken(): string | null {
   const token = String(process.env.H2S_ADMIN_TOKEN || '').trim();
   return token ? token : null;
 }
 
-function requireAdminToken(request: Request): { ok: true } | { ok: false; status: number; error: string } {
-  const configured = getConfiguredAdminToken();
+function getConfiguredDashboardAdminKey(): string | null {
+  // A single shared admin key is the simplest operational model:
+  // - used for emergency admin operations (create/reset accounts)
+  // - not tied to any username
+  // - never embedded in the frontend
+  const key = String(process.env.H2S_DASHBOARD_ADMIN_KEY || '').trim();
+  return key ? key : null;
+}
+
+function getConfiguredAnyAdminKey(): string | null {
+  return getConfiguredDashboardAdminKey() || getConfiguredAdminToken() || getDashboardBootstrapSecret();
+}
+
+function getDashboardBootstrapSecret(): string | null {
+  const token = String(process.env.H2S_DASHBOARD_BOOTSTRAP_SECRET || '').trim();
+  return token ? token : null;
+}
+
+function generateNumericPin(length = 8): string {
+  const n = Math.max(6, Math.min(16, Math.floor(length || 8)));
+  const bytes = new Uint8Array(n);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < n; i++) out += String(bytes[i] % 10);
+  return out;
+}
+
+async function requireAdminToken(request: Request): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const configured = getConfiguredAnyAdminKey();
+
+  // Prefer session-admin auth when possible (lets Admin umbrella view work without shared secrets).
+  const sessionUser = await getDashboardAuthUserFromSession(request);
+  const sessionIsAdmin = !!sessionUser && sessionUser.role === 'ADMIN';
 
   // If a token is configured, require it.
   if (configured) {
-    const provided = String(request.headers.get('x-h2s-admin-token') || '').trim();
-    if (!provided) {
-      return { ok: false, status: 401, error: 'Missing admin token' };
-    }
-
-    if (provided !== configured) {
-      return { ok: false, status: 403, error: 'Invalid admin token' };
-    }
-
-    return { ok: true };
+    const provided = String(
+      request.headers.get('x-h2s-admin-key') ||
+        request.headers.get('x-h2s-admin-token') ||
+        request.headers.get('x-h2s-bootstrap-secret') ||
+        ''
+    ).trim();
+    if (provided && provided === configured) return { ok: true };
+    if (sessionIsAdmin) return { ok: true };
+    if (!provided) return { ok: false, status: 401, error: 'Missing admin token' };
+    return { ok: false, status: 403, error: 'Invalid admin token' };
   }
 
-  // No token configured: allow only from allowlisted browser origins.
-  // NOTE: CORS alone doesn't stop server-to-server calls; this is a minimal guard.
-  const origin = String(request.headers.get('origin') || '').trim();
-  const allowedOrigins = [
-    'https://home2smart.com',
-    'https://www.home2smart.com',
-    'http://localhost:3000',
-    'http://localhost:8080'
-  ];
+  // If no shared token configured, allow admin via session.
+  if (sessionIsAdmin) return { ok: true };
 
-  if (!origin || !allowedOrigins.includes(origin)) {
-    return {
-      ok: false,
-      status: 403,
-      error: 'Unauthorized: missing/invalid Origin (set H2S_ADMIN_TOKEN to use token auth)'
-    };
-  }
-
-  return { ok: true };
+  return {
+    ok: false,
+    status: 403,
+    error: 'Admin only: sign in with an ADMIN dashboard account (or set H2S_DASHBOARD_ADMIN_KEY / H2S_ADMIN_TOKEN)'
+  };
 }
 
 function isUuid(value: string): boolean {
@@ -167,6 +603,60 @@ function pathMatchesRule(path: string, rule: PathRuleRow): boolean {
 
 function getTrackingDb() {
   return getSupabaseDb1() || getSupabase();
+}
+
+function getDeliverablesDb() {
+  // Deliverables are part of the internal/management workflow (tasks, hours, training).
+  // In production, these live in the MGMT Supabase project.
+  // Fall back to the main DB if MGMT credentials are not configured.
+  try {
+    return getSupabaseMgmt();
+  } catch {
+    return getSupabase();
+  }
+}
+
+function isMissingTableError(error: any, tableName: string): boolean {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const t = String(tableName || '').trim().toLowerCase();
+  if (!t) return false;
+  // Typical PostgREST message: "Could not find the table 'public.Offers' in the schema cache"
+  if (msg.includes('could not find the table') && msg.includes(`public.${t}`)) return true;
+  if (msg.includes('schema cache') && msg.includes(t)) return true;
+  return false;
+}
+
+function isMissingColumnError(error: any, columnName: string): boolean {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const col = String(columnName || '').trim().toLowerCase();
+  if (!col) return false;
+  // Postgres undefined_column
+  if (String(error?.code || '') === '42703') return true;
+  // Typical PostgREST message: "column Offers.Offer_ID does not exist"
+  if (msg.includes('column') && msg.includes(col) && (msg.includes('does not exist') || msg.includes('not found'))) return true;
+  return false;
+}
+
+function isOffersSchemaMismatchError(error: any): boolean {
+  // Offers can exist in multiple DBs; in some environments, the MAIN DB also has an unrelated
+  // "Offers" table (e.g., job offers/dispatch concepts). We fall back when either:
+  // - the table is missing, OR
+  // - the Offer Builder schema is missing required columns (Offer_ID).
+  return isMissingTableError(error, 'Offers') || isMissingColumnError(error, 'offer_id') || isMissingColumnError(error, 'Offer_ID');
+}
+
+function getOffersDbFallback(): { primary: any; fallback: any } {
+  // Offers sometimes live in MGMT (same place as Deliverables) depending on environment.
+  // Prefer Deliverables/MGMT (where the dashboard workflow writes offers), then fall back to main.
+  const primary = getDeliverablesDb();
+  const fallback = getSupabase();
+  return { primary, fallback };
+}
+
+function isMissingDeliverablesColumnError(error: any, columnName: string): boolean {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  const col = String(columnName || '').toLowerCase();
+  return error?.code === '42703' || (msg.includes('column') && msg.includes(col) && (msg.includes('does not exist') || msg.includes('not found')));
 }
 
 function toInt(value: unknown, fallback: number): number {
@@ -819,6 +1309,51 @@ export async function GET(request: Request) {
     const supabaseMgmt = supabaseMgmtClient || supabaseMain;
 
     switch (action) {
+      case 'taskCreatorConfig':
+        {
+          result = {
+            minWords: getMinWords(),
+            categories: getTaskCategories()
+          };
+        }
+        break;
+      case 'dashboardMe':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          // Keep the response lean; UI primarily needs username + role.
+          result = {
+            userId: me.userId,
+            username: me.username,
+            displayName: me.displayName,
+            role: me.role
+          };
+        }
+        break;
+      case 'dashboardUsers':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+          const { data: users, error } = await db
+            .from('Dashboard_Users')
+            .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Created_At, Updated_At, Last_Login_At')
+            .order('Created_At', { ascending: false })
+            .limit(500);
+
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to load users: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          result = users || [];
+        }
+        break;
       case 'ping':
         {
           return NextResponse.json(
@@ -833,7 +1368,7 @@ export async function GET(request: Request) {
         }
       case 'observed_paths':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -954,7 +1489,7 @@ export async function GET(request: Request) {
 
       case 'path_rules':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -1063,10 +1598,12 @@ export async function GET(request: Request) {
 
       case 'tasks':
         {
-          const { data: tasks, error: tasksError } = await supabaseMgmt
+          const tasksDb = getDeliverablesDb();
+          const { data: tasks, error: tasksError } = await tasksDb
             .from('Tasks')
             .select('*')
-            .neq('Status', 'ARCHIVED')
+            // Include NULL statuses (treat as active/pending).
+            .or('Status.is.null,Status.neq.ARCHIVED')
             .order('Priority', { ascending: true });
 
           if (tasksError) {
@@ -1077,6 +1614,46 @@ export async function GET(request: Request) {
           }
 
           result = tasks || [];
+        }
+        break;
+
+      case 'taskCounts':
+        {
+          const tasksDb = getDeliverablesDb();
+
+          const countExact = async (builder: any): Promise<number> => {
+            const { count, error } = await builder;
+            if (error) throw new Error(error.message);
+            return Number(count || 0);
+          };
+
+          // Definitions:
+          // - archived: Status === 'ARCHIVED'
+          // - completedActive: Status === 'COMPLETED'
+          // - openActive: everything NOT archived and NOT completed (including NULL)
+          // - activeTotal: everything NOT archived (including NULL)
+          const [totalAll, archived, activeTotal, completedActive, openActive] = await Promise.all([
+            countExact(tasksDb.from('Tasks').select('*', { count: 'exact', head: true })),
+            countExact(tasksDb.from('Tasks').select('*', { count: 'exact', head: true }).eq('Status', 'ARCHIVED')),
+            countExact(tasksDb.from('Tasks').select('*', { count: 'exact', head: true }).or('Status.is.null,Status.neq.ARCHIVED')),
+            countExact(tasksDb.from('Tasks').select('*', { count: 'exact', head: true }).eq('Status', 'COMPLETED')),
+            countExact(
+              tasksDb
+                .from('Tasks')
+                .select('*', { count: 'exact', head: true })
+                .or('Status.is.null,Status.neq.ARCHIVED')
+                .or('Status.is.null,Status.neq.COMPLETED')
+            )
+          ]);
+
+          result = {
+            totalAll,
+            archived,
+            activeTotal,
+            completedActive,
+            openActive,
+            ts: new Date().toISOString()
+          };
         }
         break;
 
@@ -1206,28 +1783,328 @@ export async function GET(request: Request) {
       
       case 'deliverables':
         const statusFilter = searchParams.get('status') || 'all';
-        let deliverablesQuery = getSupabase()
+        const offerIdFilter = safeTrim(searchParams.get('offer_id') || searchParams.get('offerId') || '');
+        const deliverableTypeFilter = safeTrim(searchParams.get('deliverable_type') || searchParams.get('deliverableType') || searchParams.get('type') || '');
+
+        let deliverablesQuery = getDeliverablesDb()
           .from('Deliverables')
           .select('*')
           .order('Created_At', { ascending: false });
-        
+
         if (statusFilter !== 'all') {
           deliverablesQuery = deliverablesQuery.eq('Status', statusFilter.toUpperCase());
         }
-        
-        const { data: deliverables, error: deliverablesError } = await deliverablesQuery;
-        
-        if (deliverablesError) {
-          return NextResponse.json({ 
-            ok: false, 
-            error: `Failed to load deliverables: ${deliverablesError.message}` 
-          }, { status: 500, headers: corsHeaders(request) });
+
+        // Prefer indexed filters when possible.
+        let needsOfferMetadataFallback = false;
+        if (offerIdFilter) {
+          if (isUuid(offerIdFilter)) {
+            deliverablesQuery = deliverablesQuery.eq('Offer_ID', offerIdFilter);
+          } else {
+            // Back-compat: allow older string-based offer ids in Metadata without failing uuid casts.
+            needsOfferMetadataFallback = true;
+          }
         }
-        
-        result = deliverables || [];
+        if (deliverableTypeFilter) {
+          deliverablesQuery = deliverablesQuery.eq('Deliverable_Type', deliverableTypeFilter.toLowerCase());
+        }
+
+        const { data: deliverables, error: deliverablesError } = await deliverablesQuery;
+
+        const shouldRetryWithoutNewCols =
+          !!deliverablesError &&
+          (isMissingDeliverablesColumnError(deliverablesError, 'Offer_ID') ||
+            isMissingDeliverablesColumnError(deliverablesError, 'Deliverable_Type'));
+
+        if (deliverablesError) {
+          if (shouldRetryWithoutNewCols && (offerIdFilter || deliverableTypeFilter)) {
+            let retryQuery = getDeliverablesDb()
+              .from('Deliverables')
+              .select('*')
+              .order('Created_At', { ascending: false });
+            if (statusFilter !== 'all') {
+              retryQuery = retryQuery.eq('Status', statusFilter.toUpperCase());
+            }
+            const { data: retryRows, error: retryErr } = await retryQuery;
+            if (retryErr) {
+              return NextResponse.json(
+                { ok: false, error: `Failed to load deliverables: ${retryErr.message}` },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+
+            let items = (retryRows || []) as any[];
+
+            if (offerIdFilter) {
+              items = items.filter((d: any) => {
+                try {
+                  const raw = d?.Metadata;
+                  if (!raw) return false;
+                  const md = typeof raw === 'object' ? raw : JSON.parse(String(raw || '').trim() || '{}');
+                  if (!md || typeof md !== 'object') return false;
+                  const id = safeTrim((md as any).offerId || (md as any).offer_id || (md as any).Offer_ID || (md as any).offerID || '');
+                  return id && id === offerIdFilter;
+                } catch {
+                  return false;
+                }
+              });
+            }
+
+            const typeTarget = deliverableTypeFilter ? deliverableTypeFilter.toLowerCase() : '';
+            if (typeTarget) {
+              items = items.filter((d: any) => {
+                try {
+                  const raw = d?.Metadata;
+                  const md = raw ? (typeof raw === 'object' ? raw : JSON.parse(String(raw || '').trim() || '{}')) : null;
+                  const t = safeTrim((md as any)?.type || (md as any)?.deliverableType || (md as any)?.kind || '');
+                  if (t && t.toLowerCase() === typeTarget) return true;
+                  if (typeTarget === 'offer_brief') {
+                    const title = String(d?.Title || '');
+                    return /^\s*offer\s+brief\s*:/i.test(title);
+                  }
+                  return false;
+                } catch {
+                  if (typeTarget === 'offer_brief') {
+                    const title = String(d?.Title || '');
+                    return /^\s*offer\s+brief\s*:/i.test(title);
+                  }
+                  return false;
+                }
+              });
+            }
+
+            result = items;
+            break;
+          }
+
+          return NextResponse.json(
+            { ok: false, error: `Failed to load deliverables: ${deliverablesError.message}` },
+            { status: 500, headers: corsHeaders(request) }
+          );
+        }
+
+        let allDeliverables = (deliverables || []) as any[];
+
+        // Back-compat: when offer_id isn't a uuid, do in-memory filter against Metadata.offerId.
+        if (needsOfferMetadataFallback && offerIdFilter) {
+          allDeliverables = allDeliverables.filter((d: any) => {
+            try {
+              const raw = d?.Metadata;
+              if (!raw) return false;
+              const md = typeof raw === 'object' ? raw : JSON.parse(String(raw || '').trim() || '{}');
+              if (!md || typeof md !== 'object') return false;
+              const id = safeTrim((md as any).offerId || (md as any).offer_id || (md as any).Offer_ID || (md as any).offerID || '');
+              return id && id === offerIdFilter;
+            } catch {
+              return false;
+            }
+          });
+        }
+
+        result = allDeliverables;
         break;
 
-      case 'offers':
+      case 'adCreatives':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const qRaw = safeTrim(searchParams.get('q') || searchParams.get('query') || '');
+          const q = qRaw.replace(/,/g, ' ').trim();
+          const service = safeTrim(searchParams.get('service') || '');
+          const stage = safeTrim(searchParams.get('stage') || '');
+          const status = safeTrim(searchParams.get('status') || '');
+          const sort = safeTrim(searchParams.get('sort') || 'recent').toLowerCase();
+          const limit = Math.max(1, Math.min(Number(searchParams.get('limit') || 200) || 200, 500));
+          const offerId = safeTrim(searchParams.get('offer_id') || searchParams.get('offerId') || '');
+
+          const db = getDeliverablesDb();
+
+          // Optional: offer-scoped list (only creatives linked to this offer).
+          if (offerId) {
+            if (!isUuid(offerId)) {
+              return NextResponse.json({ ok: false, error: 'offer_id must be a uuid' }, { status: 400, headers: corsHeaders(request) });
+            }
+
+            const { data: linkRows, error: linkErr } = await db
+              .from('ad_creative_links')
+              .select('creative_id')
+              .eq('offer_id', offerId)
+              .order('created_at', { ascending: false })
+              .limit(500);
+
+            if (linkErr) {
+              return NextResponse.json({ ok: false, error: `Failed to load creative links: ${linkErr.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+
+            const ids = Array.from(new Set((Array.isArray(linkRows) ? linkRows : []).map((r: any) => safeTrim(r?.creative_id)).filter(Boolean)));
+            if (!ids.length) {
+              return NextResponse.json({ ok: true, creatives: [] }, { headers: corsHeaders(request) });
+            }
+
+            // When offer-scoped, cap to link ids first to avoid scanning.
+            // (Later filters like q/service/stage/status still apply below.)
+            // eslint-disable-next-line no-unused-vars
+          }
+
+          let creativesQuery: any = db
+            .from('ad_creatives')
+            .select('creative_id,title,service,stage,format,status,brief,created_by,created_at,updated_at')
+            .order('updated_at', { ascending: false })
+            .limit(limit);
+
+          if (offerId) {
+            const { data: linkRows } = await db
+              .from('ad_creative_links')
+              .select('creative_id')
+              .eq('offer_id', offerId)
+              .order('created_at', { ascending: false })
+              .limit(500);
+            const ids = Array.from(new Set((Array.isArray(linkRows) ? linkRows : []).map((r: any) => safeTrim(r?.creative_id)).filter(Boolean)));
+            if (!ids.length) {
+              return NextResponse.json({ ok: true, creatives: [] }, { headers: corsHeaders(request) });
+            }
+            creativesQuery = creativesQuery.in('creative_id', ids);
+          }
+
+          if (service) creativesQuery = creativesQuery.eq('service', service);
+          if (stage) creativesQuery = creativesQuery.eq('stage', stage);
+          if (status && status !== 'all') creativesQuery = creativesQuery.eq('status', status);
+          if (q) {
+            creativesQuery = creativesQuery.or(`title.ilike.%${q}%,brief.ilike.%${q}%`);
+          }
+
+          const { data: creativesRows, error: creativesError } = await creativesQuery;
+          if (creativesError) {
+            return NextResponse.json({ ok: false, error: `Failed to load creatives: ${creativesError.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const creatives = (Array.isArray(creativesRows) ? creativesRows : []) as any[];
+
+          // Optional perf-aware ordering: aggregate perf rows for the listed creatives.
+          if (sort === 'perf' && creatives.length) {
+            const ids = creatives.map((c: any) => c.creative_id).filter(Boolean);
+            const since = searchParams.get('since') || null;
+            let perfQuery: any = db
+              .from('ad_creative_performance')
+              .select('creative_id, impressions, clicks, leads, spend, revenue, period_start, period_end, source')
+              .in('creative_id', ids)
+              .order('period_end', { ascending: false })
+              .limit(2000);
+            if (since) perfQuery = perfQuery.gte('period_end', since);
+
+            const { data: perfRows } = await perfQuery;
+            const agg: Record<string, any> = {};
+            for (const r of (Array.isArray(perfRows) ? perfRows : [])) {
+              const id = String((r as any)?.creative_id || '');
+              if (!id) continue;
+              if (!agg[id]) {
+                agg[id] = { impressions: 0, clicks: 0, leads: 0, spend: 0, revenue: 0 };
+              }
+              agg[id].impressions += Number((r as any)?.impressions || 0) || 0;
+              agg[id].clicks += Number((r as any)?.clicks || 0) || 0;
+              agg[id].leads += Number((r as any)?.leads || 0) || 0;
+              agg[id].spend += Number((r as any)?.spend || 0) || 0;
+              agg[id].revenue += Number((r as any)?.revenue || 0) || 0;
+            }
+
+            for (const c of creatives) {
+              const p = agg[String((c as any)?.creative_id || '')];
+              if (!p) continue;
+              const spend = Number(p.spend || 0) || 0;
+              const leads = Number(p.leads || 0) || 0;
+              (c as any).perf = {
+                impressions: p.impressions,
+                clicks: p.clicks,
+                leads: p.leads,
+                spend: p.spend,
+                revenue: p.revenue,
+                cpl: leads > 0 ? (spend / leads) : null
+              };
+              (c as any).perf_score = spend > 0 ? (leads / spend) : leads;
+            }
+
+            creatives.sort((a: any, b: any) => {
+              const as = Number(a?.perf_score || 0) || 0;
+              const bs = Number(b?.perf_score || 0) || 0;
+              if (bs !== as) return bs - as;
+              const at = Date.parse(String(a?.updated_at || '')) || 0;
+              const bt = Date.parse(String(b?.updated_at || '')) || 0;
+              return bt - at;
+            });
+          }
+
+          return NextResponse.json({ ok: true, creatives }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativeDetail':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const creativeId = safeTrim(searchParams.get('creative_id') || searchParams.get('creativeId') || '');
+          if (!creativeId || !isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+          const { data: creative, error: creativeError } = await db
+            .from('ad_creatives')
+            .select('*')
+            .eq('creative_id', creativeId)
+            .maybeSingle();
+
+          if (creativeError) {
+            return NextResponse.json({ ok: false, error: `Failed to load creative: ${creativeError.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!creative) {
+            return NextResponse.json({ ok: false, error: 'Not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const { data: creativeAssets } = await db
+            .from('ad_creative_assets')
+            .select('creative_asset_id, slot_key, notes, sort_order, created_at, ad_assets(*)')
+            .eq('creative_id', creativeId)
+            .order('sort_order', { ascending: true });
+
+          const { data: creativeTags } = await db
+            .from('ad_creative_tags')
+            .select('creative_tag_id, created_at, ad_tags(tag_id,name,kind)')
+            .eq('creative_id', creativeId)
+            .order('created_at', { ascending: false });
+
+          const { data: links } = await db
+            .from('ad_creative_links')
+            .select('*')
+            .eq('creative_id', creativeId)
+            .order('created_at', { ascending: false })
+            .limit(200);
+
+          const { data: perf } = await db
+            .from('ad_creative_performance')
+            .select('*')
+            .eq('creative_id', creativeId)
+            .order('period_end', { ascending: false })
+            .limit(50);
+
+          return NextResponse.json(
+            {
+              ok: true,
+              creative,
+              assets: creativeAssets || [],
+              tags: creativeTags || [],
+              links: links || [],
+              performance: perf || []
+            },
+            { headers: corsHeaders(request) }
+          );
+        }
+
+      case 'jobOffers':
       case 'getOffers': {
         // Job offers (legacy meaning): derive from dispatch jobs tables.
         // This matches the older portal_jobs behavior and EmployeeDashboard's "Job Offers" page.
@@ -1340,6 +2217,92 @@ export async function GET(request: Request) {
         return NextResponse.json({ ok: true, jobs: normalized }, { headers: corsHeaders(request) });
       }
 
+      case 'offers':
+      case 'offerLibrary':
+      case 'offerLibraryOffers': {
+        // Offer Builder / Offer Library offers (NOT dispatch "job offers").
+        // Frontend calls this via GET.
+        const offersVaName = searchParams.get('vaName') || searchParams.get('createdBy');
+
+        // Important: Offers.Message_Context may contain very large blobs (e.g., base64 PDFs embedded in
+        // latest_offer_brief.fileLink from historical deliverables). The Offer Library list view only
+        // needs offer name + offer_builder snapshot (and AI_Analysis for frameworks), so default to a
+        // slim select to avoid oversized payloads/timeouts.
+        const wantFull = ['1', 'true', 'yes'].includes(String(searchParams.get('full') || searchParams.get('includeFull') || '').toLowerCase());
+        const slim = !wantFull;
+        const limit = Math.min(Math.max(Number(searchParams.get('limit') || 200) || 200, 1), 500);
+
+        const slimSelect = [
+          'Offer_ID',
+          'Created_By',
+          'Created_At',
+          'Updated_At',
+          'SKU_ID',
+          'Status',
+          'Guardrail_Status',
+          'Profit_Per_Job',
+          'Margin_Pct',
+          'Economics',
+          'AI_Analysis',
+          'Performance_Data',
+          // minimal Message_Context fields used by the frontend list renderer
+          'ctx_offerName:Message_Context->>offerName',
+          'ctx_offer_name:Message_Context->>offer_name',
+          'ctx_name:Message_Context->>name',
+          'ctx_title:Message_Context->>title',
+          'ctx_offer_builder:Message_Context->offer_builder',
+          'ctx_offerBuilder:Message_Context->offerBuilder',
+        ].join(',');
+
+        const { primary, fallback } = getOffersDbFallback();
+        const buildQuery = (db: any) => {
+          let q = db
+            .from('Offers')
+            .select(slim ? slimSelect : '*')
+            .order('Updated_At', { ascending: false })
+            .limit(limit);
+          if (offersVaName) q = q.eq('Created_By', offersVaName);
+          return q;
+        };
+
+        let { data: offers, error: offersError } = await buildQuery(primary);
+        if (offersError && isOffersSchemaMismatchError(offersError)) {
+          ({ data: offers, error: offersError } = await buildQuery(fallback));
+        }
+
+        if (offersError) {
+          return NextResponse.json(
+            { ok: false, error: `Failed to load offers: ${offersError.message}` },
+            { status: 500, headers: corsHeaders(request) }
+          );
+        }
+
+        const normalizedOffers = (offers || []).map((row: any) => {
+          if (!slim) return row;
+          const {
+            ctx_offerName,
+            ctx_offer_name,
+            ctx_name,
+            ctx_title,
+            ctx_offer_builder,
+            ctx_offerBuilder,
+            ...rest
+          } = row || {};
+
+          const Message_Context: any = {};
+          if (ctx_offerName != null) Message_Context.offerName = ctx_offerName;
+          if (ctx_offer_name != null) Message_Context.offer_name = ctx_offer_name;
+          if (ctx_name != null) Message_Context.name = ctx_name;
+          if (ctx_title != null) Message_Context.title = ctx_title;
+          if (ctx_offer_builder != null) Message_Context.offer_builder = ctx_offer_builder;
+          if (ctx_offerBuilder != null) Message_Context.offerBuilder = ctx_offerBuilder;
+
+          return { ...rest, Message_Context };
+        });
+
+        return NextResponse.json({ ok: true, offers: normalizedOffers }, { headers: corsHeaders(request) });
+      }
+
       case 'offer': {
         // Get single offer by ID
         const offerId = searchParams.get('id');
@@ -1350,11 +2313,15 @@ export async function GET(request: Request) {
           }, { status: 400, headers: corsHeaders(request) });
         }
 
-        const { data: offer, error: offerError } = await getSupabase()
-          .from('Offers')
-          .select('*')
-          .eq('Offer_ID', offerId)
-          .single();
+        const { primary, fallback } = getOffersDbFallback();
+        const run = async (db: any) => {
+          return await db.from('Offers').select('*').eq('Offer_ID', offerId).single();
+        };
+
+        let { data: offer, error: offerError } = await run(primary);
+        if (offerError && isOffersSchemaMismatchError(offerError)) {
+          ({ data: offer, error: offerError } = await run(fallback));
+        }
 
         if (offerError) {
           return NextResponse.json({
@@ -1373,7 +2340,8 @@ export async function GET(request: Request) {
         const taskId = searchParams.get('taskId');
         const status = searchParams.get('status');
         if (taskId && status) {
-          const { data: updatedTask } = await getSupabase()
+          const tasksDb = getDeliverablesDb();
+          const { data: updatedTask } = await tasksDb
             .from('Tasks')
             .update({ 
               Status: status, 
@@ -1409,7 +2377,8 @@ export async function GET(request: Request) {
         const feedback = searchParams.get('feedback');
         
         if (refineTaskId && feedback && openai) {
-          const { data: task } = await getSupabase()
+          const tasksDb = getDeliverablesDb();
+          const { data: task } = await tasksDb
             .from('Tasks')
             .select('*')
             .eq('Task_ID', refineTaskId)
@@ -1425,7 +2394,7 @@ export async function GET(request: Request) {
           });
           
           const newDescription = completion.choices[0].message.content;
-          await getSupabase()
+          await tasksDb
             .from('Tasks')
             .update({ Description: newDescription })
             .eq('Task_ID', refineTaskId);
@@ -1606,7 +2575,6 @@ Format: JSON only, no markdown.`;
 
       case 'upcomingMeetings':
         // Get meetings scheduled in the future or today
-        const nowUpdate = new Date().toISOString();
         const { data: upcomingMeetings } = await getSupabase()
           .from('Meetings')
           .select(`
@@ -1880,6 +2848,177 @@ Format: JSON only, no markdown.`;
           total_events: totalEvents,
           events_last_24h: recentEvents
         };
+        break;
+
+      case 'sessions':
+        {
+          // KPI-friendly sessions endpoint.
+          // Returns unique session count (deduped by session_id) for the selected date window.
+          const maxEvents = Math.min(Math.max(toInt(searchParams.get('max_events'), 200000), 1000), 200000);
+
+          let sessionsQuery = getTrackingDb()
+            .from('h2s_tracking_events')
+            .select('session_id, visitor_id, occurred_at, page_path, utm_source, utm_medium, utm_campaign')
+            .order('occurred_at', { ascending: false })
+            .limit(maxEvents);
+
+          if (minDate) sessionsQuery = sessionsQuery.gte('occurred_at', minDate);
+          if (startDate) sessionsQuery = sessionsQuery.gte('occurred_at', startDate);
+          if (endDate) sessionsQuery = sessionsQuery.lte('occurred_at', endDate);
+
+          const { data: sessionEvents, error: sessionsError } = await sessionsQuery;
+          if (sessionsError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load sessions: ${sessionsError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          let filtered = excludeTest
+            ? (sessionEvents || []).filter((e: any) => !isTestTrackingEvent(e))
+            : (sessionEvents || []);
+          if (excludeInternal) filtered = filtered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
+
+          const uniqueSessionIds = new Set<string>();
+          const uniqueVisitorIds = new Set<string>();
+
+          type SessionRollup = {
+            session_id: string;
+            visitor_id: string | null;
+            first_seen_at: string;
+            last_seen_at: string;
+            landing_page: string | null;
+            utm_source: string | null;
+            utm_medium: string | null;
+            utm_campaign: string | null;
+            _utm_seen_at_ms: number | null;
+            _landing_seen_at_ms: number | null;
+          };
+
+          const sessionsById = new Map<string, SessionRollup>();
+
+          for (const e of filtered as any[]) {
+            const sessionId = e?.session_id ? String(e.session_id) : '';
+            if (sessionId) uniqueSessionIds.add(sessionId);
+
+            const visitorId = e?.visitor_id ? String(e.visitor_id) : null;
+            if (visitorId) uniqueVisitorIds.add(visitorId);
+
+            if (!sessionId) continue;
+            const occurredAt = e?.occurred_at ? String(e.occurred_at) : '';
+            const occurredMs = occurredAt ? new Date(occurredAt).getTime() : NaN;
+
+            const existing = sessionsById.get(sessionId);
+            if (!existing) {
+              sessionsById.set(sessionId, {
+                session_id: sessionId,
+                visitor_id: visitorId,
+                first_seen_at: occurredAt || new Date().toISOString(),
+                last_seen_at: occurredAt || new Date().toISOString(),
+                landing_page: typeof e?.page_path === 'string' ? e.page_path : null,
+                utm_source: e?.utm_source != null ? String(e.utm_source) : null,
+                utm_medium: e?.utm_medium != null ? String(e.utm_medium) : null,
+                utm_campaign: e?.utm_campaign != null ? String(e.utm_campaign) : null,
+                _utm_seen_at_ms: Number.isFinite(occurredMs) ? occurredMs : null,
+                _landing_seen_at_ms: Number.isFinite(occurredMs) ? occurredMs : null,
+              });
+              continue;
+            }
+
+            if (visitorId && !existing.visitor_id) existing.visitor_id = visitorId;
+
+            if (Number.isFinite(occurredMs)) {
+              const firstMs = new Date(existing.first_seen_at).getTime();
+              const lastMs = new Date(existing.last_seen_at).getTime();
+              if (!Number.isFinite(firstMs) || occurredMs < firstMs) existing.first_seen_at = occurredAt;
+              if (!Number.isFinite(lastMs) || occurredMs > lastMs) existing.last_seen_at = occurredAt;
+
+              const pagePath = typeof e?.page_path === 'string' ? e.page_path : null;
+              if (pagePath) {
+                const landingMs = existing._landing_seen_at_ms;
+                if (landingMs == null || occurredMs < landingMs) {
+                  existing.landing_page = pagePath;
+                  existing._landing_seen_at_ms = occurredMs;
+                }
+              }
+
+              const hasAnyUtm = e?.utm_source != null || e?.utm_medium != null || e?.utm_campaign != null;
+              if (hasAnyUtm) {
+                const utmMs = existing._utm_seen_at_ms;
+                if (utmMs == null || occurredMs < utmMs) {
+                  existing.utm_source = e?.utm_source != null ? String(e.utm_source) : existing.utm_source;
+                  existing.utm_medium = e?.utm_medium != null ? String(e.utm_medium) : existing.utm_medium;
+                  existing.utm_campaign = e?.utm_campaign != null ? String(e.utm_campaign) : existing.utm_campaign;
+                  existing._utm_seen_at_ms = occurredMs;
+                }
+              }
+            }
+          }
+
+          const truncated = (sessionEvents || []).length >= maxEvents;
+
+          // Compute top traffic source/medium (deduped by session).
+          type SourceMediumAgg = { source: string; medium: string | null; sessions: number; last_seen_at: string | null };
+          const bySourceMedium = new Map<string, SourceMediumAgg>();
+
+          sessionsById.forEach((s) => {
+            const rawSource = (s.utm_source ?? 'direct');
+            const source = String(rawSource || 'direct').trim() || 'direct';
+            const medium = s.utm_medium != null ? String(s.utm_medium).trim() : null;
+            const key = `${source}|||${medium || ''}`;
+            const existing = bySourceMedium.get(key);
+            if (!existing) {
+              bySourceMedium.set(key, {
+                source,
+                medium,
+                sessions: 1,
+                last_seen_at: s.last_seen_at || null,
+              });
+              return;
+            }
+            existing.sessions += 1;
+            if (s.last_seen_at) {
+              const prev = existing.last_seen_at ? new Date(existing.last_seen_at).getTime() : NaN;
+              const cur = new Date(s.last_seen_at).getTime();
+              if (!Number.isFinite(prev) || (Number.isFinite(cur) && cur > prev)) existing.last_seen_at = s.last_seen_at;
+            }
+          });
+
+          const topSources = Array.from(bySourceMedium.values())
+            .sort((a, b) => (b.sessions - a.sessions) || String(a.source).localeCompare(String(b.source)))
+            .slice(0, 25);
+
+          const top = topSources[0] || null;
+          const topSource = top ? top.source : null;
+          const topMedium = top ? top.medium : null;
+          const topSourceMedium = top
+            ? `${top.source}${top.medium ? ` / ${top.medium}` : ''}`
+            : null;
+          const topLastSeenAt = top ? (top.last_seen_at || null) : null;
+
+          result = {
+            total_sessions: uniqueSessionIds.size,
+            unique_visitors: uniqueVisitorIds.size,
+            total_events: filtered.length,
+            last_event_at: filtered.length > 0 ? (filtered[0] as any).occurred_at : null,
+            source: 'h2s_tracking_events',
+            top_source: topSource,
+            top_medium: topMedium,
+            top_source_medium: topSourceMedium,
+            top_last_seen_at: topLastSeenAt,
+            top_sources: topSources,
+            warning: truncated ? `Truncated at max_events=${maxEvents}` : null,
+            meta: {
+              max_events: maxEvents,
+              returned: filtered.length,
+              exclude_test: excludeTest,
+              exclude_internal: excludeInternal,
+              min_date: minDate || null,
+              start_date: startDate || null,
+              end_date: endDate || null
+            }
+          };
+        }
         break;
 
       case 'revenue':
@@ -2676,7 +3815,7 @@ Format: JSON only, no markdown.`;
 
       case 'recent_purchases':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -2739,93 +3878,171 @@ Format: JSON only, no markdown.`;
         break;
 
       case 'funnel':
-        // Calculate funnel stages from h2s_tracking_events based on event_type
-        const { data: funnelEvents } = await getTrackingDb()
-          .from('h2s_tracking_events')
-          .select('event_type, event_name, visitor_id, session_id, occurred_at, customer_email, metadata');
+        {
+          // Funnel summary for the dashboard.
+          // Contract: include raw event counters + unique session count + optional source breakdown.
 
-        let funnelEventsFiltered = excludeTest ? (funnelEvents || []).filter((e: any) => !isTestTrackingEvent(e)) : (funnelEvents || []);
-        if (excludeInternal) funnelEventsFiltered = funnelEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
-        
-        const uniqueVisitors = new Set<string>();
-        const visitorsWithViewContent = new Set<string>();
-        const engagedVisitors = new Set<string>();
-        const leadVisitors = new Set<string>();
-        const customerVisitors = new Set<string>();
-        const sessionEventCounts: Record<string, number> = {};
-        
-        funnelEventsFiltered.forEach((event: any) => {
-          // Use email as canonical identifier if available, else visitor_id
-          // This ensures same user across devices is counted once in funnel
-          const canonicalUserId = (event as any).customer_email 
-            ? `email:${(event as any).customer_email.toLowerCase().trim()}` 
-            : event.visitor_id 
-            ? `visitor:${event.visitor_id}` 
-            : null;
-          
-          if (!canonicalUserId) return;
-          
-          const sessionId = event.session_id;
-          
-          // Support both event_type and event_name fields
-          const eventType = (event as any).event_type || (event as any).event_name || '';
-          const eventTypeLower = eventType.toLowerCase();
-          
-          // Visitor: anyone with page_view
-          if (eventType === 'page_view' || eventType === 'PageView' || eventTypeLower === 'pageview') {
-            uniqueVisitors.add(canonicalUserId);
-            sessionEventCounts[sessionId] = (sessionEventCounts[sessionId] || 0) + 1;
+          const maxEvents = Math.min(Math.max(toInt(searchParams.get('max_events'), 200000), 1000), 200000);
+
+          let funnelQuery = getTrackingDb()
+            .from('h2s_tracking_events')
+            .select('event_type, event_name, visitor_id, session_id, occurred_at, customer_email, metadata, utm_source, utm_medium, page_path')
+            .order('occurred_at', { ascending: false })
+            .limit(maxEvents);
+
+          if (minDate) funnelQuery = funnelQuery.gte('occurred_at', minDate);
+          if (startDate) funnelQuery = funnelQuery.gte('occurred_at', startDate);
+          if (endDate) funnelQuery = funnelQuery.lte('occurred_at', endDate);
+
+          const { data: funnelEvents, error: funnelError } = await funnelQuery;
+          if (funnelError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load funnel events: ${funnelError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
           }
-          
-          // Browser: view_content events (engaged viewing)
-          if (eventType === 'view_content' || eventType === 'ViewContent' || eventTypeLower === 'viewcontent') {
-            visitorsWithViewContent.add(canonicalUserId);
-          }
-          
-          // Engaged: multiple page views or interaction events
-          const interactionEvents = ['add_to_cart', 'addtocart', 'initiate_checkout', 'initiatecheckout', 'click'];
-          if (sessionEventCounts[sessionId] >= 2 || interactionEvents.includes(eventTypeLower)) {
-            engagedVisitors.add(canonicalUserId);
-          }
-          
-          // Lead: lead or complete_registration events
-          if (eventType === 'lead' || eventType === 'Lead' || 
-              eventType === 'complete_registration' || eventType === 'CompleteRegistration' ||
-              eventTypeLower === 'lead' || eventTypeLower === 'completeregistration') {
-            leadVisitors.add(canonicalUserId);
-          }
-          
-          // Customer: purchase events
-          if (eventType === 'purchase' || eventType === 'Purchase' || eventTypeLower === 'purchase') {
-            customerVisitors.add(canonicalUserId);
-          }
-        });
-        
-        const visitorCount = uniqueVisitors.size;
-        const browserCount = visitorsWithViewContent.size;
-        const engagedCount = engagedVisitors.size;
-        const leadCount = leadVisitors.size;
-        const customerCount = customerVisitors.size;
-        
-        result = {
-          stage_distribution: {
-            visitor: visitorCount,
-            browser: browserCount,
-            engaged: engagedCount,
-            lead: leadCount,
-            customer: customerCount
-          },
-          totals: {
-            leads: leadCount,
-            customers: customerCount
-          },
-          conversion_rates: {
-            visitor_to_browser: visitorCount > 0 ? `${((browserCount / visitorCount) * 100).toFixed(1)}%` : '0%',
-            browser_to_engaged: browserCount > 0 ? `${((engagedCount / browserCount) * 100).toFixed(1)}%` : '0%',
-            engaged_to_lead: engagedCount > 0 ? `${((leadCount / engagedCount) * 100).toFixed(1)}%` : '0%',
-            lead_to_customer: leadCount > 0 ? `${((customerCount / leadCount) * 100).toFixed(1)}%` : '0%'
-          }
-        };
+
+          let funnelEventsFiltered = excludeTest
+            ? (funnelEvents || []).filter((e: any) => !isTestTrackingEvent(e))
+            : (funnelEvents || []);
+          if (excludeInternal) funnelEventsFiltered = funnelEventsFiltered.filter((e: any) => !isInternalTrackingPathFromEvent(e, customPathRules));
+
+          const uniqueVisitors = new Set<string>();
+          const visitorsWithViewContent = new Set<string>();
+          const engagedVisitors = new Set<string>();
+          const leadVisitors = new Set<string>();
+          const customerVisitors = new Set<string>();
+          const uniqueSessions = new Set<string>();
+          const sessionEventCounts: Record<string, number> = {};
+          const sessionAttribution: Record<string, { source: string; medium: string | null }> = {};
+
+          const counts = {
+            page_view: 0,
+            view_content: 0,
+            add_to_cart: 0,
+            initiate_checkout: 0,
+            purchase: 0
+          };
+
+          const normalizeUtm = (val: any): string => {
+            const s = String(val || '').trim().toLowerCase();
+            if (!s || s === 'none' || s === '(none)' || s === '(not set)' || s === 'null' || s === 'undefined') return 'direct';
+            return s;
+          };
+
+          funnelEventsFiltered.forEach((event: any) => {
+            const sessionId = event.session_id ? String(event.session_id) : '';
+            if (sessionId) uniqueSessions.add(sessionId);
+
+            const canonicalUserId = (event as any).customer_email
+              ? `email:${String((event as any).customer_email).toLowerCase().trim()}`
+              : event.visitor_id
+              ? `visitor:${String(event.visitor_id)}`
+              : null;
+
+            const normalizedType = normalizeTrackingEventType((event as any).event_type || (event as any).event_name || '');
+
+            // Raw counters (event-level)
+            if (normalizedType === 'page_view') counts.page_view++;
+            if (normalizedType === 'view_content') counts.view_content++;
+            if (normalizedType === 'add_to_cart') counts.add_to_cart++;
+            if (normalizedType === 'initiate_checkout') counts.initiate_checkout++;
+            if (normalizedType === 'purchase') counts.purchase++;
+
+            // Attribution by session (first non-direct wins)
+            if (sessionId) {
+              const rawSource = (event as any).utm_source ?? (event as any)?.metadata?.utm_source;
+              const rawMedium = (event as any).utm_medium ?? (event as any)?.metadata?.utm_medium;
+              const source = normalizeUtm(rawSource);
+              const medium = rawMedium ? String(rawMedium).trim().toLowerCase() : null;
+
+              const existing = sessionAttribution[sessionId];
+              if (!existing) {
+                sessionAttribution[sessionId] = { source, medium };
+              } else if (existing.source === 'direct' && source !== 'direct') {
+                sessionAttribution[sessionId] = { source, medium };
+              }
+            }
+
+            // Stage distribution (user-level)
+            if (!canonicalUserId) return;
+
+            // Visitor: anyone with page_view
+            if (normalizedType === 'page_view') {
+              uniqueVisitors.add(canonicalUserId);
+              if (sessionId) sessionEventCounts[sessionId] = (sessionEventCounts[sessionId] || 0) + 1;
+            }
+
+            // Browser: view_content events (engaged viewing)
+            if (normalizedType === 'view_content') {
+              visitorsWithViewContent.add(canonicalUserId);
+            }
+
+            // Engaged: multiple page views or interaction events
+            const interactionEvents = new Set(['add_to_cart', 'initiate_checkout', 'click']);
+            if ((sessionId && (sessionEventCounts[sessionId] || 0) >= 2) || interactionEvents.has(normalizedType)) {
+              engagedVisitors.add(canonicalUserId);
+            }
+
+            // Lead: lead or complete_registration events
+            if (normalizedType === 'lead' || normalizedType === 'complete_registration') {
+              leadVisitors.add(canonicalUserId);
+            }
+
+            // Customer: purchase events
+            if (normalizedType === 'purchase') {
+              customerVisitors.add(canonicalUserId);
+            }
+          });
+
+          const visitorCount = uniqueVisitors.size;
+          const browserCount = visitorsWithViewContent.size;
+          const engagedCount = engagedVisitors.size;
+          const leadCount = leadVisitors.size;
+          const customerCount = customerVisitors.size;
+          const uniqueSessionCount = uniqueSessions.size;
+
+          const sourceCounts: Record<string, { source: string; medium: string | null; count: number }> = {};
+          Object.values(sessionAttribution).forEach((a) => {
+            const key = `${a.source}||${a.medium || ''}`;
+            if (!sourceCounts[key]) sourceCounts[key] = { source: a.source, medium: a.medium, count: 0 };
+            sourceCounts[key].count += 1;
+          });
+          const sources = Object.values(sourceCounts).sort((a, b) => b.count - a.count).slice(0, 50);
+
+          result = {
+            ...counts,
+            total_events: funnelEventsFiltered.length,
+            unique_sessions: uniqueSessionCount,
+            unique_visitors: visitorCount,
+            sources,
+            stage_distribution: {
+              visitor: visitorCount,
+              browser: browserCount,
+              engaged: engagedCount,
+              lead: leadCount,
+              customer: customerCount
+            },
+            totals: {
+              leads: leadCount,
+              customers: customerCount
+            },
+            conversion_rates: {
+              visitor_to_browser: visitorCount > 0 ? `${((browserCount / visitorCount) * 100).toFixed(1)}%` : '0%',
+              browser_to_engaged: browserCount > 0 ? `${((engagedCount / browserCount) * 100).toFixed(1)}%` : '0%',
+              engaged_to_lead: engagedCount > 0 ? `${((leadCount / engagedCount) * 100).toFixed(1)}%` : '0%',
+              lead_to_customer: leadCount > 0 ? `${((customerCount / leadCount) * 100).toFixed(1)}%` : '0%'
+            },
+            meta: {
+              exclude_test: excludeTest,
+              exclude_internal: excludeInternal,
+              start_date: startDate || null,
+              end_date: endDate || null,
+              min_date: minDate || null,
+              max_events: maxEvents
+            }
+          };
+        }
         break;
 
       case 'users':
@@ -3306,16 +4523,27 @@ Be realistic and conservative. If unsure, use medium confidence.`;
     if (action === 'aiProfiles') responseKey = 'profiles';
     if (action === 'trainingCompletions') responseKey = 'completions';
     if (action === 'deliverables') responseKey = 'deliverables';
+    if (action === 'dashboardMe') responseKey = 'me';
+    if (action === 'dashboardUsers') responseKey = 'users';
+    const headers = corsHeaders(request);
+    if (action === 'observed_paths' || action === 'path_rules') {
+      // These endpoints drive admin/debug UI and must not go stale.
+      headers['Cache-Control'] = 'no-store, max-age=0';
+      headers['CDN-Cache-Control'] = 'no-store';
+      headers['Vercel-CDN-Cache-Control'] = 'no-store';
+      headers['Pragma'] = 'no-cache';
+    }
+
     if (action === 'ai_report') {
       // AI report returns its own structure
-      return NextResponse.json(result, { headers: corsHeaders(request) });
+      return NextResponse.json(result, { headers });
     }
     if (action === 'ai-insights') {
       // Back-compat: return direct structure (same as ai_report)
-      return NextResponse.json(result, { headers: corsHeaders(request) });
+      return NextResponse.json(result, { headers });
     }
     
-    return NextResponse.json({ ok: true, [responseKey]: result }, { headers: corsHeaders(request) });
+    return NextResponse.json({ ok: true, [responseKey]: result }, { headers });
 
   } catch (error: any) {
     console.error('API Error:', error);
@@ -3324,12 +4552,19 @@ Be realistic and conservative. If unsure, use medium confidence.`;
 }
 
 export async function POST(request: Request) {
-  const body = await request.json();
+  let body: any = {};
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
   try {
+    try {
+      body = await request.json();
+    } catch {
+      body = {};
+    }
+
     let result;
+    const extraPayload: any = {};
 
     // Some features (training, candidates, tasks, hours, etc.) live in the Mgmt DB.
     // Prefer Mgmt creds when present, but don't hard-fail if they're not configured.
@@ -3341,10 +4576,1007 @@ export async function POST(request: Request) {
       }
     })();
 
+    const tasksDb = getDeliverablesDb();
+
     switch (action) {
+            case 'dashboardBootstrapAdmin':
+              {
+                // One-time bootstrap for the very first admin user.
+                // Guarded by env secret (recommended) and only allowed when there are no users.
+                const expected = getDashboardBootstrapSecret();
+                const provided = String(
+                  request.headers.get('x-h2s-bootstrap-secret') ||
+                    request.headers.get('x-h2s-admin-key') ||
+                    request.headers.get('x-h2s-admin-token') ||
+                    body?.bootstrapSecret ||
+                    body?.adminKey ||
+                    ''
+                ).trim();
+
+                if (!expected) {
+                  return NextResponse.json(
+                    { ok: false, error: 'Bootstrap disabled (set H2S_DASHBOARD_BOOTSTRAP_SECRET)' },
+                    { status: 501, headers: corsHeaders(request) }
+                  );
+                }
+                if (!provided || provided !== expected) {
+                  return NextResponse.json({ ok: false, error: 'Invalid bootstrap secret' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const db = tasksDb;
+                const { count, error: countError } = await db
+                  .from('Dashboard_Users')
+                  .select('*', { count: 'exact', head: true });
+
+                if (countError) {
+                  return NextResponse.json({ ok: false, error: `Failed to check users: ${countError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+                if ((count || 0) > 0) {
+                  return NextResponse.json({ ok: false, error: 'Already initialized' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const displayName = String(body?.displayName || body?.name || '').trim();
+                const username = normalizeDashboardUsername(body?.username || displayName.split(' ')[0] || '');
+                const email = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
+                let pin = String(body?.pin || '').trim();
+                const pinWasGenerated = !pin;
+                if (!pin) pin = generateNumericPin(8);
+
+                if (!displayName) {
+                  return NextResponse.json({ ok: false, error: 'displayName is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!username) {
+                  return NextResponse.json({ ok: false, error: 'username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!pin || pin.length < 4) {
+                  return NextResponse.json({ ok: false, error: 'pin must be at least 4 characters' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const saltBytes = new Uint8Array(16);
+                crypto.getRandomValues(saltBytes);
+                const saltB64 = bytesToBase64Url(saltBytes);
+                const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
+                const nowIso = new Date().toISOString();
+
+                const { data: inserted, error } = await db
+                  .from('Dashboard_Users')
+                  .insert({
+                    Username: username,
+                    Display_Name: displayName,
+                    Email: email,
+                    Role: 'ADMIN',
+                    Is_Disabled: false,
+                    Pin_Salt: saltB64,
+                    Pin_Hash: hashB64,
+                    Created_At: nowIso,
+                    Updated_At: nowIso
+                  })
+                  .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Created_At, Updated_At')
+                  .single();
+
+                if (error) {
+                  return NextResponse.json({ ok: false, error: `Failed to bootstrap admin: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = {
+                  user: inserted,
+                  pin: pinWasGenerated ? pin : pin,
+                  pinWasGenerated
+                };
+                extraPayload.dashboardBootstrapAdmin = result;
+              }
+              break;
+
+            case 'dashboardLogin':
+              {
+                const identifierRaw = String(body?.username || body?.email || body?.identifier || '').trim();
+                const pinRaw = String(body?.pin || body?.password || '').trim();
+                const device = typeof body?.device === 'string' ? body.device.trim() : null;
+
+                if (!identifierRaw || !pinRaw) {
+                  return NextResponse.json({ ok: false, error: 'username and pin are required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = tasksDb;
+
+                const isEmail = identifierRaw.includes('@');
+                const identifier = isEmail ? identifierRaw.trim().toLowerCase() : normalizeDashboardUsername(identifierRaw);
+
+                const userQuery = db
+                  .from('Dashboard_Users')
+                  .select('User_ID, Username, Display_Name, Role, Is_Disabled, Pin_Salt, Pin_Hash')
+                  .limit(1);
+
+                const { data: user, error: userError } = isEmail
+                  ? await userQuery.ilike('Email', identifier).maybeSingle()
+                  : await userQuery.eq('Username', identifier).maybeSingle();
+
+                if (userError || !user) {
+                  return NextResponse.json({ ok: false, error: 'Invalid login' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                if (user.Is_Disabled) {
+                  return NextResponse.json({ ok: false, error: 'Account disabled' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const saltBytes = base64UrlToBytes(String(user.Pin_Salt || ''));
+                if (!saltBytes || saltBytes.length < 8) {
+                  return NextResponse.json({ ok: false, error: 'Account not configured' }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const computed = await pbkdf2Sha256Base64Url(pinRaw, saltBytes);
+                const ok = constantTimeEquals(String(computed || ''), String(user.Pin_Hash || ''));
+                if (!ok) {
+                  return NextResponse.json({ ok: false, error: 'Invalid login' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const token = randomTokenBase64Url(32);
+                const tokenHash = await sha256Base64Url(token);
+                const nowIso = new Date().toISOString();
+                const expiresAt = new Date(Date.now() + DASHBOARD_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+                const { error: sessionError } = await db.from('Dashboard_Sessions').insert({
+                  User_ID: user.User_ID,
+                  Token_Hash: tokenHash,
+                  Device: device,
+                  Created_At: nowIso,
+                  Expires_At: expiresAt,
+                  Last_Seen_At: nowIso
+                });
+
+                if (sessionError) {
+                  return NextResponse.json({ ok: false, error: `Failed to create session: ${sessionError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                // Best-effort: update last login
+                try {
+                  await db
+                    .from('Dashboard_Users')
+                    .update({ Last_Login_At: nowIso, Updated_At: nowIso })
+                    .eq('User_ID', user.User_ID);
+                } catch {
+                  // ignore
+                }
+
+                const role = String(user.Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                result = {
+                  token,
+                  expiresAt,
+                  user: {
+                    userId: String(user.User_ID),
+                    username: String(user.Username || '').trim().toUpperCase(),
+                    displayName: String(user.Display_Name || user.Username || '').trim(),
+                    role
+                  }
+                };
+
+                extraPayload.dashboardLogin = result;
+              }
+              break;
+
+            case 'dashboardChangePin':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const oldPin = String(body?.oldPin || body?.old_pin || '').trim();
+                const newPin = String(body?.newPin || body?.new_pin || '').trim();
+
+                if (!oldPin || !newPin) {
+                  return NextResponse.json({ ok: false, error: 'oldPin and newPin are required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (newPin.length < 4) {
+                  return NextResponse.json({ ok: false, error: 'newPin must be at least 4 characters' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = tasksDb;
+                const { data: user, error: userError } = await db
+                  .from('Dashboard_Users')
+                  .select('User_ID, Is_Disabled, Pin_Salt, Pin_Hash')
+                  .eq('User_ID', authed.userId)
+                  .maybeSingle();
+
+                if (userError || !user) {
+                  return NextResponse.json({ ok: false, error: 'Account not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+                if (user.Is_Disabled) {
+                  return NextResponse.json({ ok: false, error: 'Account disabled' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const saltBytes = base64UrlToBytes(String(user.Pin_Salt || ''));
+                const computed = await pbkdf2Sha256Base64Url(oldPin, saltBytes);
+                const ok = constantTimeEquals(String(computed || ''), String(user.Pin_Hash || ''));
+                if (!ok) {
+                  return NextResponse.json({ ok: false, error: 'Invalid old PIN' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const nextSalt = new Uint8Array(16);
+                crypto.getRandomValues(nextSalt);
+                const nextSaltB64 = bytesToBase64Url(nextSalt);
+                const nextHashB64 = await pbkdf2Sha256Base64Url(newPin, nextSalt);
+                const nowIso = new Date().toISOString();
+
+                const { error: updateError } = await db
+                  .from('Dashboard_Users')
+                  .update({ Pin_Salt: nextSaltB64, Pin_Hash: nextHashB64, Updated_At: nowIso })
+                  .eq('User_ID', authed.userId);
+
+                if (updateError) {
+                  return NextResponse.json({ ok: false, error: `Failed to update PIN: ${updateError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { changed: true };
+                extraPayload.dashboardChangePin = result;
+              }
+              break;
+
+            case 'dashboardLogout':
+              {
+                const token = String(body?.token || '').trim() || getBearerToken(request);
+                if (!token) {
+                  result = { loggedOut: true };
+                  extraPayload.dashboardLogout = result;
+                  break;
+                }
+                const db = tasksDb;
+                const tokenHash = await sha256Base64Url(token);
+                try {
+                  await db.from('Dashboard_Sessions').delete().eq('Token_Hash', tokenHash);
+                } catch {
+                  // ignore
+                }
+                result = { loggedOut: true };
+                extraPayload.dashboardLogout = result;
+              }
+              break;
+
+            case 'createDashboardUser':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const username = normalizeDashboardUsername(body?.username);
+                const displayName = String(body?.displayName || body?.name || '').trim();
+                const email = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
+                const role = String(body?.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                let pin = String(body?.pin || '').trim();
+                const pinWasGenerated = !pin;
+                if (!pin) pin = generateNumericPin(8);
+
+                if (!username) {
+                  return NextResponse.json({ ok: false, error: 'username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!displayName) {
+                  return NextResponse.json({ ok: false, error: 'displayName is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!pin || pin.length < 4) {
+                  return NextResponse.json({ ok: false, error: 'pin must be at least 4 characters' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const saltBytes = new Uint8Array(16);
+                crypto.getRandomValues(saltBytes);
+                const saltB64 = bytesToBase64Url(saltBytes);
+                const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
+
+                const nowIso = new Date().toISOString();
+                const db = tasksDb;
+
+                const { data: inserted, error } = await db
+                  .from('Dashboard_Users')
+                  .insert({
+                    Username: username,
+                    Display_Name: displayName,
+                    Email: email,
+                    Role: role,
+                    Is_Disabled: false,
+                    Pin_Salt: saltB64,
+                    Pin_Hash: hashB64,
+                    Created_At: nowIso,
+                    Updated_At: nowIso
+                  })
+                  .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Created_At, Updated_At')
+                  .single();
+
+                if (error) {
+                  return NextResponse.json({ ok: false, error: `Failed to create user: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { user: inserted, pin, pinWasGenerated };
+                extraPayload.createDashboardUser = result;
+              }
+              break;
+
+            case 'resetDashboardUserPin':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const userId = String(body?.userId || '').trim();
+                const username = normalizeDashboardUsername(body?.username);
+                let pin = String(body?.pin || '').trim();
+                const pinWasGenerated = !pin;
+                if (!pin) pin = generateNumericPin(8);
+
+                if (!userId && !username) {
+                  return NextResponse.json({ ok: false, error: 'userId or username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!pin || pin.length < 4) {
+                  return NextResponse.json({ ok: false, error: 'pin must be at least 4 characters' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const saltBytes = new Uint8Array(16);
+                crypto.getRandomValues(saltBytes);
+                const saltB64 = bytesToBase64Url(saltBytes);
+                const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
+                const nowIso = new Date().toISOString();
+
+                const db = tasksDb;
+                let q = db.from('Dashboard_Users').update({ Pin_Salt: saltB64, Pin_Hash: hashB64, Updated_At: nowIso });
+                q = userId ? q.eq('User_ID', userId) : q.eq('Username', username);
+
+                const { data: rows, error } = await q
+                  .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Updated_At')
+                  .limit(1);
+
+                if (error) {
+                  return NextResponse.json({ ok: false, error: `Failed to reset PIN: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const updated = Array.isArray(rows) && rows.length ? rows[0] : null;
+                if (!updated) {
+                  return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                result = { user: updated, pin, pinWasGenerated };
+                extraPayload.resetDashboardUserPin = result;
+              }
+              break;
+
+            case 'sendDashboardLoginInvite':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const inputEmail = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
+                const inputUsername = normalizeDashboardUsername(body?.username);
+                const inputDisplayName = typeof body?.displayName === 'string' ? body.displayName.trim() : '';
+                const inputRole = String(body?.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                const userId = String(body?.userId || '').trim();
+
+                // Optional: allow sending invite to a disabled account if explicitly enabled.
+                const forceEnable = ['1', 'true', 'yes', 'on'].includes(String(body?.forceEnable || '').toLowerCase());
+
+                const db = tasksDb;
+                const nowIso = new Date().toISOString();
+
+                const deriveUsernameFromEmail = (email: string): string => {
+                  const local = String(email.split('@')[0] || '').trim();
+                  const cleaned = local.replace(/[^a-z0-9 _\-\.]/gi, ' ').replace(/\s+/g, ' ').trim();
+                  return normalizeDashboardUsername(cleaned || local || 'VA');
+                };
+
+                // 1) Load or create user
+                let user: any = null;
+                if (userId) {
+                  const { data, error } = await db
+                    .from('Dashboard_Users')
+                    .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+                    .eq('User_ID', userId)
+                    .maybeSingle();
+                  if (error) {
+                    return NextResponse.json({ ok: false, error: `Failed to load user: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  user = data || null;
+                }
+
+                if (!user && inputEmail) {
+                  const { data, error } = await db
+                    .from('Dashboard_Users')
+                    .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+                    .ilike('Email', inputEmail)
+                    .maybeSingle();
+                  if (error) {
+                    return NextResponse.json({ ok: false, error: `Failed to find user by email: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  user = data || null;
+                }
+
+                if (!user && inputUsername) {
+                  const { data, error } = await db
+                    .from('Dashboard_Users')
+                    .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+                    .eq('Username', inputUsername)
+                    .maybeSingle();
+                  if (error) {
+                    return NextResponse.json({ ok: false, error: `Failed to find user by username: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  user = data || null;
+                }
+
+                // Create if missing
+                if (!user) {
+                  const emailToUse = inputEmail;
+                  if (!emailToUse) {
+                    return NextResponse.json({ ok: false, error: 'email is required to create a new account' }, { status: 400, headers: corsHeaders(request) });
+                  }
+
+                  const usernameToUse = inputUsername || deriveUsernameFromEmail(emailToUse);
+                  const displayNameToUse = inputDisplayName || usernameToUse;
+
+                  // Generate a temp PIN
+                  const pin = generateNumericPin(8);
+                  const saltBytes = new Uint8Array(16);
+                  crypto.getRandomValues(saltBytes);
+                  const saltB64 = bytesToBase64Url(saltBytes);
+                  const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
+
+                  const { data: inserted, error } = await db
+                    .from('Dashboard_Users')
+                    .insert({
+                      Username: usernameToUse,
+                      Display_Name: displayNameToUse,
+                      Email: emailToUse,
+                      Role: inputRole,
+                      Is_Disabled: false,
+                      Pin_Salt: saltB64,
+                      Pin_Hash: hashB64,
+                      Created_At: nowIso,
+                      Updated_At: nowIso
+                    })
+                    .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+                    .single();
+
+                  if (error) {
+                    return NextResponse.json({ ok: false, error: `Failed to create user: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                  }
+
+                  user = inserted;
+
+                  // Send email
+                  const loginUrl = String(process.env.H2S_DASHBOARD_LOGIN_URL || process.env.H2S_DASHBOARD_URL || 'https://portal.home2smart.com').trim();
+                  const safeUrl = /^https?:\/\//i.test(loginUrl) ? loginUrl : 'https://portal.home2smart.com';
+                  const subject = 'Your Home2Smart Portal Login';
+                  const html = `
+                    <div style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.45; color:#0f172a;">
+                      <h2 style="margin:0 0 8px 0;">Log into your account</h2>
+                      <p style="margin:0 0 14px 0;">Your Home2Smart Portal access is ready.</p>
+                      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin: 0 0 14px 0;">
+                        <div style="font-weight:800; margin-bottom:6px;">Login URL</div>
+                        <div><a href="${safeUrl}" style="color:#1d4ed8;">${safeUrl}</a></div>
+                        <div style="height:10px;"></div>
+                        <div style="font-weight:800; margin-bottom:6px;">Credentials</div>
+                        <div><b>Username:</b> ${String(usernameToUse)}</div>
+                        <div><b>PIN:</b> ${String(pin)}</div>
+                      </div>
+                      <p style="margin:0 0 10px 0; color:#334155;">After you sign in, use the <b>Change PIN</b> button to set your own PIN.</p>
+                      <p style="margin:0; color:#64748b; font-size:12px;">If you have trouble signing in, reply to this email.</p>
+                    </div>
+                  `;
+
+                  const idempotencyKey = `dashboard_invite:${String(inserted?.User_ID || '')}:${await sha256Base64Url(String(pin))}`;
+                  const mailRes = await sendMail({
+                    to: emailToUse,
+                    subject,
+                    html,
+                    category: 'dashboard_invite',
+                    idempotencyKey,
+                    meta: { userId: inserted?.User_ID, username: usernameToUse }
+                  });
+
+                  // Sign-in self-check (recompute and compare hash)
+                  let signInTest: any = { ok: false };
+                  try {
+                    const { data: verifyRow, error: verifyErr } = await db
+                      .from('Dashboard_Users')
+                      .select('Pin_Salt, Pin_Hash, Is_Disabled')
+                      .eq('User_ID', inserted.User_ID)
+                      .maybeSingle();
+                    if (verifyErr || !verifyRow) throw new Error(verifyErr?.message || 'Missing verify row');
+                    if (verifyRow.Is_Disabled) throw new Error('Account disabled');
+                    const saltBytes2 = base64UrlToBytes(String(verifyRow.Pin_Salt || ''));
+                    const computed2 = await pbkdf2Sha256Base64Url(pin, saltBytes2);
+                    const ok2 = constantTimeEquals(String(computed2 || ''), String(verifyRow.Pin_Hash || ''));
+                    signInTest = ok2 ? { ok: true } : { ok: false, error: 'Hash mismatch after write' };
+                  } catch (e: any) {
+                    signInTest = { ok: false, error: e?.message || 'Sign-in test failed' };
+                  }
+
+                  result = { user, pin, created: true, mail: mailRes, signInTest };
+                  extraPayload.sendDashboardLoginInvite = result;
+                  break;
+                }
+
+                // Existing user: reset PIN + optionally patch email/display/role.
+                if (user.Is_Disabled && !forceEnable) {
+                  return NextResponse.json(
+                    { ok: false, error: 'Account disabled (set forceEnable=true to enable + invite)', user },
+                    { status: 403, headers: corsHeaders(request) }
+                  );
+                }
+
+                // Determine email recipient (must exist or be provided)
+                const emailToUse = (inputEmail || String(user.Email || '').trim().toLowerCase()) || null;
+                if (!emailToUse) {
+                  return NextResponse.json({ ok: false, error: 'Email is required to send invite (user has no email on file)' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                // Generate new temp PIN
+                const pin = String(body?.pin || '').trim() || generateNumericPin(8);
+                const saltBytes = new Uint8Array(16);
+                crypto.getRandomValues(saltBytes);
+                const saltB64 = bytesToBase64Url(saltBytes);
+                const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
+
+                const patch: any = {
+                  Pin_Salt: saltB64,
+                  Pin_Hash: hashB64,
+                  Updated_At: nowIso
+                };
+                if (forceEnable) patch.Is_Disabled = false;
+                if (inputEmail) patch.Email = inputEmail;
+                if (inputDisplayName) patch.Display_Name = inputDisplayName;
+                if (inputRole) patch.Role = inputRole;
+
+                const { data: updatedRows, error: updateError } = await db
+                  .from('Dashboard_Users')
+                  .update(patch)
+                  .eq('User_ID', user.User_ID)
+                  .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+                  .limit(1);
+
+                if (updateError) {
+                  return NextResponse.json({ ok: false, error: `Failed to reset PIN: ${updateError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const updated = Array.isArray(updatedRows) && updatedRows.length ? updatedRows[0] : user;
+                user = updated;
+
+                const loginUrl = String(process.env.H2S_DASHBOARD_LOGIN_URL || process.env.H2S_DASHBOARD_URL || 'https://portal.home2smart.com').trim();
+                const safeUrl = /^https?:\/\//i.test(loginUrl) ? loginUrl : 'https://portal.home2smart.com';
+                const subject = 'Your Home2Smart Portal Login';
+                const html = `
+                  <div style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.45; color:#0f172a;">
+                    <h2 style="margin:0 0 8px 0;">Log into your account</h2>
+                    <p style="margin:0 0 14px 0;">Here are your updated login credentials.</p>
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin: 0 0 14px 0;">
+                      <div style="font-weight:800; margin-bottom:6px;">Login URL</div>
+                      <div><a href="${safeUrl}" style="color:#1d4ed8;">${safeUrl}</a></div>
+                      <div style="height:10px;"></div>
+                      <div style="font-weight:800; margin-bottom:6px;">Credentials</div>
+                      <div><b>Username:</b> ${String(user.Username || '')}</div>
+                      <div><b>PIN:</b> ${String(pin)}</div>
+                    </div>
+                    <p style="margin:0 0 10px 0; color:#334155;">After you sign in, use the <b>Change PIN</b> button to set your own PIN.</p>
+                    <p style="margin:0; color:#64748b; font-size:12px;">If you have trouble signing in, reply to this email.</p>
+                  </div>
+                `;
+
+                const idempotencyKey = `dashboard_invite:${String(user?.User_ID || '')}:${await sha256Base64Url(String(pin))}`;
+                const mailRes = await sendMail({
+                  to: emailToUse,
+                  subject,
+                  html,
+                  category: 'dashboard_invite',
+                  idempotencyKey,
+                  meta: { userId: user?.User_ID, username: user?.Username }
+                });
+
+                // Sign-in self-check
+                let signInTest: any = { ok: false };
+                try {
+                  const { data: verifyRow, error: verifyErr } = await db
+                    .from('Dashboard_Users')
+                    .select('Pin_Salt, Pin_Hash, Is_Disabled')
+                    .eq('User_ID', user.User_ID)
+                    .maybeSingle();
+                  if (verifyErr || !verifyRow) throw new Error(verifyErr?.message || 'Missing verify row');
+                  if (verifyRow.Is_Disabled) throw new Error('Account disabled');
+                  const saltBytes2 = base64UrlToBytes(String(verifyRow.Pin_Salt || ''));
+                  const computed2 = await pbkdf2Sha256Base64Url(pin, saltBytes2);
+                  const ok2 = constantTimeEquals(String(computed2 || ''), String(verifyRow.Pin_Hash || ''));
+                  signInTest = ok2 ? { ok: true } : { ok: false, error: 'Hash mismatch after write' };
+                } catch (e: any) {
+                  signInTest = { ok: false, error: e?.message || 'Sign-in test failed' };
+                }
+
+                result = { user, pin, created: false, mail: mailRes, signInTest };
+                extraPayload.sendDashboardLoginInvite = result;
+              }
+              break;
+
+            case 'disableDashboardUser':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const userId = String(body?.userId || '').trim();
+                const username = normalizeDashboardUsername(body?.username);
+                const isDisabled = !['0', 'false', 'no', 'off'].includes(String(body?.isDisabled ?? true).toLowerCase());
+
+                if (!userId && !username) {
+                  return NextResponse.json({ ok: false, error: 'userId or username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = tasksDb;
+                const nowIso = new Date().toISOString();
+                let q = db.from('Dashboard_Users').update({ Is_Disabled: isDisabled, Updated_At: nowIso });
+                q = userId ? q.eq('User_ID', userId) : q.eq('Username', username);
+
+                const { data: rows, error } = await q.select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Updated_At').limit(1);
+                if (error) {
+                  return NextResponse.json({ ok: false, error: `Failed to update user: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = (rows || [])[0] || null;
+                extraPayload.disableDashboardUser = result;
+              }
+              break;
+
+            case 'upsertTaskDraft':
+              {
+                const title = normalizeText(body?.title);
+                if (!title) {
+                  return NextResponse.json(
+                    { ok: false, error: 'Task title is required' },
+                    { status: 400, headers: corsHeaders(request) }
+                  );
+                }
+
+                const taskId = normalizeText(body?.taskId) || crypto.randomUUID();
+                const now = new Date().toISOString();
+
+                // Optional due date/time support (same logic as addTask)
+                let dueDateValue = null;
+                if (body?.dueDate) {
+                  try {
+                    if (String(body.dueDate).includes('T')) {
+                      dueDateValue = new Date(body.dueDate).toISOString();
+                    } else if (body?.dueTime) {
+                      dueDateValue = new Date(`${body.dueDate}T${body.dueTime}:00`).toISOString();
+                    } else {
+                      dueDateValue = new Date(`${body.dueDate}T23:59:59`).toISOString();
+                    }
+                  } catch {
+                    return NextResponse.json(
+                      { ok: false, error: 'Invalid date format' },
+                      { status: 400, headers: corsHeaders(request) }
+                    );
+                  }
+                }
+
+                const upsertPayload: any = {
+                  Task_ID: taskId,
+                  Title: title,
+                  Priority: body?.priority || 'MEDIUM',
+                  Due_Date: dueDateValue,
+                  Category: body?.category || null,
+                  Assigned_To: body?.assignedTo || null,
+                  Status: body?.status || 'PENDING',
+                  Creator_Mode: 'BUILT',
+                  Raw_Input_Text: body?.rawInputText ?? null,
+                  Outcome_Text: body?.outcomeText ?? null,
+                  Context_Text: body?.contextText ?? null,
+                  Constraints_Text: body?.constraintsText ?? null,
+                  Recurrence: body?.recurrence || null,
+                  Retention_Days: body?.retentionDays ?? null,
+                  Updated_At: now
+                };
+
+                // If row doesn't exist yet, set Created_At.
+                const { data: existing, error: existingError } = await tasksDb
+                  .from('Tasks')
+                  .select('Task_ID')
+                  .eq('Task_ID', taskId)
+                  .maybeSingle();
+
+                if (existingError) {
+                  return NextResponse.json(
+                    { ok: false, error: `Failed to check task: ${existingError.message}` },
+                    { status: 500, headers: corsHeaders(request) }
+                  );
+                }
+
+                if (!existing) {
+                  upsertPayload.Created_At = now;
+                }
+
+                const { data: saved, error } = await tasksDb
+                  .from('Tasks')
+                  .upsert(upsertPayload, { onConflict: 'Task_ID' })
+                  .select('*')
+                  .single();
+
+                if (error) {
+                  return NextResponse.json(
+                    { ok: false, error: `Failed to save task draft: ${error.message}` },
+                    { status: 500, headers: corsHeaders(request) }
+                  );
+                }
+
+                result = saved;
+              }
+              break;
+
+            case 'generateTaskDetails':
+              {
+                const taskId = normalizeText(body?.taskId);
+                if (!taskId) {
+                  return NextResponse.json(
+                    { ok: false, error: 'taskId is required' },
+                    { status: 400, headers: corsHeaders(request) }
+                  );
+                }
+
+                const { data: task, error: taskError } = await tasksDb
+                  .from('Tasks')
+                  .select('*')
+                  .eq('Task_ID', taskId)
+                  .single();
+
+                if (taskError || !task) {
+                  return NextResponse.json(
+                    { ok: false, error: `Task not found: ${taskError?.message || taskId}` },
+                    { status: 404, headers: corsHeaders(request) }
+                  );
+                }
+
+                const fields = {
+                  rawInputText: task.Raw_Input_Text ?? body?.rawInputText,
+                  outcomeText: task.Outcome_Text ?? body?.outcomeText,
+                  contextText: task.Context_Text ?? body?.contextText,
+                  constraintsText: task.Constraints_Text ?? body?.constraintsText
+                };
+
+                const gate = canGenerateTaskDetails(fields);
+                if (!gate.ok) {
+                  return NextResponse.json(
+                    { ok: false, ...gate },
+                    { status: 400, headers: corsHeaders(request) }
+                  );
+                }
+
+                if (!openai) {
+                  return NextResponse.json(
+                    { ok: false, code: 'AI_NOT_CONFIGURED', message: 'AI is not configured for this environment' },
+                    { status: 200, headers: corsHeaders(request) }
+                  );
+                }
+
+                const prompt = `You are helping create a task for a human operator.
+
+      Hard rules:
+      - Do NOT invent facts, tools, links, accounts, or access.
+      - If something is unknown, phrase the step as an instruction to confirm it (e.g., "Confirm X") rather than guessing.
+      - Keep it actionable and concrete.
+
+      Return STRICT JSON ONLY with this schema:
+      {
+        "description": "string (1-3 short paragraphs)",
+        "checklist": ["string", ...],
+        "acceptance": ["string", ...],
+        "dependencies": ["string", ...],
+        "suggested": {
+          "category": "string | null",
+          "priority": "HIGH | MEDIUM | LOW | null",
+          "due_date": "YYYY-MM-DD | null",
+          "due_time": "HH:MM | null",
+          "recurrence": "none | daily | weekly | null",
+          "retention_days": "number | null"
+        }
+      }
+
+      INPUT:
+      RAW_INPUT_TEXT:\n${normalizeText(fields.rawInputText)}
+
+      OUTCOME_TEXT (Definition of Done):\n${normalizeText(fields.outcomeText)}
+
+      CONTEXT_TEXT:\n${normalizeText(fields.contextText)}
+
+      CONSTRAINTS_TEXT:\n${normalizeText(fields.constraintsText)}
+      `;
+
+                const completion = await openai.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                    { role: 'system', content: 'You write tasks with zero guessing.' },
+                    { role: 'user', content: prompt }
+                  ],
+                  response_format: { type: 'json_object' },
+                  temperature: 0.2
+                });
+
+                const raw = completion.choices?.[0]?.message?.content || '';
+                const parsedAttempt = tryParseJsonObject(raw);
+                if (!parsedAttempt.ok) {
+                  return NextResponse.json(
+                    {
+                      ok: false,
+                      code: 'AI_JSON_PARSE_FAILED',
+                      message: 'AI returned an invalid JSON payload. Please try again.',
+                      error: parsedAttempt.error
+                    },
+                    { status: 200, headers: corsHeaders(request) }
+                  );
+                }
+
+                const parsed: any = parsedAttempt.value;
+
+                const aiDescription = typeof parsed?.description === 'string' ? parsed.description : '';
+                const aiChecklist = Array.isArray(parsed?.checklist) ? parsed.checklist : [];
+                const aiAcceptance = Array.isArray(parsed?.acceptance) ? parsed.acceptance : [];
+                const aiDependencies = Array.isArray(parsed?.dependencies) ? parsed.dependencies : [];
+
+                const suggestedRaw = parsed?.suggested && typeof parsed.suggested === 'object' ? parsed.suggested : null;
+                const suggested: any = {};
+                if (suggestedRaw) {
+                  const cat = typeof suggestedRaw.category === 'string' ? suggestedRaw.category.trim() : '';
+                  const pri = typeof suggestedRaw.priority === 'string' ? suggestedRaw.priority.trim().toUpperCase() : '';
+                  const dueDate = typeof suggestedRaw.due_date === 'string' ? suggestedRaw.due_date.trim() : '';
+                  const dueTime = typeof suggestedRaw.due_time === 'string' ? suggestedRaw.due_time.trim() : '';
+                  const rec = typeof suggestedRaw.recurrence === 'string' ? suggestedRaw.recurrence.trim().toLowerCase() : '';
+                  const retention = typeof suggestedRaw.retention_days === 'number' ? suggestedRaw.retention_days : parseInt(String(suggestedRaw.retention_days || ''), 10);
+
+                  if (cat) suggested.category = cat;
+                  if (['HIGH', 'MEDIUM', 'LOW'].includes(pri)) suggested.priority = pri;
+                  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) suggested.dueDate = dueDate;
+                  if (/^\d{2}:\d{2}$/.test(dueTime)) suggested.dueTime = dueTime;
+                  if (['none', 'daily', 'weekly'].includes(rec)) suggested.recurrence = rec;
+                  if (!Number.isNaN(retention) && retention > 0 && retention <= 365) suggested.retentionDays = retention;
+                }
+
+                // Return suggestions as a separate payload key so Dash can choose whether to apply.
+                extraPayload.taskCreatorSuggestions = suggested;
+
+                const now = new Date().toISOString();
+                const { data: updated, error: updateError } = await tasksDb
+                  .from('Tasks')
+                  .update({
+                    Creator_Mode: task.Creator_Mode || 'BUILT',
+                    AI_Description: aiDescription || null,
+                    AI_Checklist: aiChecklist,
+                    AI_Acceptance: aiAcceptance,
+                    AI_Dependencies: aiDependencies,
+                    AI_Generated_At: now,
+                    Updated_At: now
+                  })
+                  .eq('Task_ID', taskId)
+                  .select('*')
+                  .single();
+
+                if (updateError) {
+                  return NextResponse.json(
+                    { ok: false, error: `Failed to persist AI details: ${updateError.message}` },
+                    { status: 500, headers: corsHeaders(request) }
+                  );
+                }
+
+                result = updated;
+              }
+              break;
+
+            case 'taskCreatorIntake':
+              {
+                const briefText = normalizeText(body?.briefText ?? body?.brief ?? body?.rawInputText);
+                const outcomeText = normalizeText(body?.outcomeText);
+                const contextText = normalizeText(body?.contextText);
+                const constraintsText = normalizeText(body?.constraintsText);
+
+                if (!briefText && !outcomeText) {
+                  return NextResponse.json(
+                    { ok: false, error: 'briefText is required' },
+                    { status: 400, headers: corsHeaders(request) }
+                  );
+                }
+
+                // Guardrail: if outcome is missing, return exactly one question.
+                const question = !outcomeText ? missingOutcomeQuestion() : null;
+
+                if (!openai) {
+                  return NextResponse.json(
+                    {
+                      ok: true,
+                      result: { title: null, suggested: {} },
+                      taskCreatorIntake: { title: null, suggested: {} },
+                      question
+                    },
+                    { headers: corsHeaders(request) }
+                  );
+                }
+
+                const prompt = `You are helping intake a task from a spoken/written brief.
+
+Hard rules:
+- Do NOT invent facts, tools, links, accounts, or access.
+- Return suggestions only. If uncertain, return null.
+- Keep the title short and specific (max ~70 chars). No fluff.
+
+Return STRICT JSON ONLY with this schema:
+{
+  "title": "string | null",
+  "suggested": {
+    "category": "string | null",
+    "priority": "HIGH | MEDIUM | LOW | null",
+    "due_date": "YYYY-MM-DD | null",
+    "due_time": "HH:MM | null",
+    "recurrence": "none | daily | weekly | null",
+    "retention_days": "number | null"
+  }
+}
+
+INPUT:
+BRIEF_TEXT:\n${briefText}
+
+OUTCOME_TEXT (may be empty):\n${outcomeText}
+
+CONTEXT_TEXT:\n${contextText}
+
+CONSTRAINTS_TEXT:\n${constraintsText}
+`;
+
+                const completion = await openai.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                    { role: 'system', content: 'You extract safe task suggestions with zero guessing.' },
+                    { role: 'user', content: prompt }
+                  ],
+                  response_format: { type: 'json_object' },
+                  temperature: 0.2
+                });
+
+                const raw = completion.choices?.[0]?.message?.content || '';
+                const parsedAttempt = tryParseJsonObject(raw);
+                if (!parsedAttempt.ok) {
+                  // Don't hard-fail UX for intake; return empty suggestions + keep the one-question guardrail.
+                  result = { title: null, suggested: {} };
+                  extraPayload.taskCreatorIntake = result;
+                  if (question) extraPayload.question = question;
+                  extraPayload.taskCreatorIntakeError = {
+                    code: 'AI_JSON_PARSE_FAILED',
+                    message: 'AI intake failed to return valid JSON. Try again or type a short title manually.',
+                    error: parsedAttempt.error
+                  };
+                  break;
+                }
+
+                const parsed: any = parsedAttempt.value;
+
+                const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
+                const suggestedRaw = parsed?.suggested && typeof parsed.suggested === 'object' ? parsed.suggested : null;
+                const suggested: any = {};
+                if (suggestedRaw) {
+                  const cat = typeof suggestedRaw.category === 'string' ? suggestedRaw.category.trim() : '';
+                  const pri = typeof suggestedRaw.priority === 'string' ? suggestedRaw.priority.trim().toUpperCase() : '';
+                  const dueDate = typeof suggestedRaw.due_date === 'string' ? suggestedRaw.due_date.trim() : '';
+                  const dueTime = typeof suggestedRaw.due_time === 'string' ? suggestedRaw.due_time.trim() : '';
+                  const rec = typeof suggestedRaw.recurrence === 'string' ? suggestedRaw.recurrence.trim().toLowerCase() : '';
+                  const retention = typeof suggestedRaw.retention_days === 'number' ? suggestedRaw.retention_days : parseInt(String(suggestedRaw.retention_days || ''), 10);
+
+                  if (cat) suggested.category = cat;
+                  if (['HIGH', 'MEDIUM', 'LOW'].includes(pri)) suggested.priority = pri;
+                  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) suggested.dueDate = dueDate;
+                  if (/^\d{2}:\d{2}$/.test(dueTime)) suggested.dueTime = dueTime;
+                  if (['none', 'daily', 'weekly'].includes(rec)) suggested.recurrence = rec;
+                  if (!Number.isNaN(retention) && retention > 0 && retention <= 365) suggested.retentionDays = retention;
+                }
+
+                result = { title: title ? title.slice(0, 90) : null, suggested };
+                extraPayload.taskCreatorIntake = result;
+                if (question) extraPayload.question = question;
+              }
+              break;
       case 'set_path_rule':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -3383,7 +5615,7 @@ export async function POST(request: Request) {
 
       case 'delete_path_rule':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -3404,7 +5636,7 @@ export async function POST(request: Request) {
 
       case 'delete_purchase':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -3921,23 +6153,32 @@ CHECKLIST:
         const nowUpdate = new Date().toISOString();
         
         // Insert task
-        const { data: newTask, error: taskError } = await getSupabase()
+        const insertPayload: any = {
+          Task_ID: taskId,
+          Title: body.title.trim(),
+          Description: body.description || null,
+          Priority: body.priority || 'MEDIUM',
+          Due_Date: dueDateValue,
+          Status: 'PENDING',
+          Category: body.category || null,
+          Assigned_To: body.assignedTo || null,
+          Type: body.type || null,
+          URL: body.url || null,
+          Content: body.content || null,
+          Recurrence: body.recurrence || null,
+          Retention_Days: body.retentionDays ?? null,
+          Creator_Mode: body.creatorMode || 'QUICK',
+          Raw_Input_Text: body.rawInputText ?? null,
+          Outcome_Text: body.outcomeText ?? null,
+          Context_Text: body.contextText ?? null,
+          Constraints_Text: body.constraintsText ?? null,
+          Created_At: nowUpdate,
+          Updated_At: nowUpdate
+        };
+
+        const { data: newTask, error: taskError } = await tasksDb
           .from('Tasks')
-          .insert({
-            Task_ID: taskId,
-            Title: body.title.trim(),
-            Description: body.description || null,
-            Priority: body.priority || 'MEDIUM',
-            Due_Date: dueDateValue,
-            Status: 'PENDING',
-            Category: body.category || null,
-            Assigned_To: body.assignedTo || null,
-            Type: body.type || null,
-            URL: body.url || null,
-            Content: body.content || null,
-            Created_At: nowUpdate,
-            Updated_At: nowUpdate
-          })
+          .insert(insertPayload)
           .select()
           .single();
         
@@ -3949,6 +6190,131 @@ CHECKLIST:
         }
         
         result = newTask;
+        break;
+
+      case 'updateTask':
+        {
+          const taskId = normalizeText(body?.taskId);
+          if (!taskId) {
+            return NextResponse.json(
+              { ok: false, error: 'taskId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const nowUpdate = new Date().toISOString();
+          const updatePayload: any = {
+            Updated_At: nowUpdate
+          };
+
+          if (body?.title !== undefined) {
+            const title = normalizeText(body?.title);
+            if (!title) {
+              return NextResponse.json(
+                { ok: false, error: 'Task title is required' },
+                { status: 400, headers: corsHeaders(request) }
+              );
+            }
+            updatePayload.Title = title;
+          }
+
+          if (body?.description !== undefined) updatePayload.Description = normalizeText(body?.description) || null;
+          if (body?.priority !== undefined) updatePayload.Priority = normalizeText(body?.priority) || null;
+          if (body?.category !== undefined) updatePayload.Category = normalizeText(body?.category) || null;
+          if (body?.assignedTo !== undefined) updatePayload.Assigned_To = normalizeText(body?.assignedTo) || null;
+          if (body?.type !== undefined) updatePayload.Type = normalizeText(body?.type) || null;
+          if (body?.url !== undefined) updatePayload.URL = normalizeText(body?.url) || null;
+          if (body?.content !== undefined) updatePayload.Content = normalizeText(body?.content) || null;
+          if (body?.recurrence !== undefined) updatePayload.Recurrence = normalizeText(body?.recurrence) || null;
+          if (body?.retentionDays !== undefined) {
+            const rd = Number(body?.retentionDays);
+            updatePayload.Retention_Days = Number.isFinite(rd) ? rd : null;
+          }
+
+          // Built-mode text fields (optional)
+          if (body?.rawInputText !== undefined) updatePayload.Raw_Input_Text = normalizeText(body?.rawInputText) || null;
+          if (body?.outcomeText !== undefined) updatePayload.Outcome_Text = normalizeText(body?.outcomeText) || null;
+          if (body?.contextText !== undefined) updatePayload.Context_Text = normalizeText(body?.contextText) || null;
+          if (body?.constraintsText !== undefined) updatePayload.Constraints_Text = normalizeText(body?.constraintsText) || null;
+
+          // Due date/time support
+          if (body?.dueDate !== undefined || body?.dueTime !== undefined) {
+            let dueDateValue = null;
+            const dueDate = normalizeText(body?.dueDate);
+            const dueTime = normalizeText(body?.dueTime);
+
+            if (!dueDate) {
+              dueDateValue = null;
+            } else {
+              try {
+                if (String(dueDate).includes('T')) {
+                  dueDateValue = new Date(dueDate).toISOString();
+                } else if (dueTime) {
+                  dueDateValue = new Date(`${dueDate}T${dueTime}:00`).toISOString();
+                } else {
+                  dueDateValue = new Date(`${dueDate}T23:59:59`).toISOString();
+                }
+              } catch {
+                return NextResponse.json(
+                  { ok: false, error: 'Invalid date format' },
+                  { status: 400, headers: corsHeaders(request) }
+                );
+              }
+            }
+
+            updatePayload.Due_Date = dueDateValue;
+          }
+
+          if (body?.status !== undefined) {
+            const status = normalizeText(body?.status);
+            updatePayload.Status = status || null;
+            updatePayload.Completed_At = status === 'COMPLETED' ? nowUpdate : null;
+          }
+
+          const { data: updatedTask, error: updateError } = await tasksDb
+            .from('Tasks')
+            .update(updatePayload)
+            .eq('Task_ID', taskId)
+            .select('*')
+            .single();
+
+          if (updateError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to update task: ${updateError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = updatedTask;
+        }
+        break;
+
+      case 'deleteTask':
+        {
+          const taskId = normalizeText(body?.taskId);
+          if (!taskId) {
+            return NextResponse.json(
+              { ok: false, error: 'taskId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const { data: deletedTask, error: deleteError } = await tasksDb
+            .from('Tasks')
+            .delete()
+            .eq('Task_ID', taskId)
+            .select('*')
+            .single();
+
+          if (deleteError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to delete task: ${deleteError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = deletedTask;
+        }
         break;
       
       case 'completeTraining':
@@ -4380,23 +6746,92 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
         
         const deliverableId = crypto.randomUUID();
-        const { data: newDeliverable, error: deliverableError } = await getSupabase()
+
+        const wantsTaskLink = Boolean(body.taskId || body.taskTitle || body.taskUrl);
+        if (wantsTaskLink) {
+          extraPayload.taskLinkagePersisted = true;
+        }
+
+        const insertRow: any = {
+          Deliverable_ID: deliverableId,
+          Title: body.title,
+          Description: body.description,
+          File_Link: body.fileLink || null,
+          Submitted_By: body.submittedBy,
+          Status: 'PENDING',
+          AI_Quality_Score: deliverableAiAnalysis?.qualityScore || null,
+          AI_Strengths: deliverableAiAnalysis?.strengths ? JSON.stringify(deliverableAiAnalysis.strengths) : null,
+          AI_Improvements: deliverableAiAnalysis?.improvements ? JSON.stringify(deliverableAiAnalysis.improvements) : null,
+          AI_Summary: deliverableAiAnalysis?.summary || deliverableAiAnalysis?.synopsis || null,
+          AI_Analysis_Raw: deliverableAiAnalysis ? JSON.stringify(deliverableAiAnalysis) : null,
+        };
+
+        // Optional first-class linking (safe if columns exist).
+        // - Offer_ID: indexed offer-scoped browsing
+        // - Deliverable_Type: lightweight categorization
+        const directOfferId = safeTrim(body.offerId || body.offer_id || body.Offer_ID || '');
+        if (directOfferId && isUuid(directOfferId)) {
+          insertRow.Offer_ID = directOfferId;
+        }
+        const directDeliverableType = safeTrim(body.deliverableType || body.deliverable_type || body.type || '');
+        if (directDeliverableType) {
+          insertRow.Deliverable_Type = directDeliverableType.toLowerCase();
+        }
+
+        // Optional metadata for UI/workflow filtering (safe if column exists).
+        if (body.metadata !== undefined && body.metadata !== null) {
+          try {
+            const mdObj = typeof body.metadata === 'string' ? JSON.parse(String(body.metadata || '').trim() || '{}') : body.metadata;
+            insertRow.Metadata = typeof body.metadata === 'string' ? body.metadata : JSON.stringify(body.metadata);
+
+            // Derive first-class linkage from metadata when present.
+            if (!insertRow.Offer_ID) {
+              const mdOfferId = safeTrim(mdObj?.offerId || mdObj?.offer_id || mdObj?.Offer_ID || mdObj?.offerID || '');
+              if (mdOfferId && isUuid(mdOfferId)) insertRow.Offer_ID = mdOfferId;
+            }
+            if (!insertRow.Deliverable_Type) {
+              const mdType = safeTrim(mdObj?.type || mdObj?.deliverableType || mdObj?.kind || '');
+              if (mdType) insertRow.Deliverable_Type = mdType.toLowerCase();
+            }
+          } catch {
+            // Ignore serialization errors; keep submission working.
+          }
+        }
+
+        if (body.taskId) insertRow.Task_ID = body.taskId;
+        if (body.taskTitle) insertRow.Task_Title = body.taskTitle;
+        if (body.taskUrl) insertRow.Task_URL = body.taskUrl;
+
+        let { data: newDeliverable, error: deliverableError } = await getDeliverablesDb()
           .from('Deliverables')
-          .insert({
-            Deliverable_ID: deliverableId,
-            Title: body.title,
-            Description: body.description,
-            File_Link: body.fileLink || null,
-            Submitted_By: body.submittedBy,
-            Status: 'PENDING',
-            AI_Quality_Score: deliverableAiAnalysis?.qualityScore || null,
-            AI_Strengths: deliverableAiAnalysis?.strengths ? JSON.stringify(deliverableAiAnalysis.strengths) : null,
-            AI_Improvements: deliverableAiAnalysis?.improvements ? JSON.stringify(deliverableAiAnalysis.improvements) : null,
-            AI_Summary: deliverableAiAnalysis?.summary || deliverableAiAnalysis?.synopsis || null,
-            AI_Analysis_Raw: deliverableAiAnalysis ? JSON.stringify(deliverableAiAnalysis) : null
-          })
+          .insert(insertRow)
           .select()
           .single();
+
+        // Safe fallback if MGMT DB hasn't had the new columns added yet.
+        if (
+          deliverableError &&
+          (isMissingDeliverablesColumnError(deliverableError, 'Task_ID') ||
+            isMissingDeliverablesColumnError(deliverableError, 'Task_Title') ||
+            isMissingDeliverablesColumnError(deliverableError, 'Task_URL') ||
+            isMissingDeliverablesColumnError(deliverableError, 'Metadata') ||
+            isMissingDeliverablesColumnError(deliverableError, 'Offer_ID') ||
+            isMissingDeliverablesColumnError(deliverableError, 'Deliverable_Type'))
+        ) {
+          if (wantsTaskLink) {
+            extraPayload.taskLinkagePersisted = false;
+            extraPayload.taskLinkageWarning = 'Deliverables DB is missing Task_* columns; apply migration 005_alter_deliverables_add_task_ref.sql to persist task linkage.';
+          }
+          delete insertRow.Task_ID;
+          delete insertRow.Task_Title;
+          delete insertRow.Task_URL;
+          delete insertRow.Metadata;
+          delete insertRow.Offer_ID;
+          delete insertRow.Deliverable_Type;
+          const retry = await getDeliverablesDb().from('Deliverables').insert(insertRow).select().single();
+          newDeliverable = retry.data;
+          deliverableError = retry.error;
+        }
         
         if (deliverableError) {
           return NextResponse.json({ 
@@ -4410,7 +6845,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
       case 'deliverables':
         const statusFilter = searchParams.get('status') || 'all';
-        let deliverablesQuery = getSupabase()
+        let deliverablesQuery = getDeliverablesDb()
           .from('Deliverables')
           .select('*')
           .order('Created_At', { ascending: false });
@@ -4451,7 +6886,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           deliverableUpdateData.Review_Notes = body.reviewNotes;
         }
         
-        const { data: updatedDeliverable, error: updateError } = await getSupabase()
+        const { data: updatedDeliverable, error: updateError } = await getDeliverablesDb()
           .from('Deliverables')
           .update(deliverableUpdateData)
           .eq('Deliverable_ID', body.deliverableId)
@@ -4476,7 +6911,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           }, { status: 400, headers: corsHeaders(request) });
         }
         
-        const { data: publishedDeliverable, error: publishError } = await getSupabase()
+        const { data: publishedDeliverable, error: publishError } = await getDeliverablesDb()
           .from('Deliverables')
           .update({
             Status: 'PUBLISHED',
@@ -4496,57 +6931,6 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         result = publishedDeliverable;
         break;
 
-      case 'offers':
-        // List all offers for current user
-        const offersVaName = searchParams.get('vaName') || searchParams.get('createdBy');
-        let offersQuery = getSupabase()
-          .from('Offers')
-          .select('*')
-          .order('Created_At', { ascending: false })
-          .limit(100);
-        
-        if (offersVaName) {
-          offersQuery = offersQuery.eq('Created_By', offersVaName);
-        }
-        
-        const { data: offers, error: offersError } = await offersQuery;
-        
-        if (offersError) {
-          return NextResponse.json({ 
-            ok: false, 
-            error: `Failed to load offers: ${offersError.message}` 
-          }, { status: 500, headers: corsHeaders(request) });
-        }
-        
-        result = offers || [];
-        break;
-
-      case 'offer':
-        // Get single offer by ID
-        const offerId = searchParams.get('id');
-        if (!offerId) {
-          return NextResponse.json({ 
-            ok: false, 
-            error: 'Offer ID required' 
-          }, { status: 400, headers: corsHeaders(request) });
-        }
-        
-        const { data: offer, error: offerError } = await getSupabase()
-          .from('Offers')
-          .select('*')
-          .eq('Offer_ID', offerId)
-          .single();
-        
-        if (offerError) {
-          return NextResponse.json({ 
-            ok: false, 
-            error: `Failed to load offer: ${offerError.message}` 
-          }, { status: 500, headers: corsHeaders(request) });
-        }
-        
-        result = offer;
-        break;
-
       case 'saveOffer':
         // Save or update an offer
         if (!body.offerData) {
@@ -4561,6 +6945,36 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         const nowOffer = new Date().toISOString();
         const createdBy = body.createdBy || offerData.created_by || 'UNKNOWN';
 
+        // Persist a reusable offer snapshot for the Offer Builder UI.
+        const baseMessageContextRaw = offerData.messageContext || offerData.message_context || {};
+        const baseMessageContext =
+          baseMessageContextRaw && typeof baseMessageContextRaw === 'object' && !Array.isArray(baseMessageContextRaw)
+            ? baseMessageContextRaw
+            : {};
+
+        const persistedOfferName = String(body.offerName || offerData.name || '').trim();
+        const nextMessageContext = {
+          ...baseMessageContext,
+          ...(persistedOfferName ? { offerName: persistedOfferName } : {}),
+          offer_builder: offerData
+        };
+
+        const hasOwn = (obj: any, key: string) => {
+          try { return !!obj && Object.prototype.hasOwnProperty.call(obj, key); } catch { return false; }
+        };
+
+        // IMPORTANT: The Offer Builder UI keeps a local `offerFrameworks` field for rendering,
+        // but that must NOT be treated as explicitly-provided AI analysis (or we'd wipe
+        // server-side AI_Analysis during normal saves).
+        const aiAnalysisProvided =
+          hasOwn(offerData, 'ai_analysis') ||
+          hasOwn(offerData, 'AI_Analysis') ||
+          hasOwn(offerData, 'offer_frameworks');
+
+        const performanceProvided =
+          hasOwn(offerData, 'performance_data') ||
+          hasOwn(offerData, 'Performance_Data');
+
         // Prepare offer record
         const offerRecord: any = {
           Offer_ID: offerIdSave,
@@ -4572,28 +6986,48 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           Guardrail_Status: offerData.guardrail_status || null,
           Profit_Per_Job: offerData.profit_per_job || null,
           Margin_Pct: offerData.margin_pct || null,
-          Message_Context: offerData.messageContext || offerData.message_context || {},
+          Message_Context: nextMessageContext,
           Economics: offerData.economics || {},
-          AI_Analysis: offerData.ai_analysis || null,
-          Performance_Data: offerData.performance_data || null
+          // IMPORTANT: do not wipe AI_Analysis / Performance_Data unless the client explicitly provides it.
+          ...(aiAnalysisProvided ? { AI_Analysis: (offerData.ai_analysis ?? offerData.AI_Analysis ?? null) } : {}),
+          ...(performanceProvided ? { Performance_Data: (offerData.performance_data ?? offerData.Performance_Data ?? null) } : {})
         };
 
-        // Check if offer exists
-        const { data: existingOffer } = await getSupabase()
-          .from('Offers')
-          .select('Offer_ID')
-          .eq('Offer_ID', offerIdSave)
-          .maybeSingle();
+        const { primary: offersPrimaryDb, fallback: offersFallbackDb } = getOffersDbFallback();
+
+        const checkExisting = async (db: any) => {
+          return await db
+            .from('Offers')
+            .select('Offer_ID')
+            .eq('Offer_ID', offerIdSave)
+            .maybeSingle();
+        };
+
+        // Check if offer exists (with DB fallback)
+        let { data: existingOffer, error: existingErr } = await checkExisting(offersPrimaryDb);
+        if (existingErr && isOffersSchemaMismatchError(existingErr)) {
+          ({ data: existingOffer, error: existingErr } = await checkExisting(offersFallbackDb));
+        }
+        if (existingErr) {
+          return NextResponse.json({ ok: false, error: `Failed to check offer: ${existingErr.message}` }, { status: 500, headers: corsHeaders(request) });
+        }
 
         let savedOffer;
         if (existingOffer) {
           // Update existing
-          const { data: updated, error: updateError } = await getSupabase()
-            .from('Offers')
-            .update(offerRecord)
-            .eq('Offer_ID', offerIdSave)
-            .select()
-            .single();
+          const doUpdate = async (db: any) => {
+            return await db
+              .from('Offers')
+              .update(offerRecord)
+              .eq('Offer_ID', offerIdSave)
+              .select()
+              .single();
+          };
+
+          let { data: updated, error: updateError } = await doUpdate(offersPrimaryDb);
+          if (updateError && isOffersSchemaMismatchError(updateError)) {
+            ({ data: updated, error: updateError } = await doUpdate(offersFallbackDb));
+          }
 
           if (updateError) {
             return NextResponse.json({ 
@@ -4604,11 +7038,18 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           savedOffer = updated;
         } else {
           // Insert new
-          const { data: inserted, error: insertError } = await getSupabase()
-            .from('Offers')
-            .insert(offerRecord)
-            .select()
-            .single();
+          const doInsert = async (db: any) => {
+            return await db
+              .from('Offers')
+              .insert(offerRecord)
+              .select()
+              .single();
+          };
+
+          let { data: inserted, error: insertError } = await doInsert(offersPrimaryDb);
+          if (insertError && isOffersSchemaMismatchError(insertError)) {
+            ({ data: inserted, error: insertError } = await doInsert(offersFallbackDb));
+          }
 
           if (insertError) {
             return NextResponse.json({ 
@@ -4620,6 +7061,936 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
 
         result = savedOffer;
+        break;
+
+      case 'suggestOfferTitle':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const offerData = body?.offerData;
+          if (!offerData || typeof offerData !== 'object') {
+            return NextResponse.json({ ok: false, error: 'offerData required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const currentTitle = safeTrim(body?.currentTitle || offerData?.name || '');
+          const titles = await aiOfferTitleSuggestions(openai, offerData, currentTitle);
+          return NextResponse.json({ ok: true, titles }, { headers: corsHeaders(request) });
+        }
+
+      case 'autoTitleOffer':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const offerId = safeTrim(body?.offerId || body?.offer_id || body?.id || '');
+          if (!offerId) {
+            return NextResponse.json({ ok: false, error: 'Offer ID required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const { primary, fallback } = getOffersDbFallback();
+          const loadOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, Message_Context, AI_Analysis')
+              .eq('Offer_ID', offerId)
+              .maybeSingle();
+          };
+
+          let { data: offerRow, error: offerErr } = await loadOffer(primary);
+          if (offerErr && isOffersSchemaMismatchError(offerErr)) {
+            ({ data: offerRow, error: offerErr } = await loadOffer(fallback));
+          }
+
+          if (offerErr) {
+            return NextResponse.json({ ok: false, error: `Failed to load offer: ${offerErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!offerRow) {
+            return NextResponse.json({ ok: false, error: 'Offer not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const createdBy = safeTrim((offerRow as any)?.Created_By).toUpperCase();
+          const meUser = safeTrim(me.username).toUpperCase();
+          if (me.role !== 'ADMIN' && createdBy && createdBy !== meUser) {
+            return NextResponse.json({ ok: false, error: 'Not allowed' }, { status: 403, headers: corsHeaders(request) });
+          }
+
+          let ctx: any = (offerRow as any).Message_Context;
+          try {
+            if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+          } catch {
+            ctx = {};
+          }
+          if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+
+          let ob: any = ctx.offer_builder || ctx.offerBuilder || null;
+          try {
+            if (typeof ob === 'string') ob = JSON.parse(ob || '{}');
+          } catch {
+            // ignore
+          }
+          if (!ob || typeof ob !== 'object' || Array.isArray(ob)) ob = {};
+
+          const existingTitle = safeTrim(ctx.offerName || ctx.offer_name || ob.name || ob.offerName || '');
+          const force = ['1', 'true', 'yes', 'on'].includes(String(body?.force || '').toLowerCase());
+          if (!force && !isWeakOfferTitle(existingTitle)) {
+            return NextResponse.json({ ok: true, applied: false, title: existingTitle }, { headers: corsHeaders(request) });
+          }
+
+          const titles = await aiOfferTitleSuggestions(openai, ob, existingTitle);
+          const nextTitle = normalizeOfferTitleCandidate(titles[0] || '');
+          if (!nextTitle) {
+            return NextResponse.json({ ok: false, error: 'Failed to generate title' }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const nextCtx = {
+            ...ctx,
+            offerName: nextTitle,
+            offer_builder: {
+              ...ob,
+              name: nextTitle
+            }
+          };
+
+          // Best-effort: keep framework snapshot offer_name aligned if present.
+          let nextAi: any = (offerRow as any).AI_Analysis;
+          try {
+            if (typeof nextAi === 'string') nextAi = JSON.parse(nextAi || '{}');
+          } catch {
+            // ignore
+          }
+          if (!nextAi || typeof nextAi !== 'object' || Array.isArray(nextAi)) nextAi = null;
+          if (nextAi && nextAi.offer_frameworks && nextAi.offer_frameworks.offer_snapshot) {
+            try {
+              nextAi.offer_frameworks.offer_snapshot.offer_name = nextTitle;
+            } catch {
+              // ignore
+            }
+          }
+
+          const updatePayload: any = {
+            Message_Context: nextCtx,
+            Updated_At: new Date().toISOString()
+          };
+          if (nextAi) updatePayload.AI_Analysis = nextAi;
+
+          const doUpdate = async (db: any) => {
+            return await db
+              .from('Offers')
+              .update(updatePayload)
+              .eq('Offer_ID', offerId)
+              .select('*')
+              .single();
+          };
+
+          let { data: updated, error: updErr } = await doUpdate(primary);
+          if (updErr && isOffersSchemaMismatchError(updErr)) {
+            ({ data: updated, error: updErr } = await doUpdate(fallback));
+          }
+
+          if (updErr) {
+            return NextResponse.json({ ok: false, error: `Failed to update offer: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, applied: true, title: nextTitle, offer: updated }, { headers: corsHeaders(request) });
+        }
+
+      case 'autoTitleWeakOffers':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+          if (String(me.role || '').trim().toUpperCase() !== 'ADMIN') {
+            return NextResponse.json({ ok: false, error: 'Admin only' }, { status: 403, headers: corsHeaders(request) });
+          }
+
+          const scanLimitRaw = Number(body?.scanLimit ?? body?.limit ?? 250);
+          const maxApplyRaw = Number(body?.maxApply ?? 50);
+          const scanLimit = Math.max(1, Math.min(isFinite(scanLimitRaw) ? scanLimitRaw : 250, 500));
+          const maxApply = Math.max(1, Math.min(isFinite(maxApplyRaw) ? maxApplyRaw : 50, 200));
+          const order = String(body?.order || 'oldest').toLowerCase();
+          const ascending = order === 'newest' ? false : true;
+          const dryRun = ['1', 'true', 'yes', 'on'].includes(String(body?.dryRun || '').toLowerCase());
+          const force = ['1', 'true', 'yes', 'on'].includes(String(body?.force || '').toLowerCase());
+
+          const startedAt = Date.now();
+          const timeBudgetMs = 22_000; // Vercel-safe-ish; keep under typical serverless limits.
+
+          const { primary, fallback } = getOffersDbFallback();
+          const scanOffers = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select([
+                'Offer_ID',
+                'Created_By',
+                'Updated_At',
+                'AI_Analysis',
+                // Slim context fields only (avoid large embedded blobs in Message_Context)
+                'ctx_offerName:Message_Context->>offerName',
+                'ctx_offer_name:Message_Context->>offer_name',
+                'ctx_ob:Message_Context->offer_builder',
+                'ctx_ob2:Message_Context->offerBuilder',
+              ].join(','))
+              .order('Updated_At', { ascending })
+              .limit(scanLimit);
+          };
+
+          let { data: offers, error: offersErr } = await scanOffers(primary);
+          if (offersErr && isOffersSchemaMismatchError(offersErr)) {
+            ({ data: offers, error: offersErr } = await scanOffers(fallback));
+          }
+
+          if (offersErr) {
+            return NextResponse.json({ ok: false, error: `Failed to scan offers: ${offersErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const rows = Array.isArray(offers) ? offers : [];
+          const results: any[] = [];
+          let scanned = 0;
+          let weakFound = 0;
+          let applied = 0;
+          let errors = 0;
+
+          for (const offerRow of rows) {
+            if (Date.now() - startedAt > timeBudgetMs) {
+              const idForBudget = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId: idForBudget, skipped: true, reason: 'time_budget_exceeded' });
+              break;
+            }
+            if (applied >= maxApply) break;
+
+            try {
+              scanned++;
+              if (!offerRow || typeof offerRow !== 'object') {
+                errors++;
+                results.push({ offerId: null, applied: false, error: 'invalid_offer_row' });
+                continue;
+              }
+
+              const offerId = safeTrim((offerRow as any)?.Offer_ID);
+              if (!offerId) {
+                errors++;
+                results.push({ offerId: null, applied: false, error: 'missing_offer_id' });
+                continue;
+              }
+
+              // Use slim fields for detection; fetch full Message_Context only if we plan to update.
+              const ctxOfferName = safeTrim((offerRow as any)?.ctx_offerName);
+              const ctxOfferNameSnake = safeTrim((offerRow as any)?.ctx_offer_name);
+              let ob: any = (offerRow as any)?.ctx_ob || (offerRow as any)?.ctx_ob2 || null;
+              try {
+                if (typeof ob === 'string') ob = JSON.parse(ob || '{}');
+              } catch {
+                // ignore
+              }
+              if (!ob || typeof ob !== 'object' || Array.isArray(ob)) ob = {};
+
+              const existingTitle = safeTrim(ctxOfferName || ctxOfferNameSnake || ob.name || ob.offerName || '');
+              const weak = isWeakOfferTitle(existingTitle);
+              if (!force && !weak) continue;
+              if (weak) weakFound++;
+
+              // Fetch full row context so we don't accidentally drop unrelated context keys on update.
+              const fetchFullForUpdate = async (db: any) => {
+                return await db
+                  .from('Offers')
+                  .select('Offer_ID, Message_Context, AI_Analysis')
+                  .eq('Offer_ID', offerId)
+                  .single();
+              };
+
+              let fullRow: any = null;
+              let fullErr: any = null;
+              ({ data: fullRow, error: fullErr } = await fetchFullForUpdate(primary));
+              if (fullErr && isOffersSchemaMismatchError(fullErr)) {
+                ({ data: fullRow, error: fullErr } = await fetchFullForUpdate(fallback));
+              }
+              if (fullErr || !fullRow) {
+                errors++;
+                results.push({ offerId, applied: false, error: `failed_fetch_full_context: ${fullErr?.message || 'unknown'}` });
+                continue;
+              }
+
+              let ctx: any = (fullRow as any).Message_Context;
+              try {
+                if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+              } catch {
+                ctx = {};
+              }
+              if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+
+              ob = ctx.offer_builder || ctx.offerBuilder || ob || null;
+              try {
+                if (typeof ob === 'string') ob = JSON.parse(ob || '{}');
+              } catch {
+                // ignore
+              }
+              if (!ob || typeof ob !== 'object' || Array.isArray(ob)) ob = {};
+
+              let nextTitle = '';
+              const titles = await aiOfferTitleSuggestions(openai, ob, existingTitle);
+              for (const cand of titles) {
+                const normalized = normalizeOfferTitleCandidate(cand);
+                if (!normalized) continue;
+                if (!isWeakOfferTitle(normalized)) {
+                  nextTitle = normalized;
+                  break;
+                }
+              }
+
+              if (!nextTitle) {
+                errors++;
+                results.push({ offerId, from: existingTitle, applied: false, error: 'no_good_title_generated' });
+                continue;
+              }
+
+              const nextCtx = {
+                ...ctx,
+                offerName: nextTitle,
+                offer_builder: {
+                  ...ob,
+                  name: nextTitle
+                }
+              };
+
+              let nextAi: any = (offerRow as any).AI_Analysis;
+              try {
+                if (typeof nextAi === 'string') nextAi = JSON.parse(nextAi || '{}');
+              } catch {
+                // ignore
+              }
+              if (!nextAi || typeof nextAi !== 'object' || Array.isArray(nextAi)) nextAi = null;
+              if (nextAi && nextAi.offer_frameworks && nextAi.offer_frameworks.offer_snapshot) {
+                try {
+                  nextAi.offer_frameworks.offer_snapshot.offer_name = nextTitle;
+                } catch {
+                  // ignore
+                }
+              }
+
+              if (dryRun) {
+                applied++;
+                results.push({ offerId, from: existingTitle, to: nextTitle, applied: true, dryRun: true });
+                continue;
+              }
+
+              const updatePayload: any = {
+                Message_Context: nextCtx,
+                Updated_At: new Date().toISOString()
+              };
+              if (nextAi) updatePayload.AI_Analysis = nextAi;
+
+              const doUpdate = async (db: any) => {
+                return await db
+                  .from('Offers')
+                  .update(updatePayload)
+                  .eq('Offer_ID', offerId);
+              };
+
+              let { error: updErr } = await doUpdate(primary);
+              if (updErr && isOffersSchemaMismatchError(updErr)) {
+                ({ error: updErr } = await doUpdate(fallback));
+              }
+
+              if (updErr) {
+                errors++;
+                results.push({ offerId, from: existingTitle, to: nextTitle, applied: false, error: updErr.message });
+                continue;
+              }
+
+              applied++;
+              results.push({ offerId, from: existingTitle, to: nextTitle, applied: true });
+            } catch (e: any) {
+              errors++;
+              const offerId = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId, applied: false, error: e?.message || 'offer_row_failed' });
+              continue;
+            }
+          }
+
+          return NextResponse.json({
+            ok: true,
+            dryRun,
+            scanLimit,
+            maxApply,
+            order: ascending ? 'oldest' : 'newest',
+            scanned,
+            weakFound,
+            applied,
+            errors,
+            results
+          }, { headers: corsHeaders(request) });
+        }
+
+      case 'backfillOffersFromDeliverables':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          const scanLimitRaw = Number(body?.scanLimit ?? body?.limit ?? 250);
+          const scanLimit = Math.max(1, Math.min(isFinite(scanLimitRaw) ? scanLimitRaw : 250, 1000));
+          const dryRun = ['1', 'true', 'yes', 'on'].includes(String(body?.dryRun || '').toLowerCase());
+          const onlyIfMissing = ['1', 'true', 'yes', 'on'].includes(String(body?.onlyIfMissing || body?.only_missing || '').toLowerCase());
+          const useDeliverableIdAsOfferId = ['1', 'true', 'yes', 'on'].includes(
+            String(body?.useDeliverableIdAsOfferId || body?.fallbackToDeliverableId || body?.fallbackOfferIdToDeliverableId || '').toLowerCase()
+          );
+          const sinceIso = safeTrim(body?.sinceIso || body?.sinceISO || body?.since || '');
+          const submittedByFilter = safeTrim(body?.submittedBy || body?.createdBy || '');
+
+          const startedAt = Date.now();
+          const timeBudgetMs = 22_000;
+
+          const isUuid = (s: string) => {
+            const v = safeTrim(s);
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+          };
+
+          const parseJsonMaybe = (v: any) => {
+            if (v == null) return null;
+            if (typeof v === 'object') return v;
+            if (typeof v !== 'string') return null;
+            const s = v.trim();
+            if (!s) return null;
+            try {
+              return JSON.parse(s);
+            } catch {
+              return null;
+            }
+          };
+
+          const deliverablesDb = getDeliverablesDb();
+          const baseSelect = 'Deliverable_ID, Title, Description, File_Link, Submitted_By, Created_At, Updated_At';
+          const selectWithMetadata = `${baseSelect}, Metadata`;
+
+          let q = deliverablesDb
+            .from('Deliverables')
+            .select(selectWithMetadata)
+            .order('Created_At', { ascending: false })
+            .limit(scanLimit)
+            .ilike('Title', 'Offer Brief:%');
+
+          if (sinceIso) q = q.gte('Created_At', sinceIso);
+          if (submittedByFilter) q = q.eq('Submitted_By', submittedByFilter);
+
+          // Deliverables.Metadata is required to recover offerId reliably.
+          let { data: deliverablesRows, error: deliverablesErr } = await q;
+          if (deliverablesErr && isMissingDeliverablesColumnError(deliverablesErr, 'Metadata')) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error: 'Deliverables.Metadata column missing; apply migration 009_alter_deliverables_add_metadata.sql in MGMT DB to enable backfill.'
+              },
+              { status: 409, headers: corsHeaders(request) }
+            );
+          }
+          if (deliverablesErr) {
+            return NextResponse.json({ ok: false, error: `Failed to scan deliverables: ${deliverablesErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const rows = Array.isArray(deliverablesRows) ? deliverablesRows : [];
+          const { primary, fallback } = getOffersDbFallback();
+
+          const loadOffer = async (db: any, offerId: string) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, Created_At, Updated_At, Status, Message_Context, Economics')
+              .eq('Offer_ID', offerId)
+              .maybeSingle();
+          };
+
+          const insertOffer = async (db: any, offerRecord: any) => {
+            return await db.from('Offers').insert(offerRecord);
+          };
+
+          const updateOffer = async (db: any, offerId: string, payload: any) => {
+            return await db.from('Offers').update(payload).eq('Offer_ID', offerId);
+          };
+
+          let scanned = 0;
+          let matched = 0;
+          let upserted = 0;
+          let skippedMissingOfferId = 0;
+          let skippedBadOfferId = 0;
+          let skippedOnlyIfMissing = 0;
+          let usedFallbackOfferId = 0;
+          let errors = 0;
+          const results: any[] = [];
+
+          for (const d of rows) {
+            if (Date.now() - startedAt > timeBudgetMs) {
+              results.push({ deliverableId: safeTrim((d as any)?.Deliverable_ID), skipped: true, reason: 'time_budget_exceeded' });
+              break;
+            }
+
+            scanned++;
+            try {
+              const deliverableId = safeTrim((d as any)?.Deliverable_ID);
+              const title = safeTrim((d as any)?.Title);
+              const description = safeTrim((d as any)?.Description);
+              const fileLink = (d as any)?.File_Link ?? null;
+              const submittedBy = safeTrim((d as any)?.Submitted_By);
+              const createdAt = safeTrim((d as any)?.Created_At) || new Date().toISOString();
+              const updatedAt = safeTrim((d as any)?.Updated_At) || createdAt;
+
+              const mdRaw = (d as any)?.Metadata;
+              const md = parseJsonMaybe(mdRaw) || {};
+
+              const mdType = safeTrim((md as any)?.type || (md as any)?.Type || '');
+              const looksLikeOfferBrief = mdType.toLowerCase() === 'offer_brief' || title.toLowerCase().startsWith('offer brief:');
+              if (!looksLikeOfferBrief) continue;
+
+              matched++;
+
+              let offerId = safeTrim((md as any)?.offerId || (md as any)?.offer_id || (md as any)?.Offer_ID || (md as any)?.offerID || '');
+              if (!offerId) {
+                if (useDeliverableIdAsOfferId && isUuid(deliverableId)) {
+                  offerId = deliverableId;
+                  usedFallbackOfferId++;
+                  try {
+                    (md as any).offerId = offerId;
+                    (md as any).offer_id = offerId;
+                    (md as any).fallback_offer_id = 'deliverable_id';
+                  } catch {
+                    // ignore
+                  }
+                } else {
+                  skippedMissingOfferId++;
+                  results.push({ deliverableId, skipped: true, reason: 'missing_offer_id_in_metadata' });
+                  continue;
+                }
+              }
+              if (!isUuid(offerId)) {
+                skippedBadOfferId++;
+                results.push({ deliverableId, offerId, skipped: true, reason: 'offer_id_not_uuid' });
+                continue;
+              }
+
+              const offerNameFromMd = safeTrim((md as any)?.offerName || (md as any)?.offer_name || (md as any)?.offerTitle || '');
+              const offerNameFromTitle = title.toLowerCase().startsWith('offer brief:') ? safeTrim(title.slice('Offer Brief:'.length)) : '';
+              const offerName = offerNameFromMd || offerNameFromTitle || '';
+
+              const embeddedOfferBuilder =
+                parseJsonMaybe((md as any)?.offer_builder) ||
+                parseJsonMaybe((md as any)?.offerBuilder) ||
+                parseJsonMaybe((md as any)?.offerData) ||
+                parseJsonMaybe((md as any)?.offer) ||
+                null;
+
+              let { data: existing, error: existingErr } = await loadOffer(primary, offerId);
+              if (existingErr && isOffersSchemaMismatchError(existingErr)) {
+                ({ data: existing, error: existingErr } = await loadOffer(fallback, offerId));
+              }
+              if (existingErr) {
+                errors++;
+                results.push({ deliverableId, offerId, error: `load_offer_failed: ${existingErr.message}` });
+                continue;
+              }
+
+              if (onlyIfMissing && existing) {
+                skippedOnlyIfMissing++;
+                results.push({ deliverableId, offerId, skipped: true, reason: 'only_if_missing' });
+                continue;
+              }
+
+              let ctx: any = (existing as any)?.Message_Context;
+              try {
+                if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+              } catch {
+                ctx = {};
+              }
+              if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+
+              let existingOb: any = ctx.offer_builder || ctx.offerBuilder || null;
+              try {
+                if (typeof existingOb === 'string') existingOb = JSON.parse(existingOb || '{}');
+              } catch {
+                // ignore
+              }
+              if (!existingOb || typeof existingOb !== 'object' || Array.isArray(existingOb)) existingOb = null;
+
+              const nextOb = embeddedOfferBuilder && typeof embeddedOfferBuilder === 'object'
+                ? embeddedOfferBuilder
+                : (existingOb || {
+                    offer_id: offerId,
+                    name: offerName || undefined,
+                    created_at: createdAt,
+                    updated_at: updatedAt
+                  });
+
+              if (offerName && nextOb && typeof nextOb === 'object') {
+                try { (nextOb as any).name = offerName; } catch { /* ignore */ }
+              }
+
+              const latestBrief = {
+                deliverableId,
+                title,
+                description,
+                fileLink,
+                submittedBy,
+                createdAt,
+                updatedAt,
+                metadata: md
+              };
+
+              const nextCtx: any = {
+                ...ctx,
+                ...(offerName ? { offerName } : {}),
+                offer_builder: nextOb,
+                latest_offer_brief: latestBrief
+              };
+
+              let econ: any = (existing as any)?.Economics;
+              try {
+                if (typeof econ === 'string') econ = JSON.parse(econ || '{}');
+              } catch {
+                econ = {};
+              }
+              if (!econ || typeof econ !== 'object' || Array.isArray(econ)) econ = {};
+
+              const totals = (md as any)?.totals || (md as any)?.Totals || null;
+              const standards = (md as any)?.standards || (md as any)?.Standards || null;
+              if (totals) econ.totals = totals;
+              if (standards) econ.standards = standards;
+
+              const nowIso = new Date().toISOString();
+
+              if (dryRun) {
+                upserted++;
+                results.push({ deliverableId, offerId, offerName, dryRun: true, action: existing ? 'update' : 'insert' });
+                continue;
+              }
+
+              if (!existing) {
+                const offerRecord: any = {
+                  Offer_ID: offerId,
+                  Created_By: submittedBy || 'UNKNOWN',
+                  Created_At: createdAt || nowIso,
+                  Updated_At: nowIso,
+                  Status: 'DRAFT',
+                  Message_Context: nextCtx,
+                  Economics: econ
+                };
+
+                let { error: insErr } = await insertOffer(primary, offerRecord);
+                if (insErr && isOffersSchemaMismatchError(insErr)) {
+                  ({ error: insErr } = await insertOffer(fallback, offerRecord));
+                }
+                if (insErr) {
+                  errors++;
+                  results.push({ deliverableId, offerId, error: `insert_failed: ${insErr.message}` });
+                  continue;
+                }
+              } else {
+                const payload: any = {
+                  Message_Context: nextCtx,
+                  Economics: econ,
+                  Updated_At: nowIso
+                };
+                if (!safeTrim((existing as any)?.Created_By) && submittedBy) payload.Created_By = submittedBy;
+
+                let { error: updErr } = await updateOffer(primary, offerId, payload);
+                if (updErr && isOffersSchemaMismatchError(updErr)) {
+                  ({ error: updErr } = await updateOffer(fallback, offerId, payload));
+                }
+                if (updErr) {
+                  errors++;
+                  results.push({ deliverableId, offerId, error: `update_failed: ${updErr.message}` });
+                  continue;
+                }
+              }
+
+              upserted++;
+              results.push({ deliverableId, offerId, offerName, action: existing ? 'update' : 'insert' });
+            } catch (e: any) {
+              errors++;
+              results.push({ deliverableId: safeTrim((d as any)?.Deliverable_ID), error: e?.message || String(e) });
+              continue;
+            }
+          }
+
+          return NextResponse.json(
+            {
+              ok: true,
+              dryRun,
+              scanLimit,
+              onlyIfMissing,
+              useDeliverableIdAsOfferId,
+              sinceIso: sinceIso || null,
+              submittedBy: submittedByFilter || null,
+              scanned,
+              matchedOfferBriefs: matched,
+              upserted,
+              skippedMissingOfferId,
+              skippedBadOfferId,
+              skippedOnlyIfMissing,
+              usedFallbackOfferId,
+              errors,
+              results
+            },
+            { headers: corsHeaders(request) }
+          );
+        }
+
+      case 'generateOfferFrameworks':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+          if (!openai) {
+            // Continue with deterministic fallback, but still require auth.
+          }
+
+          const offerId = String(body.offerId || body.offer_id || body.id || (body.offerData && body.offerData.offer_id) || '').trim();
+          if (!offerId) {
+            return NextResponse.json({ ok: false, error: 'Offer ID required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const { primary, fallback } = getOffersDbFallback();
+          const loadOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, Created_At, Updated_At, Message_Context, Economics, AI_Analysis')
+              .eq('Offer_ID', offerId)
+              .maybeSingle();
+          };
+
+          let { data: offerRow, error: offerErr } = await loadOffer(primary);
+          if (offerErr && isOffersSchemaMismatchError(offerErr)) {
+            ({ data: offerRow, error: offerErr } = await loadOffer(fallback));
+          }
+
+          if (offerErr) {
+            return NextResponse.json({ ok: false, error: `Failed to load offer: ${offerErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!offerRow) {
+            return NextResponse.json({ ok: false, error: 'Offer not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const rawOfferData = body.offerData || null;
+
+          const safeString = (v: any) => String(v == null ? '' : v).trim();
+          const safeArr = (v: any) => (Array.isArray(v) ? v : []);
+          const compact = (s: string, max = 600) => (s.length > max ? s.slice(0, max - 1) + '…' : s);
+
+          const offerName = safeString(rawOfferData?.name || rawOfferData?.offerName || offerRow?.Message_Context?.offerName || offerRow?.Message_Context?.name || '');
+          const headline = safeString(rawOfferData?.headline || rawOfferData?.oneSentencePromise || rawOfferData?.intendedGoal || '');
+
+          const lineItems = safeArr(rawOfferData?.lineItems).map((li: any) => ({
+            name: safeString(li?.name || li?.serviceName || li?.service || ''),
+            qty: Number(li?.qty || 1) || 1
+          })).filter((x: any) => x.name);
+
+          const generatedAt = new Date().toISOString();
+
+          const fallbackFrameworks = () => {
+            const offerLabel = offerName || 'Offer';
+            const items = lineItems.length ? lineItems.map((x: any) => `${x.qty}× ${x.name}`).join(', ') : '';
+            const summary = compact([offerLabel, headline].filter(Boolean).join(' — '), 160);
+
+            const mkAdType = (key: string, title: string, premise: string, hooks: string[], cta: string) => ({
+              key,
+              title,
+              premise,
+              hook_templates: hooks,
+              cta,
+              asset_notes: ['1 hero visual', '1 proof visual (review/before-after)', 'simple CTA end card']
+            });
+
+            return {
+              version: 'h2s_offer_frameworks_v1',
+              generated_at: generatedAt,
+              generated_by: openai ? 'openai' : 'fallback',
+              offer_snapshot: {
+                offer_id: offerId,
+                offer_name: offerLabel,
+                headline: summary,
+                includes: items
+              },
+              pillars: [
+                {
+                  key: 'offer_clarity',
+                  title: 'Offer clarity',
+                  goal: 'Make it obvious what they get + outcome.',
+                  softly_filled: [
+                    `What it is: ${offerLabel}`,
+                    items ? `What’s included: ${items}` : 'What’s included: (add your services above)',
+                    'Outcome: clean, safe, professional result — no surprises.'
+                  ],
+                  hook_lines: [
+                    `“${offerLabel} — clean, safe, pro install.”`,
+                    '“Quote in minutes. Schedule fast.”'
+                  ]
+                },
+                {
+                  key: 'objection_killer',
+                  title: 'Objection killer',
+                  goal: 'Remove fear: mess, trust, timing, surprise fees.',
+                  softly_filled: [
+                    'Upfront pricing (no surprises).',
+                    'Respect your home (clean work).',
+                    'Text updates + simple scheduling.'
+                  ],
+                  hook_lines: [
+                    '“No hidden fees. Clean work.”',
+                    '“On-time pros. Done right.”'
+                  ]
+                },
+                {
+                  key: 'price_anchor',
+                  title: 'Price anchor',
+                  goal: 'Make price feel fair by anchoring value + what’s included.',
+                  softly_filled: [
+                    'Transparent quote → clear inclusions → simple CTA.',
+                    'Bundle beats à la carte.'
+                  ],
+                  hook_lines: [
+                    '“Bundle pricing beats piece-by-piece.”',
+                    '“Upfront quote. No surprises.”'
+                  ]
+                },
+                {
+                  key: 'proof',
+                  title: 'Proof / Reviews',
+                  goal: 'Build trust fast with social proof + before/after.',
+                  softly_filled: [
+                    'Lead with finished result.',
+                    'Use 1 review line + stars + result photo.'
+                  ],
+                  hook_lines: [
+                    '“Real customers. Real clean finishes.”',
+                    '“Before/after tells the story.”'
+                  ]
+                }
+              ],
+              tof_ad_types: [
+                mkAdType('myth_bust', 'Myth-bust / education', 'Teach the right way vs DIY mistakes.', [
+                  '“3 mistakes that ruin a clean install…”',
+                  '“Before you buy the cheapest option, watch this…”'
+                ], 'Get a quick quote'),
+                mkAdType('before_after', 'Before / after', 'Show transformation first, then explain.', [
+                  '“Crooked → clean + level in 60 seconds.”',
+                  '“This 1 change makes the room look finished.”'
+                ], 'Book a slot'),
+                mkAdType('tooling', 'Pro tools = pro result', 'Signal expertise with tools/process.', [
+                  '“Here’s what pros use to get it perfect…”',
+                  '“Why we measure twice (and what it prevents)”'
+                ], 'Schedule in minutes'),
+                mkAdType('mini_demo', 'Mini-demo', 'Show one tight process step (clean + safe).', [
+                  '“Watch how we keep it clean…”',
+                  '“The safe way to do this in your home…”'
+                ], 'Get pricing'),
+                mkAdType('problem_story', 'Problem story', 'Call out an annoying pain and fix it.', [
+                  '“If your setup wobbles, do this…”',
+                  '“Stop living with the mess…”'
+                ], 'See availability')
+              ],
+              bof_ad_types: [
+                mkAdType('offer_stack', 'Offer stack', 'What’s included, clearly, with CTA.', [
+                  `“${offerLabel}: what you get (and what you don’t).”`,
+                  '“Everything included. No surprises.”'
+                ], 'Book now'),
+                mkAdType('objection_answer', 'Objection answer', 'Answer the top fear in one line.', [
+                  '“Worried about mess? Here’s how we protect your home.”',
+                  '“Surprise fees? Not here. Upfront quote.”'
+                ], 'Get a quote'),
+                mkAdType('review_push', 'Review-led retarget', 'Lead with the review, then the offer.', [
+                  '“They nailed it — clean finish.”',
+                  '“On time. Done right. Worth it.”'
+                ], 'Claim a slot'),
+                mkAdType('scarcity_slots', 'Slots scarcity', 'Real constraint urgency.', [
+                  '“Limited installs this week.”',
+                  '“Next openings: today + tomorrow.”'
+                ], 'Check times'),
+                mkAdType('price_value', 'Value vs price', 'Anchor value; keep it simple.', [
+                  '“Bundle pricing beats à la carte.”',
+                  '“Upfront pricing. Pro result.”'
+                ], 'See pricing')
+              ]
+            };
+          };
+
+          let frameworks: any = null;
+          if (openai) {
+            const aiInput = {
+              offer_id: offerId,
+              offer_name: offerName,
+              headline,
+              line_items: lineItems,
+              offer_data: rawOfferData,
+              db_offer_row: offerRow
+            };
+
+            const prompt = `You are a senior direct-response creative strategist for Home2Smart (home services: TV mounting, cameras, doorbells, smart home installs).\n\nTask: Create an “Offer Umbrella → Pillars → TOF/BOF Ad Types” structure for this offer.\n\nReturn VALID JSON ONLY (no markdown) in exactly this shape:\n\n{\n  "version": "h2s_offer_frameworks_v1",\n  "generated_at": "ISO-8601 string",\n  "offer_snapshot": {\n    "offer_id": "string",\n    "offer_name": "string",\n    "headline": "string",\n    "includes": "string"\n  },\n  "pillars": [\n    {\n      "key": "offer_clarity|objection_killer|price_anchor|proof|scarcity|hook",\n      "title": "string",\n      "goal": "string",\n      "softly_filled": ["string"],\n      "hook_lines": ["string"],\n      "asset_notes": ["string"]\n    }\n  ],\n  "tof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ],\n  "bof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ]\n}\n\nRules:\n- Keep copy short and concrete. No hype.\n- TOF: curiosity/education/problem; avoid heavy price talk.\n- BOF: clarity, proof, objections, light urgency.\n- Provide exactly 6 pillars, exactly 5 TOF types, exactly 5 BOF types.\n\nINPUT_JSON:\n${JSON.stringify(aiInput)}`;
+
+            const completion = await openai.chat.completions.create({
+              model: process.env.OPENAI_OFFER_MODEL || 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: 'You are rigorous. Return valid JSON only.' },
+                { role: 'user', content: prompt }
+              ],
+              temperature: 0.2,
+              max_tokens: 1800,
+              response_format: { type: 'json_object' }
+            });
+
+            try {
+              frameworks = JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+            } catch {
+              frameworks = null;
+            }
+          }
+
+          if (!frameworks || typeof frameworks !== 'object') {
+            frameworks = fallbackFrameworks();
+          }
+
+          // Normalize required fields
+          frameworks.version = 'h2s_offer_frameworks_v1';
+          frameworks.generated_at = generatedAt;
+          if (!frameworks.offer_snapshot) frameworks.offer_snapshot = {};
+          frameworks.offer_snapshot.offer_id = offerId;
+          frameworks.offer_snapshot.offer_name = frameworks.offer_snapshot.offer_name || offerName || '';
+
+          // Merge into existing AI_Analysis
+          let existingAi: any = offerRow.AI_Analysis;
+          if (typeof existingAi === 'string') {
+            try { existingAi = JSON.parse(existingAi); } catch { existingAi = {}; }
+          }
+          if (!existingAi || typeof existingAi !== 'object') existingAi = {};
+          existingAi.offer_frameworks = frameworks;
+
+          const updateOfferFrameworks = async (db: any) => {
+            return await db
+              .from('Offers')
+              .update({ AI_Analysis: existingAi, Updated_At: new Date().toISOString() })
+              .eq('Offer_ID', offerId)
+              .select('Offer_ID, Updated_At, AI_Analysis')
+              .single();
+          };
+
+          let { data: updatedOffer, error: updErr } = await updateOfferFrameworks(primary);
+          if (updErr && isOffersSchemaMismatchError(updErr)) {
+            ({ data: updatedOffer, error: updErr } = await updateOfferFrameworks(fallback));
+          }
+
+          if (updErr) {
+            return NextResponse.json({ ok: false, error: `Failed to save frameworks: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          result = {
+            offerId,
+            updatedAt: updatedOffer.Updated_At,
+            frameworks
+          };
+        }
         break;
 
       case 'deleteOffer':
@@ -4648,7 +8019,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
       case 'purge_old_data':
         {
-          const auth = requireAdminToken(request);
+          const auth = await requireAdminToken(request);
           if (!auth.ok) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
@@ -4707,14 +8078,383 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
         break;
 
+      case 'adCreativeUpsert':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const creativeId = safeTrim(body?.creative_id || body?.creativeId || body?.id || '');
+          const title = safeTrim(body?.title || body?.name || '');
+          const service = safeTrim(body?.service || '');
+          const stageRaw = safeTrim(body?.stage || 'tof').toLowerCase();
+          const format = safeTrim(body?.format || '');
+          const statusRaw = safeTrim(body?.status || 'draft').toLowerCase();
+          const brief = safeTrim(body?.brief || body?.description || '');
+          const bodyJson = (body?.body_json != null) ? body.body_json : (body?.bodyJson != null ? body.bodyJson : null);
+          const force = ['1', 'true', 'yes', 'on'].includes(String(body?.force || '').toLowerCase());
+
+          if (!title) {
+            return NextResponse.json({ ok: false, error: 'title required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const stage = (stageRaw === 'tof' || stageRaw === 'mof' || stageRaw === 'bof') ? stageRaw : 'tof';
+          const status = (statusRaw === 'draft' || statusRaw === 'ready' || statusRaw === 'running' || statusRaw === 'archived') ? statusRaw : 'draft';
+
+          if (!creativeId) {
+            if (!force) {
+              let dupeQ: any = db
+                .from('ad_creatives')
+                .select('creative_id,title,service,stage,updated_at')
+                .ilike('title', title)
+                .eq('stage', stage)
+                .limit(5);
+              if (service) dupeQ = dupeQ.eq('service', service);
+
+              const { data: dupes } = await dupeQ;
+              if (Array.isArray(dupes) && dupes.length) {
+                return NextResponse.json(
+                  { ok: false, error: 'possible_duplicate', duplicates: dupes },
+                  { status: 409, headers: corsHeaders(request) }
+                );
+              }
+            }
+
+            const createdBy = safeTrim(me.displayName || me.username || '');
+            const insertPayload: any = {
+              title,
+              service: service || null,
+              stage,
+              format: format || null,
+              status,
+              brief: brief || null,
+              body_json: bodyJson,
+              created_by: createdBy || null
+            };
+
+            const { data: inserted, error } = await db
+              .from('ad_creatives')
+              .insert(insertPayload)
+              .select('*')
+              .single();
+
+            if (error) {
+              return NextResponse.json({ ok: false, error: `Failed to create creative: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+
+            return NextResponse.json({ ok: true, creative: inserted }, { headers: corsHeaders(request) });
+          }
+
+          if (!isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id must be uuid' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const updatePayload: any = {
+            title,
+            service: service || null,
+            stage,
+            format: format || null,
+            status,
+            brief: brief || null,
+            body_json: bodyJson
+          };
+
+          const { data: updated, error: updErr } = await db
+            .from('ad_creatives')
+            .update(updatePayload)
+            .eq('creative_id', creativeId)
+            .select('*')
+            .single();
+
+          if (updErr) {
+            return NextResponse.json({ ok: false, error: `Failed to update creative: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, creative: updated }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativeAttachAsset':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const creativeId = safeTrim(body?.creative_id || body?.creativeId || '');
+          if (!creativeId || !isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const asset = (body?.asset && typeof body.asset === 'object') ? body.asset : body;
+          const url = safeTrim(asset?.url || '');
+          const storageBucket = safeTrim(asset?.storage_bucket || asset?.storageBucket || asset?.bucket || '');
+          const storagePath = safeTrim(asset?.storage_path || asset?.storagePath || asset?.path || '');
+          const mediaKindRaw = safeTrim(asset?.media_kind || asset?.mediaKind || 'other').toLowerCase();
+          const media_kind = (mediaKindRaw === 'photo' || mediaKindRaw === 'video' || mediaKindRaw === 'doc' || mediaKindRaw === 'text' || mediaKindRaw === 'other') ? mediaKindRaw : 'other';
+          const contentType = safeTrim(asset?.content_type || asset?.contentType || asset?.mime || '');
+          const contentHash = safeTrim(asset?.content_hash || asset?.contentHash || '');
+
+          const widthPx = Number(asset?.width_px ?? asset?.widthPx);
+          const heightPx = Number(asset?.height_px ?? asset?.heightPx);
+          const durationSeconds = Number(asset?.duration_seconds ?? asset?.durationSeconds);
+          const fileSizeKb = Number(asset?.file_size_kb ?? asset?.fileSizeKb);
+
+          if (!url && !(storageBucket && storagePath)) {
+            return NextResponse.json({ ok: false, error: 'asset must include url or (storage_bucket + storage_path)' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const slotKey = safeTrim(body?.slot_key || body?.slotKey || '');
+          const notes = safeTrim(body?.notes || '');
+          const sortOrder = Number(body?.sort_order ?? body?.sortOrder ?? 100) || 100;
+
+          const findExisting = async () => {
+            if (contentHash) {
+              const { data } = await db.from('ad_assets').select('*').eq('content_hash', contentHash).maybeSingle();
+              if (data) return data;
+            }
+            if (storageBucket && storagePath) {
+              const { data } = await db.from('ad_assets').select('*').eq('storage_bucket', storageBucket).eq('storage_path', storagePath).maybeSingle();
+              if (data) return data;
+            }
+            if (url) {
+              const { data } = await db.from('ad_assets').select('*').eq('url', url).maybeSingle();
+              if (data) return data;
+            }
+            return null;
+          };
+
+          let existing = await findExisting();
+          let assetRow: any = existing;
+          let deduped = !!existing;
+
+          if (!assetRow) {
+            const insertPayload: any = {
+              url: url || null,
+              storage_bucket: storageBucket || null,
+              storage_path: storagePath || null,
+              media_kind,
+              content_type: contentType || null,
+              content_hash: contentHash || null,
+              width_px: Number.isFinite(widthPx) ? widthPx : null,
+              height_px: Number.isFinite(heightPx) ? heightPx : null,
+              duration_seconds: Number.isFinite(durationSeconds) ? durationSeconds : null,
+              file_size_kb: Number.isFinite(fileSizeKb) ? fileSizeKb : null
+            };
+
+            const { data: inserted, error } = await db.from('ad_assets').insert(insertPayload).select('*').single();
+            if (error) {
+              const again = await findExisting();
+              if (!again) {
+                return NextResponse.json({ ok: false, error: `Failed to create asset: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+              }
+              assetRow = again;
+              deduped = true;
+            } else {
+              assetRow = inserted;
+            }
+          }
+
+          const assetId = safeTrim(assetRow?.asset_id || assetRow?.Asset_ID || '');
+          if (!assetId || !isUuid(assetId)) {
+            return NextResponse.json({ ok: false, error: 'Invalid asset_id after upsert' }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const linkPayload: any = {
+            creative_id: creativeId,
+            asset_id: assetId,
+            slot_key: slotKey || null,
+            notes: notes || null,
+            sort_order: sortOrder
+          };
+
+          const { error: linkErr } = await db
+            .from('ad_creative_assets')
+            .upsert(linkPayload, { onConflict: 'creative_id,asset_id' });
+
+          if (linkErr) {
+            return NextResponse.json({ ok: false, error: `Failed to attach asset: ${linkErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, creative_id: creativeId, asset: assetRow, deduped }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativeSetTags':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const creativeId = safeTrim(body?.creative_id || body?.creativeId || '');
+          if (!creativeId || !isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const tagsRaw = Array.isArray(body?.tags) ? body.tags : [];
+          const kind = safeTrim(body?.kind || 'general') || 'general';
+          const replace = ['1', 'true', 'yes', 'on'].includes(String(body?.replace || '').toLowerCase());
+
+          const tags = Array.from(
+            new Set(
+              tagsRaw
+                .map((t: any) => safeTrim(t).toLowerCase())
+                .filter(Boolean)
+                .slice(0, 30)
+            )
+          );
+
+          if (replace) {
+            const { error: delErr } = await db.from('ad_creative_tags').delete().eq('creative_id', creativeId);
+            if (delErr) {
+              return NextResponse.json({ ok: false, error: `Failed to clear tags: ${delErr.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+          }
+
+          const ensured: any[] = [];
+          for (const name of tags) {
+            let { data: tagRow } = await db.from('ad_tags').select('tag_id,name,kind').eq('name', name).maybeSingle();
+            if (!tagRow) {
+              const { data: inserted, error: insErr } = await db
+                .from('ad_tags')
+                .insert({ name, kind })
+                .select('tag_id,name,kind')
+                .single();
+              if (insErr) {
+                const { data: again } = await db.from('ad_tags').select('tag_id,name,kind').eq('name', name).maybeSingle();
+                if (!again) {
+                  return NextResponse.json({ ok: false, error: `Failed to create tag "${name}": ${insErr.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+                tagRow = again;
+              } else {
+                tagRow = inserted;
+              }
+            }
+
+            const tagId = safeTrim((tagRow as any)?.tag_id || '');
+            if (tagId && isUuid(tagId)) {
+              await db.from('ad_creative_tags').upsert({ creative_id: creativeId, tag_id: tagId }, { onConflict: 'creative_id,tag_id' });
+              ensured.push(tagRow);
+            }
+          }
+
+          return NextResponse.json({ ok: true, creative_id: creativeId, tags: ensured }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativeLink':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const creativeId = safeTrim(body?.creative_id || body?.creativeId || '');
+          if (!creativeId || !isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const offerId = safeTrim(body?.offer_id || body?.offerId || '');
+          const deliverableId = safeTrim(body?.deliverable_id || body?.deliverableId || '');
+          const frameworkVersion = safeTrim(body?.framework_version || body?.frameworkVersion || '');
+          const frameworkStage = safeTrim(body?.framework_stage || body?.frameworkStage || '');
+          const frameworkPillarKey = safeTrim(body?.framework_pillar_key || body?.frameworkPillarKey || '');
+          const frameworkAdTypeKey = safeTrim(body?.framework_ad_type_key || body?.frameworkAdTypeKey || '');
+          const notes = safeTrim(body?.notes || '');
+
+          if (!offerId && !deliverableId && !frameworkAdTypeKey) {
+            return NextResponse.json(
+              { ok: false, error: 'Provide at least one link target (offer_id, deliverable_id, or framework_ad_type_key)' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const payload: any = {
+            creative_id: creativeId,
+            offer_id: offerId || null,
+            deliverable_id: deliverableId || null,
+            framework_version: frameworkVersion || null,
+            framework_stage: frameworkStage || null,
+            framework_pillar_key: frameworkPillarKey || null,
+            framework_ad_type_key: frameworkAdTypeKey || null,
+            notes: notes || null
+          };
+
+          const { data: inserted, error } = await db
+            .from('ad_creative_links')
+            .insert(payload)
+            .select('*')
+            .single();
+
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to link creative: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, link: inserted }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativePerformanceUpsert':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const creativeId = safeTrim(body?.creative_id || body?.creativeId || '');
+          if (!creativeId || !isUuid(creativeId)) {
+            return NextResponse.json({ ok: false, error: 'creative_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const source = safeTrim(body?.source || 'meta') || 'meta';
+          const periodStart = safeTrim(body?.period_start || body?.periodStart || '');
+          const periodEnd = safeTrim(body?.period_end || body?.periodEnd || '');
+
+          const payload: any = {
+            creative_id: creativeId,
+            source,
+            period_start: periodStart || null,
+            period_end: periodEnd || null,
+            impressions: body?.impressions ?? null,
+            clicks: body?.clicks ?? null,
+            leads: body?.leads ?? null,
+            spend: body?.spend ?? null,
+            revenue: body?.revenue ?? null
+          };
+
+          const { data: row, error } = await db
+            .from('ad_creative_performance')
+            .upsert(payload, { onConflict: 'creative_id,source,period_start,period_end' })
+            .select('*')
+            .single();
+
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to upsert performance: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, performance: row }, { headers: corsHeaders(request) });
+        }
+
       default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400, headers: corsHeaders(request) });
+        return NextResponse.json({ ok: false, error: 'Invalid action' }, { status: 400, headers: corsHeaders(request) });
     }
 
     // Back-compat: keep `result`, but also return the named payload Dash.html expects.
-    const payload: any = { ok: true, result };
+    const payload: any = { ok: true, result, ...extraPayload };
     const responseAction = String(action || '');
     switch (responseAction) {
+      case 'taskCreatorIntake':
+        payload.taskCreatorIntake = result;
+        break;
+      case 'upsertTaskDraft':
+        payload.upsertTaskDraft = result;
+        break;
+      case 'generateTaskDetails':
+        payload.generateTaskDetails = result;
+        break;
       case 'training':
         payload.training = result;
         break;
@@ -4738,6 +8478,21 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         break;
       case 'deliverables':
         payload.deliverables = result;
+        break;
+      case 'dashboardLogin':
+        payload.dashboardLogin = result;
+        break;
+      case 'dashboardLogout':
+        payload.dashboardLogout = result;
+        break;
+      case 'createDashboardUser':
+        payload.createDashboardUser = result;
+        break;
+      case 'disableDashboardUser':
+        payload.disableDashboardUser = result;
+        break;
+      case 'sendDashboardLoginInvite':
+        payload.sendDashboardLoginInvite = result;
         break;
       default:
         break;
