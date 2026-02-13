@@ -85,6 +85,10 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const searchParams = new URL(request.url).searchParams;
+  if (searchParams.get('ping') === '1') {
+    return NextResponse.json({ ok: true, pong: true, ts: new Date().toISOString() });
+  }
+
   const limit = clampInt(searchParams.get('limit'), 1, 500, 200);
   const offersVaName = safeTrim(searchParams.get('vaName') || searchParams.get('createdBy') || '');
 

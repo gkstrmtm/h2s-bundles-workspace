@@ -37,6 +37,26 @@
       "has": [
         {
           "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/hub.html"
+    },
+    {
+      "source": "/hub",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/hub.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
           "value": "shop.home2smart.com"
         }
       ],

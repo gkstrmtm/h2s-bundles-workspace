@@ -1,8 +1,14 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
   "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "rewrites": [
+    {
+      "source": "/hub",
+      "destination": "/hub.html"
+    },
     {
       "source": "/dashboard",
       "destination": "/dash.html"
@@ -12,12 +18,20 @@
       "destination": "/dash.html"
     },
     {
+      "source": "/funnel",
+      "destination": "/funnel.html"
+    },
+    {
+      "source": "/funnel-track",
+      "destination": "/funnel-track.html"
+    },
+    {
       "source": "/portal",
       "destination": "/portal.html"
     },
     {
       "source": "/",
-      "destination": "/portal.html"
+      "destination": "/hub.html"
     }
   ]
 }
