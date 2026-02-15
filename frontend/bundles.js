@@ -839,8 +839,22 @@ function tryParseSupabasePublicObjectUrl(rawUrl) {
 
 function resolveProofThumbnailUrlFromAsset(asset) {
   try {
-    const thumb = String(asset?.video_thumbnail_url || '').trim();
+    const thumb = String(asset?.video_thumbnail_url || asset?.thumbnail_url || asset?.thumb_url || '').trim();
     if (!thumb) return '';
+
+    // Support both absolute and relative Supabase public-object URLs.
+    const marker = '/storage/v1/object/public/';
+    const idx = thumb.indexOf(marker);
+    if (idx >= 0) {
+      const tail = thumb.substring(idx + marker.length).replace(/^\/+/, '');
+      const parts = tail.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        const bucket = parts[0];
+        const path = parts.slice(1).join('/');
+        const proxy = buildProofAssetProxyUrl(bucket, path);
+        if (proxy) return proxy;
+      }
+    }
 
     const parsed = tryParseSupabasePublicObjectUrl(thumb);
     if (parsed && parsed.bucket && parsed.path) {
@@ -1069,7 +1083,23 @@ function logProofImpressionOnce(key, payload) {
 
 function renderProofTiles(targetEl, assets, opts) {
   if (!targetEl) return false;
-  const list = (assets || []).slice(0, Math.max(1, Math.min(12, Number(opts?.limit || 6))));
+  const limit = Math.max(1, Math.min(12, Number(opts?.limit || 6)));
+  const list = (assets || []).slice(0, limit);
+
+  // If we have fewer than the desired limit, pad with safe placeholders.
+  if (opts?.fillToLimit !== false && list.length < limit) {
+    const missing = limit - list.length;
+    for (let i = 0; i < missing; i++) {
+      list.push({
+        asset_id: `placeholder-${Date.now()}-${i}`,
+        media_kind: 'photo',
+        width_px: 960,
+        height_px: 720,
+        direct_url: svgPlaceholderDataUri('Install photo')
+      });
+    }
+  }
+
   if (!list.length) return false;
 
   // Show loading skeletons first
@@ -1079,18 +1109,19 @@ function renderProofTiles(targetEl, assets, opts) {
   }
 
   const html = list.map((a) => {
-    const baseUrl = resolveProofAssetMediaUrl(a) || a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a.storage_bucket, a.storage_path);
-    const url = appendCacheBust(baseUrl, getProofAssetVersionToken(a));
-    if (!url) return '';
-    const kind = String(a.media_kind || 'photo');
-    const w = Number(a.width_px || 0);
-    const h = Number(a.height_px || 0);
+    const kind = String(a?.media_kind || 'photo');
+    const w = Number(a?.width_px || 0);
+    const h = Number(a?.height_px || 0);
     const label = proofLabelForAsset(a);
     const trustBadge = getTrustBadge(a);
     const qualityBadge = getQualityBadge(a);
     const badge = label ? `<div class="proof-badge">${escapeHtml(label)}</div>` : '';
     const badges = `${badge}${trustBadge}${qualityBadge}`;
     const altText = buildDescriptiveAltText(a);
+
+    const baseUrl = resolveProofAssetMediaUrl(a) || a?.direct_url || buildSupabasePublicUrl(_proofSupabaseUrl, a?.storage_bucket, a?.storage_path);
+    const url = appendCacheBust(baseUrl, getProofAssetVersionToken(a));
+    const fallback = svgPlaceholderDataUri('Install photo');
 
     const style = buildProofMediaStyle(a);
     const styleAttr = style ? ` style="${style}"` : '';
@@ -1107,20 +1138,32 @@ function renderProofTiles(targetEl, assets, opts) {
     if (kind === 'video') {
       const preload = String(opts?.videoPreload || 'none');
       // Use custom thumbnail if available, otherwise use default poster
-      const customPoster = resolveProofThumbnailUrlFromAsset(a) || (a.video_thumbnail_url ? String(a.video_thumbnail_url) : '');
-      const poster = customPoster || String(opts?.videoPoster || '') || videoPosterDataUri();
+      const customPoster = resolveProofThumbnailUrlFromAsset(a) || (a?.video_thumbnail_url ? String(a.video_thumbnail_url) : '');
+      const posterBase = customPoster || String(opts?.videoPoster || '');
+      const poster = appendCacheBust(posterBase, getProofAssetVersionToken(a)) || videoPosterDataUri();
+
+      // If we cannot resolve a video URL, render a placeholder image tile instead of dropping it.
+      if (!url) {
+        return `
+          <div class="proof-tile">
+            ${badges}
+            <img loading="lazy" decoding="async" fetchpriority="low"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${fallback}" alt="${escapeHtml(altText || 'Installation photo')}" />
+          </div>
+        `;
+      }
       return `
         <div class="proof-tile">
-          ${badge}
+          ${badges}
           <video preload="${preload}" controls playsinline muted poster="${poster}"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}"></video>
         </div>
       `;
     }
 
+    const safeUrl = url || fallback;
     return `
       <div class="proof-tile">
         ${badges}
-        <img loading="lazy" decoding="async" fetchpriority="low"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${url}" alt="${escapeHtml(altText)}" onerror="this.parentElement.style.display='none';" />
+        <img loading="lazy" decoding="async" fetchpriority="low"${styleAttr} ${w && h ? `width="${w}" height="${h}"` : ''} src="${safeUrl}" alt="${escapeHtml(altText)}" onerror="this.onerror=null; this.src='${fallback}';" />
       </div>
     `;
   }).join('');
@@ -1174,35 +1217,35 @@ async function updateProofSections() {
       if (hasRemote) {
         const slot = _proofSlots.mid_proof_rail || { tv_mounting: [], cameras: [] };
         
-        // Improved logic: Fill the rail (up to 6 items) instead of leaving it sparse.
-        // Attempt a mix (4 from primary, 2 from secondary), but backfill if needed.
+        // Fill the rail to a consistent count (5 tiles) instead of leaving it sparse.
+        // Attempt a mix (3 from primary, 2 from secondary), but backfill if needed.
         const pList = slot[primary] || [];
         const sList = slot[secondary] || [];
 
-        const initialPrimary = pList.slice(0, 4);
+        const initialPrimary = pList.slice(0, 3);
         const initialSecondary = sList.slice(0, 2);
         
         combined = [...initialPrimary, ...initialSecondary];
         
-        // Backfill from primary if we have fewer than 6
-        if (combined.length < 6) {
-          combined = combined.concat(pList.slice(4));
+        // Backfill from primary if we have fewer than 5
+        if (combined.length < 5) {
+          combined = combined.concat(pList.slice(3));
         }
-        // Backfill from secondary if we still have fewer than 6
-        if (combined.length < 6) {
+        // Backfill from secondary if we still have fewer than 5
+        if (combined.length < 5) {
           combined = combined.concat(sList.slice(2));
         }
 
-        combined = dedupeAssets(combined).slice(0, 6);
+        combined = dedupeAssets(combined).slice(0, 5);
       } else if (mode === 'local') {
         combined = dedupeAssets(_proofLocalAssets);
       }
 
-      if (!combined.length && mode) combined = getDemoProofAssets(6);
+      if (!combined.length && mode) combined = getDemoProofAssets(5);
 
       combined = capVideos(combined, 1);
 
-      const ok = renderProofTiles(rail, combined, { limit: 6, videoPreload: 'none' });
+      const ok = renderProofTiles(rail, combined, { limit: 5, fillToLimit: true, videoPreload: 'none' });
       railSection.style.display = ok ? '' : (mode ? '' : 'none');
       
       // Stats removed - user wants clean presentation without counts
@@ -1239,7 +1282,7 @@ async function updateProofSections() {
       // Pre-CTA: allow at most one video, and preload metadata so the tile has a real first frame quickly.
       assets = capVideos(assets, 1);
 
-      const ok = renderProofTiles(miniTrack, assets, { limit: 3, videoPreload: 'metadata' });
+      const ok = renderProofTiles(miniTrack, assets, { limit: 3, fillToLimit: true, videoPreload: 'metadata' });
       mini.style.display = ok ? '' : (mode ? '' : 'none');
       if (ok && hasRemote) {
         logProofImpressionOnce('pre_cta:' + primary, {
@@ -1611,6 +1654,28 @@ async function renderShopSuccessView() {
       const itemsEl = byId('orderItems');
       if(itemsEl) itemsEl.textContent = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
       window.__currentOrderData = order;
+
+      // If a time was already confirmed before payment, show it immediately.
+      try {
+        const raw = sessionStorage.getItem(`h2s_scheduled_selection_${sessionId}`);
+        if(raw) {
+          const sel = JSON.parse(raw);
+          if(sel && sel.date && sel.time) {
+            window.selectedDate = sel.date;
+            window.selectedWindow = sel.time;
+            try { updateSummary(); } catch(_e) {}
+            const msg = byId('schedMsg');
+            if(msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
+            const btn = byId('confirmApptBtn');
+            if(btn) {
+              btn.innerText = 'Confirmed ✓';
+              btn.disabled = true;
+              btn.classList.remove('active');
+              btn.style.background = '#059669';
+            }
+          }
+        }
+      } catch(_e) {}
     };
 
     if (cached) {
@@ -2847,8 +2912,17 @@ function addPackageDirectToCart(id, name, price, metadata = {}){
   });
   
   saveCart();
-  
-  // Force open cart to show success
+
+  // NEW FLOW: Go straight into checkout stepper (reduces cart friction)
+  // Fallback to cart drawer if checkout isn't available.
+  try {
+    if(typeof window.checkout === 'function') {
+      window.checkout();
+      return;
+    }
+  } catch(_e) {}
+
+  // Fallback: Force open cart to show success
   const drawer = byId('cartDrawer');
   logger.log('[Cart] Opening cart drawer. Currently open:', drawer?.classList.contains('open'));
   if(drawer && !drawer.classList.contains('open')) {
@@ -3545,6 +3619,15 @@ function addPackageToCart(){
   
   saveCart();
   closeModal();
+
+  // NEW FLOW: Go straight into checkout stepper
+  try {
+    if(typeof window.checkout === 'function') {
+      window.checkout();
+      return;
+    }
+  } catch(_e) {}
+
   toggleCart();
 }
 
@@ -4836,32 +4919,35 @@ function showCheckoutModal() {
   } catch(e){}
 
   const html = `
-    <div style="padding: 24px; max-width: 500px; margin: 0 auto;">
-      <h2 style="margin-top:0; color:var(--cobalt); font-weight:900; font-size:24px;">Complete Your Order</h2>
-      <p style="color:var(--muted); margin-bottom:20px; font-size:14px;">Enter your details to finalize checkout and schedule installation.</p>
-      
-      <form id="checkoutForm" onsubmit="handleCheckoutSubmit(event)">
+    <div style="padding: 24px; max-width: 560px; margin: 0 auto;">
+      <h2 style="margin-top:0; color:var(--cobalt); font-weight:900; font-size:24px;">Book Your Install</h2>
+      <p style="color:var(--muted); margin-bottom:18px; font-size:14px;">Step 1: contact + address. Step 2: pick a time. Step 3: pay securely.</p>
+
+      <div id="coError" style="color:#d32f2f; font-size:14px; margin-bottom:12px; display:none; background:#fee; padding:8px; border-radius:6px;"></div>
+
+      <!-- STEP 1: INTAKE -->
+      <div id="coStepIntake">
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Full Name</label>
           <input type="text" id="coName" class="inp" required value="${escapeAttr(preName)}" placeholder="Jane Doe" style="width:100%">
         </div>
-        
+
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Email Address</label>
           <input type="email" id="coEmail" class="inp" required value="${escapeAttr(preEmail)}" placeholder="jane@example.com" style="width:100%">
         </div>
-        
+
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Phone Number</label>
           <input type="tel" id="coPhone" class="inp" required value="${escapeAttr(prePhone)}" placeholder="(864) 528-1475" style="width:100%">
         </div>
-        
+
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Service Address</label>
           <input type="text" id="coAddress" class="inp" required value="${escapeAttr(preAddress)}" placeholder="123 Main St" style="width:100%">
         </div>
-        
-        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; margin-bottom:20px;">
+
+        <div style="display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; margin-bottom:18px;">
           <div>
             <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">City</label>
             <input type="text" id="coCity" class="inp" required value="${escapeAttr(preCity)}" placeholder="Greenville" style="width:100%">
@@ -4876,13 +4962,52 @@ function showCheckoutModal() {
           </div>
         </div>
 
-        <div id="coError" style="color:#d32f2f; font-size:14px; margin-bottom:12px; display:none; background:#fee; padding:8px; border-radius:4px;"></div>
-
         <div style="display:flex; gap:10px;">
           <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="coSubmitBtn" style="flex:2;">Proceed to Payment</button>
+          <button type="button" class="btn btn-primary" id="coContinueBtn" onclick="handleCheckoutContinue()" style="flex:2;">Continue to Scheduling</button>
         </div>
-      </form>
+      </div>
+
+      <!-- STEP 2: SCHEDULE -->
+      <div id="coStepSchedule" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 12px 0;">
+          <div>
+            <div style="font-weight:800;color:#0f172a;font-size:16px;">Choose your appointment</div>
+            <div id="coSelectionSummary" style="margin-top:2px;font-size:13px;color:#64748b;">Pick a date & time for your pro.</div>
+          </div>
+          <button type="button" class="btn btn-ghost" onclick="handleCheckoutBackToIntake()" style="white-space:nowrap;">Back</button>
+        </div>
+
+        <div id="coCalendarWidget"></div>
+
+        <div id="coTimeWindowSection" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid #f1f5f9;">
+          <div style="text-align:center;margin-bottom:10px;color:#64748b;font-size:12px;font-weight:700;">Select Arrival Window</div>
+          <div id="coTimeSlotsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            <button type="button" class="time-btn" data-window="9am - 12pm">9-12</button>
+            <button type="button" class="time-btn" data-window="12pm - 3pm">12-3</button>
+            <button type="button" class="time-btn" data-window="3pm - 6pm">3-6</button>
+          </div>
+        </div>
+
+        <button type="button" id="coConfirmApptBtn" class="cta-btn" style="margin-top:16px;">Confirm Appointment</button>
+        <div id="coSchedMsg" style="text-align:center;margin-top:10px;font-size:14px;min-height:20px;"></div>
+      </div>
+
+      <!-- STEP 3: PAY -->
+      <div id="coStepPay" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0 12px 0;">
+          <div>
+            <div style="font-weight:800;color:#0f172a;font-size:16px;">Secure payment</div>
+            <div id="coPaySummary" style="margin-top:2px;font-size:13px;color:#64748b;"></div>
+          </div>
+          <button type="button" class="btn btn-ghost" onclick="handleCheckoutBackToSchedule()" style="white-space:nowrap;">Back</button>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+          <button type="button" class="btn btn-primary" id="coPayBtn" onclick="handleCheckoutPay()" style="flex:2;">Proceed to Payment</button>
+        </div>
+        <div class="help" style="text-align:center; color:var(--text-muted); margin-top:10px;">You'll be redirected to Stripe Checkout.</div>
+      </div>
     </div>
   `;
 
@@ -4912,145 +5037,284 @@ function showCheckoutModal() {
   }, 100);
 }
 
+// Compatibility shim: if any older markup calls handleCheckoutSubmit, route to stepper.
 window.handleCheckoutSubmit = async function(e) {
-  e.preventDefault();
-  
-  const btn = document.getElementById('coSubmitBtn');
+  try { if(e && typeof e.preventDefault === 'function') e.preventDefault(); } catch(_e) {}
+  if(typeof window.handleCheckoutContinue === 'function') return window.handleCheckoutContinue();
+};
+
+function h2sCoShowError(msg){
   const errEl = document.getElementById('coError');
-  
-  // Gather data
-  const name = document.getElementById('coName').value.trim();
-  const email = document.getElementById('coEmail').value.trim();
-  const phone = document.getElementById('coPhone').value.trim();
-  const address = document.getElementById('coAddress').value.trim();
-  const city = document.getElementById('coCity').value.trim();
-  const state = document.getElementById('coState').value.trim().toUpperCase();
-  const zip = document.getElementById('coZip').value.trim();
+  if(errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+}
 
-  // VALIDATION: Ensure all fields present
-  if(!name || !email || !phone || !address || !city || !state || !zip) {
-    if(errEl) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  // VALIDATION: State format
-  if(!/^[A-Z]{2}$/.test(state)) {
-    if(errEl) { errEl.textContent = 'Please enter a 2-letter state code (e.g., SC).'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  // VALIDATION: Email format
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if(!emailRegex.test(email)) {
-    if(errEl) { errEl.textContent = 'Please enter a valid email address.'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  // VALIDATION: Cart not empty
-  if(!cart || cart.length === 0) {
-    if(errEl) { errEl.textContent = 'Your cart is empty. Please add items first.'; errEl.style.display = 'block'; }
-    return;
-  }
-
-  // UI Loading state
-  if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Processing...'; }
+function h2sCoClearError(){
+  const errEl = document.getElementById('coError');
   if(errEl) errEl.style.display = 'none';
+}
 
-  // RETRY LOGIC: Attempt checkout with exponential backoff
+function h2sCoGetIntake(){
+  const name = document.getElementById('coName')?.value?.trim() || '';
+  const email = document.getElementById('coEmail')?.value?.trim() || '';
+  const phone = document.getElementById('coPhone')?.value?.trim() || '';
+  const address = document.getElementById('coAddress')?.value?.trim() || '';
+  const city = document.getElementById('coCity')?.value?.trim() || '';
+  const state = (document.getElementById('coState')?.value?.trim() || '').toUpperCase();
+  const zip = document.getElementById('coZip')?.value?.trim() || '';
+  return { name, email, phone, address, city, state, zip };
+}
+
+function h2sCoValidateIntake(intake){
+  if(!intake.name || !intake.email || !intake.phone || !intake.address || !intake.city || !intake.state || !intake.zip) return 'Please fill in all fields.';
+  if(!/^[A-Z]{2}$/.test(intake.state)) return 'Please enter a 2-letter state code (e.g., SC).';
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if(!emailRegex.test(intake.email)) return 'Please enter a valid email address.';
+  if(!cart || cart.length === 0) return 'Your cart is empty. Please add items first.';
+  return null;
+}
+
+function h2sCoSetStep(step){
+  const s1 = byId('coStepIntake');
+  const s2 = byId('coStepSchedule');
+  const s3 = byId('coStepPay');
+  if(s1) s1.style.display = (step === 'intake') ? '' : 'none';
+  if(s2) s2.style.display = (step === 'schedule') ? '' : 'none';
+  if(s3) s3.style.display = (step === 'pay') ? '' : 'none';
+}
+
+async function h2sCoFetchOrderDetails(sessionId){
+  const cacheKey = `h2s_order_${sessionId}`;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if(cached) {
+      const cachedData = JSON.parse(cached);
+      if (cachedData && cachedData._timestamp && (Date.now() - cachedData._timestamp < 300000)) return cachedData;
+    }
+  } catch(_e) {}
+
+  const c = new AbortController();
+  setTimeout(()=>c.abort(), 8000);
+  const res = await fetch(`https://h2s-backend.vercel.app/api/get-order-details?session_id=${sessionId}`, { signal: c.signal });
+  if(!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const order = (data.order || data) || {};
+  order._timestamp = Date.now();
+  try { sessionStorage.setItem(cacheKey, JSON.stringify(order)); } catch(_e) {}
+  return order;
+}
+
+function h2sCoBuildCheckoutPayload(intake){
+  const payload = {
+    __action: 'create_checkout_session',
+    customer: { name: intake.name, email: intake.email, phone: intake.phone },
+    cart: cart,
+    source: 'shop_rebuilt',
+    success_url: 'https://shop.home2smart.com/bundles?view=shopsuccess&session_id={CHECKOUT_SESSION_ID}',
+    cancel_url: window.location.href,
+    metadata: {
+      customer_name: intake.name,
+      customer_phone: intake.phone,
+      customer_email: intake.email,
+      service_address: intake.address,
+      service_city: intake.city,
+      service_state: intake.state,
+      service_zip: intake.zip,
+      source: 'shop_rebuilt'
+    }
+  };
+  const promoCode = localStorage.getItem('h2s_promo_code');
+  if(promoCode) payload.promotion_code = promoCode;
+  return payload;
+}
+
+function h2sCoCalendarInit(opts){
+  const widget = byId(opts.widgetId);
+  if(!widget) return;
+
+  const state = opts.state;
+  state.selectedDate = null;
+  state.selectedWindow = null;
+
+  const mockAvail = [];
+  const today = new Date();
+  for(let i=0; i<60; i++){
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    mockAvail.push({date:d.toISOString().split('T')[0]});
+  }
+
+  const updateSummaryLocal = () => {
+    const el = byId(opts.selectionSummaryId);
+    if(!el) return;
+    if(state.selectedDate && state.selectedWindow) {
+      const d = new Date(state.selectedDate + 'T12:00:00');
+      const niceDate = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      el.innerHTML = `<span style="color:#2563eb; font-weight:700;">Selected:</span> ${niceDate} @ ${state.selectedWindow}`;
+    } else if(state.selectedDate) {
+      const d = new Date(state.selectedDate + 'T12:00:00');
+      const niceDate = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      el.innerText = `Pick a time for ${niceDate}`;
+    } else {
+      el.innerText = 'Pick a date & time for your pro.';
+    }
+  };
+
+  const checkSubmitLocal = () => {
+    const btn = byId(opts.confirmBtnId);
+    if(!btn) return;
+    if(state.selectedDate && state.selectedWindow) {
+      btn.classList.add('active');
+      btn.disabled = false;
+      const newBtn = btn.cloneNode(true);
+      btn.parentNode.replaceChild(newBtn, btn);
+      newBtn.onclick = opts.onConfirm;
+    } else {
+      btn.classList.remove('active');
+      btn.disabled = true;
+    }
+  };
+
+  const render = (offset=0) => {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const monthName = target.toLocaleString('default',{month:'long'});
+    const daysInMonth = new Date(target.getFullYear(), target.getMonth()+1, 0).getDate();
+    const startDay = target.getDay();
+
+    let html = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+         <button id="${opts.widgetId}_prev" type="button" style="border:none; background:none; font-size:20px; padding:4px 12px; cursor:pointer; color:#1e40af;" ${offset<=0?'disabled style="opacity:0.3"':''}>←</button>
+         <div style="font-weight:700; color:#0f172a; font-size:16px;">${monthName} ${target.getFullYear()}</div>
+         <button id="${opts.widgetId}_next" type="button" style="border:none; background:none; font-size:20px; padding:4px 12px; cursor:pointer; color:#1e40af;" ${offset>=2?'disabled style="opacity:0.3"':''}>→</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; text-align:center; margin-bottom:8px;">
+        ${['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=>`<div style="color:#94a3b8; font-size:12px; font-weight:600;">${d}</div>`).join('')}
+      </div>
+      <div class="cal-grid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:6px; text-align:center;">
+    `;
+
+    for(let i=0; i<startDay; i++) html+='<div></div>';
+    for(let d=1; d<=daysInMonth; d++){
+      const iso = new Date(target.getFullYear(), target.getMonth(), d).toISOString().split('T')[0];
+      const isPast = new Date(iso) < new Date(now.toISOString().split('T')[0]);
+      const isAvail = mockAvail.find(x=>x.date===iso) && !isPast;
+      if(!isAvail) html+=`<div class="cal-day-cell disabled">${d}</div>`;
+      else {
+        const isSel = state.selectedDate === iso;
+        html+=`<div class="cal-day-cell ${isSel ? 'selected' : ''}" data-date="${iso}">${d}</div>`;
+      }
+    }
+    html+='</div>';
+    widget.innerHTML = html;
+
+    const prev = byId(`${opts.widgetId}_prev`);
+    const next = byId(`${opts.widgetId}_next`);
+    if(prev) prev.onclick = () => render(offset-1);
+    if(next) next.onclick = () => render(offset+1);
+
+    widget.querySelectorAll('.cal-day-cell:not(.disabled)').forEach(el => {
+      el.onclick = () => {
+        state.selectedDate = el.dataset.date;
+        render(offset);
+        const tw = byId(opts.timeWindowSectionId);
+        if(tw) tw.style.display = 'block';
+        try { tw && tw.scrollIntoView({behavior:'smooth', block:'center'}); } catch(_e) {}
+        updateSummaryLocal();
+        checkSubmitLocal();
+      };
+    });
+  };
+
+  render(0);
+
+  const slotContainer = byId(opts.timeSlotsGridId);
+  if(slotContainer) {
+    slotContainer.querySelectorAll('.time-btn').forEach(btn => {
+      btn.onclick = () => {
+        slotContainer.querySelectorAll('.time-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.selectedWindow = btn.dataset.window;
+        updateSummaryLocal();
+        checkSubmitLocal();
+      };
+    });
+  }
+
+  updateSummaryLocal();
+  checkSubmitLocal();
+}
+
+window.handleCheckoutBackToIntake = function(){
+  h2sCoClearError();
+  h2sCoSetStep('intake');
+};
+
+window.handleCheckoutBackToSchedule = function(){
+  h2sCoClearError();
+  h2sCoSetStep('schedule');
+};
+
+window.handleCheckoutContinue = async function(){
+  h2sCoClearError();
+
+  const btn = document.getElementById('coContinueBtn');
+  const intake = h2sCoGetIntake();
+  const err = h2sCoValidateIntake(intake);
+  if(err) return h2sCoShowError(err);
+
+  if(btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Preparing...'; }
+
   let attempt = 0;
   const maxAttempts = 3;
-  
+
   while(attempt < maxAttempts) {
     attempt++;
     logger.log(`[Checkout] Attempt ${attempt}/${maxAttempts}`);
-    
+
     try {
-      // Promo Code
-      const promoCode = localStorage.getItem('h2s_promo_code');
-
-      // Build cart_items for metadata (includes TV configurations)
-      const cart_items = cart.map(item => ({
-        name: item.name || item.service_name || item.id,
-        qty: item.qty || 1,
-        price: Math.round((item.price || item.unit_price || 0) * 100), // Convert to cents
-        metadata: item.metadata || {} // Preserve TV size, mount type, etc.
-      }));
-
-      // Payload - Use cart-based checkout for metadata preservation
-      const payload = {
-        __action: 'create_checkout_session',
-        customer: {
-          name: name,
-          email: email,
-          phone: phone
-        },
-        cart: cart, // Send full cart with metadata
-        source: 'shop_rebuilt',
-        success_url: 'https://shop.home2smart.com/bundles?view=shopsuccess&session_id={CHECKOUT_SESSION_ID}',
-        cancel_url: window.location.href,
-        metadata: {
-          customer_name: name,
-          customer_phone: phone,
-          customer_email: email,
-          service_address: address,
-          service_city: city,
-          service_state: state,
-          service_zip: zip,
-          source: 'shop_rebuilt'
-        }
-      };
-
-      if(promoCode) payload.promotion_code = promoCode;
-
+      const payload = h2sCoBuildCheckoutPayload(intake);
       logger.log('[Checkout] Sending payload:', payload);
 
-
-      // FETCH with timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       const res = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         signal: controller.signal
       });
-      
       clearTimeout(timeoutId);
 
-      // Parse response
       let data;
       const contentType = res.headers.get('content-type');
-      if(contentType && contentType.includes('application/json')) {
-        data = await res.json();
-      } else {
+      if(contentType && contentType.includes('application/json')) data = await res.json();
+      else {
         const text = await res.text();
         throw new Error(`Server returned non-JSON response: ${text.substring(0, 100)}`);
       }
-      
-      // Check response status
-      if(!res.ok || !data.ok) {
-        throw new Error(data.error || data.message || `Server error: ${res.status}`);
-      }
 
-      // CRITICAL: Validate session_url exists
-      if(!data.pay || !data.pay.session_url) {
-        throw new Error('No Stripe session URL in response');
-      }
+      if(!res.ok || !data.ok) throw new Error(data.error || data.message || `Server error: ${res.status}`);
+      if(!data.pay || !data.pay.session_url) throw new Error('No Stripe session URL in response');
 
-      // SUCCESS: Save user data for next time
+      const sessionId = data.pay.session_id || data.pay.session_url.split('session_id=')[1]?.split('&')[0] || '';
+
       try {
-        localStorage.setItem('h2s_guest_checkout', JSON.stringify({ name, email, phone, address, city, state, zip }));
+        localStorage.setItem('h2s_guest_checkout', JSON.stringify({
+          name: intake.name,
+          email: intake.email,
+          phone: intake.phone,
+          address: intake.address,
+          city: intake.city,
+          state: intake.state,
+          zip: intake.zip
+        }));
         if(!user.email) {
-          // Update local user object if guest
-          user = { name, email, phone };
+          user = { name: intake.name, email: intake.email, phone: intake.phone };
           saveUser();
         }
       } catch(e){
         logger.warn('[Checkout] Could not save user data:', e);
       }
 
-      // CRITICAL: Track checkout initiation
       try {
         if(window.h2sTrack) {
           h2sTrack('InitiateCheckout', {
@@ -5063,13 +5327,12 @@ window.handleCheckoutSubmit = async function(e) {
         logger.warn('[Checkout] Tracking failed (non-blocking):', e);
       }
 
-      // SUCCESS: Persist session for recovery
       try {
         const checkoutData = {
-          session_id: data.pay.session_id || data.pay.session_url.split('session_id=')[1] || '',
+          session_id: sessionId,
           timestamp: Date.now(),
           cart_count: cart.length,
-          customer_email: email
+          customer_email: intake.email
         };
         localStorage.setItem('h2s_last_checkout', JSON.stringify(checkoutData));
         logger.log('[Checkout] Session persisted for recovery');
@@ -5077,66 +5340,181 @@ window.handleCheckoutSubmit = async function(e) {
         logger.warn('[Checkout] Could not persist session (non-blocking):', e);
       }
 
-      // SUCCESS: Extract session_id for instant navigation
-      const sessionId = data.pay.session_id || data.pay.session_url.split('session_id=')[1]?.split('&')[0] || '';
-      
-      // Cleanup UI state before redirect
-      H2S_unlockScroll();
-      document.documentElement.classList.remove('modal-open');
-      document.body.classList.remove('modal-open');
-      
-      logger.log('[Checkout] ✅ Success! Session:', sessionId);
-
-      // Redirect to Stripe Checkout to collect payment.
-      // Stripe will send the customer back to success_url with {CHECKOUT_SESSION_ID}.
+      let orderData = {};
       try {
-        window.location.href = data.pay.session_url;
+        if(sessionId) orderData = await h2sCoFetchOrderDetails(sessionId);
       } catch(e) {
-        window.location.assign(data.pay.session_url);
+        logger.warn('[Checkout] Could not fetch order details (will still attempt schedule):', e);
       }
-      
-      // Exit retry loop on success
-      return;
 
-    } catch (err) {
-      logger.error(`[Checkout] Attempt ${attempt} failed:`, err);
-      
-      // ========== DEBUG LOGS ==========
-      console.error('🔍 [CHECKOUT DEBUG] ❌ Checkout attempt', attempt, 'failed');
-      console.error('🔍 [CHECKOUT DEBUG] Error:', err);
-      console.error('🔍 [CHECKOUT DEBUG] Error name:', err.name);
-      console.error('🔍 [CHECKOUT DEBUG] Error message:', err.message);
-      if (err.stack) console.error('🔍 [CHECKOUT DEBUG] Error stack:', err.stack);
-      // ================================
-      
-      // If this was the last attempt, show error
+      window.__h2sCheckoutFlow = {
+        intake,
+        pay: { session_id: sessionId, session_url: data.pay.session_url },
+        order: orderData,
+        calendar: {}
+      };
+      window.__currentOrderData = orderData;
+      window.__sessionId = sessionId;
+
+      h2sCoSetStep('schedule');
+
+      h2sCoCalendarInit({
+        widgetId: 'coCalendarWidget',
+        timeWindowSectionId: 'coTimeWindowSection',
+        timeSlotsGridId: 'coTimeSlotsGrid',
+        confirmBtnId: 'coConfirmApptBtn',
+        selectionSummaryId: 'coSelectionSummary',
+        state: window.__h2sCheckoutFlow.calendar,
+        onConfirm: async function(){
+          const calendarState = window.__h2sCheckoutFlow.calendar || {};
+          const confirmBtn = byId('coConfirmApptBtn');
+          if(confirmBtn) {
+            confirmBtn.innerText = 'Saving...';
+            confirmBtn.disabled = true;
+            confirmBtn.classList.remove('active');
+          }
+
+          try {
+            const orderData2 = window.__currentOrderData || {};
+            const payload2 = {
+              session_id: window.__sessionId,
+              order_id: orderData2.order_id,
+              delivery_date: calendarState.selectedDate,
+              delivery_time: calendarState.selectedWindow,
+              customer_name: orderData2.customer_name,
+              customer_email: orderData2.customer_email,
+              customer_phone: orderData2.customer_phone,
+              service_address: orderData2.service_address,
+              service_city: orderData2.service_city,
+              service_state: orderData2.service_state,
+              service_zip: orderData2.service_zip,
+              service_name: orderData2.service_name,
+              order_total: orderData2.order_total,
+              order_subtotal: orderData2.order_subtotal,
+              items_json: orderData2.items_json,
+              metadata: orderData2.metadata
+            };
+
+            console.log('[Schedule] Sending payload:', payload2);
+            const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload2)
+            });
+
+            const result = await response.json();
+            if (response.ok && result.ok) {
+              if(confirmBtn) {
+                confirmBtn.innerText = 'Confirmed ✓';
+                confirmBtn.style.background = '#059669';
+              }
+              const msg = byId('coSchedMsg');
+              if(msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
+
+              try {
+                sessionStorage.setItem(`h2s_scheduled_selection_${window.__sessionId}`,
+                  JSON.stringify({ date: calendarState.selectedDate, time: calendarState.selectedWindow, job_id: result.job_id, order_id: orderData2.order_id })
+                );
+              } catch(_e) {}
+
+              try {
+                if (window.__h2sCheckoutFlow) {
+                  window.__h2sCheckoutFlow.scheduled = {
+                    date: calendarState.selectedDate,
+                    time: calendarState.selectedWindow,
+                    job_id: result.job_id,
+                    order_id: orderData2.order_id
+                  };
+                }
+              } catch(_e) {}
+
+              if(typeof h2sTrack === 'function') {
+                h2sTrack('ScheduleAppointment', {
+                  date: calendarState.selectedDate,
+                  time: calendarState.selectedWindow,
+                  job_id: result.job_id,
+                  order_id: orderData2.order_id
+                });
+              }
+
+              const paySummary = byId('coPaySummary');
+              if(paySummary && calendarState.selectedDate && calendarState.selectedWindow) {
+                const d = new Date(calendarState.selectedDate + 'T12:00:00');
+                const niceDate = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+                paySummary.textContent = `Scheduled: ${niceDate} @ ${calendarState.selectedWindow}`;
+              }
+              h2sCoSetStep('pay');
+            } else {
+              throw new Error(result.error || 'Failed to schedule');
+            }
+          } catch(err2) {
+            console.error('[Schedule] Error:', err2);
+            const msg = byId('coSchedMsg');
+            if(msg) msg.innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
+            if(confirmBtn) {
+              confirmBtn.innerText = 'Try Again';
+              confirmBtn.style.background = '#ef4444';
+              confirmBtn.disabled = false;
+              confirmBtn.classList.add('active');
+            }
+          }
+        }
+      });
+
+      if(btn) { btn.disabled = false; btn.textContent = 'Continue to Scheduling'; }
+      return;
+    } catch (err3) {
+      logger.error(`[Checkout] Attempt ${attempt} failed:`, err3);
       if(attempt >= maxAttempts) {
-        const errorMsg = err.name === 'AbortError' 
+        const msg = err3.name === 'AbortError'
           ? 'Request timed out. Please check your connection and try again.'
-          : `Checkout failed: ${err.message}`;
-          
-        if(errEl) {
-          errEl.textContent = errorMsg;
-          errEl.style.display = 'block';
-        }
-        
-        if(btn) { 
-          btn.disabled = false; 
-          btn.textContent = 'Proceed to Payment'; 
-        }
-        
-        // Show user-friendly alert as backup
+          : `Checkout failed: ${err3.message}`;
+        h2sCoShowError(msg);
+        if(btn) { btn.disabled = false; btn.textContent = 'Continue to Scheduling'; }
         alert('Unable to process checkout. Please try again or contact support at (864) 528-1475.');
         return;
       }
-      
-      // Wait before retry (exponential backoff: 1s, 2s, 4s)
+
       const delay = Math.pow(2, attempt - 1) * 1000;
       logger.log(`[Checkout] Retrying in ${delay}ms...`);
       if(btn) btn.innerHTML = `<span class="spinner"></span> Retrying...`;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
-  } // End while loop
+  }
+};
+
+window.handleCheckoutPay = function(){
+  try {
+    const payBtn = byId('coPayBtn');
+    const sessionUrl = window.__h2sCheckoutFlow?.pay?.session_url;
+    if(!sessionUrl) return h2sCoShowError('Missing Stripe session. Please try again.');
+
+    const sessionId = window.__h2sCheckoutFlow?.pay?.session_id || window.__sessionId;
+    let scheduledOk = !!window.__h2sCheckoutFlow?.scheduled;
+    if (!scheduledOk && sessionId) {
+      try {
+        scheduledOk = !!sessionStorage.getItem(`h2s_scheduled_selection_${sessionId}`);
+      } catch(_e) { /* noop */ }
+    }
+
+    if (!scheduledOk) {
+      h2sCoShowError('Please confirm an appointment time before payment.');
+      try { h2sCoSetStep('schedule'); } catch(_e) {}
+      return;
+    }
+
+    if(payBtn) {
+      payBtn.disabled = true;
+      payBtn.innerHTML = '<span class="spinner"></span> Redirecting...';
+    }
+
+    H2S_unlockScroll();
+    document.documentElement.classList.remove('modal-open');
+    document.body.classList.remove('modal-open');
+    window.location.href = sessionUrl;
+  } catch(e) {
+    try { window.location.assign(window.__h2sCheckoutFlow?.pay?.session_url); } catch(_e) {}
+  }
 };
 
 // Diagnostics: run a dry checkout to identify failures

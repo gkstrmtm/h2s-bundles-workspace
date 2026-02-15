@@ -79,18 +79,39 @@ function isAllowedOrigin(origin: string): boolean {
   return false;
 }
 
-function buildCorsHeaders(origin: string | null): Record<string, string> {
-  const o = (origin || '').trim();
+function buildCorsHeaders(req: NextRequest): Record<string, string> {
+  const o = (req.headers.get('origin') || '').trim();
   const allowed = o && isAllowedOrigin(o);
 
   // If there is no Origin header (server-to-server), CORS is irrelevant; keep permissive.
   // If Origin exists but isn't allowed, we still return '*' (non-credential) to avoid random UI breakage.
   const allowOrigin = allowed ? o : '*';
 
+  const requestedHeadersRaw = req.headers.get('access-control-request-headers') || '';
+  const requestedHeaders = requestedHeadersRaw
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean);
+
+  const baseAllowed = [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    // Dashboard/admin shared-secret headers (support both casings)
+    'X-H2S-Admin-Key',
+    'x-h2s-admin-key',
+    'X-H2S-Admin-Token',
+    'x-h2s-admin-token',
+    'X-H2S-Bootstrap-Secret',
+    'x-h2s-bootstrap-secret',
+  ];
+
+  const allowHeaders = Array.from(new Set([...baseAllowed, ...requestedHeaders])).join(', ');
+
   const headers: Record<string, string> = {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Headers': allowHeaders,
     'Access-Control-Max-Age': '86400',
     // Prevent CDN/proxy from reusing a response across origins.
     Vary: 'Origin',
@@ -104,7 +125,7 @@ function buildCorsHeaders(origin: string | null): Record<string, string> {
 }
 
 export function middleware(req: NextRequest) {
-  const cors = buildCorsHeaders(req.headers.get('origin'));
+  const cors = buildCorsHeaders(req);
 
   // Preflight
   if (req.method === 'OPTIONS') {

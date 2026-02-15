@@ -4890,7 +4890,12 @@ ORDER BY converted_at DESC;</pre>
                 // Make sessions available to the Ops Dashboard (and other panels) as a single source of truth.
                 dashboardData.sessions = {
                     total_sessions: totalSessions,
-                    source: sessionsPayload.source || null,
+                    data_source: sessionsPayload.source || null,
+                    top_source: sessionsPayload.top_source || null,
+                    top_medium: sessionsPayload.top_medium || null,
+                    top_source_medium: sessionsPayload.top_source_medium || null,
+                    top_last_seen_at: sessionsPayload.top_last_seen_at || null,
+                    last_event_at: sessionsPayload.last_event_at || null,
                     warning: sessionsPayload.warning || sessionsRes.warning || null
                 };
                 // Access normalized properties directly (safe)
@@ -4900,8 +4905,17 @@ ORDER BY converted_at DESC;</pre>
                 
                 console.log('[KPIs] Calculated metrics:', { totalSessions, totalOrders, totalRevenue, avgOrderValue });
                 
-                const sessionsSourceLabel = dashboardData.sessions.source ? String(dashboardData.sessions.source) : '';
-                const sessionsSubtitle = sessionsSourceLabel ? `${timeRange} • ${sessionsSourceLabel}` : timeRange;
+                const topSrc = normalizeTrafficSourceLabel(sessionsPayload.top_source || '') || '';
+                const topMedRaw = typeof sessionsPayload.top_medium === 'string' ? sessionsPayload.top_medium.trim() : '';
+                const topMed = topMedRaw ? (topMedRaw.length <= 4 ? topMedRaw.toUpperCase() : (topMedRaw.charAt(0).toUpperCase() + topMedRaw.slice(1))) : '';
+                const topTrafficLabel = topSrc ? (topMed ? `${topSrc} / ${topMed}` : topSrc) : '';
+                const sessionsLastTs = sessionsPayload.top_last_seen_at || sessionsPayload.last_event_at || null;
+                const sessionsLastLabel = sessionsLastTs ? `Last: ${formatLocalDateTime(sessionsLastTs)}` : '';
+                const sessionsSubtitle = [
+                    timeRange,
+                    topTrafficLabel ? `Top: ${topTrafficLabel}` : '',
+                    sessionsLastLabel
+                ].filter(Boolean).join(' • ');
 
                 const kpis = [
                     {

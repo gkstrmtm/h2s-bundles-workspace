@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deliverables Library</title>
+  <meta name="robots" content="noindex, nofollow" />
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:rgba(255,255,255,.06);
+      --panel2:rgba(255,255,255,.04);
+      --border:rgba(148,163,184,.22);
+      --text:#e5e7eb;
+      --muted:rgba(229,231,235,.72);
+      --brand:#60a5fa;
+      --good:#34d399;
+      --warn:#fbbf24;
+      --bad:#fb7185;
+      --shadow: 0 18px 60px rgba(0,0,0,.35);
+      --radius:14px;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background:
+        radial-gradient(1200px 800px at 20% 0%, rgba(96,165,250,.18), transparent 55%),
+        radial-gradient(900px 700px at 100% 40%, rgba(34,197,94,.12), transparent 55%),
+        var(--bg);
+      color:var(--text);
+    }
+    a{color:inherit;}
+
+    .wrap{max-width:1280px;margin:0 auto;padding:22px 16px 32px;}
+    .topbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 2px 16px;}
+    .title{display:flex;flex-direction:column;gap:6px;}
+    h1{margin:0;font-size:20px;letter-spacing:.2px;}
+    .sub{margin:0;color:var(--muted);font-size:13px;line-height:1.4;}
+    .pill{font-size:11px;padding:3px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);}
+
+    .layout{display:grid;grid-template-columns: 320px 1fr;gap:12px;}
+    @media (max-width: 980px){.layout{grid-template-columns:1fr;}}
+
+    .card{border:1px solid var(--border);background:linear-gradient(180deg,var(--panel),rgba(255,255,255,.03));border-radius:var(--radius);box-shadow:var(--shadow);}
+    .card .hd{padding:12px 12px 10px;border-bottom:1px solid rgba(148,163,184,.16);display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .card .bd{padding:12px;}
+
+    .controls{display:flex;flex-direction:column;gap:10px;}
+    .field{display:flex;flex-direction:column;gap:6px;}
+    .label{font-size:11px;color:var(--muted);}
+    input,select,button{font:inherit;}
+    input[type="text"], select{
+      height:38px;
+      padding:0 10px;
+      border-radius:10px;
+      border:1px solid rgba(148,163,184,.28);
+      background:rgba(15,23,42,.7);
+      color:var(--text);
+      outline:none;
+    }
+    input[type="text"]::placeholder{color:rgba(229,231,235,.45);}
+
+    .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+    .btn{
+      display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      padding:9px 12px;border-radius:10px;border:1px solid rgba(96,165,250,.45);
+      background:rgba(96,165,250,.14);color:var(--text);
+      cursor:pointer;font-size:13px;font-weight:700;text-decoration:none;
+    }
+    .btn.secondary{border-color:rgba(148,163,184,.35);background:rgba(148,163,184,.10);font-weight:600;}
+    .btn.danger{border-color:rgba(251,113,133,.45);background:rgba(251,113,133,.12);}
+    .btn:active{transform:translateY(1px);}
+
+    .statline{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;}
+    .dot{opacity:.5;}
+
+    .list{display:flex;flex-direction:column;gap:8px;}
+    .item{
+      border:1px solid rgba(148,163,184,.18);
+      background:rgba(15,23,42,.50);
+      border-radius:12px;
+      padding:10px;
+      cursor:pointer;
+      transition:border-color .15s ease, background .15s ease;
+    }
+    .item:hover{border-color:rgba(96,165,250,.55);background:rgba(15,23,42,.62);}
+    .item.active{border-color:rgba(96,165,250,.85);box-shadow:0 0 0 2px rgba(96,165,250,.18) inset;}
+
+    .itemTitle{font-size:13px;font-weight:800;letter-spacing:.1px;}
+    .itemMeta{margin-top:4px;font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+    .tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(148,163,184,.25);color:var(--muted);}
+    .tag.type{border-color:rgba(96,165,250,.35);color:rgba(191,219,254,.92);}
+
+    .viewer{min-height:420px;display:flex;flex-direction:column;}
+    .viewerTop{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .viewerTitle{display:flex;flex-direction:column;gap:4px;min-width:260px;}
+    .viewerTitle h2{margin:0;font-size:16px;}
+    .viewerTitle .small{font-size:12px;color:var(--muted);}
+
+    .viewerActions{display:flex;gap:8px;flex-wrap:wrap;}
+    .split{display:grid;grid-template-columns:1fr;gap:10px;}
+
+    .preview{
+      border:1px solid rgba(148,163,184,.18);
+      background:rgba(2,6,23,.55);
+      border-radius:12px;
+      padding:12px;
+      overflow:auto;
+      max-height:62vh;
+    }
+    pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:12px;line-height:1.6;}
+
+    .md{font-size:14px;line-height:1.65;color:rgba(229,231,235,.92);}
+    .md h1,.md h2,.md h3{margin:12px 0 8px;line-height:1.25;}
+    .md h1{font-size:20px;}
+    .md h2{font-size:18px;}
+    .md h3{font-size:16px;}
+    .md code{background:rgba(148,163,184,.16);padding:2px 6px;border-radius:7px;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:12px;}
+    .md pre{background:rgba(148,163,184,.10);padding:10px;border-radius:10px;overflow:auto;white-space:pre;}
+    .md a{color:rgba(147,197,253,.95);}
+
+    .empty{color:var(--muted);font-size:13px;padding:10px;border:1px dashed rgba(148,163,184,.25);border-radius:12px;background:rgba(15,23,42,.35);}
+
+    .toast{position:fixed;bottom:18px;right:18px;z-index:999999;min-width:280px;max-width:360px;padding:10px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.25);background:rgba(15,23,42,.92);box-shadow:0 18px 60px rgba(0,0,0,.55);display:none;}
+    .toast.show{display:block;}
+    .toast .t{font-size:13px;font-weight:800;}
+    .toast .m{margin-top:4px;font-size:12px;color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>Deliverables Library</h1>
+        <p class="sub">Task deliverables submitted via the dashboard, with inline preview and direct links.</p>
+        <div class="statline">
+          <span class="pill" id="genPill">Loading…</span>
+          <span class="dot">•</span>
+          <span class="pill"><a href="/hub">Hub</a></span>
+          <span class="pill"><a href="/dash">Dash</a></span>
+        </div>
+      </div>
+      <span class="pill">portal.home2smart.com</span>
+    </div>
+
+    <div class="layout">
+      <div class="card">
+        <div class="hd">
+          <div style="font-weight:800;">Browse</div>
+          <button class="btn secondary" id="refreshBtn" type="button">Refresh</button>
+        </div>
+        <div class="bd">
+          <div class="controls">
+            <div class="field">
+              <div class="label">Search</div>
+              <input id="q" type="text" placeholder="Search title, status, submitted by…" />
+            </div>
+            <div class="field">
+              <div class="label">Status</div>
+              <select id="status">
+                <option value="ALL" selected>All</option>
+                <option value="PENDING">Pending</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="PUBLISHED">Published</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="label">Sort</div>
+              <select id="sort">
+                <option value="date_desc" selected>Newest date first</option>
+                <option value="date_asc">Oldest date first</option>
+                <option value="title_asc">Title A → Z</option>
+                <option value="title_desc">Title Z → A</option>
+              </select>
+            </div>
+
+            <div class="empty" id="countsBox">Loading library…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card viewer">
+        <div class="hd">
+          <div class="viewerTop">
+            <div class="viewerTitle">
+              <h2 id="viewerH">Select an item</h2>
+              <div class="small" id="viewerSub">Choose a deliverable on the left.</div>
+            </div>
+            <div class="viewerActions" id="viewerActions" style="display:none;"></div>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="split">
+            <div class="card" style="border-radius:12px;background:rgba(255,255,255,.03);box-shadow:none;">
+              <div class="bd">
+                <div class="list" id="list"></div>
+              </div>
+            </div>
+
+            <div class="preview" id="preview">
+              <div class="empty">No preview loaded.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <div class="t" id="toastT">Copied</div>
+    <div class="m" id="toastM">Link copied to clipboard.</div>
+  </div>
+
+  <script>
+    // Real deliverables come from the backend Deliverables table, not the workspace manifest.
+    // When hosted on portal.home2smart.com, we rely on same-origin /api/v1 (proxied via Vercel rewrites).
+    const DEFAULT_API_HOST = 'https://h2s-backend.vercel.app';
+
+    function isPortalHosted(){
+      try {
+        const host = String(location.hostname || '').toLowerCase();
+        return host.endsWith('home2smart.com') || host.endsWith('.vercel.app');
+      } catch {
+        return true;
+      }
+    }
+
+    const API_BASE = isPortalHosted() ? '' : DEFAULT_API_HOST;
+    const API_URL = `${API_BASE}/api/v1`;
+
+    function escapeHtml(value){
+      const s = value == null ? '' : String(value);
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function formatBytes(bytes){
+      const n = Number(bytes || 0);
+      if (!Number.isFinite(n) || n <= 0) return '0 B';
+      const units = ['B','KB','MB','GB'];
+      let i = 0; let v = n;
+      while (v >= 1024 && i < units.length-1){ v/=1024; i++; }
+      return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+    }
+
+    function toast(title, message){
+      const el = document.getElementById('toast');
+      document.getElementById('toastT').textContent = title;
+      document.getElementById('toastM').textContent = message;
+      el.classList.add('show');
+      clearTimeout(window.__toastT);
+      window.__toastT = setTimeout(()=>el.classList.remove('show'), 2200);
+    }
+
+    function cmpNullable(a,b){
+      const aa = (a == null ? '' : String(a));
+      const bb = (b == null ? '' : String(b));
+      return aa.localeCompare(bb);
+    }
+
+    function sortItems(items, sort){
+      const arr = [...items];
+      const getDate = (it)=> it.createdAt ? String(it.createdAt) : '';
+      if (sort === 'title_asc') arr.sort((a,b)=>cmpNullable(a.title,b.title));
+      else if (sort === 'title_desc') arr.sort((a,b)=>cmpNullable(b.title,a.title));
+      else if (sort === 'date_asc') arr.sort((a,b)=>cmpNullable(getDate(a),getDate(b)) || cmpNullable(a.title,b.title));
+      else arr.sort((a,b)=>cmpNullable(getDate(b),getDate(a)) || cmpNullable(a.title,b.title));
+      return arr;
+    }
+
+    function applyFilters(state){
+      const q = (state.q || '').trim().toLowerCase();
+      const status = state.status || 'ALL';
+
+      let items = state.items || [];
+      items = items.filter(it=>{
+        if (status !== 'ALL' && String(it.status || '').toUpperCase() !== status) return false;
+        if (!q) return true;
+        const hay = `${it.title||''} ${it.status||''} ${it.submittedBy||''} ${it.description||''} ${it.taskTitle||''} ${it.taskId||''}`.toLowerCase();
+        return hay.includes(q);
+      });
+
+      items = sortItems(items, state.sort);
+      return items;
+    }
+
+    function setCountsBox(state, filtered){
+      const total = (state.items || []).length;
+      const shown = filtered.length;
+      const gen = state.loaded_at ? new Date(state.loaded_at) : null;
+      const genText = gen && !isNaN(gen.getTime()) ? gen.toLocaleString() : 'Unknown';
+      const box = document.getElementById('countsBox');
+      box.innerHTML = `Showing <strong>${shown.toLocaleString()}</strong> of <strong>${total.toLocaleString()}</strong> deliverables\n        <div style="margin-top:6px; font-size:12px;">Loaded: <span style="color:rgba(191,219,254,.92); font-weight:700;">${escapeHtml(genText)}</span></div>`;
+
+      const pill = document.getElementById('genPill');
+      pill.textContent = `Loaded: ${genText}`;
+    }
+
+    function statusColor(status){
+      const s = String(status || '').toUpperCase();
+      if (s === 'PUBLISHED') return 'rgba(52,211,153,.95)';
+      if (s === 'APPROVED') return 'rgba(96,165,250,.95)';
+      if (s === 'PENDING') return 'rgba(251,191,36,.95)';
+      if (s === 'REJECTED') return 'rgba(251,113,133,.95)';
+      return 'rgba(148,163,184,.95)';
+    }
+
+    function parseFileLink(value){
+      if (!value) return [];
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((f)=>({
+              name: f && f.name ? String(f.name) : 'Attachment',
+              size: f && f.size != null ? Number(f.size) : null,
+              type: f && f.type ? String(f.type) : null,
+              dataUrl: f && (f.dataUrl || f.url) ? String(f.dataUrl || f.url) : null,
+            }))
+            .filter((f)=>!!f.dataUrl);
+        }
+      } catch {
+        // Legacy: plain URL string
+        const s = String(value);
+        if (/^https?:\/\//i.test(s) || /^data:/i.test(s)) {
+          return [{ name: 'Link', size: null, type: null, dataUrl: s }];
+        }
+      }
+      return [];
+    }
+
+    function safeDateLabel(iso){
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleString();
+      } catch {
+        return '—';
+      }
+    }
+
+    function renderList(state, filtered){
+      const list = document.getElementById('list');
+      if (!filtered.length){
+        list.innerHTML = '<div class="empty">No results.</div>';
+        return;
+      }
+
+      list.innerHTML = filtered.map(it=>{
+        const status = String(it.status || 'UNKNOWN').toUpperCase();
+        const when = safeDateLabel(it.createdAt);
+        const who = it.submittedBy ? String(it.submittedBy) : 'Unknown';
+        const attachments = Array.isArray(it.attachments) ? it.attachments.length : 0;
+        const statusTag = `<span class="tag" style="border-color:${statusColor(status)}; color:${statusColor(status)};">${escapeHtml(status)}</span>`;
+        const taskBits = it.taskTitle ? `<span class="tag">Task</span><span>${escapeHtml(it.taskTitle)}</span>` : '';
+        return `
+          <div class="item" data-id="${escapeHtml(it.id)}">
+            <div class="itemTitle">${escapeHtml(it.title || 'Untitled')}</div>
+            <div class="itemMeta">
+              ${statusTag}
+              ${taskBits}
+              <span>${escapeHtml(who)}</span>
+              <span>${escapeHtml(when)}</span>
+              <span>${attachments ? `${attachments} file(s)` : 'No files'}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('.item').forEach(el=>{
+        el.addEventListener('click', ()=>{
+          const id = el.getAttribute('data-id');
+          selectItem(state, id);
+        });
+      });
+    }
+
+    function tryDecodeDataUrlToText(dataUrl){
+      const s = String(dataUrl || '');
+      if (!s.startsWith('data:')) return null;
+      const comma = s.indexOf(',');
+      if (comma < 0) return null;
+      const meta = s.slice(5, comma);
+      const data = s.slice(comma + 1);
+      const isBase64 = /;base64/i.test(meta);
+      const isTexty = /^text\//i.test(meta) || /json|xml|sql|javascript|csv|markdown/i.test(meta);
+      if (!isTexty) return null;
+      try {
+        if (isBase64) {
+          // atob expects ASCII; this is good enough for our deliverables use.
+          return atob(data);
+        }
+        return decodeURIComponent(data);
+      } catch {
+        return null;
+      }
+    }
+
+    function naiveMarkdownToHtml(md){
+      // Intentionally small (no dependencies). Good enough for headings, lists, code fences, links.
+      const s = String(md || '');
+      const esc = (x)=>escapeHtml(x);
+
+      const lines = s.split(/\r?\n/);
+      let out = '';
+      let inCode = false;
+      let codeBuf = [];
+      let inList = false;
+
+      function flushList(){
+        if (inList){ out += '</ul>'; inList = false; }
+      }
+
+      for (const line of lines){
+        const mFence = line.match(/^```/);
+        if (mFence){
+          if (!inCode){
+            flushList();
+            inCode = true; codeBuf = [];
+          } else {
+            const code = codeBuf.join('\n');
+            out += `<pre><code>${esc(code)}</code></pre>`;
+            inCode = false; codeBuf = [];
+          }
+          continue;
+        }
+
+        if (inCode){ codeBuf.push(line); continue; }
+
+        const mH1 = line.match(/^#\s+(.*)$/);
+        const mH2 = line.match(/^##\s+(.*)$/);
+        const mH3 = line.match(/^###\s+(.*)$/);
+        const mLi = line.match(/^\s*[-*]\s+(.*)$/);
+
+        if (mH1){ flushList(); out += `<h1>${esc(mH1[1])}</h1>`; continue; }
+        if (mH2){ flushList(); out += `<h2>${esc(mH2[1])}</h2>`; continue; }
+        if (mH3){ flushList(); out += `<h3>${esc(mH3[1])}</h3>`; continue; }
+
+        if (mLi){
+          if (!inList){ out += '<ul>'; inList = true; }
+          out += `<li>${inlineMd(mLi[1])}</li>`;
+          continue;
+        }
+
+        if (!line.trim()){
+          flushList();
+          continue;
+        }
+
+        flushList();
+        out += `<p>${inlineMd(line)}</p>`;
+      }
+
+      flushList();
+      if (inCode){ out += `<pre><code>${esc(codeBuf.join('\n'))}</code></pre>`; }
+      return out;
+
+      function inlineMd(text){
+        let t = esc(text);
+        // code
+        t = t.replace(/`([^`]+)`/g, (_m,g1)=>`<code>${esc(g1)}</code>`);
+        // links [text](url)
+        t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, a, b)=>{
+          const url = esc(b);
+          const label = esc(a);
+          return `<a href="${url}" target="_blank" rel="noopener">${label}</a>`;
+        });
+        // bold **x**
+        t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        return t;
+      }
+    }
+
+    async function selectItem(state, id){
+      state.selectedId = id;
+      document.querySelectorAll('.item').forEach(el=>{
+        el.classList.toggle('active', el.getAttribute('data-id') === id);
+      });
+
+      const it = (state.items || []).find(x=>String(x.id) === String(id));
+      if (!it) return;
+
+      document.getElementById('viewerH').textContent = it.title || 'Untitled';
+      const meta = [
+        it.taskTitle ? `Task: ${String(it.taskTitle)}` : null,
+        String(it.status || '').toUpperCase() || null,
+        it.submittedBy ? String(it.submittedBy) : null,
+        it.createdAt ? safeDateLabel(it.createdAt) : null
+      ].filter(Boolean).join(' • ');
+      document.getElementById('viewerSub').textContent = meta;
+
+      const actions = document.getElementById('viewerActions');
+      actions.style.display = 'flex';
+
+      actions.innerHTML = `
+        <button class="btn secondary" type="button" id="copyBtn">Copy Link</button>
+      `;
+
+      document.getElementById('copyBtn').onclick = async () => {
+        const link = window.location.href;
+        try {
+          await navigator.clipboard.writeText(link);
+          toast('Copied', 'File link copied.');
+        } catch {
+          toast('Copy failed', 'Clipboard not available.');
+        }
+      };
+
+      const preview = document.getElementById('preview');
+
+      const attachments = Array.isArray(it.attachments) ? it.attachments : [];
+      const detailBits = [];
+      if (it.taskTitle) {
+        detailBits.push(`<div style="margin-bottom:10px; font-size:12px; color:var(--muted);">Task: <span style="color:rgba(229,231,235,.92); font-weight:800;">${escapeHtml(it.taskTitle)}</span></div>`);
+      }
+      detailBits.push(`<div class="md">${naiveMarkdownToHtml(it.description || '')}</div>`);
+      if (it.aiSummary) {
+        detailBits.push(`<div style="margin-top:10px; padding:10px; border:1px solid rgba(148,163,184,.18); border-left:3px solid rgba(96,165,250,.85); border-radius:12px; background:rgba(15,23,42,.35);"><div style="font-size:12px; font-weight:800; color:rgba(191,219,254,.92); margin-bottom:6px;">AI Summary</div><div style="font-size:13px; color:rgba(229,231,235,.92);">${escapeHtml(it.aiSummary)}</div>${it.aiQualityScore != null ? `<div style="margin-top:6px; font-size:12px; color:var(--muted);">Quality: <strong style="color:${statusColor(it.aiQualityScore >= 70 ? 'PUBLISHED' : it.aiQualityScore >= 50 ? 'PENDING' : 'REJECTED')}">${escapeHtml(it.aiQualityScore)}/100</strong></div>` : ''}</div>`);
+      }
+      if (it.publishedAt) {
+        detailBits.push(`<div style="margin-top:10px; font-size:12px; color:var(--muted);">Published: <span style="color:rgba(229,231,235,.9); font-weight:700;">${escapeHtml(safeDateLabel(it.publishedAt))}</span></div>`);
+      }
+
+      if (!attachments.length) {
+        preview.innerHTML = detailBits.join('') + `<div class="empty" style="margin-top:10px;">No files attached.</div>`;
+        return;
+      }
+
+      // Render attachments list + preview area
+      const attRows = attachments.map((f, idx)=>{
+        const label = `${f.name || 'Attachment'}${f.size != null ? ` • ${formatBytes(f.size)}` : ''}`;
+        return `<button class="btn secondary" type="button" style="justify-content:flex-start; width:100%;" data-att-idx="${idx}">${escapeHtml(label)}</button>`;
+      }).join('');
+
+      preview.innerHTML = `
+        ${detailBits.join('')}
+        <div style="margin-top:12px; display:grid; grid-template-columns: 240px 1fr; gap: 10px; align-items:start;">
+          <div>
+            <div style="font-size:11px; color:var(--muted); margin-bottom:8px;">Attachments</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">${attRows}</div>
+          </div>
+          <div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;" id="attActions"></div>
+            <div id="attPreview" class="card" style="border-radius:12px;background:rgba(255,255,255,.03);box-shadow:none; border:1px solid rgba(148,163,184,.18); padding:12px;"><div class="empty">Select an attachment.</div></div>
+          </div>
+        </div>
+      `;
+
+      function renderAttachment(idx){
+        const f = attachments[idx];
+        const url = f && f.dataUrl ? String(f.dataUrl) : '';
+        const name = f && f.name ? String(f.name) : 'attachment';
+        const type = f && f.type ? String(f.type) : '';
+        const attActions = document.getElementById('attActions');
+        const attPreview = document.getElementById('attPreview');
+        if (!attActions || !attPreview) return;
+
+        const safeUrl = escapeHtml(url);
+        attActions.innerHTML = `
+          <a class="btn secondary" href="${safeUrl}" target="_blank" rel="noopener">Open</a>
+          <a class="btn" href="${safeUrl}" download="${escapeHtml(name)}">Download</a>
+        `;
+
+        const text = tryDecodeDataUrlToText(url);
+        if (text != null) {
+          attPreview.innerHTML = `<pre>${escapeHtml(text)}</pre>`;
+          return;
+        }
+
+        if ((type && type.startsWith('image/')) || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(name)) {
+          attPreview.innerHTML = `<img src="${safeUrl}" alt="${escapeHtml(name)}" style="max-width:100%; height:auto; border-radius:10px;" />`;
+          return;
+        }
+
+        if ((type === 'application/pdf') || /\.pdf$/i.test(name)) {
+          attPreview.innerHTML = `<iframe src="${safeUrl}" style="width:100%; height:62vh; border:0; border-radius:10px; background:white;"></iframe>`;
+          return;
+        }
+
+        attPreview.innerHTML = `<div class="empty">Preview not available for this file type. Use Open/Download.</div>`;
+      }
+
+      preview.querySelectorAll('[data-att-idx]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const idx = Number(btn.getAttribute('data-att-idx'));
+          renderAttachment(idx);
+        });
+      });
+
+      renderAttachment(0);
+    }
+
+    function rebuild(state){
+      const filtered = applyFilters(state);
+      setCountsBox(state, filtered);
+      renderList(state, filtered);
+
+      // Keep selection if still visible
+      if (state.selectedId && filtered.some(it=>String(it.id)===String(state.selectedId))) {
+        // nothing
+      } else {
+        state.selectedId = null;
+        document.getElementById('viewerH').textContent = 'Select an item';
+        document.getElementById('viewerSub').textContent = 'Choose a deliverable on the left.';
+        document.getElementById('viewerActions').style.display = 'none';
+        document.getElementById('preview').innerHTML = '<div class="empty">No preview loaded.</div>';
+      }
+    }
+
+    async function load(){
+      const state = window.__state = window.__state || { items: [], loaded_at: null, q: '', status: 'ALL', sort: 'date_desc', selectedId: null };
+
+      const url = `${API_URL}?action=deliverables&status=all&_ts=${Date.now()}`;
+      const res = await fetch(url, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
+      if (!res.ok) throw new Error(`Failed to load deliverables (${res.status})`);
+      const data = await res.json();
+      if (!data || data.ok !== true) throw new Error((data && data.error) ? String(data.error) : 'Deliverables API failed');
+
+      const raw = Array.isArray(data.deliverables) ? data.deliverables : (Array.isArray(data.result) ? data.result : []);
+
+      state.loaded_at = new Date().toISOString();
+      state.items = raw.map(d => {
+        const attachments = parseFileLink(d.File_Link);
+        return {
+          id: d.Deliverable_ID,
+          taskId: d.Task_ID || null,
+          taskTitle: d.Task_Title || null,
+          taskUrl: d.Task_URL || null,
+          title: d.Title || 'Untitled',
+          description: d.Description || '',
+          status: d.Status || 'UNKNOWN',
+          submittedBy: d.Submitted_By || 'Unknown',
+          createdAt: d.Created_At || null,
+          reviewedAt: d.Reviewed_At || null,
+          reviewedBy: d.Reviewed_By || null,
+          publishedAt: d.Published_At || null,
+          aiSummary: d.AI_Summary || null,
+          aiQualityScore: d.AI_Quality_Score,
+          attachments,
+          raw: d
+        };
+      });
+
+      rebuild(state);
+
+      // bind controls
+      document.getElementById('q').addEventListener('input', (e)=>{ state.q = e.target.value; rebuild(state); });
+      document.getElementById('status').addEventListener('change', (e)=>{ state.status = e.target.value; rebuild(state); });
+      document.getElementById('sort').addEventListener('change', (e)=>{ state.sort = e.target.value; rebuild(state); });
+      document.getElementById('refreshBtn').addEventListener('click', ()=>window.location.reload());
+
+      // auto-select first item
+      const filtered = applyFilters(state);
+      if (filtered.length) selectItem(state, filtered[0].id);
+    }
+
+    (async ()=>{
+      try {
+        await load();
+      } catch (e){
+        document.getElementById('countsBox').innerHTML = `<div style="color: rgba(251,113,133,.95); font-weight:800;">Library failed to load</div><div style="margin-top:6px;">${escapeHtml(e.message || String(e))}</div>`;
+        document.getElementById('genPill').textContent = 'API unavailable';
+        document.getElementById('list').innerHTML = '<div class="empty">No library available.</div>';
+      }
+    })();
+  </script>
+</body>
+</html>

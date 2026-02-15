@@ -11,10 +11,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
     <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="2026-02-03T05:30:00Z">
+    <meta name="h2s-dash-build" content="2026-02-05T01:00:00Z">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
-            const DASH_BUILD_STAMP = '2026-02-03T05:30:00Z';
+            const DASH_BUILD_STAMP = '2026-02-05T01:00:00Z';
             const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
@@ -6122,6 +6122,55 @@
             transform: translateY(-1px);
             box-shadow: var(--pp-shadow-sm);
         }
+
+        .pp-btn-secondary-sm:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .pp-btn-primary-sm {
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 700;
+            color: white;
+            background: #0f172a;
+            border: 1px solid #0f172a;
+            border-radius: var(--pp-radius-sm);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .pp-btn-primary-sm:hover {
+            background: #111c33;
+            border-color: #111c33;
+            transform: translateY(-1px);
+            box-shadow: var(--pp-shadow-sm);
+        }
+
+        .pp-btn-primary-sm:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .pp-library-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .pp-library-actions-hint {
+            font-size: 12px;
+            color: var(--pp-text-muted);
+            font-weight: 600;
+            white-space: nowrap;
+            opacity: 0.9;
+        }
         
         /* Color Grading Panel */
         .pp-color-grading {
@@ -7787,6 +7836,63 @@
             align-items: center;
             gap: var(--spacing-md);
         }
+
+        /* Library Actions (three-dots menu) */
+        .pp-more-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .pp-more-menu {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 8px);
+            min-width: 240px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+            padding: 6px;
+            z-index: 10000;
+        }
+
+        .pp-more-menu.is-hidden {
+            display: none;
+        }
+
+        .pp-more-item {
+            width: 100%;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 10px;
+            border-radius: 10px;
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .pp-more-item:hover {
+            background: #f1f5f9;
+        }
+
+        .pp-more-item .pp-more-sub {
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            margin-left: auto;
+        }
+
+        .pp-more-sep {
+            height: 1px;
+            background: #e5e7eb;
+            margin: 6px 6px;
+        }
         
         .pp-view-toggles {
             display: flex;
@@ -9207,7 +9313,7 @@ details[open] .ob-chevron {
                             <div>
                                 <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Proof Packs</div>
                                 <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload proof photos and videos for your bundles page. The system handles rotation automatically.</div>
-                                <div id="ppDashBuildStampInline" class="u-text-xs u-muted" style="margin-top:6px;">Dash build: 2026-02-03T05:30:00Z</div>
+                                <div id="ppDashBuildStampInline" class="u-text-xs u-muted" style="margin-top:6px;">Dash build: 2026-02-05T01:00:00Z</div>
                             </div>
                             <div class="button-group u-flex u-wrap u-gap-12"></div>
                         </div>
@@ -9579,6 +9685,26 @@ details[open] .ob-chevron {
                                                 <option value="date-asc">Oldest First</option>
                                             </select>
                                         </div>
+
+                                        <!-- Library Actions (always visible) -->
+                                        <div class="pp-library-actions" aria-label="Library actions">
+                                            <button class="pp-btn-primary-sm" type="button" onclick="proofPacks.bulkOptimizeEntireLibrary()" title="Optimize EVERY image in the library (scans all packs)">
+                                                Optimize Entire Library
+                                            </button>
+                                            <button class="pp-btn-secondary-sm" type="button" onclick="proofPacks.bulkOptimizeAllLoaded()" title="Optimize images currently loaded in the library list">
+                                                Optimize Loaded
+                                            </button>
+                                            <button class="pp-btn-secondary-sm" id="ppOptimizeSelectedBtn" type="button" onclick="proofPacks.bulkOptimizeSelected()" disabled title="Select assets (click tiles) then optimize them">
+                                                Optimize Selected
+                                            </button>
+                                            <button class="pp-btn-secondary-sm" type="button" onclick="proofPacks.selectAllLoaded()" title="Select all currently loaded tiles">
+                                                Select All Loaded
+                                            </button>
+                                            <button class="pp-btn-secondary-sm" id="ppClearSelectedBtn" type="button" onclick="proofPacks.clearSelection()" disabled title="Clear current selection">
+                                                Clear
+                                            </button>
+                                            <span class="pp-library-actions-hint" id="ppLibraryActionHint">Tip: click tiles to select • right‑click for asset menu</span>
+                                        </div>
                                         
                                         <!-- View Toggles & Count -->
                                         <div class="pp-view-group">
@@ -9621,7 +9747,7 @@ details[open] .ob-chevron {
                                         <label class="form-label" for="ppBackendUrl">Backend URL</label>
                                         <input id="ppBackendUrl" class="form-input" placeholder="https://h2s-backend.vercel.app" />
                                         <span class="form-help">Where the Proof Packs API is hosted.</span>
-                                        <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-02T00:00:00Z</span>
+                                        <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-05T01:00:00Z</span>
                                     </div>
                                     <div class="form-field u-mt-2">
                                         <label class="form-label" for="ppAdminKey">Admin key (optional)</label>
@@ -13892,6 +14018,28 @@ details[open] .ob-chevron {
                 };
             },
 
+            basename(pathLike) {
+                const raw = String(pathLike || '').trim();
+                if (!raw) return '';
+                const noQuery = raw.split('?')[0];
+                const parts = noQuery.split('/').filter(Boolean);
+                return parts.length ? parts[parts.length - 1] : noQuery;
+            },
+
+            formatBytes(bytes) {
+                const n = Number(bytes);
+                if (!isFinite(n) || n <= 0) return '';
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let idx = 0;
+                let v = n;
+                while (v >= 1024 && idx < units.length - 1) {
+                    v /= 1024;
+                    idx++;
+                }
+                const fixed = idx === 0 ? 0 : (idx === 1 ? 1 : 2);
+                return `${v.toFixed(fixed)} ${units[idx]}`;
+            },
+
             async probeContentType(url, timeoutMs = 4500) {
                 const u = String(url || '').trim();
                 if (!u) return null;
@@ -13905,6 +14053,168 @@ details[open] .ob-chevron {
                     return null;
                 } finally {
                     clearTimeout(t);
+                }
+            },
+
+            async probeHead(url, timeoutMs = 4500) {
+                const u = String(url || '').trim();
+                if (!u) return null;
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), timeoutMs);
+                try {
+                    const r = await fetch(u, { method: 'HEAD', cache: 'no-store', credentials: 'omit', signal: ctrl.signal });
+                    if (!r.ok) return { ok: false, status: r.status };
+                    const contentType = String(r.headers.get('content-type') || '').toLowerCase();
+                    const contentLengthRaw = r.headers.get('content-length');
+                    const contentLength = contentLengthRaw ? Number(contentLengthRaw) : null;
+                    const lastModified = String(r.headers.get('last-modified') || '').trim();
+                    return {
+                        ok: true,
+                        status: r.status,
+                        contentType,
+                        contentLength: (contentLengthRaw && isFinite(contentLength)) ? contentLength : null,
+                        lastModified: lastModified || null
+                    };
+                } catch (e) {
+                    return { ok: false, error: String(e?.message || e) };
+                } finally {
+                    clearTimeout(t);
+                }
+            },
+
+            async probeImageDimensions(url, timeoutMs = 4500) {
+                const u = String(url || '').trim();
+                if (!u) return null;
+                return await new Promise((resolve) => {
+                    const img = new Image();
+                    let done = false;
+                    const finish = (val) => {
+                        if (done) return;
+                        done = true;
+                        try { img.onload = null; img.onerror = null; } catch { /* ignore */ }
+                        resolve(val);
+                    };
+                    const t = setTimeout(() => finish(null), timeoutMs);
+                    img.onload = () => {
+                        clearTimeout(t);
+                        const w = Number(img.naturalWidth || img.width || 0);
+                        const h = Number(img.naturalHeight || img.height || 0);
+                        finish((w > 0 && h > 0) ? { width: w, height: h } : null);
+                    };
+                    img.onerror = () => { clearTimeout(t); finish(null); };
+                    img.decoding = 'async';
+                    img.loading = 'eager';
+                    img.src = u;
+                });
+            },
+
+            findAssetInLibraryState(assetId) {
+                const id = String(assetId || '').trim();
+                if (!id) return null;
+                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
+                return items.find(a => String(a?.asset_id) === id) || null;
+            },
+
+            async copyText(text) {
+                const v = String(text || '');
+                if (!v) return false;
+                try {
+                    if (navigator?.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(v);
+                        return true;
+                    }
+                } catch {
+                    // ignore
+                }
+                try {
+                    // Fallback: prompt allows manual copy everywhere.
+                    window.prompt('Copy to clipboard:', v);
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+
+            async showLibraryAssetInfo(assetId) {
+                const id = String(assetId || '').trim();
+                if (!id) return;
+                try {
+                    let asset = this.findAssetInLibraryState(id);
+                    if (!asset) asset = await this.fetchAssetById(id);
+                    if (!asset) {
+                        showToast('Asset not found.', 'error');
+                        return;
+                    }
+
+                    const mediaKind = String(asset?.media_kind || asset?.kind || 'image').toLowerCase();
+                    const opt = this.getOptimizationInfo(asset);
+                    const storageBucket = String(asset?.storage_bucket || 'proof');
+                    const storagePath = String(asset?.storage_path || '').trim();
+                    const filename = this.basename(storagePath);
+                    const url = this.buildAssetUrl(asset);
+
+                    let head = null;
+                    let dims = null;
+                    if (mediaKind !== 'video' && url) {
+                        head = await this.probeHead(url);
+                        dims = await this.probeImageDimensions(url);
+                    }
+
+                    const ct = String(head?.contentType || '').toLowerCase();
+                    const verifiedWebp = ct.includes('image/webp');
+                    const verifiedAvif = ct.includes('image/avif');
+                    const verifiedOk = (mediaKind === 'video') ? true : (verifiedWebp || verifiedAvif);
+                    const verifiedLabel = (mediaKind === 'video') ? 'VIDEO' : (verifiedAvif ? 'AVIF' : verifiedWebp ? 'WEBP' : 'UNKNOWN');
+
+                    const claimedLabel = (mediaKind === 'video') ? 'VIDEO' : (opt?.label || 'UNKNOWN');
+                    const claimedOk = (mediaKind === 'video') ? true : !!opt?.isOptimized;
+
+                    const pill = (label, ok) => {
+                        const bg = ok ? 'rgba(16,185,129,0.92)' : 'rgba(239,68,68,0.92)';
+                        return `<span style="display:inline-block;padding:4px 10px;border-radius:999px;font-weight:900;font-size:12px;letter-spacing:0.2px;color:white;background:${bg};">${this.escapeHtml(label)}</span>`;
+                    };
+
+                    const kv = (k, v) => {
+                        return `<div style="display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #f1f5f9; align-items:flex-start;">
+                          <div style="width:140px; flex:0 0 140px; color:#64748b; font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:0.4px;">${this.escapeHtml(k)}</div>
+                          <div style="flex:1; color:#0f172a; font-weight:700; font-size:13px; word-break:break-word;">${v}</div>
+                        </div>`;
+                    };
+
+                    const bytes = (head && head.ok && typeof head.contentLength === 'number') ? this.formatBytes(head.contentLength) : '';
+                    const dimsText = dims ? `${dims.width}×${dims.height}` : '';
+                    const contentTypeText = ct ? this.escapeHtml(ct) : '<span style="color:#94a3b8;">(unavailable)</span>';
+
+                    const html = `
+                      <div style="display:flex; gap:10px; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                          <div>${pill(`Verified: ${verifiedLabel}`, verifiedOk)}</div>
+                          <div>${pill(`Path: ${claimedLabel}`, claimedOk)}</div>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                                                    <button class="pp-btn-secondary" type="button" data-v="${encodeURIComponent(url || '')}" onclick="proofPacks.copyText(decodeURIComponent(this.dataset.v || '')); showToast('Copied URL', 'success');" style="height:36px;">Copy URL</button>
+                                                    <button class="pp-btn-secondary" type="button" data-v="${encodeURIComponent(storagePath || '')}" onclick="proofPacks.copyText(decodeURIComponent(this.dataset.v || '')); showToast('Copied storage path', 'success');" style="height:36px;">Copy Path</button>
+                        </div>
+                      </div>
+                      <div style="border:1px solid #e2e8f0; border-radius:12px; padding:12px; background:#fff;">
+                        ${kv('Asset ID', this.escapeHtml(id))}
+                        ${kv('Filename', this.escapeHtml(filename || '(none)'))}
+                        ${kv('Kind', this.escapeHtml(mediaKind))}
+                        ${kv('Bucket', this.escapeHtml(storageBucket))}
+                        ${kv('Storage path', this.escapeHtml(storagePath || '(none)'))}
+                        ${kv('Content-Type (HEAD)', contentTypeText)}
+                        ${kv('Size', this.escapeHtml(bytes || '(unknown)'))}
+                        ${kv('Dimensions', this.escapeHtml(dimsText || '(unknown)'))}
+                      </div>
+                      <div style="margin-top:10px; color:#64748b; font-size:12px; line-height:1.5;">
+                        Verified format uses an HTTP <strong>HEAD</strong> request to the proxied media URL. If it shows “unavailable”, the host blocked HEAD/CORS.
+                      </div>
+                    `;
+
+                    await showModal('Asset File Info', html, { width: '860px', confirmText: 'Close' });
+                } catch (e) {
+                    console.error('[showLibraryAssetInfo] failed', e);
+                    showToast(`File info failed: ${String(e?.message || e)}`, 'error');
                 }
             },
 
@@ -14810,6 +15120,14 @@ details[open] .ob-chevron {
                     const assetId = String(asset.asset_id);
                     const mediaKind = (asset.media_kind || asset.kind || 'image').toLowerCase();
                     const isVideo = mediaKind === 'video';
+
+                    // Format pill (visual confirmation)
+                    const opt = this.getOptimizationInfo(asset);
+                    const fmtLabel = isVideo ? 'VIDEO' : (opt?.label || 'UNKNOWN');
+                    const fmtOk = isVideo ? true : !!opt?.isOptimized;
+                    const fmtBg = isVideo
+                        ? 'rgba(99,102,241,0.92)'
+                        : (fmtOk ? 'rgba(16,185,129,0.92)' : 'rgba(148,163,184,0.92)');
                     
                     // URL Logic
                     const bucket = asset.storage_bucket || 'proof';
@@ -14839,10 +15157,15 @@ details[open] .ob-chevron {
                              onclick="proofPacks.toggleSelection('${this.escapeHtml(assetId)}', !this.classList.contains('selected'))">
                              
                             <!-- Minimalist Checkbox (Apple Style) -->
-                            <div class="tile-checkbox-wrapper" style="position: absolute; top: 12px; right: 12px; z-index: 10; ${isSelected ? 'opacity: 1;' : 'opacity: 0;'} transition: opacity 0.2s;">
+                            <div class="tile-checkbox-wrapper" style="position: absolute; top: 12px; right: 12px; z-index: 10; opacity: ${isSelected ? '1' : '0.25'}; transition: opacity 0.2s;">
                                 <div style="width: 20px; height: 20px; border-radius: 50%; background: ${isSelected ? '#007AFF' : 'rgba(255,255,255,0.8)'}; border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                     ${isSelected ? '<svg width="12" height="12" viewBox="0 0 12 12" fill="white"><path d="M10 3L4.5 8.5L2 6" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' : ''}
                                 </div>
+                            </div>
+
+                            <!-- Format pill (WEBP/AVIF/etc) -->
+                            <div style="position:absolute; top:12px; left:12px; z-index:10; pointer-events:none; background:${fmtBg}; color:white; padding:6px 10px; border-radius:999px; font-size:11px; font-weight:900; letter-spacing:0.3px; box-shadow: 0 2px 6px rgba(0,0,0,0.18);">
+                                ${this.escapeHtml(fmtLabel)}${(!isVideo && fmtOk) ? '' : ''}
                             </div>
                             
                             <img src="${this.escapeHtml(url)}" class="tile-image" loading="eager" decoding="async" alt="Asset" 
@@ -14875,11 +15198,11 @@ details[open] .ob-chevron {
                 tiles.forEach(t => {
                     t.onmouseenter = () => {
                         const wrapper = t.querySelector('.tile-checkbox-wrapper');
-                        if (wrapper && !t.classList.contains('selected')) wrapper.style.opacity = '0.6';
+                        if (wrapper && !t.classList.contains('selected')) wrapper.style.opacity = '0.8';
                     };
                     t.onmouseleave = () => {
                         const wrapper = t.querySelector('.tile-checkbox-wrapper');
-                        if (wrapper && !t.classList.contains('selected')) wrapper.style.opacity = '0';
+                        if (wrapper && !t.classList.contains('selected')) wrapper.style.opacity = '0.25';
                     };
                 });
 
@@ -14934,6 +15257,7 @@ details[open] .ob-chevron {
                 }
                 
                 this.updateBulkActionsBar();
+                this.updateLibraryActionButtons();
             },
             
             updateBulkActionsBar() {
@@ -14952,6 +15276,52 @@ details[open] .ob-chevron {
                         setTimeout(() => { if (!bar.classList.contains('is-visible')) bar.style.display = 'none'; }, 300);
                     }
                 }
+
+                this.updateLibraryActionButtons();
+            },
+
+            updateLibraryActionButtons() {
+                const count = this.state.selectedIds ? this.state.selectedIds.size : 0;
+                const optBtn = document.getElementById('ppOptimizeSelectedBtn');
+                const clearBtn = document.getElementById('ppClearSelectedBtn');
+                const hint = document.getElementById('ppLibraryActionHint');
+
+                if (optBtn) {
+                    optBtn.disabled = count <= 0;
+                    optBtn.textContent = count > 0 ? `Optimize Selected (${count})` : 'Optimize Selected';
+                }
+
+                if (clearBtn) {
+                    clearBtn.disabled = count <= 0;
+                }
+
+                if (hint) {
+                    hint.textContent = count > 0
+                        ? `${count} selected • click more tiles • right‑click for asset menu`
+                        : 'Tip: click tiles to select • right‑click for asset menu';
+                }
+            },
+
+            selectAllLoaded() {
+                try {
+                    const tiles = Array.from(document.querySelectorAll('.gallery-tile[data-asset-id]'));
+                    if (!tiles.length) {
+                        showToast('No loaded tiles to select. Refresh the library first.', 'warning');
+                        return;
+                    }
+                    if (!this.state.selectedIds) this.state.selectedIds = new Set();
+                    for (const t of tiles) {
+                        const id = String(t.getAttribute('data-asset-id') || '').trim();
+                        if (id) this.state.selectedIds.add(id);
+                    }
+                    // Re-render to apply selected styles + checkmarks.
+                    if (this.state.assets) this.setAssetsUi(this.state.assets);
+                    this.updateBulkActionsBar();
+                    showToast(`Selected ${this.state.selectedIds.size} loaded assets.`, 'success');
+                } catch (e) {
+                    console.warn('[selectAllLoaded] failed', e);
+                    showToast('Select all failed.', 'error');
+                }
             },
             
             clearSelection() {
@@ -14959,6 +15329,7 @@ details[open] .ob-chevron {
                 document.querySelectorAll('.tile-checkbox').forEach(cb => cb.checked = false);
                 document.querySelectorAll('.gallery-tile.selected').forEach(el => el.classList.remove('selected'));
                 this.updateBulkActionsBar();
+                this.updateLibraryActionButtons();
             },
             
             async bulkSetLive() {
@@ -15281,6 +15652,204 @@ details[open] .ob-chevron {
                 const imagesOnly = items.filter((a) => String(a?.media_kind || a?.kind || '').toLowerCase() !== 'video');
                 if (!confirm(`Optimize ${imagesOnly.length} loaded image assets to WebP/AVIF? This may take a while.`)) return;
                 await this.runBulkOptimize(imagesOnly, { source: 'all_loaded' });
+            },
+
+            closeLibraryMoreMenu() {
+                const menu = document.getElementById('ppLibraryMoreMenu');
+                if (!menu) return;
+                menu.classList.add('is-hidden');
+            },
+
+            toggleLibraryMoreMenu(ev) {
+                try {
+                    if (ev) {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                    }
+
+                    const menu = document.getElementById('ppLibraryMoreMenu');
+                    if (!menu) return;
+
+                    const isHidden = menu.classList.contains('is-hidden');
+                    if (isHidden) {
+                        menu.classList.remove('is-hidden');
+                        this.bindLibraryMoreMenuDismiss();
+                    } else {
+                        menu.classList.add('is-hidden');
+                    }
+                } catch {
+                    // ignore
+                }
+            },
+
+            bindLibraryMoreMenuDismiss() {
+                if (this._libraryMoreMenuDismissBound) return;
+                this._libraryMoreMenuDismissBound = true;
+
+                document.addEventListener('click', (e) => {
+                    const menu = document.getElementById('ppLibraryMoreMenu');
+                    const btn = document.getElementById('ppLibraryMoreBtn');
+                    if (!menu || menu.classList.contains('is-hidden')) return;
+                    const t = e?.target;
+                    if (menu.contains(t) || btn?.contains?.(t)) return;
+                    menu.classList.add('is-hidden');
+                }, true);
+
+                document.addEventListener('keydown', (e) => {
+                    if (e?.key !== 'Escape') return;
+                    const menu = document.getElementById('ppLibraryMoreMenu');
+                    if (!menu) return;
+                    menu.classList.add('is-hidden');
+                });
+            },
+
+            async bulkOptimizeEntireLibrary() {
+                // Enumerate ALL packs for the current surface (TV Mounting + Cameras), then optimize every image.
+                // Uses the existing conversion+replace pipeline via runBulkOptimize().
+                const surface = document.getElementById('ppSurface')?.value || 'bundles';
+
+                try {
+                    // Single-flight guard
+                    if (this._bulkOptimize && this._bulkOptimize.running) {
+                        showToast('Bulk optimize already running.', 'warning');
+                        this.showBulkOptimizeModal(true);
+                        return;
+                    }
+
+                    await this.ensureLibraryPacksLoaded(surface);
+                    const tvPacks = Array.isArray(this.state?.libraryPacks?.tv_mounting) ? this.state.libraryPacks.tv_mounting : [];
+                    const camPacks = Array.isArray(this.state?.libraryPacks?.cameras) ? this.state.libraryPacks.cameras : [];
+                    const packIds = [...tvPacks, ...camPacks]
+                        .map(p => String(p?.pack_id || '').trim())
+                        .filter(Boolean);
+
+                    const uniquePackIds = Array.from(new Set(packIds));
+                    if (!uniquePackIds.length) {
+                        showToast('No library packs found for this surface.', 'warning');
+                        return;
+                    }
+
+                    const proceed = confirm(
+                        `Optimize the ENTIRE library?\n\n` +
+                        `This will scan ${uniquePackIds.length} packs (TV Mounting + Cameras) and then optimize every image to WebP/AVIF.\n\n` +
+                        `This can take a while and will make many admin API calls. Continue?`
+                    );
+                    if (!proceed) return;
+
+                    const ctrl = new AbortController();
+                    const modal = this.ensureBulkOptimizeModal();
+                    const cancelBtn = modal.querySelector('#ppBulkOptCancel');
+                    const closeBtn = modal.querySelector('#ppBulkOptClose');
+
+                    let cancelled = false;
+                    if (cancelBtn) {
+                        cancelBtn.style.display = 'inline-flex';
+                        cancelBtn.onclick = () => {
+                            cancelled = true;
+                            try { ctrl.abort(); } catch { /* ignore */ }
+                        };
+                    }
+                    if (closeBtn) {
+                        closeBtn.style.display = 'none';
+                        closeBtn.onclick = () => this.showBulkOptimizeModal(false);
+                    }
+
+                    this.showBulkOptimizeModal(true);
+
+                    const scanState = {
+                        pct: 0,
+                        subtitle: `Scanning ${uniquePackIds.length} packs…`,
+                        line1: 'Starting scan…',
+                        line2: '',
+                        done: 0,
+                        ok: 0,
+                        skipped: 0,
+                        failed: 0,
+                        logLines: [],
+                        finished: false,
+                    };
+
+                    const pushLog = (line) => {
+                        const s = String(line || '').trim();
+                        if (!s) return;
+                        scanState.logLines.push(s);
+                        if (scanState.logLines.length > 400) scanState.logLines = scanState.logLines.slice(scanState.logLines.length - 400);
+                    };
+
+                    const update = () => {
+                        scanState.pct = uniquePackIds.length ? (scanState.done / uniquePackIds.length) * 100 : 0;
+                        this.updateBulkOptimizeUi(scanState);
+                    };
+
+                    const byId = new Map();
+                    update();
+
+                    for (let i = 0; i < uniquePackIds.length; i++) {
+                        if (cancelled) break;
+                        const pid = uniquePackIds[i];
+                        scanState.subtitle = `Scanning pack ${i + 1} / ${uniquePackIds.length}`;
+                        scanState.line1 = pid;
+                        scanState.line2 = 'Loading assets…';
+                        update();
+
+                        try {
+                            const resp = await this.fetchJson(
+                                `/api/admin/proof-assets?pack_id=${encodeURIComponent(pid)}&limit=2000`,
+                                { method: 'GET', signal: ctrl.signal }
+                            );
+                            const assets = Array.isArray(resp?.assets) ? resp.assets : [];
+                            for (const a of assets) {
+                                const id = String(a?.asset_id || '').trim();
+                                if (!id) continue;
+                                if (!byId.has(id)) byId.set(id, a);
+                            }
+                            scanState.ok = byId.size; // show discovered unique assets
+                            pushLog(`[pack] ${pid} assets=${assets.length} unique_total=${byId.size}`);
+                        } catch (e) {
+                            if (e?.name === 'AbortError') {
+                                cancelled = true;
+                                pushLog('[cancel] scan aborted');
+                                break;
+                            }
+                            scanState.failed++;
+                            pushLog(`[fail] ${pid} ${String(e?.message || e).slice(0, 140)}`);
+                        }
+
+                        scanState.done = i + 1;
+                        update();
+                    }
+
+                    if (cancelled) {
+                        scanState.finished = true;
+                        scanState.subtitle = 'Cancelled';
+                        scanState.line1 = 'Scan stopped by user';
+                        scanState.line2 = '';
+                        if (closeBtn) closeBtn.style.display = 'inline-flex';
+                        if (cancelBtn) cancelBtn.style.display = 'none';
+                        update();
+                        return;
+                    }
+
+                    const allAssets = Array.from(byId.values());
+                    const imagesOnly = allAssets.filter((a) => String(a?.media_kind || a?.kind || '').toLowerCase() !== 'video');
+                    scanState.finished = true;
+                    scanState.subtitle = `Scan complete: ${imagesOnly.length} image(s) queued`; 
+                    scanState.line1 = 'Ready to optimize';
+                    scanState.line2 = `Unique assets: ${allAssets.length} • Failed packs: ${scanState.failed}`;
+                    if (closeBtn) closeBtn.style.display = 'inline-flex';
+                    if (cancelBtn) cancelBtn.style.display = 'none';
+                    update();
+
+                    const ok = confirm(`Found ${imagesOnly.length} image assets across the entire library.\n\nRun Optimize + Replace now?`);
+                    if (!ok) return;
+
+                    // Hand off to the real optimizer (reuses the same modal)
+                    await this.runBulkOptimize(imagesOnly, { source: 'entire_library' });
+                } catch (e) {
+                    console.error(e);
+                    showToast(`Optimize entire library failed: ${e?.message || 'Unknown error'}`, 'error');
+                    try { this.showBulkOptimizeModal(false); } catch { /* ignore */ }
+                }
             },
 
 
@@ -15892,11 +16461,16 @@ details[open] .ob-chevron {
                 
                 // Get asset data
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
-                const asset = items.find(a => a.asset_id === assetId);
-                const isVideo = asset && asset.media_kind === 'video';
+                const asset = items.find(a => String(a?.asset_id) === String(assetId)) || null;
+                const isVideo = asset && String(asset.media_kind || asset.kind || '').toLowerCase() === 'video';
                 const isImage = !!asset && !isVideo;
                 
                 const menuItems = [
+                        {
+                            label: 'File Info / Verify format',
+                            icon: '<svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14zm0 1A8 8 0 1 1 8 0a8 8 0 0 1 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L9.93 6.588z"/><circle cx="8" cy="4.5" r="1"/></svg>',
+                            action: () => this.showLibraryAssetInfo(assetId)
+                        },
                         // Hero Banner: allow ANY asset; warn later if low-res.
                         ...(asset ? [{ 
                             label: 'Assign to Hero Banner', 
@@ -23993,11 +24567,171 @@ details[open] .ob-chevron {
             container.innerHTML = '<div class="spinner"></div>';
             
             try {
+                // Prefer the workspace deliverables library (static manifest generated at deploy time).
+                // This shows everything submitted in history (docs + SQL) and works on portal alias.
+                const manifestUrl = `/library/manifest.json?t=${Date.now()}`;
+
+                function escapeHtml(value) {
+                    const s = value == null ? '' : String(value);
+                    return s
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                function formatBytes(bytes) {
+                    const n = Number(bytes || 0);
+                    if (!Number.isFinite(n) || n <= 0) return '0 B';
+                    const units = ['B', 'KB', 'MB', 'GB'];
+                    let i = 0;
+                    let v = n;
+                    while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+                    return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+                }
+
+                function renderLibrary(items, generatedAt) {
+                    const gen = generatedAt ? new Date(generatedAt) : null;
+                    const genText = gen && !isNaN(gen.getTime()) ? gen.toLocaleString() : 'Unknown';
+
+                    const rows = (items || []).slice(0, 250).map((it) => {
+                        const ext = String(it.ext || '').toUpperCase();
+                        const cat = String(it.category || 'GENERAL');
+                        const date = it.date ? String(it.date) : '—';
+                        const size = formatBytes(it.size);
+                        const rawPath = '/' + String(it.path || '').replace(/^\/+/, '');
+                        const openUrl = `${rawPath}?t=${Date.now()}`;
+                        const original = it.original_path ? String(it.original_path) : '';
+
+                        return `
+                            <div class="card" style="padding: var(--gap-2);">
+                                <div style="display:flex; justify-content:space-between; gap: var(--gap-2); align-items:flex-start;">
+                                    <div style="min-width: 0;">
+                                        <div style="font-size: 16px; font-weight: 800; color: var(--text); margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(it.title || 'Untitled')}</div>
+                                        <div style="font-size: 12px; color: var(--muted); display:flex; gap: 10px; flex-wrap:wrap;">
+                                            <span style="border:1px solid rgba(96,165,250,0.35); color: rgba(191,219,254,0.92); padding:2px 8px; border-radius:999px;">${escapeHtml(ext)}</span>
+                                            <span style="border:1px solid rgba(148,163,184,0.25); padding:2px 8px; border-radius:999px;">${escapeHtml(cat)}</span>
+                                            <span>${escapeHtml(date)}</span>
+                                            <span>${escapeHtml(size)}</span>
+                                            ${original ? `<span title="${escapeHtml(original)}" style="opacity:0.7;">${escapeHtml(original.split('/').slice(-1)[0])}</span>` : ''}
+                                        </div>
+                                    </div>
+                                    <div style="display:flex; gap: 6px; flex-wrap:wrap; justify-content:flex-end;">
+                                        <a class="btn" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener" style="background: var(--azure); color: white;">Open</a>
+                                        <a class="btn" href="${escapeHtml(rawPath)}" download style="background: var(--cobalt); color: white;">Download</a>
+                                        <button class="btn" style="background: #111827; color: white;" onclick="window.__h2sPreviewDeliverable && window.__h2sPreviewDeliverable('${escapeHtml(rawPath)}','${escapeHtml(ext)}','${escapeHtml(it.title || 'Untitled')}')">Preview</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    container.innerHTML = `
+                        <div class="card" style="margin-bottom: var(--gap-2);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap: var(--gap-2); flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-size: 16px; font-weight: 900; color: var(--cobalt);">Deliverables Library</div>
+                                    <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">Generated: ${escapeHtml(genText)} • Items: ${(items || []).length.toLocaleString()} (showing up to 250)</div>
+                                </div>
+                                <div style="display:flex; gap: 8px; flex-wrap:wrap;">
+                                    <a class="btn" href="/library" target="_blank" rel="noopener" style="background: var(--azure); color: white;">Open Full Library</a>
+                                    <button class="btn" onclick="loadDeliverablesLibrary()" style="background: var(--cobalt); color: white;">Refresh</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--gap-2);">
+                            ${rows || `<div class="empty-state"><div class="empty-text">No items found in manifest.</div></div>`}
+                        </div>
+
+                        <div id="deliverablesPreviewModal" style="display:none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 999999; padding: 24px;">
+                            <div style="max-width: 1100px; margin: 0 auto; background: white; border-radius: 14px; overflow: hidden; box-shadow: 0 18px 60px rgba(0,0,0,0.35);">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #e5e7eb;">
+                                    <div style="min-width:0;">
+                                        <div id="deliverablesPreviewTitle" style="font-weight: 900; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></div>
+                                        <div id="deliverablesPreviewSub" style="font-size: 12px; color: #64748b; margin-top: 2px;"></div>
+                                    </div>
+                                    <div style="display:flex; gap: 8px; flex-wrap:wrap;">
+                                        <a id="deliverablesPreviewOpen" class="btn" target="_blank" rel="noopener" style="background: var(--azure); color: white;">Open</a>
+                                        <a id="deliverablesPreviewDownload" class="btn" download style="background: var(--cobalt); color: white;">Download</a>
+                                        <button class="btn" onclick="(function(){ var m=document.getElementById('deliverablesPreviewModal'); if(m) m.style.display='none'; })()" style="background: #111827; color: white;">Close</button>
+                                    </div>
+                                </div>
+                                <div id="deliverablesPreviewBody" style="padding: 14px; background: #0b1220; color: #e5e7eb; max-height: 70vh; overflow: auto;">
+                                    <div style="opacity: 0.8;">Loading…</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    window.__h2sPreviewDeliverable = async function(rawPath, ext, title) {
+                        const modal = document.getElementById('deliverablesPreviewModal');
+                        const body = document.getElementById('deliverablesPreviewBody');
+                        const titleEl = document.getElementById('deliverablesPreviewTitle');
+                        const subEl = document.getElementById('deliverablesPreviewSub');
+                        const openEl = document.getElementById('deliverablesPreviewOpen');
+                        const dlEl = document.getElementById('deliverablesPreviewDownload');
+                        if (!modal || !body) return;
+
+                        titleEl.textContent = title || 'Deliverable';
+                        subEl.textContent = `${ext || ''} • ${rawPath}`;
+                        openEl.href = `${rawPath}?t=${Date.now()}`;
+                        dlEl.href = rawPath;
+
+                        modal.style.display = 'block';
+                        body.innerHTML = '<div style="opacity:0.8;">Loading…</div>';
+
+                        try {
+                            const res = await fetch(`${rawPath}?t=${Date.now()}`, { cache: 'no-store' });
+                            const text = await res.text();
+                            const escaped = escapeHtml(text);
+                            body.innerHTML = `<pre style="margin:0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size: 12px; line-height: 1.6;">${escaped}</pre>`;
+                        } catch (e) {
+                            body.innerHTML = `<div style="color:#fb7185; font-weight:800;">Preview failed</div><div style="margin-top:6px; opacity:0.85;">${escapeHtml(e.message || String(e))}</div>`;
+                        }
+                    };
+
+                    // Close modal on outside click
+                    const modal = document.getElementById('deliverablesPreviewModal');
+                    if (modal) {
+                        modal.addEventListener('click', function(e) {
+                            if (e.target === modal) modal.style.display = 'none';
+                        });
+                    }
+                }
+
+                // Try manifest first
+                try {
+                    const manifestRes = await fetch(manifestUrl, { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
+                    if (!manifestRes.ok) throw new Error(`Manifest HTTP ${manifestRes.status}`);
+                    const manifest = await manifestRes.json();
+                    const items = Array.isArray(manifest.items) ? manifest.items : [];
+                    renderLibrary(items, manifest.generated_at || null);
+                    return;
+                } catch (_) {
+                    // fall through to legacy API below
+                }
+
+                // Legacy: Published deliverables from backend API (if manifest unavailable)
                 const response = await fetch(`${API_URL}?action=deliverables&status=published`);
                 const data = await response.json();
                 
                 if (data.ok && data.deliverables && data.deliverables.length > 0) {
                     container.innerHTML = `
+                        <div class="card" style="margin-bottom: var(--gap-2);">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap: var(--gap-2); flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-size: 16px; font-weight: 900; color: var(--cobalt);">Published Deliverables</div>
+                                    <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">This is the legacy deliverables feed from the backend.</div>
+                                </div>
+                                <div style="display:flex; gap: 8px; flex-wrap:wrap;">
+                                    <a class="btn" href="/library" target="_blank" rel="noopener" style="background: var(--azure); color: white;">Try Library</a>
+                                    <button class="btn" onclick="loadDeliverablesLibrary()" style="background: var(--cobalt); color: white;">Refresh</button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--gap-2);">
                             ${data.deliverables.map(d => `
                                 <div class="card">
@@ -24038,7 +24772,8 @@ details[open] .ob-chevron {
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <div class="empty-text">No published deliverables yet.</div>
+                            <div class="empty-text">No deliverables found (manifest and legacy feed unavailable).</div>
+                            <div style="margin-top: 10px;"><a class="btn" href="/library" target="_blank" rel="noopener" style="background: var(--azure); color: white;">Open /library</a></div>
                         </div>
                     `;
                 }

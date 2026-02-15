@@ -14,6 +14,10 @@ param(
   [string]$ExpectedVercelProjectName = "h2s-backend",
   [switch]$SkipDeploy,
   [switch]$SkipVerify,
+  [switch]$SkipMigrations,
+  # Comma-separated list of migration files in backend/migrations.
+  # Keep these idempotent (IF NOT EXISTS) so it's safe to re-run every deploy.
+  [string]$MigrationFile = "007_create_dashboard_accounts.sql,008_create_offers.sql,009_alter_deliverables_add_metadata.sql",
   [int]$BundlePriceDollars = 2100,
   [string]$DeliveryDate = "2026-01-20",
   [string]$DeliveryTime = "9am - 12pm"
@@ -41,6 +45,15 @@ function Warn($msg) {
 function Require-Command($name) {
   $cmd = Get-Command $name -ErrorAction SilentlyContinue
   if (-not $cmd) { Fail "Missing required command: $name" }
+}
+
+function Contains-EnvVar([string[]]$lines, [string]$name) {
+  if (-not $lines -or -not $name) { return $false }
+  foreach ($line in $lines) {
+    if ($line -match ("^\s*" + [regex]::Escape($name) + "\s+")) { return $true }
+    if ($line -match ("\b" + [regex]::Escape($name) + "\b")) { return $true }
+  }
+  return $false
 }
 
 function Parse-VercelDeploymentUrl([string[]]$lines) {
@@ -76,6 +89,106 @@ if (-not (Test-Path "backend\package.json")) {
 
 Require-Command npm
 Require-Command vercel
+
+# Best-effort env sanity check (helps catch missing bootstrap + MGMT DB creds)
+Info "Checking Vercel env vars (best-effort)..."
+try {
+  Push-Location "backend"
+  $envOut = @()
+  $prevEap = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $envOut = (& vercel env ls 2>&1)
+  } finally {
+    $ErrorActionPreference = $prevEap
+  }
+} catch {
+  $envOut = @()
+} finally {
+  try { Pop-Location } catch {}
+}
+
+if ($envOut -and $envOut.Count -gt 0) {
+  $hasMgmtUrl = Contains-EnvVar $envOut "SUPABASE_URL_MGMT"
+  $hasMgmtKey = (Contains-EnvVar $envOut "SUPABASE_SERVICE_KEY_MGMT") -or (Contains-EnvVar $envOut "SUPABASE_SERVICE_ROLE_KEY_MGMT")
+  $hasBootstrap = Contains-EnvVar $envOut "H2S_DASHBOARD_BOOTSTRAP_SECRET"
+  $hasAdminKey = Contains-EnvVar $envOut "H2S_DASHBOARD_ADMIN_KEY"
+  $hasAdminToken = Contains-EnvVar $envOut "H2S_ADMIN_TOKEN"
+
+  if (-not $hasMgmtUrl -or -not $hasMgmtKey) {
+    Warn "MGMT Supabase env vars may be missing (SUPABASE_URL_MGMT + SUPABASE_SERVICE_KEY_MGMT). Deliverables/accounts will fail without them."
+  } else {
+    Ok "MGMT Supabase env vars appear present"
+  }
+
+  if (-not $hasBootstrap -and -not $hasAdminKey -and -not $hasAdminToken) {
+    Warn "No bootstrap/admin env var detected. You will not be able to create the first ADMIN user. Set H2S_DASHBOARD_BOOTSTRAP_SECRET (recommended) or H2S_DASHBOARD_ADMIN_KEY or H2S_ADMIN_TOKEN (break-glass)."
+  } else {
+    Ok "Bootstrap/Admin env var appears present"
+  }
+} else {
+  Warn "Could not read Vercel env vars (vercel env ls). Continuing."
+}
+
+# Migrations (optional, safe to re-run because they use IF NOT EXISTS)
+if (-not $SkipMigrations) {
+  $migrationFiles = @()
+  if ($MigrationFile) {
+    $migrationFiles = ($MigrationFile -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+  }
+
+  if (-not $migrationFiles -or $migrationFiles.Count -eq 0) {
+    Warn "No MigrationFile provided; skipping migrations."
+  } else {
+    Info "Applying MGMT migrations: $($migrationFiles -join ', ')"
+  }
+
+  if (-not (Test-Path "backend\apply_migration_rpc.js")) {
+    Warn "backend\apply_migration_rpc.js not found; skipping migrations."
+  } else {
+    Push-Location "backend"
+    try {
+      foreach ($mf in $migrationFiles) {
+        Info "Applying MGMT migration: $mf"
+        $prevEap = $ErrorActionPreference
+        try {
+          # Node writes RPC failures to stderr which PowerShell can treat as a terminating error
+          # when $ErrorActionPreference='Stop'. Relax it so we can fall back cleanly.
+          $ErrorActionPreference = "Continue"
+          $out = (& node apply_migration_rpc.js $mf --mgmt 2>&1)
+        } finally {
+          $ErrorActionPreference = $prevEap
+        }
+        Write-Host ($out -join "`n") -ForegroundColor DarkGray
+        if ($LASTEXITCODE -ne 0) {
+          Warn "RPC migration failed for $mf. Attempting direct Postgres migration fallback (pg)..."
+          if (-not (Test-Path ".\apply_migration_pg.js")) {
+            Fail "RPC migration failed for $mf and apply_migration_pg.js is missing. Cannot continue."
+          }
+
+          $prevEap2 = $ErrorActionPreference
+          try {
+            $ErrorActionPreference = "Continue"
+            $out2 = (& node apply_migration_pg.js $mf --mgmt 2>&1)
+          } finally {
+            $ErrorActionPreference = $prevEap2
+          }
+          Write-Host ($out2 -join "`n") -ForegroundColor DarkGray
+          if ($LASTEXITCODE -ne 0) {
+            Fail "Migration failed for $mf via RPC and via pg fallback. Fix DB connectivity/credentials and retry."
+          }
+          Ok "Migration completed for $mf (pg fallback)"
+        } else {
+          Ok "Migration completed for $mf (RPC)"
+        }
+      }
+    } finally {
+      Pop-Location
+    }
+  }
+} else {
+  Ok "SkipMigrations specified; skipping migration step"
+}
 
 # Guardrail: ensure we're linked to the correct Vercel project
 $localProjectFile = "backend\.vercel\project.json"

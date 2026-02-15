@@ -70,6 +70,29 @@ function isWeakOfferTitle(title: string): boolean {
   return false;
 }
 
+function isLikelyTexasSeedOffer(row: any): boolean {
+  try {
+    const name = safeTrim(row?.Offer_Name || row?.offerName || row?.name || '');
+    const who = safeTrim(row?.Created_By || row?.created_by || '');
+    const status = safeTrim(row?.Status || row?.status || '');
+    const id = safeTrim(row?.Offer_ID || row?.offer_id || row?.id || '');
+
+    const ctxRaw = row?.Message_Context ?? row?.message_context ?? row?.messageContext ?? '';
+    const aiRaw = row?.AI_Analysis ?? row?.ai_analysis ?? '';
+    const hay = `${name} ${who} ${status} ${id} ${String(ctxRaw || '')} ${String(aiRaw || '')}`.toLowerCase();
+
+    // Strong signals of seeded/test content.
+    if (/(\bseed\b|seeded|seed pack|\btest\b|demo|sample|lorem|ipsum|asdf|tmp|temp)/i.test(hay)) return true;
+
+    // Texas market strings (known seeded dataset pattern in this workspace).
+    if (/(\baustin\b|\bhouston\b|\bdallas\b|san\s+antonio|\btexas\b|\btx\b)/i.test(hay)) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeOfferTitleCandidate(title: string): string {
   const s = safeTrim(title);
   if (!s) return '';
@@ -529,6 +552,130 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function coercePositiveNumber(raw: unknown): number | null {
+  if (raw == null) return null;
+  if (typeof raw === 'number') {
+    return isFinite(raw) && raw > 0 ? raw : null;
+  }
+  const s = String(raw).trim();
+  if (!s) return null;
+  const m = s.match(/-?\d[\d,]*(?:\.\d{1,2})?/);
+  if (!m) return null;
+  const n = Number(String(m[0]).replace(/,/g, ''));
+  return isFinite(n) && n > 0 ? n : null;
+}
+
+function firstPositiveNumber(...vals: unknown[]): number | null {
+  for (const v of vals) {
+    const n = coercePositiveNumber(v);
+    if (n != null) return n;
+  }
+  return null;
+}
+
+function extractCustomerPriceFromOfferBriefText(raw: unknown): number | null {
+  const text = String(raw || '');
+  if (!text) return null;
+  const m = text.match(/customer\s*price\s*:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i);
+  if (!m) return null;
+  return coercePositiveNumber(m[1]);
+}
+
+function extractServicesFromOfferBriefText(raw: unknown): string[] {
+  const text = String(raw || '');
+  if (!text) return [];
+  const m = text.match(/services\s*:\s*([\s\S]*?)(?:\n|\r\n|customer\s*price\s*:|$)/i);
+  const chunk = safeTrim(m ? m[1] : '');
+  if (!chunk) return [];
+  const parts = chunk
+    .split(/\s*,\s*/)
+    .map((x) => safeTrim(x))
+    .filter(Boolean);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(p);
+  }
+  return out;
+}
+
+function normalizeOfferBuilderSnapshotForTotals(
+  rawOfferBuilder: any,
+  hints?: { packagePrice?: number | null; serviceNames?: string[] }
+): any {
+  const base = rawOfferBuilder && typeof rawOfferBuilder === 'object' && !Array.isArray(rawOfferBuilder) ? rawOfferBuilder : {};
+  const existingItems = Array.isArray((base as any).lineItems) ? (base as any).lineItems : [];
+
+  const normalizedExisting = existingItems
+    .filter((x: any) => x && typeof x === 'object')
+    .map((x: any) => {
+      const baseUnitPrice = coercePositiveNumber((x as any).baseUnitPrice) ?? coercePositiveNumber((x as any).unitPrice) ?? 0;
+      const qtyRaw = Number((x as any).qty);
+      const qty = isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+      return {
+        ...x,
+        qty,
+        baseUnitPrice
+      };
+    });
+
+  const hasPricedLineItem = normalizedExisting.some((x: any) => (coercePositiveNumber(x?.baseUnitPrice) ?? 0) > 0);
+  if (hasPricedLineItem) {
+    return {
+      ...base,
+      lineItems: normalizedExisting
+    };
+  }
+
+  const priceHint = firstPositiveNumber(
+    hints?.packagePrice,
+    (base as any)?.totals?.customerPrice,
+    (base as any)?.totals?.finalCustomerPrice,
+    (base as any)?.finalCustomerPrice,
+    (base as any)?.customerPrice,
+    (base as any)?.bundlePrice
+  );
+
+  if (!priceHint) {
+    return {
+      ...base,
+      lineItems: normalizedExisting
+    };
+  }
+
+  const namesFromExisting = normalizedExisting
+    .map((x: any) => safeTrim(x?.name || x?.serviceName || x?.service || ''))
+    .filter(Boolean);
+  const serviceNames = Array.isArray(hints?.serviceNames) && hints?.serviceNames.length
+    ? hints!.serviceNames
+    : namesFromExisting;
+
+  const zeroItems = (serviceNames || []).map((name: string) => ({
+    name,
+    qty: 1,
+    baseUnitPrice: 0
+  }));
+
+  return {
+    ...base,
+    pricingStrategy: 'sum',
+    percentOff: 0,
+    dollarOff: 0,
+    bundlePrice: 0,
+    lineItems: [
+      ...zeroItems,
+      {
+        name: 'Package Price',
+        qty: 1,
+        baseUnitPrice: priceHint
+      }
+    ]
+  };
+}
+
 function normalizePathPattern(raw: unknown): string | null {
   const s = typeof raw === 'string' ? raw.trim() : '';
   if (!s) return null;
@@ -643,6 +790,11 @@ function isOffersSchemaMismatchError(error: any): boolean {
   // - the table is missing, OR
   // - the Offer Builder schema is missing required columns (Offer_ID).
   return isMissingTableError(error, 'Offers') || isMissingColumnError(error, 'offer_id') || isMissingColumnError(error, 'Offer_ID');
+}
+
+function isInvalidApiKeyError(error: any): boolean {
+  const msg = `${error?.message || ''} ${error?.details || ''}`.toLowerCase();
+  return msg.includes('invalid api key') || msg.includes('invalid apikey');
 }
 
 function getOffersDbFallback(): { primary: any; fallback: any } {
@@ -2039,6 +2191,91 @@ export async function GET(request: Request) {
           return NextResponse.json({ ok: true, creatives }, { headers: corsHeaders(request) });
         }
 
+      case 'adCreativeLinks':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const offerId = safeTrim(searchParams.get('offer_id') || searchParams.get('offerId') || '');
+          if (!offerId) {
+            return NextResponse.json({ ok: false, error: 'offer_id required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const stage = safeTrim(searchParams.get('framework_stage') || searchParams.get('frameworkStage') || searchParams.get('stage') || '');
+          const adTypeKey = safeTrim(searchParams.get('framework_ad_type_key') || searchParams.get('frameworkAdTypeKey') || searchParams.get('moduleKey') || '');
+          const limit = Math.max(1, Math.min(Number(searchParams.get('limit') || 500) || 500, 1000));
+
+          const db = getDeliverablesDb();
+          let linksQ: any = db
+            .from('ad_creative_links')
+            .select('link_id, creative_id, offer_id, deliverable_id, framework_version, framework_stage, framework_pillar_key, framework_ad_type_key, notes, created_at')
+            .eq('offer_id', offerId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+          if (stage) linksQ = linksQ.eq('framework_stage', stage);
+          if (adTypeKey) linksQ = linksQ.eq('framework_ad_type_key', adTypeKey);
+
+          const { data: linkRows, error: linkErr } = await linksQ;
+          if (linkErr) {
+            return NextResponse.json({ ok: false, error: `Failed to load creative links: ${linkErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const links = (Array.isArray(linkRows) ? linkRows : []) as any[];
+          const creativeIds = Array.from(new Set(links.map((r: any) => safeTrim(r?.creative_id)).filter(Boolean)));
+          let creativesById: Record<string, any> = {};
+          if (creativeIds.length) {
+            const { data: creativesRows } = await db
+              .from('ad_creatives')
+              .select('creative_id,title,service,stage,format,status,updated_at')
+              .in('creative_id', creativeIds)
+              .limit(1000);
+            for (const c of (Array.isArray(creativesRows) ? creativesRows : [])) {
+              const id = safeTrim((c as any)?.creative_id);
+              if (id) creativesById[id] = c;
+            }
+
+            // Add lightweight preview info (first asset URL) for nicer UI.
+            try {
+              const { data: assetRows } = await db
+                .from('ad_creative_assets')
+                .select('creative_id, sort_order, ad_assets(url, media_kind, content_type, width_px, height_px)')
+                .in('creative_id', creativeIds)
+                .order('sort_order', { ascending: true })
+                .limit(5000);
+
+              const firstByCreative: Record<string, any> = {};
+              for (const row of (Array.isArray(assetRows) ? assetRows : [])) {
+                const cid = safeTrim((row as any)?.creative_id);
+                if (!cid || firstByCreative[cid]) continue;
+                const a = (row as any)?.ad_assets || null;
+                const url = safeTrim(a?.url);
+                if (!url) continue;
+                firstByCreative[cid] = {
+                  preview_url: url,
+                  preview_kind: safeTrim(a?.media_kind || ''),
+                  preview_content_type: safeTrim(a?.content_type || ''),
+                  preview_width_px: (a?.width_px ?? null),
+                  preview_height_px: (a?.height_px ?? null)
+                };
+              }
+
+              for (const cid of Object.keys(firstByCreative)) {
+                if (creativesById[cid]) {
+                  creativesById[cid] = { ...creativesById[cid], ...firstByCreative[cid] };
+                }
+              }
+            } catch {
+              // Non-fatal: previews are optional.
+            }
+          }
+
+          const enriched = links.map((l: any) => ({ ...l, creative: creativesById[safeTrim(l?.creative_id)] || null }));
+          return NextResponse.json({ ok: true, offer_id: offerId, links: enriched }, { headers: corsHeaders(request) });
+        }
+
       case 'adCreativeDetail':
         {
           const me = await getDashboardAuthUserFromSession(request);
@@ -2266,8 +2503,24 @@ export async function GET(request: Request) {
         };
 
         let { data: offers, error: offersError } = await buildQuery(primary);
-        if (offersError && isOffersSchemaMismatchError(offersError)) {
+        if (offersError && (isOffersSchemaMismatchError(offersError) || isInvalidApiKeyError(offersError))) {
+          const primaryErr = offersError;
           ({ data: offers, error: offersError } = await buildQuery(fallback));
+          if (offersError && isInvalidApiKeyError(primaryErr)) {
+            // Prefer an actionable error message when MGMT creds are misconfigured.
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  'Offers DB auth failed (invalid API key). Your SUPABASE_URL_MGMT does not match SUPABASE_SERVICE_KEY_MGMT/SUPABASE_SERVICE_ROLE_KEY_MGMT. Fix MGMT env vars in Vercel (or local backend/.env.local), then retry.',
+                details: {
+                  primaryError: primaryErr.message || String(primaryErr),
+                  fallbackError: offersError.message || String(offersError)
+                }
+              },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
         }
 
         if (offersError) {
@@ -2300,7 +2553,122 @@ export async function GET(request: Request) {
           return { ...rest, Message_Context };
         });
 
-        return NextResponse.json({ ok: true, offers: normalizedOffers }, { headers: corsHeaders(request) });
+        const safeTrim = (v: any) => String(v ?? '').trim();
+        const parseMaybeJson = (value: any) => {
+          if (!value) return null;
+          if (typeof value === 'object') return value;
+          if (typeof value !== 'string') return null;
+          try {
+            return JSON.parse(value);
+          } catch {
+            return null;
+          }
+        };
+        const extractCustomerPriceFromText = (text: any): number | null => {
+          const s = safeTrim(text);
+          if (!s) return null;
+          try {
+            const m = s.match(/\bCustomer\s*Price\s*:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i);
+            if (!m || !m[1]) return null;
+            const n = Number(String(m[1]).replace(/,/g, ''));
+            return Number.isFinite(n) && n > 0 ? n : null;
+          } catch {
+            return null;
+          }
+        };
+        const extractServicesCountFromText = (text: any): number | null => {
+          const s = safeTrim(text);
+          if (!s) return null;
+          try {
+            const m = s.match(/\bServices\s*:\s*([\s\S]*?)(?=\n\s*(Customer\s*Price\s*:|Tech\s*Payout\s*:|Profit\s*:|Margin\s*:|Standards\s*Status\s*:|Headline\s*:|Promise\s*:|$))/i);
+            const block = safeTrim(m && m[1] ? m[1] : '');
+            if (!block) return null;
+            const lines = block
+              .split(/\r?\n/)
+              .map((x) => safeTrim(x).replace(/^[-*•\d.\)\s]+/, ''))
+              .filter(Boolean);
+            return lines.length ? lines.length : null;
+          } catch {
+            return null;
+          }
+        };
+        const computeOfferDataQuality = (row: any) => {
+          let ctx: any = row ? (row.Message_Context || row.message_context || row.messageContext) : null;
+          ctx = parseMaybeJson(ctx) || ctx;
+          if (!ctx || typeof ctx !== 'object') ctx = {};
+
+          const ob =
+            parseMaybeJson((ctx as any).offer_builder || (ctx as any).offerBuilder) ||
+            (ctx as any).offer_builder ||
+            (ctx as any).offerBuilder ||
+            {};
+          const obObj: any = ob && typeof ob === 'object' ? ob : {};
+
+          const name = safeTrim(
+            (ctx as any).offerName ||
+              (ctx as any).offer_name ||
+              (ctx as any).name ||
+              (ctx as any).title ||
+              obObj.name ||
+              (row && (row.Offer_Name || row.offerName || row.name || row.Title))
+          );
+
+          const lineItems = Array.isArray(obObj.lineItems) ? obObj.lineItems : [];
+          const pricedLineItems = lineItems.filter((it: any) => {
+            const qty = Number(it && it.qty);
+            const unit = Number(
+              it && it.baseUnitPrice != null ? it.baseUnitPrice : it && it.unitPrice != null ? it.unitPrice : 0
+            );
+            return Number.isFinite(qty) && Number.isFinite(unit) && qty > 0 && unit > 0;
+          });
+
+          const legacyDesc =
+            (ctx as any)?.latest_offer_brief?.metadata?.description ||
+            (ctx as any)?.latest_offer_brief?.Metadata?.description ||
+            (ctx as any)?.latest_offer_brief?.description ||
+            (ctx as any)?.latestOfferBrief?.metadata?.description ||
+            null;
+
+          const inferredCustomerPrice = extractCustomerPriceFromText(legacyDesc);
+          const inferredServicesCount = extractServicesCountFromText(legacyDesc);
+
+          const issues: string[] = [];
+          if (!name) issues.push('missing_name');
+          if (!lineItems.length) issues.push('missing_line_items');
+          if (lineItems.length && pricedLineItems.length === 0) issues.push('missing_priced_line_item');
+
+          const ok = issues.length === 0;
+          const summaryParts: string[] = [];
+          if (ok) summaryParts.push('Complete snapshot');
+          else {
+            summaryParts.push('Incomplete snapshot');
+            if (issues.includes('missing_line_items')) summaryParts.push('missing services/line items');
+            else if (issues.includes('missing_priced_line_item')) summaryParts.push('missing pricing');
+            if (issues.includes('missing_name')) summaryParts.push('missing name');
+          }
+
+          const notes: string[] = [];
+          if (!ok && inferredCustomerPrice) notes.push(`Offer Brief text suggests Customer Price $${inferredCustomerPrice.toFixed(0)}`);
+          if (!ok && inferredServicesCount) notes.push(`Offer Brief text suggests ~${inferredServicesCount} service line(s)`);
+
+          return {
+            ok,
+            issues,
+            summary: summaryParts.join(' • '),
+            inferred: {
+              customerPrice: inferredCustomerPrice,
+              servicesCount: inferredServicesCount,
+            },
+            notes,
+          };
+        };
+
+        const offersWithQuality = (normalizedOffers || []).map((o: any) => ({
+          ...o,
+          dataQuality: computeOfferDataQuality(o),
+        }));
+
+        return NextResponse.json({ ok: true, offers: offersWithQuality }, { headers: corsHeaders(request) });
       }
 
       case 'offer': {
@@ -2319,8 +2687,23 @@ export async function GET(request: Request) {
         };
 
         let { data: offer, error: offerError } = await run(primary);
-        if (offerError && isOffersSchemaMismatchError(offerError)) {
+        if (offerError && (isOffersSchemaMismatchError(offerError) || isInvalidApiKeyError(offerError))) {
+          const primaryErr = offerError;
           ({ data: offer, error: offerError } = await run(fallback));
+          if (offerError && isInvalidApiKeyError(primaryErr)) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error:
+                  'Offer DB auth failed (invalid API key). Your SUPABASE_URL_MGMT does not match SUPABASE_SERVICE_KEY_MGMT/SUPABASE_SERVICE_ROLE_KEY_MGMT. Fix MGMT env vars in Vercel (or local backend/.env.local), then retry.',
+                details: {
+                  primaryError: primaryErr.message || String(primaryErr),
+                  fallbackError: offerError.message || String(offerError)
+                }
+              },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
         }
 
         if (offerError) {
@@ -6940,7 +7323,26 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           }, { status: 400, headers: corsHeaders(request) });
         }
 
-        const offerData = body.offerData;
+        const offerDataRaw = body.offerData;
+        const offerData = normalizeOfferBuilderSnapshotForTotals(offerDataRaw, {
+          packagePrice: firstPositiveNumber(
+            (offerDataRaw as any)?.totals?.customerPrice,
+            (offerDataRaw as any)?.totals?.finalCustomerPrice,
+            (offerDataRaw as any)?.economics?.totals?.customerPrice,
+            (offerDataRaw as any)?.bundlePrice
+          )
+        });
+
+        // Backend guardrail: never persist an offer snapshot with empty lineItems.
+        // (Frontend should already block this, but this prevents other callers/scripts from polluting MGMT Offers.)
+        const normalizedLineItems = Array.isArray((offerData as any)?.lineItems) ? (offerData as any).lineItems : [];
+        if (!normalizedLineItems.length) {
+          return NextResponse.json(
+            { ok: false, error: 'Offer must include at least one line item (service) before saving.' },
+            { status: 400, headers: corsHeaders(request) }
+          );
+        }
+
         const offerIdSave = offerData.offer_id || crypto.randomUUID();
         const nowOffer = new Date().toISOString();
         const createdBy = body.createdBy || offerData.created_by || 'UNKNOWN';
@@ -6998,7 +7400,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         const checkExisting = async (db: any) => {
           return await db
             .from('Offers')
-            .select('Offer_ID')
+            .select('Offer_ID, Created_At, Created_By')
             .eq('Offer_ID', offerIdSave)
             .maybeSingle();
         };
@@ -7015,10 +7417,17 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         let savedOffer;
         if (existingOffer) {
           // Update existing
+          // Preserve immutable fields from the existing row.
+          const offerUpdatePayload: any = { ...offerRecord };
+          delete offerUpdatePayload.Created_At;
+          if (safeTrim((existingOffer as any)?.Created_By)) {
+            delete offerUpdatePayload.Created_By;
+          }
+
           const doUpdate = async (db: any) => {
             return await db
               .from('Offers')
-              .update(offerRecord)
+              .update(offerUpdatePayload)
               .eq('Offer_ID', offerIdSave)
               .select()
               .single();
@@ -7467,7 +7876,8 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
           const deliverablesDb = getDeliverablesDb();
           const baseSelect = 'Deliverable_ID, Title, Description, File_Link, Submitted_By, Created_At, Updated_At';
-          const selectWithMetadata = `${baseSelect}, Metadata`;
+          const selectWithMetadata = `${baseSelect}, Offer_ID, Deliverable_Type, Metadata`;
+          const selectWithMetadataFallback = `${baseSelect}, Metadata`;
 
           let q = deliverablesDb
             .from('Deliverables')
@@ -7481,6 +7891,21 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
           // Deliverables.Metadata is required to recover offerId reliably.
           let { data: deliverablesRows, error: deliverablesErr } = await q;
+          if (
+            deliverablesErr &&
+            (isMissingDeliverablesColumnError(deliverablesErr, 'Offer_ID') ||
+              isMissingDeliverablesColumnError(deliverablesErr, 'Deliverable_Type'))
+          ) {
+            let q2 = deliverablesDb
+              .from('Deliverables')
+              .select(selectWithMetadataFallback)
+              .order('Created_At', { ascending: false })
+              .limit(scanLimit)
+              .ilike('Title', 'Offer Brief:%');
+            if (sinceIso) q2 = q2.gte('Created_At', sinceIso);
+            if (submittedByFilter) q2 = q2.eq('Submitted_By', submittedByFilter);
+            ({ data: deliverablesRows, error: deliverablesErr } = await q2);
+          }
           if (deliverablesErr && isMissingDeliverablesColumnError(deliverablesErr, 'Metadata')) {
             return NextResponse.json(
               {
@@ -7538,17 +7963,24 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
               const submittedBy = safeTrim((d as any)?.Submitted_By);
               const createdAt = safeTrim((d as any)?.Created_At) || new Date().toISOString();
               const updatedAt = safeTrim((d as any)?.Updated_At) || createdAt;
+              const offerIdCol = safeTrim((d as any)?.Offer_ID);
+              const deliverableTypeCol = safeTrim((d as any)?.Deliverable_Type).toLowerCase();
 
               const mdRaw = (d as any)?.Metadata;
               const md = parseJsonMaybe(mdRaw) || {};
 
               const mdType = safeTrim((md as any)?.type || (md as any)?.Type || '');
-              const looksLikeOfferBrief = mdType.toLowerCase() === 'offer_brief' || title.toLowerCase().startsWith('offer brief:');
+              const looksLikeOfferBrief =
+                deliverableTypeCol === 'offer_brief' ||
+                mdType.toLowerCase() === 'offer_brief' ||
+                title.toLowerCase().startsWith('offer brief:');
               if (!looksLikeOfferBrief) continue;
 
               matched++;
 
-              let offerId = safeTrim((md as any)?.offerId || (md as any)?.offer_id || (md as any)?.Offer_ID || (md as any)?.offerID || '');
+              let offerId = isUuid(offerIdCol)
+                ? offerIdCol
+                : safeTrim((md as any)?.offerId || (md as any)?.offer_id || (md as any)?.Offer_ID || (md as any)?.offerID || '');
               if (!offerId) {
                 if (useDeliverableIdAsOfferId && isUuid(deliverableId)) {
                   offerId = deliverableId;
@@ -7628,6 +8060,9 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
                 try { (nextOb as any).name = offerName; } catch { /* ignore */ }
               }
 
+              const servicesFromBrief = extractServicesFromOfferBriefText(description);
+              const parsedCustomerPrice = extractCustomerPriceFromOfferBriefText(description);
+
               const latestBrief = {
                 deliverableId,
                 title,
@@ -7658,6 +8093,33 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
               const standards = (md as any)?.standards || (md as any)?.Standards || null;
               if (totals) econ.totals = totals;
               if (standards) econ.standards = standards;
+
+              const priceHint = firstPositiveNumber(
+                (econ as any)?.totals?.customerPrice,
+                parsedCustomerPrice
+              );
+
+              const nextObNormalized = normalizeOfferBuilderSnapshotForTotals(nextOb, {
+                packagePrice: priceHint,
+                serviceNames: servicesFromBrief
+              });
+
+              try {
+                (nextCtx as any).offer_builder = nextObNormalized;
+              } catch {
+                // ignore
+              }
+
+              if (priceHint != null) {
+                try {
+                  if (!(econ as any).totals || typeof (econ as any).totals !== 'object') (econ as any).totals = {};
+                  if (!coercePositiveNumber((econ as any).totals.customerPrice)) {
+                    (econ as any).totals.customerPrice = priceHint;
+                  }
+                } catch {
+                  // ignore
+                }
+              }
 
               const nowIso = new Date().toISOString();
 
@@ -7795,6 +8257,25 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
             const items = lineItems.length ? lineItems.map((x: any) => `${x.qty}× ${x.name}`).join(', ') : '';
             const summary = compact([offerLabel, headline].filter(Boolean).join(' — '), 160);
 
+            // This is the core “framework” meaning we actually use in the UI:
+            // short, offer-specific guidance sentences for TOF and BOF.
+            const tof_guidance = compact(
+              [
+                offerLabel ? `Lead with the outcome of “${offerLabel}”` : 'Lead with the outcome',
+                items ? `show what’s included (${items})` : 'show what’s included',
+                headline ? `in the language of “${headline}”` : ''
+              ].filter(Boolean).join(', ') + '.',
+              220
+            );
+            const bof_guidance = compact(
+              [
+                'Lead with clear price + what’s included (bundle/package),',
+                'then conditions/timeframe,',
+                'then proof and a direct CTA to book.'
+              ].join(' '),
+              220
+            );
+
             const mkAdType = (key: string, title: string, premise: string, hooks: string[], cta: string) => ({
               key,
               title,
@@ -7808,6 +8289,9 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
               version: 'h2s_offer_frameworks_v1',
               generated_at: generatedAt,
               generated_by: openai ? 'openai' : 'fallback',
+              summary,
+              tof_guidance,
+              bof_guidance,
               offer_snapshot: {
                 offer_id: offerId,
                 offer_name: offerLabel,
@@ -7924,11 +8408,20 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
               offer_name: offerName,
               headline,
               line_items: lineItems,
+              value_equation: {
+                dream_outcome: safeString(rawOfferData?.dreamOutcome || rawOfferData?.dream_outcome || ''),
+                perceived_likelihood: safeString(rawOfferData?.likelihoodOfAchievement || rawOfferData?.likelihood_of_achievement || ''),
+                time_delay: safeString(rawOfferData?.timeDelay || rawOfferData?.time_delay || ''),
+                effort_sacrifice: safeString(rawOfferData?.effortSacrifice || rawOfferData?.effort_sacrifice || '')
+              },
+              risk_reversal: safeString(rawOfferData?.riskReversal || rawOfferData?.risk_reversal || ''),
+              scarcity_mechanism: safeString(rawOfferData?.scarcityMechanism || rawOfferData?.scarcity_mechanism || ''),
+              price_hint: (rawOfferData && rawOfferData.totals && (rawOfferData.totals.customerPrice != null)) ? rawOfferData.totals.customerPrice : null,
               offer_data: rawOfferData,
               db_offer_row: offerRow
             };
 
-            const prompt = `You are a senior direct-response creative strategist for Home2Smart (home services: TV mounting, cameras, doorbells, smart home installs).\n\nTask: Create an “Offer Umbrella → Pillars → TOF/BOF Ad Types” structure for this offer.\n\nReturn VALID JSON ONLY (no markdown) in exactly this shape:\n\n{\n  "version": "h2s_offer_frameworks_v1",\n  "generated_at": "ISO-8601 string",\n  "offer_snapshot": {\n    "offer_id": "string",\n    "offer_name": "string",\n    "headline": "string",\n    "includes": "string"\n  },\n  "pillars": [\n    {\n      "key": "offer_clarity|objection_killer|price_anchor|proof|scarcity|hook",\n      "title": "string",\n      "goal": "string",\n      "softly_filled": ["string"],\n      "hook_lines": ["string"],\n      "asset_notes": ["string"]\n    }\n  ],\n  "tof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ],\n  "bof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ]\n}\n\nRules:\n- Keep copy short and concrete. No hype.\n- TOF: curiosity/education/problem; avoid heavy price talk.\n- BOF: clarity, proof, objections, light urgency.\n- Provide exactly 6 pillars, exactly 5 TOF types, exactly 5 BOF types.\n\nINPUT_JSON:\n${JSON.stringify(aiInput)}`;
+            const prompt = `You are a senior direct-response creative strategist for Home2Smart (home services: TV mounting, cameras, doorbells, smart home installs).\n\nTask: Create a compact offer-specific framework for ads that helps a creative team ship high-converting assets quickly.\n\nPROMO / PSYCHOLOGY GUARDRAILS (do not ignore):\n- Specificity beats hype: use concrete outcomes, inclusions, and constraints.\n- Credibility: use proof mechanisms (process, reviews, before/after, guarantees/risk reversal if provided). Avoid unverifiable superlatives.\n- Friction reduction: address top objections (mess, damage, timing, price surprises, trust).\n- Ethical urgency only: no fake countdowns, no false scarcity, no misleading claims.\n- Value framing: increase desirability (dream outcome), increase perceived likelihood, reduce time-to-result, reduce effort/sacrifice — using the INPUT_JSON fields when available.\n\nIMPORTANT: A framework is NOT generic labels. It must include 2 short guidance sentences that are conditional to THIS offer:\n- tof_guidance: 1 sentence telling what to lead with at TOF.\n- bof_guidance: 1 sentence telling what to lead with at BOF (include price/conditions/timeframe language only if present in the offer).\n\nReturn VALID JSON ONLY (no markdown) in exactly this shape:\n\n{\n  "version": "h2s_offer_frameworks_v1",\n  "generated_at": "ISO-8601 string",\n  "summary": "string (<=200 chars)",\n  "tof_guidance": "string (1 sentence)",\n  "bof_guidance": "string (1 sentence)",\n  "offer_snapshot": {\n    "offer_id": "string",\n    "offer_name": "string",\n    "headline": "string",\n    "includes": "string"\n  },\n  "pillars": [\n    {\n      "key": "offer_clarity|objection_killer|price_anchor|proof|scarcity|hook",\n      "title": "string",\n      "goal": "string",\n      "softly_filled": ["string"],\n      "hook_lines": ["string"],\n      "asset_notes": ["string"]\n    }\n  ],\n  "tof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ],\n  "bof_ad_types": [\n    {\n      "key": "string",\n      "title": "string",\n      "premise": "string",\n      "hook_templates": ["string"],\n      "primary_text_examples": ["string"],\n      "cta": "string",\n      "asset_notes": ["string"]\n    }\n  ]\n}\n\nRules:\n- Keep copy short and concrete. No hype. No emojis.\n- TOF: curiosity/education/problem; avoid heavy price talk.\n- BOF: clarity, proof, objections, light urgency; can mention price if it’s part of offer clarity.\n- Premises and examples must clearly tie to the offer snapshot (service/inclusions/location/timing) rather than generic home-service lines.\n- Provide exactly 6 pillars, exactly 5 TOF ad types, exactly 5 BOF ad types.\n\nINPUT_JSON:\n${JSON.stringify(aiInput)}`;
 
             const completion = await openai.chat.completions.create({
               model: process.env.OPENAI_OFFER_MODEL || 'gpt-4o-mini',
@@ -7955,6 +8448,16 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           // Normalize required fields
           frameworks.version = 'h2s_offer_frameworks_v1';
           frameworks.generated_at = generatedAt;
+          if (!frameworks.summary) {
+            try {
+              const s = safeString(frameworks.offer_snapshot?.headline || '') || safeString(headline || '') || safeString(offerName || '');
+              frameworks.summary = compact(s, 200);
+            } catch {
+              frameworks.summary = '';
+            }
+          }
+          if (!frameworks.tof_guidance) frameworks.tof_guidance = safeString(frameworks.tofGuidance || '');
+          if (!frameworks.bof_guidance) frameworks.bof_guidance = safeString(frameworks.bofGuidance || '');
           if (!frameworks.offer_snapshot) frameworks.offer_snapshot = {};
           frameworks.offer_snapshot.offer_id = offerId;
           frameworks.offer_snapshot.offer_name = frameworks.offer_snapshot.offer_name || offerName || '';
@@ -7991,10 +8494,265 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
             frameworks
           };
         }
+
+      case 'saveOfferFrameworkChart':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const offerId = safeTrim(body?.offerId || body?.offer_id || body?.id || '');
+          if (!offerId) {
+            return NextResponse.json({ ok: false, error: 'Offer ID required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const chartRaw = body?.chart;
+          const chart = (chartRaw && typeof chartRaw === 'object' && !Array.isArray(chartRaw)) ? chartRaw : null;
+          if (!chart) {
+            return NextResponse.json({ ok: false, error: 'chart object required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const { primary, fallback } = getOffersDbFallback();
+          const loadOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, AI_Analysis')
+              .eq('Offer_ID', offerId)
+              .maybeSingle();
+          };
+
+          let { data: offerRow, error: offerErr } = await loadOffer(primary);
+          if (offerErr && isOffersSchemaMismatchError(offerErr)) {
+            ({ data: offerRow, error: offerErr } = await loadOffer(fallback));
+          }
+
+          if (offerErr) {
+            return NextResponse.json({ ok: false, error: `Failed to load offer: ${offerErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!offerRow) {
+            return NextResponse.json({ ok: false, error: 'Offer not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const createdBy = safeTrim((offerRow as any)?.Created_By).toUpperCase();
+          const meUser = safeTrim(me.username).toUpperCase();
+          if (me.role !== 'ADMIN' && createdBy && meUser && createdBy !== meUser) {
+            return NextResponse.json({ ok: false, error: 'Not allowed' }, { status: 403, headers: corsHeaders(request) });
+          }
+
+          const parseMaybeJson = (v: any) => {
+            if (v == null) return null;
+            if (typeof v === 'string') {
+              try { return JSON.parse(v || '{}'); } catch { return null; }
+            }
+            if (typeof v === 'object') return v;
+            return null;
+          };
+
+          const isPlainObject = (v: any) => {
+            if (!v || typeof v !== 'object') return false;
+            if (Array.isArray(v)) return false;
+            const proto = Object.getPrototypeOf(v);
+            return proto === Object.prototype || proto === null;
+          };
+
+          const deepMerge = (base: any, patch: any, depth = 0): any => {
+            if (!isPlainObject(base)) base = {};
+            if (!isPlainObject(patch)) return base;
+            if (depth > 6) return { ...base, ...patch };
+            const out: any = { ...base };
+            for (const k of Object.keys(patch)) {
+              const pv = (patch as any)[k];
+              const bv = (base as any)[k];
+              if (isPlainObject(pv) && isPlainObject(bv)) out[k] = deepMerge(bv, pv, depth + 1);
+              else out[k] = pv;
+            }
+            return out;
+          };
+
+          let ai: any = parseMaybeJson((offerRow as any)?.AI_Analysis);
+          if (!isPlainObject(ai)) ai = {};
+
+          let frameworks: any = parseMaybeJson(ai.offer_frameworks);
+          if (!isPlainObject(frameworks)) frameworks = {};
+
+          const nowIso = new Date().toISOString();
+          frameworks.chart = deepMerge(frameworks.chart, chart);
+          frameworks.chart_updated_at = nowIso;
+
+          ai.offer_frameworks = frameworks;
+
+          const updateOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .update({ AI_Analysis: ai, Updated_At: nowIso })
+              .eq('Offer_ID', offerId)
+              .select('Offer_ID, Updated_At, AI_Analysis')
+              .single();
+          };
+
+          let { data: updated, error: updErr } = await updateOffer(primary);
+          if (updErr && isOffersSchemaMismatchError(updErr)) {
+            ({ data: updated, error: updErr } = await updateOffer(fallback));
+          }
+
+          if (updErr) {
+            return NextResponse.json({ ok: false, error: `Failed to save framework chart: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const updatedAi = parseMaybeJson((updated as any)?.AI_Analysis) || ai;
+          const updatedFrameworks = (updatedAi && updatedAi.offer_frameworks) ? updatedAi.offer_frameworks : frameworks;
+          return NextResponse.json(
+            { ok: true, offerId, chart: (updatedFrameworks && updatedFrameworks.chart) ? updatedFrameworks.chart : frameworks.chart, offer_frameworks: updatedFrameworks },
+            { headers: corsHeaders(request) }
+          );
+        }
+        break;
+
+      case 'saveOfferFrameworkModule':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const offerId = safeTrim(body?.offerId || body?.offer_id || body?.id || '');
+          const stageRaw = safeTrim(body?.stage || body?.framework_stage || '');
+          const moduleKey = safeTrim(body?.moduleKey || body?.module_key || body?.framework_ad_type_key || body?.key || '');
+          const patchRaw = body?.patch;
+
+          if (!offerId) {
+            return NextResponse.json({ ok: false, error: 'Offer ID required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const stage = String(stageRaw || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+          if (!moduleKey) {
+            return NextResponse.json({ ok: false, error: 'moduleKey required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const { primary, fallback } = getOffersDbFallback();
+          const loadOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, AI_Analysis')
+              .eq('Offer_ID', offerId)
+              .maybeSingle();
+          };
+
+          let { data: offerRow, error: offerErr } = await loadOffer(primary);
+          if (offerErr && isOffersSchemaMismatchError(offerErr)) {
+            ({ data: offerRow, error: offerErr } = await loadOffer(fallback));
+          }
+
+          if (offerErr) {
+            return NextResponse.json({ ok: false, error: `Failed to load offer: ${offerErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!offerRow) {
+            return NextResponse.json({ ok: false, error: 'Offer not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const createdBy = safeTrim((offerRow as any)?.Created_By).toUpperCase();
+          const meUser = safeTrim(me.username).toUpperCase();
+          if (me.role !== 'ADMIN' && createdBy && meUser && createdBy !== meUser) {
+            return NextResponse.json({ ok: false, error: 'Not allowed' }, { status: 403, headers: corsHeaders(request) });
+          }
+
+          const parseMaybeJson = (v: any) => {
+            if (v == null) return null;
+            if (typeof v === 'string') {
+              try { return JSON.parse(v || '{}'); } catch { return null; }
+            }
+            if (typeof v === 'object') return v;
+            return null;
+          };
+
+          const isPlainObject = (v: any) => {
+            if (!v || typeof v !== 'object') return false;
+            if (Array.isArray(v)) return false;
+            const proto = Object.getPrototypeOf(v);
+            return proto === Object.prototype || proto === null;
+          };
+
+          const safeText = (v: any, max = 5000) => {
+            const s = String(v == null ? '' : v);
+            const t = s.trim().replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-');
+            if (!t) return '';
+            return t.length > max ? t.slice(0, max) : t;
+          };
+
+          const normalizePatch = (raw: any) => {
+            const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+            const out: any = {};
+            if ('idea_title' in src || 'ideaTitle' in src) out.idea_title = safeText((src as any).idea_title ?? (src as any).ideaTitle, 220);
+            if ('hook' in src) out.hook = safeText((src as any).hook, 280);
+            if ('primary_text' in src || 'primaryText' in src) out.primary_text = safeText((src as any).primary_text ?? (src as any).primaryText, 1800);
+            if ('creative_direction' in src || 'creativeDirection' in src) out.creative_direction = safeText((src as any).creative_direction ?? (src as any).creativeDirection, 1800);
+            if ('cta' in src) out.cta = safeText((src as any).cta, 180);
+            return out;
+          };
+
+          let ai: any = parseMaybeJson((offerRow as any)?.AI_Analysis);
+          if (!isPlainObject(ai)) ai = {};
+          let frameworks: any = parseMaybeJson(ai.offer_frameworks);
+          if (!isPlainObject(frameworks)) frameworks = {};
+          if (!isPlainObject(frameworks.modules)) frameworks.modules = {};
+          if (!isPlainObject(frameworks.modules[stage])) frameworks.modules[stage] = {};
+
+          const nowIso = new Date().toISOString();
+          const patch = normalizePatch(patchRaw);
+          const existing = isPlainObject(frameworks.modules[stage][moduleKey]) ? frameworks.modules[stage][moduleKey] : {};
+          const nextModule = {
+            ...existing,
+            ...patch,
+            updated_at: nowIso,
+            updated_by: safeTrim(me.username) || null
+          };
+
+          frameworks.modules[stage][moduleKey] = nextModule;
+          frameworks.modules_updated_at = nowIso;
+          ai.offer_frameworks = frameworks;
+
+          const updateOffer = async (db: any) => {
+            return await db
+              .from('Offers')
+              .update({ AI_Analysis: ai, Updated_At: nowIso })
+              .eq('Offer_ID', offerId)
+              .select('Offer_ID, Updated_At, AI_Analysis')
+              .single();
+          };
+
+          let { data: updated, error: updErr } = await updateOffer(primary);
+          if (updErr && isOffersSchemaMismatchError(updErr)) {
+            ({ data: updated, error: updErr } = await updateOffer(fallback));
+          }
+
+          if (updErr) {
+            return NextResponse.json({ ok: false, error: `Failed to save module: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          let updatedAi: any = parseMaybeJson((updated as any)?.AI_Analysis);
+          if (!isPlainObject(updatedAi)) updatedAi = ai;
+          let updatedFrameworks: any = parseMaybeJson(updatedAi.offer_frameworks);
+          if (!isPlainObject(updatedFrameworks)) updatedFrameworks = frameworks;
+          const updatedModule = (updatedFrameworks.modules && updatedFrameworks.modules[stage] && updatedFrameworks.modules[stage][moduleKey])
+            ? updatedFrameworks.modules[stage][moduleKey]
+            : nextModule;
+
+          return NextResponse.json(
+            { ok: true, offerId, stage, moduleKey, module: updatedModule, offer_frameworks: updatedFrameworks },
+            { headers: corsHeaders(request) }
+          );
+        }
         break;
 
       case 'deleteOffer':
         // Delete an offer
+        {
+        const auth = await requireAdminToken(request);
+        if (!auth.ok) {
+          return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+        }
+
         if (!body.offerId) {
           return NextResponse.json({ 
             ok: false, 
@@ -8016,6 +8774,86 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
         result = { deleted: true, offerId: body.offerId };
         break;
+        }
+
+      case 'purgeTexasOffers':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          const apply = body?.apply === true;
+          const limit = Math.max(1, Math.min(5000, Number(body?.limit || 1000) || 1000));
+          const reason = safeTrim(body?.reason || 'purgeTexasOffers');
+
+          const db = getSupabase();
+
+          // Pull a broad slice; this is an admin maintenance endpoint.
+          const { data: rows, error } = await db
+            .from('Offers')
+            .select('Offer_ID, Offer_Name, Created_By, Status, Updated_At, Created_At, Message_Context, AI_Analysis')
+            .order('Updated_At', { ascending: false })
+            .limit(limit);
+
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to load offers: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const list = Array.isArray(rows) ? rows : [];
+          const matches = list.filter((r) => isLikelyTexasSeedOffer(r));
+          const ids = matches.map((r) => safeTrim(r?.Offer_ID)).filter(Boolean);
+
+          // Always return a preview list (first 50) so operators can verify without UI changes.
+          const preview = matches.slice(0, 50).map((r) => ({
+            offerId: safeTrim(r?.Offer_ID),
+            name: safeTrim(r?.Offer_Name),
+            createdBy: safeTrim(r?.Created_By),
+            status: safeTrim(r?.Status),
+            updatedAt: safeTrim(r?.Updated_At || r?.Created_At)
+          }));
+
+          if (!apply) {
+            return NextResponse.json(
+              { ok: true, apply: false, reason, scanned: list.length, matches: ids.length, preview },
+              { headers: corsHeaders(request) }
+            );
+          }
+
+          // Apply deletion in small chunks to avoid request limits.
+          const chunkSize = 50;
+          let deleted = 0;
+          const errors: Array<{ offerId: string; error: string }> = [];
+
+          for (let i = 0; i < ids.length; i += chunkSize) {
+            const chunk = ids.slice(i, i + chunkSize);
+            if (!chunk.length) continue;
+
+            const { error: delErr } = await db
+              .from('Offers')
+              .delete()
+              .in('Offer_ID', chunk);
+
+            if (delErr) {
+              // If the chunk fails, try individually to isolate.
+              for (const offerId of chunk) {
+                const { error: oneErr } = await db
+                  .from('Offers')
+                  .delete()
+                  .eq('Offer_ID', offerId);
+                if (oneErr) errors.push({ offerId, error: oneErr.message });
+                else deleted++;
+              }
+            } else {
+              deleted += chunk.length;
+            }
+          }
+
+          return NextResponse.json(
+            { ok: true, apply: true, reason, scanned: list.length, matches: ids.length, deleted, errors, preview },
+            { headers: corsHeaders(request) }
+          );
+        }
 
       case 'purge_old_data':
         {
@@ -8281,6 +9119,56 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           return NextResponse.json({ ok: true, creative_id: creativeId, asset: assetRow, deduped }, { headers: corsHeaders(request) });
         }
 
+      case 'adAssetUploadInit':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          // Use the MGMT/Deliverables DB client since Ad Resources live there.
+          const db = getDeliverablesDb();
+
+          const bucket = safeTrim(body?.bucket || 'proof') || 'proof';
+          const filenameRaw = safeTrim(body?.filename || body?.name || 'upload');
+          const contentType = safeTrim(body?.content_type || body?.contentType || body?.mime || '') || 'application/octet-stream';
+
+          // Keep paths predictable + safe. Bucket must already exist.
+          const sanitize = (s: string) => {
+            const base = String(s || 'upload').trim();
+            const cleaned = base.replace(/[^a-zA-Z0-9._\- ]+/g, '').replace(/\s+/g, '_');
+            return cleaned || 'upload';
+          };
+
+          const filename = sanitize(filenameRaw);
+          const now = new Date();
+          const y = String(now.getUTCFullYear());
+          const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+          const d = String(now.getUTCDate()).padStart(2, '0');
+          const nonce = randomTokenBase64Url(12);
+          const path = `ad_resources/${y}-${m}-${d}/${nonce}_${filename}`;
+
+          let signed: any = null;
+          try {
+            // Supabase JS v2 returns { data: { signedUrl, path, token }, error }
+            const { data, error } = await (db as any).storage.from(bucket).createSignedUploadUrl(path, { upsert: false, contentType });
+            if (error) {
+              return NextResponse.json({ ok: false, error: `Failed to sign upload: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+            signed = data;
+          } catch (e: any) {
+            return NextResponse.json({ ok: false, error: e?.message || 'Failed to sign upload' }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const signedUrl = safeTrim(signed?.signedUrl || signed?.signed_url || '');
+          const outPath = safeTrim(signed?.path || path);
+          if (!signedUrl || !outPath) {
+            return NextResponse.json({ ok: false, error: 'Failed to sign upload (missing signedUrl/path)' }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, bucket, path: outPath, signed_url: signedUrl }, { headers: corsHeaders(request) });
+        }
+
       case 'adCreativeSetTags':
         {
           const me = await getDashboardAuthUserFromSession(request);
@@ -8394,6 +9282,27 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           }
 
           return NextResponse.json({ ok: true, link: inserted }, { headers: corsHeaders(request) });
+        }
+
+      case 'adCreativeUnlink':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = tasksDb;
+          const linkId = safeTrim(body?.link_id || body?.linkId || '');
+          if (!linkId || !isUuid(linkId)) {
+            return NextResponse.json({ ok: false, error: 'link_id (uuid) required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const { error } = await db.from('ad_creative_links').delete().eq('link_id', linkId);
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to unlink creative: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          return NextResponse.json({ ok: true, link_id: linkId, deleted: true }, { headers: corsHeaders(request) });
         }
 
       case 'adCreativePerformanceUpsert':

@@ -8845,8 +8845,7 @@ function prefetchNextTab(currentTab) {
   const prefetchMap = {
     dash: 'schedule',     // After checking jobs, often check schedule
     schedule: 'payouts',  // After schedule, check payouts
-    payouts: 'reviews',   // After payouts, check reviews
-    reviews: 'profile',   // After reviews, update profile
+    payouts: 'profile',   // After payouts, update profile
   };
   
   const nextTab = prefetchMap[currentTab];
@@ -8859,7 +8858,6 @@ function prefetchNextTab(currentTab) {
       // Silently load in background without showing loader
       if (nextTab === 'schedule') prefetchSchedule();
       else if (nextTab === 'payouts') prefetchPayouts();
-      else if (nextTab === 'reviews') prefetchReviews();
     }
   }, 1000);
 }
@@ -9782,7 +9780,6 @@ function renderMenuItems() {
       <button class="menu-item" data-go="payouts" type="button"><span>Payouts</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
       <div style="font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:0.08em;margin:16px 0 8px 4px">Tools</div>
-      <button class="menu-item" data-go="reviews" type="button"><span>Reviews</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       <button class="menu-item" data-go="training" type="button"><span>Training</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       <button class="menu-item" onclick="openFeedbackModal()" type="button"><span>Submit Feedback</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
       
@@ -9929,6 +9926,7 @@ function updateMobilePageTitle(tab) {
 }
 
 function switchTab(which) {
+  if (which === 'reviews') which = 'dash';
   currentTab = which;
   // ? PERSISTENCE: Save current tab to localStorage
   localStorage.setItem('h2s_last_tab', which);
@@ -9939,7 +9937,7 @@ function switchTab(which) {
   // Update mobile page title
   updateMobilePageTitle(which);
   
-  ["dash","customers","payouts","reviews","training","profile","schedule"].forEach(k => {
+  ["dash","customers","payouts","training","profile","schedule"].forEach(k => {
     const el = document.getElementById("tab-" + k);
     if (el) {
       el.style.display = (k === which) ? "block" : "none";
@@ -9991,7 +9989,6 @@ function switchTab(which) {
     invalidateCache('payouts'); // Always refresh payouts to show latest approval status
     loadPayouts();
   }
-  if (which === "reviews") loadReviews();
   if (which === "training") loadTraining();
   if (which === "schedule") loadSchedule();
   
@@ -10549,8 +10546,8 @@ function formatJobAddress(job) {
 
   // 2. If it's already a string, clean it
   if (typeof job.address === 'string' && job.address.trim().length > 0) {
-      if (job.address.includes('[object Object]')) return "Address Error";
-      return safeText(job.address);
+      // Ignore broken stringification like "[object Object]" and fall back to flat fields.
+      if (!/\[object Object\]/i.test(job.address)) return safeText(job.address);
   }
 
   // 3. Fallback to flat fields (legacy/supabase format)
@@ -11086,8 +11083,7 @@ function showOfferDetails(job) {
   })();
   
   // ? ADDRESS: Use same fields as cards
-  const fullAddress = (job.address || job.service_address || "") + 
-    (job.city || job.service_city ? (", " + (job.city || job.service_city) + " " + (job.state || job.service_state || "") + " " + (job.zip || job.service_zip || "")) : "");
+  const fullAddress = formatJobAddress(job);
   console.log('[OFFER MODAL] Setting address to:', fullAddress);
   const addrEl = $("md-addr");
   addrEl.textContent = fullAddress || "Not yet assigned";
@@ -21526,6 +21522,13 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
   function escHtml(s) {
     return String(s || '').replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
   }
+
+  function stripBulletAndTags(html) {
+    return String(html || '')
+      .replace(/^\s*(?:&bull;|•)\s*/i, '')
+      .replace(/<[^>]*>/g, '')
+      .trim();
+  }
   
   console.log('[buildServiceSummary] INPUT - lineItems:', lineItems, 'description:', description, 'cameraDetails:', cameraDetails);
   console.log('[buildServiceSummary] lineItems[0]:', lineItems?.[0]);
@@ -21587,7 +21590,8 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
     console.log('[buildServiceSummary] No line items, using description fallback');
     const descText = String(description).trim();
     out.summary = descText.split('\n')[0].slice(0, 120) || 'Smart Home Service';
-    out.bulletsHtml = out.summary !== 'Smart Home Service' ? `&bull; ${escHtml(out.summary)}` : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
+    // Avoid duplicating the same string as both summary and bullet.
+    out.bulletsHtml = out.summary !== 'Smart Home Service' ? '' : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (description-fallback):', out);
     return out;
   }
@@ -21703,14 +21707,25 @@ function buildServiceSummary(lineItems, description, cameraDetails) {
 
     out.summary = String(name || descFirstLine || 'Smart Home Service');
     out.bulletsHtml = out.summary !== 'Smart Home Service'
-      ? `&bull; ${escHtml(out.summary)}`
+      ? ''
       : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
     console.log('[buildServiceSummary] OUTPUT (generic-fallback):', out);
     return out;
   }
 
+  // De-dupe: if there's only one bullet and it repeats the summary, omit it.
+  if (parts.length === 1 && bullets.length === 1) {
+    const summaryText = stripBulletAndTags(parts[0]);
+    const bulletText = stripBulletAndTags(bullets[0]);
+    if (summaryText && bulletText && summaryText.toLowerCase() === bulletText.toLowerCase()) {
+      bullets.length = 0;
+    }
+  }
+
   out.summary = parts.length > 0 ? parts.join(' &bull; ') : 'Smart Home Service';
-  out.bulletsHtml = bullets.length > 0 ? bullets.map(escHtml).join('<br>') : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>';
+  out.bulletsHtml = bullets.length > 0
+    ? bullets.map(escHtml).join('<br>')
+    : (parts.length > 0 ? '' : '<span style="color:#94a3b8;font-style:italic">&bull; Installation Details</span>');
   console.log('[buildServiceSummary] OUTPUT (parsed):', out);
   return out;
 }

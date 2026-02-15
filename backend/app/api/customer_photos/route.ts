@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
+import { verifyPortalToken } from '@/lib/auth';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -329,17 +330,14 @@ export async function GET(request: Request) {
     } else if (token) {
       // Tech access (verify token - allow any authenticated pro or admin to view)
       try {
-        const { verifyPortalToken } = await import('@/lib/portalTokens');
-        const payload = verifyPortalToken(token);
-        
-        if (payload.role === 'pro' || payload.role === 'admin') {
-          // Allow any authenticated tech to view photos (they need to see before accepting)
-          console.log('[customer_photos] Tech access granted:', payload.role, payload.sub);
+        const auth = await verifyPortalToken(token);
+        if (auth.ok && auth.payload && auth.payload.role === 'pro') {
+          // Allow authenticated tech to view photos (they need to see before accepting)
+          console.log('[customer_photos] Tech access granted:', auth.payload.role, auth.payload.sub);
           authorized = true;
         }
       } catch (e) {
         console.error('[customer_photos] Token verification failed:', e);
-        // Invalid token
       }
     }
     

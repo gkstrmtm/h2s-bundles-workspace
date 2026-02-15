@@ -1,0 +1,1996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="format-detection" content="telephone=no">
+    <meta name="color-scheme" content="light dark">
+    <title>H2S Meeting Scheduler</title>
+    
+    <!-- Preconnect to critical origins -->
+    <link rel="preconnect" href="https://script.google.com">
+    <link rel="dns-prefetch" href="https://script.google.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Preload critical font -->
+    <link rel="preload" as="font" type="font/woff2" crossorigin
+      href="https://fonts.gstatic.com/s/archivo/v18/k3kQo8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTY.woff2">
+    
+    <!-- App icons -->
+    <link rel="icon" type="image/png" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+    <meta name="theme-color" content="#0a2a5a">
+    
+    <style>
+        /* Inline critical fonts for faster render */
+        @font-face{font-family:'Archivo';font-style:normal;font-weight:400;font-display:swap;src:url(https://fonts.gstatic.com/s/archivo/v18/k3kQo8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTY.woff2) format('woff2');unicode-range:U+0000-00FF}
+        @font-face{font-family:'Archivo';font-style:normal;font-weight:600;font-display:swap;src:url(https://fonts.gstatic.com/s/archivo/v18/k3kQo8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTY.woff2) format('woff2');unicode-range:U+0000-00FF}
+        @font-face{font-family:'Archivo';font-style:normal;font-weight:900;font-display:swap;src:url(https://fonts.gstatic.com/s/archivo/v18/k3kQo8UDI-1M0wlSV9XAw6lQkqWY8Q82sJaRE-NWIDdgffTY.woff2) format('woff2');unicode-range:U+0000-00FF}
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --cobalt: #0a2a5a;
+            --azure: #1493ff;
+            --white: #ffffff;
+            --success: #34A853;
+            --warning: #FBBC04;
+            --danger: #EA4335;
+            --dark: #0a2a5a;
+            --light: #F8F9FA;
+            --border: #e7eaf0;
+            --ease: cubic-bezier(.22,.8,.32,1);
+            --ease-smooth: cubic-bezier(.16,.84,.44,1);
+            --elev-1: 0 2px 6px rgba(0,0,0,.20), 0 6px 18px rgba(0,0,0,.14);
+            --elev-2: 0 6px 14px rgba(0,0,0,.24), 0 18px 28px rgba(0,0,0,.18);
+            --elev-card: 0 2px 10px rgba(0,0,0,.08);
+            --elev-card-lg: 0 16px 36px rgba(0,0,0,.22);
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: Archivo, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--cobalt);
+            min-height: 100vh;
+            color: var(--white);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ===== HEADER ===== */
+        .h2s-header {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: var(--white);
+            box-shadow: var(--elev-2);
+            border-bottom: 1px solid var(--border);
+            width: 100%;
+        }
+
+        .h2s-head-row {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 16px;
+            padding: 12px clamp(20px, 4vw, 40px);
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        .h2s-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 64px;
+            min-height: 64px;
+            text-decoration: none;
+        }
+
+        .h2s-logo img {
+            width: 64px;
+            height: 64px;
+            display: block;
+            object-fit: contain;
+        }
+
+        .h2s-logo-text {
+            font-weight: 900;
+            font-size: clamp(20px, 2.4vw, 28px);
+            color: var(--cobalt);
+            text-transform: lowercase;
+        }
+
+        .header-actions {
+            justify-self: end;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn {
+            appearance: none;
+            border: 2px solid var(--azure);
+            background: var(--azure);
+            color: var(--white);
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 11px 20px;
+            min-height: 46px;
+            font-size: clamp(14px, 1.4vw, 16px);
+            transition: transform 0.2s var(--ease), box-shadow 0.22s var(--ease-smooth);
+            box-shadow: var(--elev-1);
+            will-change: transform, box-shadow;
+            transform: translateZ(0);
+            font-family: inherit;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-4px);
+            box-shadow: var(--elev-2);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: var(--elev-1);
+        }
+
+        .btn:focus-visible {
+            outline: 2px solid var(--azure);
+            outline-offset: 2px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border-color: var(--azure);
+            color: var(--azure);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--azure);
+            color: var(--white);
+        }
+
+        .btn-success {
+            background: var(--success);
+            border-color: var(--success);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            border-color: var(--danger);
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            border-color: var(--warning);
+            color: var(--dark);
+        }
+
+        .btn-small {
+            padding: 8px 14px;
+            min-height: 36px;
+            font-size: 14px;
+        }
+
+        /* ===== MAIN CONTENT ===== */
+        .dashboard-main {
+            padding: clamp(24px, 4vw, 48px) clamp(20px, 4vw, 40px);
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            font-weight: 900;
+            font-size: clamp(26px, 3vw, 38px);
+            color: var(--white);
+            margin-bottom: clamp(18px, 2vw, 26px);
+            letter-spacing: 0.2px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        /* ===== TABS ===== */
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            background: var(--white);
+            padding: 8px;
+            border-radius: 14px;
+            box-shadow: var(--elev-card);
+            border: 1px solid var(--border);
+        }
+
+        .tab {
+            appearance: none;
+            background: transparent;
+            border: none;
+            color: var(--cobalt);
+            font-weight: 700;
+            font-size: 15px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.25s var(--ease);
+            font-family: inherit;
+            min-height: 44px;
+            opacity: 0.6;
+        }
+
+        .tab:hover {
+            background: rgba(10, 42, 90, 0.08);
+            opacity: 1;
+        }
+
+        .tab.active {
+            background: var(--azure);
+            color: var(--white);
+            box-shadow: var(--elev-1);
+            opacity: 1;
+        }
+
+        .tab:focus-visible {
+            outline: 2px solid var(--azure);
+            outline-offset: 2px;
+        }
+
+        /* ===== PANELS ===== */
+        .pane {
+            display: none;
+            animation: fadeIn 0.3s var(--ease);
+        }
+
+        .pane.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== CARDS ===== */
+        .card {
+            background: var(--white);
+            border-radius: 16px;
+            padding: clamp(20px, 3vw, 32px);
+            margin-bottom: clamp(20px, 3vw, 32px);
+            box-shadow: var(--elev-card);
+            border: 1px solid var(--border);
+            transition: box-shadow 0.3s var(--ease);
+        }
+
+        .card:hover {
+            box-shadow: var(--elev-card-lg);
+        }
+
+        .card-title {
+            font-size: clamp(19px, 2.2vw, 26px);
+            color: var(--cobalt);
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 900;
+        }
+
+        .card-icon {
+            width: 44px;
+            height: 44px;
+            background: linear-gradient(135deg, var(--azure), var(--success));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-size: 20px;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+
+        /* ===== FORMS ===== */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 700;
+            color: var(--cobalt);
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            padding: 13px 16px;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease);
+            background: var(--white);
+            color: var(--cobalt);
+            min-height: 46px;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--azure);
+            box-shadow: 0 0 0 3px rgba(20, 147, 255, 0.1);
+        }
+
+        .form-textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        /* ===== MEETING GRID ===== */
+        .meeting-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+            gap: clamp(18px, 2.5vw, 26px);
+        }
+
+        .meeting-card {
+            background: linear-gradient(135deg, var(--white) 0%, #f8f9fb 100%);
+            border-radius: 14px;
+            padding: 22px;
+            box-shadow: var(--elev-card);
+            border: 1px solid var(--border);
+            transition: transform 0.3s var(--ease), box-shadow 0.3s var(--ease);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .meeting-card:hover {
+            transform: translateY(-6px);
+            box-shadow: var(--elev-card-lg);
+        }
+
+        .meeting-status {
+            position: absolute;
+            top: 14px;
+            right: 14px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .meeting-status.published {
+            background: #E8F5E9;
+            color: var(--success);
+        }
+
+        .meeting-status.draft {
+            background: #FFF9C4;
+            color: #F57F17;
+        }
+
+        .meeting-status.cancelled {
+            background: #FFEBEE;
+            color: var(--danger);
+        }
+
+        .meeting-area {
+            font-size: 22px;
+            font-weight: 900;
+            color: var(--cobalt);
+            margin-bottom: 12px;
+        }
+
+        .meeting-date {
+            font-size: 16px;
+            color: #5f6368;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .meeting-location {
+            font-size: 14px;
+            color: #80868b;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .meeting-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        /* ===== TABLE ===== */
+        .table-container {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--white);
+        }
+
+        .table th {
+            background: var(--light);
+            color: var(--cobalt);
+            font-weight: 800;
+            text-align: left;
+            padding: 14px 12px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .table td {
+            padding: 14px 12px;
+            color: var(--cobalt);
+            border-bottom: 1px solid var(--border);
+            font-size: 15px;
+        }
+
+        .table tbody tr {
+            transition: background-color 0.2s var(--ease);
+        }
+
+        .table tbody tr:hover {
+            background: #f8f9fb;
+        }
+
+        /* ===== MODAL ===== */
+        .modal-bg {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 42, 90, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: fadeIn 0.25s var(--ease);
+        }
+
+        .modal-bg.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--white);
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: var(--elev-2);
+            animation: slideUp 0.3s var(--ease);
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(40px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 900;
+            color: var(--cobalt);
+        }
+
+        .modal-close {
+            appearance: none;
+            background: transparent;
+            border: none;
+            font-size: 28px;
+            color: #80868b;
+            cursor: pointer;
+            padding: 0;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            transition: all 0.2s var(--ease);
+        }
+
+        .modal-close:hover {
+            background: var(--light);
+            color: var(--cobalt);
+        }
+
+        /* ===== SPINNER ===== */
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid var(--light);
+            border-top: 4px solid var(--azure);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 42, 90, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 9998;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        /* ===== ALERTS ===== */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            animation: slideDown 0.3s var(--ease);
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .alert-success {
+            background: #E8F5E9;
+            color: var(--success);
+            border: 1px solid #A5D6A7;
+        }
+
+        .alert-error {
+            background: #FFEBEE;
+            color: var(--danger);
+            border: 1px solid #EF9A9A;
+        }
+
+        .alert-warning {
+            background: #FFF9C4;
+            color: #F57F17;
+            border: 1px solid #FFF59D;
+        }
+
+        .alert-info {
+            background: #E3F2FD;
+            color: #1976D2;
+            border: 1px solid #90CAF9;
+        }
+
+        /* ===== BADGE ===== */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-success {
+            background: #E8F5E9;
+            color: var(--success);
+        }
+
+        .badge-warning {
+            background: #FFF9C4;
+            color: #F57F17;
+        }
+
+        .badge-danger {
+            background: #FFEBEE;
+            color: var(--danger);
+        }
+
+        /* ===== EMPTY STATE ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #80868b;
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state-text {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--cobalt);
+            margin-bottom: 8px;
+        }
+
+        .empty-state-subtext {
+            font-size: 14px;
+            color: #80868b;
+        }
+
+        /* ===== RESPONSIVE ===== */
+        @media (max-width: 768px) {
+            .h2s-head-row {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .header-actions {
+                justify-self: center;
+            }
+
+            .h2s-logo {
+                justify-content: center;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .meeting-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                flex-direction: column;
+            }
+
+            .tab {
+                width: 100%;
+            }
+        }
+
+        /* ===== UTILS ===== */
+        .hidden {
+            display: none !important;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .mb-0 { margin-bottom: 0 !important; }
+        .mb-1 { margin-bottom: 8px !important; }
+        .mb-2 { margin-bottom: 16px !important; }
+        .mb-3 { margin-bottom: 24px !important; }
+        .mt-2 { margin-top: 16px !important; }
+        .mt-3 { margin-top: 24px !important; }
+
+        .flex { display: flex; }
+        .flex-center { display: flex; align-items: center; justify-content: center; }
+        .flex-between { display: flex; align-items: center; justify-content: space-between; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-1 { gap: 8px; }
+        .gap-2 { gap: 16px; }
+    </style>
+</head>
+<body>
+
+    <!-- HEADER -->
+    <header class="h2s-header">
+        <div class="h2s-head-row">
+            <a href="#" class="h2s-logo" aria-label="Home2Smart Home">
+                <img src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" 
+                     alt="Home2Smart Logo" 
+                     width="64" 
+                     height="64"
+                     loading="eager">
+                <span class="h2s-logo-text">meetings</span>
+            </a>
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="subscribeBtn">
+                    📧 Subscribe
+                </button>
+                <button class="btn" id="managerLoginBtn">
+                    🔐 Manager Access
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="dashboard-main">
+        <h1 class="section-title">📅 Meeting Scheduler</h1>
+
+        <!-- TABS -->
+        <nav class="tabs" role="tablist">
+            <button class="tab active" data-tab="tracker" role="tab">Meeting Tracker</button>
+            <button class="tab" data-tab="manager" role="tab" id="managerTab">Manager Dashboard</button>
+            <button class="tab" data-tab="talking-points" role="tab">Talking Points</button>
+            <button class="tab" data-tab="help" role="tab">Help</button>
+        </nav>
+
+        <!-- TRACKER PANE -->
+        <div class="pane active" id="tracker-pane" role="tabpanel">
+            <div class="card">
+                <h2 class="card-title">
+                    <span class="card-icon">📍</span>
+                    Select Your Area
+                </h2>
+                <div class="form-group">
+                    <label class="form-label" for="areaSelect">Sales Area</label>
+                    <select class="form-select" id="areaSelect">
+                        <option value="">Loading areas...</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- NEXT MEETING -->
+            <div class="card" id="nextMeetingCard" style="display:none;">
+                <h2 class="card-title">
+                    <span class="card-icon">🎯</span>
+                    Next Meeting
+                </h2>
+                <div id="nextMeetingContent"></div>
+            </div>
+
+            <!-- UPCOMING MEETINGS -->
+            <div class="card">
+                <div class="flex-between mb-3">
+                    <h2 class="card-title mb-0">
+                        <span class="card-icon">📋</span>
+                        Upcoming Meetings
+                    </h2>
+                </div>
+                <div id="agendaContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <div class="empty-state-text">Select an area to view meetings</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MANAGER PANE -->
+        <div class="pane" id="manager-pane" role="tabpanel">
+            <div id="managerLocked" class="card">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔐</div>
+                    <div class="empty-state-text">Manager Access Required</div>
+                    <div class="empty-state-subtext">Please login to access the manager dashboard</div>
+                    <button class="btn mt-3" onclick="showPinModal()">🔐 Login</button>
+                </div>
+            </div>
+
+            <div id="managerUnlocked" class="hidden">
+                <!-- CREATE MEETING -->
+                <div class="card">
+                    <h2 class="card-title">
+                        <span class="card-icon">➕</span>
+                        Create New Meeting
+                    </h2>
+                    <form id="createMeetingForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="createArea">Area *</label>
+                                <select class="form-select" id="createArea" required>
+                                    <option value="">Select Area</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="createDate">Date *</label>
+                                <input type="date" class="form-input" id="createDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="createTime">Time *</label>
+                                <input type="time" class="form-input" id="createTime" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="createDuration">Duration (mins)</label>
+                                <input type="number" class="form-input" id="createDuration" value="60" min="15" step="15">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="createStatus">Status</label>
+                                <select class="form-select" id="createStatus">
+                                    <option value="Published">Published</option>
+                                    <option value="Draft">Draft</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="createLocation">Location</label>
+                            <input type="text" class="form-input" id="createLocation" placeholder="Meeting location or link">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="createNotes">Notes</label>
+                            <textarea class="form-textarea" id="createNotes" placeholder="Meeting agenda or notes"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-success">✅ Create Meeting</button>
+                    </form>
+                </div>
+
+                <!-- MANAGE MEETINGS -->
+                <div class="card">
+                    <h2 class="card-title">
+                        <span class="card-icon">⚙️</span>
+                        Manage Meetings
+                    </h2>
+                    <div class="form-group">
+                        <label class="form-label" for="manageAreaSelect">Filter by Area</label>
+                        <select class="form-select" id="manageAreaSelect">
+                            <option value="">All Areas</option>
+                        </select>
+                    </div>
+                    <div id="manageMeetingsContent">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TALKING POINTS PANE -->
+        <div class="pane" id="talking-points-pane" role="tabpanel">
+            <!-- Public View -->
+            <div class="card">
+                <h2 class="card-title">
+                    <span class="card-icon">💡</span>
+                    Current Talking Points
+                </h2>
+                <div class="form-group">
+                    <label class="form-label" for="tpAreaSelect">Select Area</label>
+                    <select class="form-select" id="tpAreaSelect">
+                        <option value="">Loading areas...</option>
+                    </select>
+                </div>
+                <div id="talkingPointsContent">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div class="empty-state-text">Select an area to view talking points</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Manager Edit Section -->
+            <div id="talkingPointsManager" class="hidden">
+                <div class="card">
+                    <h2 class="card-title">
+                        <span class="card-icon">✏️</span>
+                        Manage Talking Points
+                    </h2>
+                    <form id="createTalkingPointForm">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="tpManageArea">Area *</label>
+                                <select class="form-select" id="tpManageArea" required>
+                                    <option value="">Select Area</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="tpWeekOf">Week Of</label>
+                                <input type="date" class="form-input" id="tpWeekOf">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="tpText">Talking Point *</label>
+                            <textarea class="form-textarea" id="tpText" placeholder="Enter talking point..." required></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="tpStartOn">Start Date</label>
+                                <input type="date" class="form-input" id="tpStartOn">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="tpExpiresOn">Expires On</label>
+                                <input type="date" class="form-input" id="tpExpiresOn">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-success">➕ Add Talking Point</button>
+                    </form>
+                </div>
+
+                <div class="card">
+                    <h2 class="card-title">
+                        <span class="card-icon">📋</span>
+                        All Talking Points
+                    </h2>
+                    <div class="form-group">
+                        <label class="form-label" for="tpFilterArea">Filter by Area</label>
+                        <select class="form-select" id="tpFilterArea">
+                            <option value="">All Areas</option>
+                        </select>
+                    </div>
+                    <div id="manageTalkingPointsContent">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HELP PANE -->
+        <div class="pane" id="help-pane" role="tabpanel">
+            <div class="card">
+                <h2 class="card-title">
+                    <span class="card-icon">❓</span>
+                    How to Use the Meeting Scheduler
+                </h2>
+                <div style="color: var(--cobalt); line-height: 1.8;">
+                    <h3 style="margin-top: 24px; margin-bottom: 12px; font-weight: 800;">📅 Meeting Tracker</h3>
+                    <ul style="margin-left: 20px;">
+                        <li style="margin-bottom: 8px;">Select your sales area from the dropdown to view upcoming meetings</li>
+                        <li style="margin-bottom: 8px;">View the next meeting with countdown timer</li>
+                        <li style="margin-bottom: 8px;">Add meetings to your calendar with one click</li>
+                        <li style="margin-bottom: 8px;">Subscribe to get email notifications for new meetings</li>
+                    </ul>
+
+                    <h3 style="margin-top: 24px; margin-bottom: 12px; font-weight: 800;">🔐 Manager Dashboard</h3>
+                    <ul style="margin-left: 20px;">
+                        <li style="margin-bottom: 8px;">Login with your PIN to access manager features</li>
+                        <li style="margin-bottom: 8px;">Create, edit, and delete meetings</li>
+                        <li style="margin-bottom: 8px;">Meetings automatically create Google Calendar events</li>
+                        <li style="margin-bottom: 8px;">Published meetings send email notifications to subscribers</li>
+                        <li style="margin-bottom: 8px;">Schedule reminders to notify subscribers before meetings</li>
+                    </ul>
+
+                    <h3 style="margin-top: 24px; margin-bottom: 12px; font-weight: 800;">💡 Talking Points</h3>
+                    <ul style="margin-left: 20px;">
+                        <li style="margin-bottom: 8px;">View current talking points for your area</li>
+                        <li style="margin-bottom: 8px;">Points are automatically filtered by date range</li>
+                        <li style="margin-bottom: 8px;">Updated weekly with the latest information</li>
+                        <li style="margin-bottom: 8px;"><strong>Managers:</strong> Create and manage talking points for all areas</li>
+                    </ul>
+
+                    <h3 style="margin-top: 24px; margin-bottom: 12px; font-weight: 800;">📧 Email Notifications</h3>
+                    <ul style="margin-left: 20px;">
+                        <li style="margin-bottom: 8px;">Subscribe to receive meeting notifications via email</li>
+                        <li style="margin-bottom: 8px;">Notifications sent when new meetings are published</li>
+                        <li style="margin-bottom: 8px;">Optional reminder notifications before meetings</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- PIN MODAL -->
+    <div class="modal-bg" id="pinModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">🔐 Manager Login</h3>
+                <button class="modal-close" onclick="closePinModal()">×</button>
+            </div>
+            <form id="pinForm">
+                <div class="form-group">
+                    <label class="form-label" for="pinInput">Enter PIN</label>
+                    <input type="password" class="form-input" id="pinInput" placeholder="****" required maxlength="4">
+                </div>
+                <div id="pinError" class="alert alert-error hidden">
+                    Invalid PIN. Please try again.
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Unlock</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- SUBSCRIBE MODAL -->
+    <div class="modal-bg" id="subscribeModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">📧 Subscribe to Notifications</h3>
+                <button class="modal-close" onclick="closeSubscribeModal()">×</button>
+            </div>
+            <form id="subscribeForm">
+                <div class="form-group">
+                    <label class="form-label" for="subEmail">Email Address</label>
+                    <input type="email" class="form-input" id="subEmail" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="subArea">Area</label>
+                    <select class="form-select" id="subArea" required>
+                        <option value="">Select Area</option>
+                    </select>
+                </div>
+                <div id="subscribeMessage" class="hidden"></div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Subscribe</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- EDIT MEETING MODAL -->
+    <div class="modal-bg" id="editModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">✏️ Edit Meeting</h3>
+                <button class="modal-close" onclick="closeEditModal()">×</button>
+            </div>
+            <form id="editMeetingForm">
+                <input type="hidden" id="editId">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="editDate">Date *</label>
+                        <input type="date" class="form-input" id="editDate" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editTime">Time *</label>
+                        <input type="time" class="form-input" id="editTime" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="editDuration">Duration (mins)</label>
+                        <input type="number" class="form-input" id="editDuration" value="60" min="15" step="15">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="editStatus">Status</label>
+                        <select class="form-select" id="editStatus">
+                            <option value="Published">Published</option>
+                            <option value="Draft">Draft</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editLocation">Location</label>
+                    <input type="text" class="form-input" id="editLocation">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="editNotes">Notes</label>
+                    <textarea class="form-textarea" id="editNotes"></textarea>
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="btn btn-success" style="flex: 1;">💾 Save Changes</button>
+                    <button type="button" class="btn btn-warning" onclick="notifyMeetingUpdate()" style="flex: 1;">📧 Save & Notify</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- LOADING OVERLAY -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxUqVgveL2oK8jpMpcPah9UQkVSkzAExC7vHLX7UI23uwmj-gpKGByZ2UgfonZximWzLA/exec';
+        
+        // State
+        let areas = [];
+        let currentArea = null;
+        let isManagerUnlocked = false;
+        let managerPin = null;
+        let currentEditMeetingId = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadAreas();
+            setupEventListeners();
+            loadFromLocalStorage();
+        });
+
+        // Event Listeners
+        function setupEventListeners() {
+            // Tab switching
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+            });
+
+            // Area selection
+            document.getElementById('areaSelect').addEventListener('change', handleAreaChange);
+            document.getElementById('tpAreaSelect').addEventListener('change', handleTalkingPointsAreaChange);
+            document.getElementById('manageAreaSelect').addEventListener('change', loadManagerMeetings);
+            document.getElementById('tpFilterArea').addEventListener('change', loadAllTalkingPoints);
+
+            // Forms
+            document.getElementById('createMeetingForm').addEventListener('submit', handleCreateMeeting);
+            document.getElementById('editMeetingForm').addEventListener('submit', handleEditMeeting);
+            document.getElementById('pinForm').addEventListener('submit', handlePinSubmit);
+            document.getElementById('subscribeForm').addEventListener('submit', handleSubscribe);
+            document.getElementById('createTalkingPointForm').addEventListener('submit', handleCreateTalkingPoint);
+
+            // Buttons
+            document.getElementById('managerLoginBtn').addEventListener('click', showPinModal);
+            document.getElementById('subscribeBtn').addEventListener('click', showSubscribeModal);
+        }
+
+        // Tab Switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.pane').forEach(p => p.classList.remove('active'));
+            
+            document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+            document.getElementById(`${tabName}-pane`).classList.add('active');
+
+            if (tabName === 'manager' && !isManagerUnlocked) {
+                showPinModal();
+            }
+        }
+
+        // Load Areas
+        async function loadAreas() {
+            try {
+                showLoading();
+                const response = await fetch(`${API_URL}?fn=areas`);
+                const data = await response.json();
+                
+                if (data.ok && data.areas) {
+                    areas = data.areas;
+                    populateAreaSelects();
+                }
+            } catch (error) {
+                console.error('Error loading areas:', error);
+                showAlert('Error loading areas', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function populateAreaSelects() {
+            const selects = ['areaSelect', 'createArea', 'manageAreaSelect', 'tpAreaSelect', 'subArea', 'tpManageArea', 'tpFilterArea'];
+            
+            selects.forEach(selectId => {
+                const select = document.getElementById(selectId);
+                const firstOption = selectId === 'tpFilterArea' ? 'All Areas' : 'Select Area';
+                select.innerHTML = `<option value="">${firstOption}</option>`;
+                areas.forEach(area => {
+                    const option = document.createElement('option');
+                    option.value = area.area;
+                    option.textContent = area.area;
+                    select.appendChild(option);
+                });
+            });
+        }
+
+        // Area Change Handler
+        async function handleAreaChange(e) {
+            currentArea = e.target.value;
+            if (currentArea) {
+                localStorage.setItem('selectedArea', currentArea);
+                await loadNextMeeting();
+                await loadAgenda();
+            } else {
+                document.getElementById('nextMeetingCard').style.display = 'none';
+                document.getElementById('agendaContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <div class="empty-state-text">Select an area to view meetings</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Load Next Meeting
+        async function loadNextMeeting() {
+            if (!currentArea) return;
+            
+            try {
+                const response = await fetch(`${API_URL}?fn=nextmeeting&area=${encodeURIComponent(currentArea)}`);
+                const data = await response.json();
+                
+                if (data.ok && data.meeting) {
+                    displayNextMeeting(data.meeting);
+                } else {
+                    document.getElementById('nextMeetingCard').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Error loading next meeting:', error);
+            }
+        }
+
+        function displayNextMeeting(meeting) {
+            const card = document.getElementById('nextMeetingCard');
+            const content = document.getElementById('nextMeetingContent');
+            
+            const meetingDate = new Date(`${meeting.date}T${meeting.time}`);
+            const now = new Date();
+            const diffMs = meetingDate - now;
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            
+            let countdown = '';
+            if (diffMs > 0) {
+                if (diffDays > 0) {
+                    countdown = `<div class="badge badge-success">In ${diffDays} day${diffDays > 1 ? 's' : ''}</div>`;
+                } else if (diffHours > 0) {
+                    countdown = `<div class="badge badge-warning">In ${diffHours} hour${diffHours > 1 ? 's' : ''}</div>`;
+                } else {
+                    countdown = `<div class="badge badge-danger">Starting soon!</div>`;
+                }
+            }
+            
+            content.innerHTML = `
+                <div class="meeting-card">
+                    <div class="meeting-area">${meeting.area}</div>
+                    <div class="meeting-date">📅 ${formatDate(meeting.date)} at ${formatTime(meeting.time)}</div>
+                    ${meeting.location ? `<div class="meeting-location">📍 ${meeting.location}</div>` : ''}
+                    ${meeting.notes ? `<div style="color: #5f6368; margin-top: 8px;">${meeting.notes}</div>` : ''}
+                    <div style="margin-top: 12px;">${countdown}</div>
+                    <div class="meeting-actions">
+                        <button class="btn btn-small btn-success" onclick="addToCalendar('${meeting.id}')">
+                            📅 Add to Calendar
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            card.style.display = 'block';
+        }
+
+        // Load Agenda
+        async function loadAgenda() {
+            if (!currentArea) return;
+            
+            try {
+                const response = await fetch(`${API_URL}?fn=agenda&area=${encodeURIComponent(currentArea)}&limit=10`);
+                const data = await response.json();
+                
+                if (data.ok && data.agenda && data.agenda.length > 0) {
+                    displayAgenda(data.agenda);
+                } else {
+                    document.getElementById('agendaContent').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <div class="empty-state-text">No upcoming meetings</div>
+                            <div class="empty-state-subtext">Check back later for new meetings</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading agenda:', error);
+                showAlert('Error loading meetings', 'error');
+            }
+        }
+
+        function displayAgenda(meetings) {
+            const html = `
+                <div class="meeting-grid">
+                    ${meetings.map(m => `
+                        <div class="meeting-card">
+                            <div class="meeting-status ${m.status.toLowerCase()}">${m.status}</div>
+                            <div class="meeting-area">${m.area}</div>
+                            <div class="meeting-date">📅 ${formatDate(m.date)} at ${formatTime(m.time)}</div>
+                            ${m.location ? `<div class="meeting-location">📍 ${m.location}</div>` : ''}
+                            ${m.notes ? `<div style="color: #5f6368; margin-top: 8px; font-size: 14px;">${m.notes}</div>` : ''}
+                            <div class="meeting-actions">
+                                <button class="btn btn-small" onclick="addToCalendar('${m.id}')">
+                                    📅 Add to Calendar
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            document.getElementById('agendaContent').innerHTML = html;
+        }
+
+        // Talking Points
+        async function handleTalkingPointsAreaChange(e) {
+            const area = e.target.value;
+            if (!area) {
+                document.getElementById('talkingPointsContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div class="empty-state-text">Select an area to view talking points</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            try {
+                showLoading();
+                const response = await fetch(`${API_URL}?fn=talkingpoints&area=${encodeURIComponent(area)}`);
+                const data = await response.json();
+                
+                if (data.ok && data.talkingPoints && data.talkingPoints.length > 0) {
+                    displayTalkingPoints(data.talkingPoints);
+                } else {
+                    document.getElementById('talkingPointsContent').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <div class="empty-state-text">No talking points available</div>
+                            <div class="empty-state-subtext">Check back later</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading talking points:', error);
+                showAlert('Error loading talking points', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayTalkingPoints(points) {
+            const html = `
+                <div style="margin-top: 20px;">
+                    ${points.map(p => `
+                        <div style="background: linear-gradient(135deg, #f8f9fb 0%, #ffffff 100%); 
+                                    padding: 18px; border-radius: 12px; margin-bottom: 12px; 
+                                    border: 1px solid var(--border); color: var(--cobalt);">
+                            <div style="font-size: 15px; line-height: 1.6;">${p.text}</div>
+                            ${p.weekOf ? `<div style="font-size: 12px; color: #80868b; margin-top: 8px;">Week of: ${p.weekOf}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+            document.getElementById('talkingPointsContent').innerHTML = html;
+        }
+
+        // Create Talking Point (Manager Only)
+        async function handleCreateTalkingPoint(e) {
+            e.preventDefault();
+            
+            const formData = {
+                fn: 'addtalkingpoint',
+                pin: managerPin,
+                area: document.getElementById('tpManageArea').value,
+                text: document.getElementById('tpText').value,
+                weekOf: document.getElementById('tpWeekOf').value,
+                startOn: document.getElementById('tpStartOn').value,
+                expiresOn: document.getElementById('tpExpiresOn').value
+            };
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Talking point added successfully!', 'success');
+                    document.getElementById('createTalkingPointForm').reset();
+                    loadAllTalkingPoints();
+                    // Refresh public view if same area selected
+                    const publicArea = document.getElementById('tpAreaSelect').value;
+                    if (publicArea === formData.area) {
+                        handleTalkingPointsAreaChange({ target: { value: publicArea } });
+                    }
+                } else {
+                    showAlert(data.error || 'Error adding talking point', 'error');
+                }
+            } catch (error) {
+                console.error('Error creating talking point:', error);
+                showAlert('Error adding talking point', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Load All Talking Points (Manager Only)
+        async function loadAllTalkingPoints() {
+            const area = document.getElementById('tpFilterArea').value;
+            
+            try {
+                showLoading();
+                const url = area 
+                    ? `${API_URL}?fn=talkingpoints&area=${encodeURIComponent(area)}`
+                    : `${API_URL}?fn=talkingpoints&area=all`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.ok && data.talkingPoints) {
+                    displayManagerTalkingPoints(data.talkingPoints);
+                } else {
+                    document.getElementById('manageTalkingPointsContent').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <div class="empty-state-text">No talking points found</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading talking points:', error);
+                showAlert('Error loading talking points', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayManagerTalkingPoints(points) {
+            if (points.length === 0) {
+                document.getElementById('manageTalkingPointsContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div class="empty-state-text">No talking points found</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = `
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Area</th>
+                                <th>Talking Point</th>
+                                <th>Week Of</th>
+                                <th>Start Date</th>
+                                <th>Expires</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${points.map(p => `
+                                <tr>
+                                    <td><strong>${p.area}</strong></td>
+                                    <td style="max-width: 300px;">${p.text}</td>
+                                    <td>${p.weekOf || '-'}</td>
+                                    <td>${p.startOn ? formatDate(p.startOn) : '-'}</td>
+                                    <td>${p.expiresOn ? formatDate(p.expiresOn) : '-'}</td>
+                                    <td>
+                                        <button class="btn btn-small btn-danger" onclick="deleteTalkingPoint('${p.id}', '${p.area}')">
+                                            🗑️ Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            document.getElementById('manageTalkingPointsContent').innerHTML = html;
+        }
+
+        // Delete Talking Point (Manager Only)
+        async function deleteTalkingPoint(id, area) {
+            if (!confirm(`Delete talking point for ${area}?`)) {
+                return;
+            }
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        fn: 'updatetalkingpoint',
+                        pin: managerPin,
+                        id: id,
+                        expiresOn: new Date(Date.now() - 86400000).toISOString().split('T')[0]
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Talking point deleted successfully!', 'success');
+                    loadAllTalkingPoints();
+                    // Refresh public view if same area selected
+                    const publicArea = document.getElementById('tpAreaSelect').value;
+                    if (publicArea === area) {
+                        handleTalkingPointsAreaChange({ target: { value: publicArea } });
+                    }
+                } else {
+                    showAlert(data.error || 'Error deleting talking point', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting talking point:', error);
+                showAlert('Error deleting talking point', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Manager Functions
+        function showPinModal() {
+            document.getElementById('pinModal').classList.add('active');
+            document.getElementById('pinInput').focus();
+        }
+
+        function closePinModal() {
+            document.getElementById('pinModal').classList.remove('active');
+            document.getElementById('pinForm').reset();
+            document.getElementById('pinError').classList.add('hidden');
+        }
+
+        async function handlePinSubmit(e) {
+            e.preventDefault();
+            const pin = document.getElementById('pinInput').value;
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        fn: 'authcheck',
+                        pin: pin
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    isManagerUnlocked = true;
+                    managerPin = pin;
+                    localStorage.setItem('managerPin', pin);
+                    unlockManager();
+                    closePinModal();
+                    switchTab('manager');
+                } else {
+                    document.getElementById('pinError').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error checking PIN:', error);
+                showAlert('Error verifying PIN', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function unlockManager() {
+            document.getElementById('managerLocked').classList.add('hidden');
+            document.getElementById('managerUnlocked').classList.remove('hidden');
+            document.getElementById('managerTab').style.display = 'block';
+            document.getElementById('talkingPointsManager').classList.remove('hidden');
+            loadManagerMeetings();
+            loadAllTalkingPoints();
+        }
+
+        // Create Meeting
+        async function handleCreateMeeting(e) {
+            e.preventDefault();
+            
+            const formData = {
+                fn: 'createmeeting',
+                pin: managerPin,
+                area: document.getElementById('createArea').value,
+                date: document.getElementById('createDate').value,
+                time: document.getElementById('createTime').value,
+                durationMins: parseInt(document.getElementById('createDuration').value) || 60,
+                location: document.getElementById('createLocation').value,
+                notes: document.getElementById('createNotes').value,
+                status: document.getElementById('createStatus').value
+            };
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Meeting created successfully!', 'success');
+                    document.getElementById('createMeetingForm').reset();
+                    loadManagerMeetings();
+                } else {
+                    showAlert(data.error || 'Error creating meeting', 'error');
+                }
+            } catch (error) {
+                console.error('Error creating meeting:', error);
+                showAlert('Error creating meeting', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Load Manager Meetings
+        async function loadManagerMeetings() {
+            const area = document.getElementById('manageAreaSelect').value;
+            
+            try {
+                showLoading();
+                const url = area 
+                    ? `${API_URL}?fn=meetings&area=${encodeURIComponent(area)}`
+                    : `${API_URL}?fn=meetings&area=all`;
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.ok && data.meetings) {
+                    displayManagerMeetings(data.meetings);
+                } else {
+                    document.getElementById('manageMeetingsContent').innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <div class="empty-state-text">No meetings found</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading manager meetings:', error);
+                showAlert('Error loading meetings', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function displayManagerMeetings(meetings) {
+            if (meetings.length === 0) {
+                document.getElementById('manageMeetingsContent').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📅</div>
+                        <div class="empty-state-text">No meetings found</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            const html = `
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Area</th>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Status</th>
+                                <th>Location</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${meetings.map(m => `
+                                <tr>
+                                    <td><strong>${m.area}</strong></td>
+                                    <td>${formatDate(m.date)}</td>
+                                    <td>${formatTime(m.time)}</td>
+                                    <td><span class="badge badge-${m.status.toLowerCase() === 'published' ? 'success' : m.status.toLowerCase() === 'draft' ? 'warning' : 'danger'}">${m.status}</span></td>
+                                    <td>${m.location || '-'}</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn btn-small btn-secondary" onclick="editMeeting('${m.id}')">
+                                                ✏️ Edit
+                                            </button>
+                                            <button class="btn btn-small btn-danger" onclick="deleteMeeting('${m.id}', '${m.area}', '${m.date}')">
+                                                🗑️ Delete
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+            document.getElementById('manageMeetingsContent').innerHTML = html;
+        }
+
+        // Edit Meeting
+        async function editMeeting(id) {
+            currentEditMeetingId = id;
+            
+            try {
+                showLoading();
+                const response = await fetch(`${API_URL}?fn=meetings&area=all`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    const meeting = data.meetings.find(m => m.id === id);
+                    if (meeting) {
+                        document.getElementById('editId').value = meeting.id;
+                        document.getElementById('editDate').value = meeting.date;
+                        document.getElementById('editTime').value = meeting.time;
+                        document.getElementById('editDuration').value = meeting.durationMins || 60;
+                        document.getElementById('editStatus').value = meeting.status;
+                        document.getElementById('editLocation').value = meeting.location || '';
+                        document.getElementById('editNotes').value = meeting.notes || '';
+                        
+                        document.getElementById('editModal').classList.add('active');
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading meeting:', error);
+                showAlert('Error loading meeting', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+            document.getElementById('editMeetingForm').reset();
+            currentEditMeetingId = null;
+        }
+
+        async function handleEditMeeting(e) {
+            e.preventDefault();
+            
+            const formData = {
+                fn: 'updatemeeting',
+                pin: managerPin,
+                id: document.getElementById('editId').value,
+                date: document.getElementById('editDate').value,
+                time: document.getElementById('editTime').value,
+                durationMins: parseInt(document.getElementById('editDuration').value) || 60,
+                location: document.getElementById('editLocation').value,
+                notes: document.getElementById('editNotes').value,
+                status: document.getElementById('editStatus').value
+            };
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Meeting updated successfully!', 'success');
+                    closeEditModal();
+                    loadManagerMeetings();
+                    if (currentArea) {
+                        loadNextMeeting();
+                        loadAgenda();
+                    }
+                } else {
+                    showAlert(data.error || 'Error updating meeting', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating meeting:', error);
+                showAlert('Error updating meeting', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        async function notifyMeetingUpdate() {
+            const formData = {
+                fn: 'updatemeeting',
+                pin: managerPin,
+                id: document.getElementById('editId').value,
+                date: document.getElementById('editDate').value,
+                time: document.getElementById('editTime').value,
+                durationMins: parseInt(document.getElementById('editDuration').value) || 60,
+                location: document.getElementById('editLocation').value,
+                notes: document.getElementById('editNotes').value,
+                status: document.getElementById('editStatus').value,
+                notify: true
+            };
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Meeting updated and notifications sent!', 'success');
+                    closeEditModal();
+                    loadManagerMeetings();
+                } else {
+                    showAlert(data.error || 'Error updating meeting', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating meeting:', error);
+                showAlert('Error updating meeting', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Delete Meeting
+        async function deleteMeeting(id, area, date) {
+            if (!confirm(`Delete meeting for ${area} on ${formatDate(date)}?`)) {
+                return;
+            }
+            
+            try {
+                showLoading();
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        fn: 'deletemeeting',
+                        pin: managerPin,
+                        id: id
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showAlert('Meeting deleted successfully!', 'success');
+                    loadManagerMeetings();
+                    if (currentArea) {
+                        loadNextMeeting();
+                        loadAgenda();
+                    }
+                } else {
+                    showAlert(data.error || 'Error deleting meeting', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting meeting:', error);
+                showAlert('Error deleting meeting', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Subscribe
+        function showSubscribeModal() {
+            document.getElementById('subscribeModal').classList.add('active');
+        }
+
+        function closeSubscribeModal() {
+            document.getElementById('subscribeModal').classList.remove('active');
+            document.getElementById('subscribeForm').reset();
+            document.getElementById('subscribeMessage').classList.add('hidden');
+        }
+
+        async function handleSubscribe(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('subEmail').value;
+            const area = document.getElementById('subArea').value;
+            
+            try {
+                showLoading();
+                const response = await fetch(`${API_URL}?fn=subscribe&email=${encodeURIComponent(email)}&area=${encodeURIComponent(area)}`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    document.getElementById('subscribeMessage').className = 'alert alert-success';
+                    document.getElementById('subscribeMessage').textContent = 'Successfully subscribed!';
+                    document.getElementById('subscribeMessage').classList.remove('hidden');
+                    setTimeout(() => {
+                        closeSubscribeModal();
+                    }, 2000);
+                } else {
+                    document.getElementById('subscribeMessage').className = 'alert alert-error';
+                    document.getElementById('subscribeMessage').textContent = data.error || 'Error subscribing';
+                    document.getElementById('subscribeMessage').classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error subscribing:', error);
+                document.getElementById('subscribeMessage').className = 'alert alert-error';
+                document.getElementById('subscribeMessage').textContent = 'Error subscribing';
+                document.getElementById('subscribeMessage').classList.remove('hidden');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Add to Calendar
+        function addToCalendar(meetingId) {
+            showAlert('Opening calendar link...', 'info');
+            // This would integrate with the backend to get calendar event details
+            window.open(`https://calendar.google.com`, '_blank');
+        }
+
+        // Utility Functions
+        function formatDate(dateStr) {
+            const date = new Date(dateStr + 'T00:00:00');
+            return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        function formatTime(timeStr) {
+            const [hours, minutes] = timeStr.split(':');
+            const hour = parseInt(hours);
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            const displayHour = hour % 12 || 12;
+            return `${displayHour}:${minutes} ${ampm}`;
+        }
+
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            
+            const main = document.querySelector('.dashboard-main');
+            main.insertBefore(alertDiv, main.firstChild);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // Local Storage
+        function loadFromLocalStorage() {
+            const savedArea = localStorage.getItem('selectedArea');
+            if (savedArea) {
+                document.getElementById('areaSelect').value = savedArea;
+                currentArea = savedArea;
+                loadNextMeeting();
+                loadAgenda();
+            }
+            
+            const savedPin = localStorage.getItem('managerPin');
+            if (savedPin) {
+                managerPin = savedPin;
+                fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        fn: 'authcheck',
+                        pin: savedPin
+                    })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.ok) {
+                            isManagerUnlocked = true;
+                            unlockManager();
+                        } else {
+                            localStorage.removeItem('managerPin');
+                        }
+                    })
+                    .catch(err => console.error('Error validating saved PIN:', err));
+            }
+        }
+
+        // Modal click outside to close
+        document.querySelectorAll('.modal-bg').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-bg').forEach(modal => {
+                    modal.classList.remove('active');
+                });
+            }
+        });
+    </script>
+</body>
+</html>

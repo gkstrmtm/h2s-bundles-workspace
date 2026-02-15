@@ -1,0 +1,838 @@
+﻿{
+    "meta":  {
+                 "backend":  "https://h2s-backend.vercel.app/api",
+                 "email":  "tech@home2smart.com",
+                 "zip":  "29649",
+                 "when_utc":  "2026-02-14T20:57:24.9263797Z"
+             },
+    "tabs":  {
+                 "Dashboard":  {
+                                   "portal_jobs":  {
+                                                       "action":  "portal_jobs",
+                                                       "ok":  true,
+                                                       "note":  "portal_jobs",
+                                                       "method":  "POST",
+                                                       "url":  "https://h2s-backend.vercel.app/api/portal_jobs",
+                                                       "result":  {
+                                                                      "ok":  true,
+                                                                      "offers":  [
+                                                                                     {
+                                                                                         "job_id":  "6e0a7c9a-0732-40c0-bcef-3215450f3f4b",
+                                                                                         "created_at":  "2026-02-11T02:49:05.048+00:00",
+                                                                                         "updated_at":  "2026-02-11T02:49:05.122342+00:00",
+                                                                                         "recipient_id":  "ccefb00e-1b61-470a-a18d-af743866c988",
+                                                                                         "sequence_id":  "88297425-c134-4a51-8450-93cb35b1b3cb",
+                                                                                         "step_id":  "d30da333-3a54-4598-8ac1-f3b276185ea1",
+                                                                                         "due_at":  "2026-02-12T02:49:05.048+00:00",
+                                                                                         "status":  "queued",
+                                                                                         "locked_at":  null,
+                                                                                         "lock_owner":  null,
+                                                                                         "attempt_count":  0,
+                                                                                         "last_error":  null,
+                                                                                         "order_id":  "ORD-MLHFL4Q34E561B0C",
+                                                                                         "order_status":  "pending",
+                                                                                         "service_name":  "TV",
+                                                                                         "service_address":  "117 king cir",
+                                                                                         "service_city":  "greenwood",
+                                                                                         "service_state":  "SC",
+                                                                                         "service_zip":  "29649",
+                                                                                         "geo_lat":  34.1954,
+                                                                                         "geo_lng":  -82.1618,
+                                                                                         "payout_estimated":  87.15,
+                                                                                         "tech_payout_dollars":  87.15,
+                                                                                         "order_subtotal":  249,
+                                                                                         "delivery_date":  null,
+                                                                                         "delivery_time":  null,
+                                                                                         "line_items":  [
+                                                                                                            {
+                                                                                                                "name":  "1 TV",
+                                                                                                                "unit_price":  249,
+                                                                                                                "quantity":  1,
+                                                                                                                "line_total":  249,
+                                                                                                                "metadata":  {
+                                                                                                                                 "tv_count":  1,
+                                                                                                                                 "mount_provider":  "customer",
+                                                                                                                                 "items_json":  [
+                                                                                                                                                    {
+                                                                                                                                                        "bundle_id":  "tv_single",
+                                                                                                                                                        "service_name":  "1 TV",
+                                                                                                                                                        "qty":  1,
+                                                                                                                                                        "unit_price":  249,
+                                                                                                                                                        "line_total":  249,
+                                                                                                                                                        "metadata":  {
+                                                                                                                                                                         "tv_size":  "32-43",
+                                                                                                                                                                         "mount_type":  "customer_provided",
+                                                                                                                                                                         "mount_provider":  "customer",
+                                                                                                                                                                         "mount_upcharge":  0,
+                                                                                                                                                                         "mounts_needed":  0,
+                                                                                                                                                                         "requires_team":  false,
+                                                                                                                                                                         "team_recommended":  false,
+                                                                                                                                                                         "team_reason":  "",
+                                                                                                                                                                         "min_team_size":  1,
+                                                                                                                                                                         "tv_number":  1,
+                                                                                                                                                                         "total_tvs":  1
+                                                                                                                                                                     }
+                                                                                                                                                    }
+                                                                                                                                                ],
+                                                                                                                                 "total_mount_upcharges":  0,
+                                                                                                                                 "original_price":  249,
+                                                                                                                                 "final_price":  249
+                                                                                                                             }
+                                                                                                            }
+                                                                                                        ],
+                                                                                         "description":  "Installation service for 1 tv\n\nTasks: Mount 1 TV to Drywall",
+                                                                                         "customer_name":  "Tabari Roper",
+                                                                                         "scheduled_start_at":  "2026-02-12T02:49:05.048+00:00",
+                                                                                         "scheduled_tz":  "UTC",
+                                                                                         "camera_details":  null,
+                                                                                         "distance_miles":  3.7,
+                                                                                         "_debug_geo":  {
+                                                                                                            "alias_pro_id":  "a55f1bad-9547-4e61-986b-1a5fb6b83544",
+                                                                                                            "tech_coords":  {
+                                                                                                                                "lat":  34.2453437,
+                                                                                                                                "lng":  -82.1387233,
+                                                                                                                                "source":  "zip_geocode"
+                                                                                                                            },
+                                                                                                            "job_id":  "6e0a7c9a-0732-40c0-bcef-3215450f3f4b",
+                                                                                                            "job_address":  "117 king cir, greenwood, SC 29649",
+                                                                                                            "job_coords":  {
+                                                                                                                               "lat":  34.1954,
+                                                                                                                               "lng":  -82.1618,
+                                                                                                                               "source":  "db_stored"
+                                                                                                                           },
+                                                                                                            "dist_calc":  3.6942877123086157
+                                                                                                        },
+                                                                                         "geo_source":  "stored",
+                                                                                         "referral_code":  null,
+                                                                                         "assign_state":  "pending",
+                                                                                         "service_details_state":  "ready",
+                                                                                         "display_service_datetime":  "Scheduled: Wed, Feb 11 â¢ 9:49 PM",
+                                                                                         "payout_state":  "ready",
+                                                                                         "address":  {
+                                                                                                         "line1":  "117 king cir",
+                                                                                                         "city":  "greenwood",
+                                                                                                         "state":  "SC",
+                                                                                                         "zip":  "29649"
+                                                                                                     },
+                                                                                         "job_lat":  34.1954,
+                                                                                         "job_lng":  -82.1618,
+                                                                                         "distance_mi":  3.7,
+                                                                                         "distance_state":  "ready",
+                                                                                         "_normalized":  true,
+                                                                                         "priority_score":  564,
+                                                                                         "priority_label":  "Scheduled in \u003c24h"
+                                                                                     }
+                                                                                 ],
+                                                                      "upcoming":  [
+
+                                                                                   ],
+                                                                      "completed":  [
+
+                                                                                    ],
+                                                                      "meta":  {
+                                                                                   "portal_fix_version":  "assignments-bypass-v3",
+                                                                                   "mode":  "assignments_plus_available_offers",
+                                                                                   "assignments_table":  "h2s_dispatch_job_assignments",
+                                                                                   "jobs_table":  "h2s_dispatch_jobs",
+                                                                                   "assignments_job_key_used":  "job_id",
+                                                                                   "nearby_offers_added":  1,
+                                                                                   "geo":  {
+                                                                                               "pro_geo_source":  "zip_geocode",
+                                                                                               "pro_zip5":  "29649",
+                                                                                               "warning":  "Using ZIP-based location (centroid). Update your Profile address for more accurate distances."
+                                                                                           }
+                                                                               }
+                                                                  }
+                                                   },
+                                   "offers_count":  1,
+                                   "upcoming_count":  0,
+                                   "completed_count":  0,
+                                   "sample":  {
+                                                  "job_id":  "6e0a7c9a-0732-40c0-bcef-3215450f3f4b",
+                                                  "service_title":  null,
+                                                  "description":  "Installation service for 1 tv\n\nTasks: Mount 1 TV to Drywall",
+                                                  "line_items_type":  "System.Object[]",
+                                                  "line_items_count":  1,
+                                                  "scheduled_date":  null,
+                                                  "due_at":  "2026-02-12T02:49:05.048+00:00",
+                                                  "address":  "117 king cir",
+                                                  "city":  "greenwood",
+                                                  "state":  "SC",
+                                                  "zip":  "29649",
+                                                  "bucket":  "offers"
+                                              }
+                               },
+                 "Customers":  {
+                                   "portal_customers":  {
+                                                            "action":  "portal_customers",
+                                                            "ok":  true,
+                                                            "note":  "portal_customers",
+                                                            "method":  "GET",
+                                                            "url":  "https://h2s-backend.vercel.app/api/portal_customers",
+                                                            "result":  {
+                                                                           "ok":  true,
+                                                                           "customers":  [
+
+                                                                                         ]
+                                                                       }
+                                                        },
+                                   "portal_customer_history":  {
+                                                                   "action":  "portal_customer_history",
+                                                                   "ok":  true,
+                                                                   "note":  "portal_customer_history",
+                                                                   "method":  "GET",
+                                                                   "url":  "https://h2s-backend.vercel.app/api/portal_customer_history",
+                                                                   "result":  {
+                                                                                  "ok":  true,
+                                                                                  "customers":  [
+
+                                                                                                ]
+                                                                              }
+                                                               },
+                                   "customer_count":  0,
+                                   "customer_history_count":  0
+                               },
+                 "Schedule":  {
+                                  "portal_availability_get":  {
+                                                                  "action":  "portal_availability",
+                                                                  "ok":  true,
+                                                                  "note":  "portal_availability(get)",
+                                                                  "method":  "GET",
+                                                                  "url":  "https://h2s-backend.vercel.app/api/portal_availability",
+                                                                  "result":  {
+                                                                                 "ok":  true,
+                                                                                 "rows":  [
+
+                                                                                          ]
+                                                                             }
+                                                              }
+                              },
+                 "Payouts":  {
+                                 "portal_payouts":  {
+                                                        "action":  "portal_payouts",
+                                                        "ok":  true,
+                                                        "note":  "portal_payouts",
+                                                        "method":  "GET",
+                                                        "url":  "https://h2s-backend.vercel.app/api/portal_payouts",
+                                                        "result":  {
+                                                                       "ok":  true,
+                                                                       "rows":  [
+
+                                                                                ],
+                                                                       "source":  {
+                                                                                      "client":  "dispatch",
+                                                                                      "table":  "h2s_payouts_ledger"
+                                                                                  },
+                                                                       "debug_report":  [
+                                                                                            "OK: dispatch.h2s_payouts_ledger -\u003e 0 rows",
+                                                                                            "OK: dispatch.h2s_dispatch_payouts_ledger -\u003e 0 rows",
+                                                                                            "MISS: dispatch.h2s_dispatch_payouts -\u003e Could not find the table \u0027public.h2s_dispatch_payouts\u0027 in the schema cache",
+                                                                                            "MISS: dispatch.payouts -\u003e Could not find the table \u0027public.payouts\u0027 in the schema cache",
+                                                                                            "OK: main.h2s_payouts_ledger -\u003e 0 rows",
+                                                                                            "OK: main.h2s_dispatch_payouts_ledger -\u003e 0 rows",
+                                                                                            "MISS: main.h2s_dispatch_payouts -\u003e Could not find the table \u0027public.h2s_dispatch_payouts\u0027 in the schema cache",
+                                                                                            "MISS: main.payouts -\u003e Could not find the table \u0027public.payouts\u0027 in the schema cache"
+                                                                                        ]
+                                                                   }
+                                                    },
+                                 "portal_instant_withdrawals":  {
+                                                                    "action":  "portal_instant_withdrawals",
+                                                                    "ok":  false,
+                                                                    "note":  "portal_instant_withdrawals",
+                                                                    "method":  "GET",
+                                                                    "error":  "The remote server returned an error: (501) Not Implemented.",
+                                                                    "url":  "https://h2s-backend.vercel.app/api/portal_instant_withdrawals"
+                                                                },
+                                 "payout_rows":  0
+                             },
+                 "Reviews":  {
+                                 "portal_reviews_get":  {
+                                                            "action":  "portal_reviews_get",
+                                                            "ok":  true,
+                                                            "note":  "portal_reviews_get",
+                                                            "method":  "GET",
+                                                            "url":  "https://h2s-backend.vercel.app/api/portal_reviews_get",
+                                                            "result":  {
+                                                                           "ok":  true,
+                                                                           "reviews":  [
+
+                                                                                       ],
+                                                                           "meta":  {
+                                                                                        "hint":  "Reviews endpoint currently returns empty (no backing reviews table wired)."
+                                                                                    }
+                                                                       }
+                                                        },
+                                 "review_count":  0
+                             },
+                 "Training":  {
+                                  "portal_training_catalog":  {
+                                                                  "action":  "portal_training",
+                                                                  "ok":  true,
+                                                                  "note":  "portal_training(catalog)",
+                                                                  "method":  "GET",
+                                                                  "url":  "https://h2s-backend.vercel.app/api/portal_training",
+                                                                  "result":  {
+                                                                                 "ok":  true,
+                                                                                 "source":  "main",
+                                                                                 "videos":  [
+                                                                                                {
+                                                                                                    "id":  "bad6e1bc-4e63-46da-b2a2-d61d23a5d7a4",
+                                                                                                    "video_id":  "bad6e1bc-4e63-46da-b2a2-d61d23a5d7a4",
+                                                                                                    "title":  "Welcome â¢ What Home2Smart Expects",
+                                                                                                    "module":  "onboarding",
+                                                                                                    "category":  "onboarding",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://www.loom.com/share/098c0c02828c4ca985a280f671168c77",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  1,
+                                                                                                    "description":  "Welcome to Home2Smart! In this video, I walk you through our unique approach to smart home installations and how you, as a professional technician, play a crucial role in representing our brand. We focus on clean, professional work for homeowners, property managers, and short-term rental hosts, with opportunities for growth through a tiered system based on your performance. I encourage you to pay close attention to the details I share about job assignments, documentation, and the support we provide. Your professionalism and quality work are essential as we build a trusted service team across the Carolinas. This is the first video description.",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "4f0192e5-3ce4-4731-9484-54ecf2fa0b1e",
+                                                                                                    "video_id":  "4f0192e5-3ce4-4731-9484-54ecf2fa0b1e",
+                                                                                                    "title":  "TV Mounting Guide",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b9771bbb4c810682a558c.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  2,
+                                                                                                    "description":  "Ensure you know how to mount TVs properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "81833c25-a355-4862-bebc-49718161e3ba",
+                                                                                                    "video_id":  "81833c25-a355-4862-bebc-49718161e3ba",
+                                                                                                    "title":  "NETGEAR Mesh Guide",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b98686917d22bca9f42f5.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  3,
+                                                                                                    "description":  "Ensure you know how to set up mesh properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "f8fcc9c2-bdf0-4b0e-9692-2b92439f9e60",
+                                                                                                    "video_id":  "f8fcc9c2-bdf0-4b0e-9692-2b92439f9e60",
+                                                                                                    "title":  "eero 6 mesh setup",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://youtu.be/vXbsT9o6P4w?si=RHfK_p8ZDk0xWblt",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  4,
+                                                                                                    "description":  "Ensure you know how to set up mesh properly (click the youtube link to view)",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "5bf0fd52-e101-4a15-ad69-51d041b6f7de",
+                                                                                                    "video_id":  "5bf0fd52-e101-4a15-ad69-51d041b6f7de",
+                                                                                                    "title":  "Honeywell Thermostat Guide",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b9e63d79eed02be921780.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  5,
+                                                                                                    "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "e9dc1f37-1b82-45b9-8a1f-9d16b35dc362",
+                                                                                                    "video_id":  "e9dc1f37-1b82-45b9-8a1f-9d16b35dc362",
+                                                                                                    "title":  "Nest smart thermostat install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba1106fadaa1b115d8cf8.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  6,
+                                                                                                    "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "3dff7fb0-74ba-4183-9462-156ceb44a015",
+                                                                                                    "video_id":  "3dff7fb0-74ba-4183-9462-156ceb44a015",
+                                                                                                    "title":  "Ecobee smart thermoatat install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba1f792b355942af9ed91.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  7,
+                                                                                                    "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "7a2f644f-2302-4f16-a8ba-d9fc44e2d324",
+                                                                                                    "video_id":  "7a2f644f-2302-4f16-a8ba-d9fc44e2d324",
+                                                                                                    "title":  "Kwikset smart lock install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba2106917d26545a0b750.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  8,
+                                                                                                    "description":  "Ensure you know how to install smart locks properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "678e66e3-64c1-493f-b069-1475e84ba1d5",
+                                                                                                    "video_id":  "678e66e3-64c1-493f-b069-1475e84ba1d5",
+                                                                                                    "title":  "Encode smart lock install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba2837b2dc549073b41eb.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  9,
+                                                                                                    "description":  "Ensure you know how to install smart locks properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "982f9fe0-578c-4c20-bd2d-5055fb3d2e85",
+                                                                                                    "video_id":  "982f9fe0-578c-4c20-bd2d-5055fb3d2e85",
+                                                                                                    "title":  "Nest smart doorbell install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba45affc100189041a1ca.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  10,
+                                                                                                    "description":  "Ensure you know how to install smart doorbells properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "ea9f632b-49cf-4388-821e-1f4d9a473757",
+                                                                                                    "video_id":  "ea9f632b-49cf-4388-821e-1f4d9a473757",
+                                                                                                    "title":  "Ring smart doorbell install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba588bbb4c8276d2c7b14.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  11,
+                                                                                                    "description":  "Ensure you know how to install smart doorbells properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "3eab16da-f26d-4329-a10c-e6169afded02",
+                                                                                                    "video_id":  "3eab16da-f26d-4329-a10c-e6169afded02",
+                                                                                                    "title":  "Ring Stick up cam install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba668d79eedc5c89354f2.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  12,
+                                                                                                    "description":  "Ensure you know how to install cameras properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                },
+                                                                                                {
+                                                                                                    "id":  "313a79b7-53a8-4b81-86dc-0fdf1ea461fa",
+                                                                                                    "video_id":  "313a79b7-53a8-4b81-86dc-0fdf1ea461fa",
+                                                                                                    "title":  "Arlo camera install",
+                                                                                                    "module":  "Technical",
+                                                                                                    "category":  "Technical",
+                                                                                                    "duration_sec":  0,
+                                                                                                    "thumbnail":  null,
+                                                                                                    "thumbnail_url":  null,
+                                                                                                    "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba6ba7b2dc54ae43be2a1.mp4",
+                                                                                                    "region":  "global",
+                                                                                                    "order_num":  13,
+                                                                                                    "description":  "Ensure you know how to install cameras properly",
+                                                                                                    "tags":  [
+
+                                                                                                             ]
+                                                                                                }
+                                                                                            ],
+                                                                                 "resources":  [
+
+                                                                                               ],
+                                                                                 "modules":  [
+                                                                                                 {
+                                                                                                     "name":  "onboarding",
+                                                                                                     "videos":  [
+                                                                                                                    {
+                                                                                                                        "id":  "bad6e1bc-4e63-46da-b2a2-d61d23a5d7a4",
+                                                                                                                        "video_id":  "bad6e1bc-4e63-46da-b2a2-d61d23a5d7a4",
+                                                                                                                        "title":  "Welcome â¢ What Home2Smart Expects",
+                                                                                                                        "module":  "onboarding",
+                                                                                                                        "category":  "onboarding",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://www.loom.com/share/098c0c02828c4ca985a280f671168c77",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  1,
+                                                                                                                        "description":  "Welcome to Home2Smart! In this video, I walk you through our unique approach to smart home installations and how you, as a professional technician, play a crucial role in representing our brand. We focus on clean, professional work for homeowners, property managers, and short-term rental hosts, with opportunities for growth through a tiered system based on your performance. I encourage you to pay close attention to the details I share about job assignments, documentation, and the support we provide. Your professionalism and quality work are essential as we build a trusted service team across the Carolinas. This is the first video description.",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                 },
+                                                                                                 {
+                                                                                                     "name":  "Technical",
+                                                                                                     "videos":  [
+                                                                                                                    {
+                                                                                                                        "id":  "4f0192e5-3ce4-4731-9484-54ecf2fa0b1e",
+                                                                                                                        "video_id":  "4f0192e5-3ce4-4731-9484-54ecf2fa0b1e",
+                                                                                                                        "title":  "TV Mounting Guide",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b9771bbb4c810682a558c.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  2,
+                                                                                                                        "description":  "Ensure you know how to mount TVs properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "81833c25-a355-4862-bebc-49718161e3ba",
+                                                                                                                        "video_id":  "81833c25-a355-4862-bebc-49718161e3ba",
+                                                                                                                        "title":  "NETGEAR Mesh Guide",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b98686917d22bca9f42f5.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  3,
+                                                                                                                        "description":  "Ensure you know how to set up mesh properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "f8fcc9c2-bdf0-4b0e-9692-2b92439f9e60",
+                                                                                                                        "video_id":  "f8fcc9c2-bdf0-4b0e-9692-2b92439f9e60",
+                                                                                                                        "title":  "eero 6 mesh setup",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://youtu.be/vXbsT9o6P4w?si=RHfK_p8ZDk0xWblt",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  4,
+                                                                                                                        "description":  "Ensure you know how to set up mesh properly (click the youtube link to view)",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "5bf0fd52-e101-4a15-ad69-51d041b6f7de",
+                                                                                                                        "video_id":  "5bf0fd52-e101-4a15-ad69-51d041b6f7de",
+                                                                                                                        "title":  "Honeywell Thermostat Guide",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690b9e63d79eed02be921780.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  5,
+                                                                                                                        "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "e9dc1f37-1b82-45b9-8a1f-9d16b35dc362",
+                                                                                                                        "video_id":  "e9dc1f37-1b82-45b9-8a1f-9d16b35dc362",
+                                                                                                                        "title":  "Nest smart thermostat install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba1106fadaa1b115d8cf8.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  6,
+                                                                                                                        "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "3dff7fb0-74ba-4183-9462-156ceb44a015",
+                                                                                                                        "video_id":  "3dff7fb0-74ba-4183-9462-156ceb44a015",
+                                                                                                                        "title":  "Ecobee smart thermoatat install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba1f792b355942af9ed91.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  7,
+                                                                                                                        "description":  "Ensure you know how to install smart thermostats properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "7a2f644f-2302-4f16-a8ba-d9fc44e2d324",
+                                                                                                                        "video_id":  "7a2f644f-2302-4f16-a8ba-d9fc44e2d324",
+                                                                                                                        "title":  "Kwikset smart lock install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba2106917d26545a0b750.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  8,
+                                                                                                                        "description":  "Ensure you know how to install smart locks properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "678e66e3-64c1-493f-b069-1475e84ba1d5",
+                                                                                                                        "video_id":  "678e66e3-64c1-493f-b069-1475e84ba1d5",
+                                                                                                                        "title":  "Encode smart lock install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba2837b2dc549073b41eb.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  9,
+                                                                                                                        "description":  "Ensure you know how to install smart locks properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "982f9fe0-578c-4c20-bd2d-5055fb3d2e85",
+                                                                                                                        "video_id":  "982f9fe0-578c-4c20-bd2d-5055fb3d2e85",
+                                                                                                                        "title":  "Nest smart doorbell install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba45affc100189041a1ca.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  10,
+                                                                                                                        "description":  "Ensure you know how to install smart doorbells properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "ea9f632b-49cf-4388-821e-1f4d9a473757",
+                                                                                                                        "video_id":  "ea9f632b-49cf-4388-821e-1f4d9a473757",
+                                                                                                                        "title":  "Ring smart doorbell install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba588bbb4c8276d2c7b14.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  11,
+                                                                                                                        "description":  "Ensure you know how to install smart doorbells properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "3eab16da-f26d-4329-a10c-e6169afded02",
+                                                                                                                        "video_id":  "3eab16da-f26d-4329-a10c-e6169afded02",
+                                                                                                                        "title":  "Ring Stick up cam install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba668d79eedc5c89354f2.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  12,
+                                                                                                                        "description":  "Ensure you know how to install cameras properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    },
+                                                                                                                    {
+                                                                                                                        "id":  "313a79b7-53a8-4b81-86dc-0fdf1ea461fa",
+                                                                                                                        "video_id":  "313a79b7-53a8-4b81-86dc-0fdf1ea461fa",
+                                                                                                                        "title":  "Arlo camera install",
+                                                                                                                        "module":  "Technical",
+                                                                                                                        "category":  "Technical",
+                                                                                                                        "duration_sec":  0,
+                                                                                                                        "thumbnail":  null,
+                                                                                                                        "thumbnail_url":  null,
+                                                                                                                        "url":  "https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/690ba6ba7b2dc54ae43be2a1.mp4",
+                                                                                                                        "region":  "global",
+                                                                                                                        "order_num":  13,
+                                                                                                                        "description":  "Ensure you know how to install cameras properly",
+                                                                                                                        "tags":  [
+
+                                                                                                                                 ]
+                                                                                                                    }
+                                                                                                                ]
+                                                                                                 }
+                                                                                             ],
+                                                                                 "supabase_ref":  "ulbzmgmxrqyipclrbohi",
+                                                                                 "meta":  {
+                                                                                              "source_db":  "main",
+                                                                                              "source_table":  "h2s_training_videos",
+                                                                                              "pro_id":  "a55f1bad-9547-4e61-986b-1a5fb6b83544",
+                                                                                              "supabase_ref":  "ulbzmgmxrqyipclrbohi"
+                                                                                          }
+                                                                             }
+                                                              },
+                                  "video_count":  13
+                              },
+                 "Feedback":  {
+                                  "note":  "Skipped POST to avoid creating real feedback. Run with -SendFeedback to test endpoint."
+                              },
+                 "Account":  {
+                                 "portal_me":  {
+                                                   "action":  "portal_me",
+                                                   "ok":  true,
+                                                   "note":  "portal_me",
+                                                   "method":  "GET",
+                                                   "url":  "https://h2s-backend.vercel.app/api/portal_me",
+                                                   "result":  {
+                                                                  "ok":  true,
+                                                                  "pro":  {
+                                                                              "pro_id":  "a55f1bad-9547-4e61-986b-1a5fb6b83544",
+                                                                              "status":  null,
+                                                                              "name":  "H2S Technician",
+                                                                              "email":  "tech@home2smart.com",
+                                                                              "phone":  "(864) 528-1475",
+                                                                              "photo_url":  null,
+                                                                              "bio_short":  null,
+                                                                              "vehicle_text":  null,
+                                                                              "home_address":  null,
+                                                                              "home_city":  null,
+                                                                              "home_state":  null,
+                                                                              "home_zip":  null,
+                                                                              "geo_lat":  34.245344,
+                                                                              "geo_lng":  -82.138723,
+                                                                              "service_radius_miles":  null,
+                                                                              "max_jobs_per_day":  null,
+                                                                              "avg_rating":  null,
+                                                                              "reviews_count":  null,
+                                                                              "total_jobs_completed":  null,
+                                                                              "profile_last_updated":  "2026-01-08T00:34:10.984213+00:00",
+                                                                              "slug":  null,
+                                                                              "address":  null,
+                                                                              "city":  null,
+                                                                              "state":  null,
+                                                                              "zip":  null,
+                                                                              "accepts_extended_range":  null,
+                                                                              "created_at":  "2026-01-08T00:34:10.984213+00:00",
+                                                                              "updated_at":  "2026-02-14T20:57:31.003601+00:00",
+                                                                              "lifetime_earnings":  0,
+                                                                              "last_payout_amount":  0,
+                                                                              "last_payout_date":  null
+                                                                          },
+                                                                  "source_table":  "h2s_dispatch_pros"
+                                                              }
+                                               }
+                             }
+             },
+    "extra":  {
+                  "BackendHealth":  {
+                                        "health":  {
+                                                       "action":  "health",
+                                                       "ok":  true,
+                                                       "note":  "api/health",
+                                                       "method":  "GET",
+                                                       "url":  "https://h2s-backend.vercel.app/api/health",
+                                                       "result":  {
+                                                                      "ok":  true,
+                                                                      "build_id":  "local-dev-1771102638001",
+                                                                      "env_name":  "production",
+                                                                      "supabase_host":  "ulbzmgmxrqyipclrbohi.supabase.co",
+                                                                      "token_secret_present":  true,
+                                                                      "timestamp":  "2026-02-14T20:57:25.105Z"
+                                                                  }
+                                                   },
+                                        "build_id":  {
+                                                         "action":  "build-id",
+                                                         "ok":  true,
+                                                         "note":  "api/build-id",
+                                                         "method":  "GET",
+                                                         "url":  "https://h2s-backend.vercel.app/api/build-id",
+                                                         "result":  {
+                                                                        "buildId":  "v1.2.1-FIXED-REVERT_local-d_2026-02-14T20:57:25.272Z",
+                                                                        "timestamp":  "2026-02-14T20:57:25.273Z"
+                                                                    }
+                                                     }
+                                    },
+                  "CustomerPhotos":  {
+                                         "sample_job_id":  "6e0a7c9a-0732-40c0-bcef-3215450f3f4b",
+                                         "call":  {
+                                                      "action":  "customer_photos",
+                                                      "ok":  false,
+                                                      "note":  "customer_photos",
+                                                      "method":  "GET",
+                                                      "error":  "The remote server returned an error: (403) Forbidden.",
+                                                      "url":  "https://h2s-backend.vercel.app/api/customer_photos"
+                                                  }
+                                     }
+              }
+}

@@ -303,6 +303,9 @@ model CalendarIntegration {
 
 model Deliverable {
   id                        String    @id @default(uuid()) @map("Deliverable_ID")
+  taskId                    String?   @map("Task_ID")
+  taskTitle                 String?   @map("Task_Title")
+  taskUrl                   String?   @map("Task_URL")
   title                     String    @map("Title")
   description               String    @map("Description")
   fileLink                  String?   @map("File_Link")
@@ -326,4 +329,5 @@ model Deliverable {
   @@map("Deliverables")
   @@index([status])
   @@index([submittedBy])
+  @@index([taskId])
 }

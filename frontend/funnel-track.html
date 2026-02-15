@@ -1960,6 +1960,23 @@
                     </div>
                 </section>
 
+                <!-- Live Checks (subtle) -->
+                <section id="liveStatusStrip" style="background: var(--surface); border-radius: var(--radius-lg); padding: 10px 12px; margin-bottom: 12px; box-shadow: var(--shadow-sm); border: 1px solid var(--border);">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <span class="tag" style="background: rgba(52,168,83,0.10); border-color: rgba(52,168,83,0.25); color: rgba(52,168,83,0.95);">LIVE</span>
+                        <div id="livePill-api" class="health-pill"><span class="health-dot"></span><span>API</span></div>
+                        <div id="livePill-kpis" class="health-pill"><span class="health-dot"></span><span>KPIs</span></div>
+                        <div id="livePill-sessions" class="health-pill"><span class="health-dot"></span><span>Sessions</span></div>
+                        <div id="livePill-revenue" class="health-pill"><span class="health-dot"></span><span>Revenue</span></div>
+                        <div id="livePill-cohorts" class="health-pill"><span class="health-dot"></span><span>Cohorts</span></div>
+                        <div id="livePill-funnel" class="health-pill"><span class="health-dot"></span><span>Funnel</span></div>
+                        <div id="livePill-attrib" class="health-pill"><span class="health-dot"></span><span>Attribution</span></div>
+                        <div id="livePill-orders" class="health-pill"><span class="health-dot"></span><span>Orders Feed</span></div>
+                        <div id="livePill-pixel" class="health-pill"><span class="health-dot"></span><span>Pixel</span></div>
+                        <div style="margin-left:auto; font-size: 11px; font-weight: 700; color: var(--text-tertiary);" id="liveUpdatedAt">—</div>
+                    </div>
+                </section>
+
                 <div id="dataStatus" class="status-banner" style="display:none; background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); padding: 10px 14px; border-radius: var(--radius-md); margin-bottom: 14px; font-size: 13px;"></div>
 
                 <!-- NEW: Operational Dashboard (Refined "Home too Smart" Ops View) -->
@@ -2081,6 +2098,7 @@
             <div class="info-box" style="margin-bottom: 20px; font-size: 13px;">
                 Shows top traffic sources based on <code>utm_source</code> and <code>utm_medium</code> parameters.
             </div>
+            <div id="attributionWarningHost"></div>
             <div class="mobile-scroll-container">
                 <table class="data-table">
                     <thead>
@@ -2165,6 +2183,32 @@
              <div class="section-title">Tracking Reference & Guide</div>
              <div class="funnel-metrics-panel" id="docsContentContainer">
                 <div class="tracking-body" style="padding: 0;">
+
+                <div class="info-box">
+                    <strong>Ad Campaign URLs (Ready to Use)</strong>
+                    <p style="margin: 8px 0; font-size: 13px; color: #5f6368;">Copy these URLs directly into your ad sets. All parameters auto-populate from your campaign.</p>
+                    
+                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Facebook/Instagram Ads:</h4>
+                    <div class="code-block" style="margin-bottom: 12px;">
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'fb-bundles-url')">Copy</button>
+                        <pre id="fb-bundles-url">https://shop.home2smart.com/bundles.html?utm_source=facebook&utm_medium=cpc&utm_campaign={{campaign.name}}&utm_content={{ad.id}}&utm_term={{adset.name}}</pre>
+                    </div>
+                    <p style="font-size: 12px; color: #5f6368; margin-bottom: 16px;">All parameters auto-populate from Facebook. Zero manual work.</p>
+                    
+                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Google Ads:</h4>
+                    <div class="code-block" style="margin-bottom: 12px;">
+                        <button class="copy-btn" onclick="copyToClipboard(this, 'google-bundles-url')">Copy</button>
+                        <pre id="google-bundles-url">https://shop.home2smart.com/bundles.html?utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_content={creative}&utm_term={keyword}</pre>
+                    </div>
+                    <p style="font-size: 12px; color: #5f6368; margin-bottom: 16px;">All parameters auto-populate from Google Ads. Zero manual work.</p>
+                    
+                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Base URLs (No UTM):</h4>
+                    <ul style="margin-top: 10px; padding-left: 20px; line-height: 1.8; font-size: 14px;">
+                        <li><a href="https://shop.home2smart.com/bundles.html" target="_blank" rel="noopener">Bundles Shop</a> - https://shop.home2smart.com/bundles.html</li>
+                        <li><a href="https://home2smart.com/" target="_blank" rel="noopener">Homepage</a> - https://home2smart.com/</li>
+                        <li><a href="https://home2smart.com/tvmounting" target="_blank" rel="noopener">TV Mounting Wizard</a> - https://home2smart.com/tvmounting</li>
+                    </ul>
+                </div>
                 
                 <h3>System Overview</h3>
                 <p>Home2Smart uses a comprehensive tracking system powered by <strong>Supabase</strong> to capture, analyze, and optimize every user interaction across our digital ecosystem. All data flows directly to the database with intelligent business entity linking.</p>
@@ -2452,32 +2496,6 @@ ORDER BY converted_at DESC;</pre>
 
                 <div class="info-box">
                     <strong>Pro Tip:</strong> Run <code>seedAllTrackingData()</code> before presenting dashboard to clients or stakeholders. It populates realistic data so you can demonstrate functionality and insights.
-                </div>
-
-                <div class="info-box">
-                    <strong>Ad Campaign URLs (Ready to Use)</strong>
-                    <p style="margin: 8px 0; font-size: 13px; color: #5f6368;">Copy these URLs directly into your ad sets. All parameters auto-populate from your campaign.</p>
-                    
-                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Facebook/Instagram Ads:</h4>
-                    <div class="code-block" style="margin-bottom: 12px;">
-                        <button class="copy-btn" onclick="copyToClipboard(this, 'fb-bundles-url')">Copy</button>
-                        <pre id="fb-bundles-url">https://shop.home2smart.com/bundles.html?utm_source=facebook&utm_medium=cpc&utm_campaign={{campaign.name}}&utm_content={{ad.id}}&utm_term={{adset.name}}</pre>
-                    </div>
-                    <p style="font-size: 12px; color: #5f6368; margin-bottom: 16px;">All parameters auto-populate from Facebook. Zero manual work.</p>
-                    
-                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Google Ads:</h4>
-                    <div class="code-block" style="margin-bottom: 12px;">
-                        <button class="copy-btn" onclick="copyToClipboard(this, 'google-bundles-url')">Copy</button>
-                        <pre id="google-bundles-url">https://shop.home2smart.com/bundles.html?utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_content={creative}&utm_term={keyword}</pre>
-                    </div>
-                    <p style="font-size: 12px; color: #5f6368; margin-bottom: 16px;">All parameters auto-populate from Google Ads. Zero manual work.</p>
-                    
-                    <h4 style="margin: 16px 0 8px 0; font-size: 14px; font-weight: 600;">Base URLs (No UTM):</h4>
-                    <ul style="margin-top: 10px; padding-left: 20px; line-height: 1.8; font-size: 14px;">
-                        <li><a href="https://shop.home2smart.com/bundles.html" target="_blank" rel="noopener">Bundles Shop</a> - https://shop.home2smart.com/bundles.html</li>
-                        <li><a href="https://home2smart.com/" target="_blank" rel="noopener">Homepage</a> - https://home2smart.com/</li>
-                        <li><a href="https://home2smart.com/tvmounting" target="_blank" rel="noopener">TV Mounting Wizard</a> - https://home2smart.com/tvmounting</li>
-                    </ul>
                 </div>
 
                 <h3>Support & Troubleshooting</h3>
@@ -3437,6 +3455,14 @@ ORDER BY converted_at DESC;</pre>
                 const rates = SchemaValidator.safeObj(data.conversion_rates);
                 const totals = SchemaValidator.safeObj(data.totals);
                 const stageDist = SchemaValidator.safeObj(data.stage_distribution);
+                const sourcesRaw = Array.isArray(data.sources) ? data.sources : [];
+                const sources = sourcesRaw
+                    .map(s => ({
+                        source: String((s && s.source) || 'direct').toLowerCase().trim() || 'direct',
+                        medium: (s && s.medium != null && String(s.medium).trim()) ? String(s.medium).toLowerCase().trim() : null,
+                        count: SchemaValidator.safeNum(s && s.count, 0)
+                    }))
+                    .filter(s => s.count > 0);
                 
                 return {
                     // Raw Counts
@@ -3446,8 +3472,15 @@ ORDER BY converted_at DESC;</pre>
                     initiate_checkout: SchemaValidator.safeNum(data.initiate_checkout, 0),
                     purchase: SchemaValidator.safeNum(data.purchase, 0),
 
+                    // Totals / health helpers
+                    total_events: SchemaValidator.safeNum(data.total_events, 0),
+                    unique_visitors: SchemaValidator.safeNum(data.unique_visitors, 0),
+
                     // Sample size helpers
                     unique_sessions: SchemaValidator.safeNum(data.unique_sessions, 0),
+
+                    // Attribution
+                    sources,
                     
                     // Render Helpers
                     stage_distribution: {
@@ -3960,6 +3993,8 @@ ORDER BY converted_at DESC;</pre>
             }
             window.__H2S_DASH_INIT_RUNNING = true;
 
+            try { resetLivePills(); } catch (_) {}
+
             // Declare critical variables to prevent ReferenceErrors
             let bossLeak = null;
             let healthScore = 100;
@@ -4097,13 +4132,47 @@ ORDER BY converted_at DESC;</pre>
             if(status === 'connected') {
                 el.innerHTML = '<span style="display:inline-block; width:8px; height:8px; background:#34A853; border-radius:50%; margin-right:6px;"></span> API Connected';
                 el.style.color = '#34A853';
+                try { setLivePill('api', 'ok', 'API'); } catch (_) {}
             } else if (status === 'connecting') {
                 el.innerHTML = '<span style="display:inline-block; width:8px; height:8px; background:#FBBC04; border-radius:50%; margin-right:6px;"></span> Connecting...';
                  el.style.color = '#FBBC04';
+                 try { setLivePill('api', 'warn', 'API'); } catch (_) {}
             } else {
                  el.innerHTML = '<span style="display:inline-block; width:8px; height:8px; background:#EA4335; border-radius:50%; margin-right:6px;"></span> Disconnected';
                  el.style.color = '#EA4335';
+                 try { setLivePill('api', 'bad', 'API'); } catch (_) {}
             }
+        }
+
+        function setLiveUpdatedNow() {
+            const el = document.getElementById('liveUpdatedAt');
+            if (!el) return;
+            el.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        }
+
+        function setLivePill(key, state, label, title) {
+            const el = document.getElementById(`livePill-${key}`);
+            if (!el) return;
+            el.classList.remove('ok', 'bad');
+            if (state === 'ok') el.classList.add('ok');
+            if (state === 'bad') el.classList.add('bad');
+            const span = el.querySelector('span:last-child');
+            if (span) span.textContent = label;
+            el.title = title ? String(title) : '';
+        }
+
+        function resetLivePills() {
+            try {
+                setLivePill('api', 'warn', 'API', 'Checking connectivity…');
+                setLivePill('kpis', 'warn', 'KPIs', 'Loading sessions/revenue/cohorts…');
+                setLivePill('sessions', 'warn', 'Sessions', 'Loading session counts…');
+                setLivePill('revenue', 'warn', 'Revenue', 'Loading revenue from orders…');
+                setLivePill('cohorts', 'warn', 'Cohorts', 'Loading user cohorts…');
+                setLivePill('funnel', 'warn', 'Funnel', 'Loading funnel counts + stages…');
+                setLivePill('attrib', 'warn', 'Attribution', 'Loading UTM sources…');
+                setLivePill('orders', 'warn', 'Orders Feed', 'Loading latest orders…');
+                setLivePill('pixel', 'warn', 'Pixel', 'Loading Meta Pixel diagnostics…');
+            } catch (_) {}
         }
         
         // Silent refresh - updates data without showing loading overlay
@@ -4125,6 +4194,15 @@ ORDER BY converted_at DESC;</pre>
 
                 try { renderCampaignTimeline(); } catch (_) {}
                 try { renderMissionControl(); } catch (_) {}
+
+                // Keep Settings → Path exclusion UI fresh when user is viewing it.
+                try {
+                    const settingsActive = document.getElementById('nav-settings')?.classList?.contains('active');
+                    if (settingsActive) {
+                        try { loadPathRules(); } catch (_) {}
+                        try { loadObservedPaths(); } catch (_) {}
+                    }
+                } catch (_) {}
                 
                 console.log('Metrics updated');
             } catch (error) {
@@ -4559,7 +4637,12 @@ ORDER BY converted_at DESC;</pre>
             const convRate = volume > 0 ? (totalOrders / volume) : 0;
 
             const sessionsSource = sessions.source ? String(sessions.source) : 'unknown';
-            const sessionsOk = sessionsSource === 'h2s_sessions';
+            const sessionsHasNumber = Number.isFinite(Number(sessions.total_sessions));
+            const sessionsReachable = sessionsHasNumber || sessionsSource !== 'unknown';
+            const sessionsOk = sessionsReachable && !sessions.warning;
+            const sessionsLabel = sessionsReachable
+                ? `${totalSessions.toLocaleString()}${sessionsSource !== 'unknown' ? ` • ${sessionsSource}` : ''}${sessions.warning ? ' • warn' : ''}`
+                : 'unavailable';
 
             const ordersFeedOk = !!ordersFeed && ordersFeed.ok === true;
             const ordersAll = ordersSummary ? toInt(ordersSummary.all_count, 0) : 0;
@@ -4648,7 +4731,7 @@ ORDER BY converted_at DESC;</pre>
             }
 
             const auditRows = [
-                { k: 'Sessions', v: sessionsSource, ok: sessionsOk },
+                { k: 'Sessions', v: sessionsLabel, ok: sessionsOk },
                 { k: 'Orders Feed', v: ordersFeedOk ? 'ok' : 'unavailable', ok: ordersFeedOk },
                 { k: 'Revenue/Orders', v: 'h2s_orders', ok: true },
                 { k: 'Funnel', v: 'observed events', ok: true },
@@ -4778,17 +4861,29 @@ ORDER BY converted_at DESC;</pre>
 
         async function loadOrdersFeed() {
             try {
+                try { setLivePill('orders', 'warn', 'Orders Feed', 'Loading latest orders…'); } catch (_) {}
                 const url = withFilters(`${API_BASE}?action=orders_feed&limit=200`);
                 const res = await fetch(url);
                 const json = await res.json();
                 const payload = (json && typeof json.orders_feed === 'object') ? json.orders_feed : (json || {});
 
                 dashboardData.orders_feed = payload;
+                try {
+                    const ok = !!payload && payload.ok === true;
+                    const state = ok ? 'ok' : 'bad';
+                    const title = ok ? 'Orders feed OK' : (payload && payload.error ? String(payload.error) : 'Orders feed unavailable');
+                    setLivePill('orders', state, 'Orders Feed', title);
+                    setLiveUpdatedNow();
+                } catch (_) {}
                 return payload;
             } catch (err) {
                 console.error('[OrdersFeed] Failed to fetch orders feed:', err);
                 dashboardData.orders_feed = { ok: false, error: (err && err.message) ? err.message : String(err) };
                 try { markApiUnreachable('OrdersFeed', err); } catch (_) {}
+                try {
+                    setLivePill('orders', 'bad', 'Orders Feed', (err && err.message) ? err.message : String(err));
+                    setLiveUpdatedNow();
+                } catch (_) {}
                 return null;
             }
         }
@@ -4796,6 +4891,12 @@ ORDER BY converted_at DESC;</pre>
         async function loadKPIs() {
             try {
                 console.log('[KPIs] Fetching revenue and cohorts data...');
+                try { setLivePill('kpis', 'warn', 'KPIs'); } catch (_) {}
+                try {
+                    setLivePill('sessions', 'warn', 'Sessions');
+                    setLivePill('revenue', 'warn', 'Revenue');
+                    setLivePill('cohorts', 'warn', 'Cohorts');
+                } catch (_) {}
                 
                 // Show loading state
                 renderKPIs([
@@ -4890,7 +4991,12 @@ ORDER BY converted_at DESC;</pre>
                 // Make sessions available to the Ops Dashboard (and other panels) as a single source of truth.
                 dashboardData.sessions = {
                     total_sessions: totalSessions,
-                    source: sessionsPayload.source || null,
+                    data_source: sessionsPayload.source || null,
+                    top_source: sessionsPayload.top_source || null,
+                    top_medium: sessionsPayload.top_medium || null,
+                    top_source_medium: sessionsPayload.top_source_medium || null,
+                    top_last_seen_at: sessionsPayload.top_last_seen_at || null,
+                    last_event_at: sessionsPayload.last_event_at || null,
                     warning: sessionsPayload.warning || sessionsRes.warning || null
                 };
                 // Access normalized properties directly (safe)
@@ -4900,8 +5006,17 @@ ORDER BY converted_at DESC;</pre>
                 
                 console.log('[KPIs] Calculated metrics:', { totalSessions, totalOrders, totalRevenue, avgOrderValue });
                 
-                const sessionsSourceLabel = dashboardData.sessions.source ? String(dashboardData.sessions.source) : '';
-                const sessionsSubtitle = sessionsSourceLabel ? `${timeRange} • ${sessionsSourceLabel}` : timeRange;
+                const topSrc = normalizeTrafficSourceLabel(sessionsPayload.top_source || '') || '';
+                const topMedRaw = typeof sessionsPayload.top_medium === 'string' ? sessionsPayload.top_medium.trim() : '';
+                const topMed = topMedRaw ? (topMedRaw.length <= 4 ? topMedRaw.toUpperCase() : (topMedRaw.charAt(0).toUpperCase() + topMedRaw.slice(1))) : '';
+                const topTrafficLabel = topSrc ? (topMed ? `${topSrc} / ${topMed}` : topSrc) : '';
+                const sessionsLastTs = sessionsPayload.top_last_seen_at || sessionsPayload.last_event_at || null;
+                const sessionsLastLabel = sessionsLastTs ? `Last: ${formatLocalDateTime(sessionsLastTs)}` : '';
+                const sessionsSubtitle = [
+                    timeRange,
+                    topTrafficLabel ? `Top: ${topTrafficLabel}` : '',
+                    sessionsLastLabel
+                ].filter(Boolean).join(' • ');
 
                 const kpis = [
                     {
@@ -4955,6 +5070,34 @@ ORDER BY converted_at DESC;</pre>
                 ];
 
                 renderKPIs(kpis);
+                try {
+                    const ok = !sessionsError && !revenueError && !cohortError;
+                    const state = ok ? 'ok' : 'bad';
+                    const title = ok
+                        ? `KPIs OK • sessions=${totalSessions} orders=${totalOrders}`
+                        : `KPIs error • sessions=${sessionsError ? 'err' : 'ok'} revenue=${revenueError ? 'err' : 'ok'} cohorts=${cohortError ? 'err' : 'ok'}`;
+                    setLivePill('kpis', state, 'KPIs', title);
+
+                    const sessionsState = sessionsError ? 'bad' : 'ok';
+                    const sessionsTitle = sessionsError
+                        ? 'Sessions endpoint error'
+                        : `Sessions OK • total_sessions=${totalSessions.toLocaleString()} • ${timeRange}`;
+                    setLivePill('sessions', sessionsState, 'Sessions', sessionsTitle);
+
+                    const revenueState = revenueError ? 'bad' : 'ok';
+                    const revenueTitle = revenueError
+                        ? 'Revenue endpoint error'
+                        : `Revenue OK • ${fmtCurrency(totalRevenue)} • orders=${totalOrders.toLocaleString()} • ${timeRange}`;
+                    setLivePill('revenue', revenueState, 'Revenue', revenueTitle);
+
+                    const cohortsState = cohortError ? 'bad' : 'ok';
+                    const cohortsTitle = cohortError
+                        ? 'Cohorts endpoint error'
+                        : `Cohorts OK • users=${cohortData.total_users.toLocaleString()} • customers=${(cohortData.user_cohorts.customer || 0).toLocaleString()} • ${timeRange}`;
+                    setLivePill('cohorts', cohortsState, 'Cohorts', cohortsTitle);
+
+                    setLiveUpdatedNow();
+                } catch (_) {}
             } catch (error) {
                 console.error('Error loading KPIs:', error);
                 console.error('Error details:', {
@@ -4970,6 +5113,13 @@ ORDER BY converted_at DESC;</pre>
                     { title: 'Total Users', value: '0', label: 'U', color: '#9C27B0' },
                     { title: 'Customers', value: '0', label: 'C', color: '#FF9800' }
                 ]);
+                try {
+                    setLivePill('kpis', 'bad', 'KPIs', (error && error.message) ? error.message : String(error));
+                    setLivePill('sessions', 'bad', 'Sessions', 'Sessions unavailable');
+                    setLivePill('revenue', 'bad', 'Revenue', 'Revenue unavailable');
+                    setLivePill('cohorts', 'bad', 'Cohorts', 'Cohorts unavailable');
+                    setLiveUpdatedNow();
+                } catch (_) {}
             }
         }
 
@@ -5003,6 +5153,7 @@ ORDER BY converted_at DESC;</pre>
                 const apiUrl = withFilters(`${API_BASE}?action=meta_pixel_events`);
                 console.log('Loading Meta Pixel data from:', apiUrl);
                 console.log('Time Range:', timeRange);
+                try { setLivePill('pixel', 'warn', 'Pixel'); } catch (_) {}
                 
                 // Update section header with time range
                 const headerTimeRange = document.getElementById('metaPixelTimeRange');
@@ -5039,6 +5190,11 @@ ORDER BY converted_at DESC;</pre>
                 
                 const summary = payload.summary;
                 const hasData = summary.total_events > 0;
+
+                try {
+                    setLivePill('pixel', 'ok', 'Pixel', `Pixel endpoint OK • total_events=${summary.total_events} • ${timeRange}`);
+                    setLiveUpdatedNow();
+                } catch (_) {}
                 
                 // Update KPI values - show FILTERED count for selected time range
                 const filteredTotal = summary.total_events; // Safe (0 if missing)
@@ -5344,6 +5500,7 @@ ORDER BY converted_at DESC;</pre>
         function renderAttribution(data) {
             const container = document.getElementById('tabContent-attribution');
             const tbody = document.getElementById('attributionTableBody');
+            const warningHost = document.getElementById('attributionWarningHost');
             
             if (!container || !tbody) return;
             
@@ -5354,6 +5511,7 @@ ORDER BY converted_at DESC;</pre>
             // This dashboard can legitimately be in a state where attribution isn't computed yet
             // (or the current payload simply doesn't include sources for this range).
             if (!hasSources) {
+                if (warningHost) warningHost.innerHTML = '';
                 tbody.innerHTML = `
                     <tr>
                         <td colspan="3" style="text-align:center; padding: 18px; color: var(--text-secondary);">
@@ -5378,33 +5536,19 @@ ORDER BY converted_at DESC;</pre>
 
             // WARNING STATE: If Direct / None is dominant, show the warning card
             if (isDirectDominant) {
-                container.innerHTML = `
-                    <div class="section-title">Traffic Sources (UTM)</div>
-                    <div style="background: #fff5f5; border: 1px solid #fc8181; border-radius: 12px; padding: 32px; margin-top: 16px; text-align: center; box-shadow: var(--shadow-sm);">
-                        <div style="font-size: 48px; margin-bottom: 16px;">⚠️</div>
-                        <div style="font-size: 20px; font-weight: 800; color: #c53030; margin-bottom: 8px;">Attribution Blind Spot Detected</div>
-                        <div style="font-size: 14px; font-weight: 600; color: #e53e3e; margin-bottom: 24px;">Direct / None = ${directPercentage.toFixed(0)}%</div>
-                        
-                        <p style="color: #4a5568; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto; line-height: 1.6;">
-                            Your pipeline is failing to capture or persist UTM parameters. 
-                            Users are arriving, but we don't know where from.
-                        </p>
-                        
-                        <div style="background: white; border: 1px solid #fed7d7; border-radius: 8px; padding: 24px; text-align: left; max-width: 500px; margin: 0 auto; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                            <div style="font-weight: 700; color: #c53030; margin-bottom: 16px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #fed7d7; padding-bottom: 8px;">Pipeline Diagnosis</div>
-                            <ul style="font-size: 14px; color: #2d3748; padding-left: 20px; margin: 0; line-height: 1.8;">
-                                <li><strong>Landing:</strong> Confirm <code>?utm_source=...</code> exists in URL.</li>
-                                <li><strong>Capture:</strong> Check local storage for <code>h2s_source_data</code>.</li>
-                                <li><strong>Persistence:</strong> Ensure UTMs survive page navigation.</li>
-                                <li><strong>Events:</strong> Verify API calls include <code>utm_source</code>.</li>
-                            </ul>
-                            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #edf2f7; font-size: 12px; color: #718096; text-align: center;">
-                                This warning will clear when Non-Direct traffic exceeds 10%.
+                if (warningHost) {
+                    warningHost.innerHTML = `
+                        <div style="background: #fff5f5; border: 1px solid #fc8181; border-radius: 12px; padding: 18px; margin: 12px 0 16px 0; box-shadow: var(--shadow-sm);">
+                            <div style="font-size: 14px; font-weight: 800; color: #c53030; margin-bottom: 6px;">Attribution Blind Spot Detected</div>
+                            <div style="font-size: 12px; font-weight: 700; color: #e53e3e; margin-bottom: 10px;">Direct / None = ${directPercentage.toFixed(0)}%</div>
+                            <div style="font-size: 13px; color: #4a5568; line-height: 1.55;">
+                                UTMs may not be getting captured/persisted. Confirm the landing URL contains <code>?utm_source=...</code> and that events include UTM fields.
                             </div>
                         </div>
-                    </div>
-                `;
-                return;
+                    `;
+                }
+            } else {
+                if (warningHost) warningHost.innerHTML = '';
             }
             
             // NORMAL STATE: Render the table (if valid data exists)
@@ -6718,11 +6862,13 @@ ORDER BY converted_at DESC;</pre>
                 const funnelUrl = withFilters(`${API_BASE}?action=funnel`);
                 console.log('Loading funnel data from:', funnelUrl);
                 let funnelRes;
+                let fetchOk = true;
                 try {
                     const r = await fetch(funnelUrl);
                     funnelRes = await r.json();
                 } catch (err) {
                     markApiUnreachable('Funnel', err);
+                    fetchOk = false;
                     funnelRes = {};
                 }
                 console.log('Funnel data loaded (raw):', funnelRes);
@@ -6730,6 +6876,26 @@ ORDER BY converted_at DESC;</pre>
                 // VALIDATE & NORMALIZE at boundary
                 const funnelData = SchemaValidator.validateFunnel(funnelRes.funnel || funnelRes);
                 console.log('Funnel data (normalized):', funnelData);
+
+                try {
+                    if (!fetchOk) {
+                        setLivePill('funnel', 'bad', 'Funnel', 'Funnel fetch failed');
+                        setLivePill('attrib', 'bad', 'Attribution', 'Funnel fetch failed');
+                    } else {
+                        const hasStageKeys = !!(funnelData && funnelData.stage_distribution && typeof funnelData.stage_distribution.visitor === 'number');
+                        const funnelOk = hasStageKeys;
+                        const funnelTitle = `Funnel computed • page_view=${toInt(funnelData.page_view, 0)} unique_sessions=${toInt(funnelData.unique_sessions, 0)} visitors=${toInt(funnelData.stage_distribution.visitor, 0)}`;
+                        setLivePill('funnel', funnelOk ? 'ok' : 'bad', 'Funnel', funnelTitle);
+
+                        const sourcesCount = (funnelData.sources && Array.isArray(funnelData.sources)) ? funnelData.sources.length : 0;
+                        const attribState = sourcesCount > 0 ? 'ok' : 'warn';
+                        const attribTitle = sourcesCount > 0
+                            ? `Attribution OK • sources=${sourcesCount}`
+                            : `Attribution empty • sources=${sourcesCount} (not necessarily broken)`;
+                        setLivePill('attrib', attribState, 'Attribution', attribTitle);
+                    }
+                    setLiveUpdatedNow();
+                } catch (_) {}
 
                 if (funnelRes.warning) {
                     showStatus(`Funnel: ${funnelRes.warning}`);
@@ -6757,6 +6923,11 @@ ORDER BY converted_at DESC;</pre>
                     message: error.message,
                     stack: error.stack
                 });
+                try {
+                    setLivePill('funnel', 'bad', 'Funnel', (error && error.message) ? error.message : String(error));
+                    setLivePill('attrib', 'bad', 'Attribution', 'Funnel unavailable');
+                    setLiveUpdatedNow();
+                } catch (_) {}
                 // Render error state
                 const container = document.getElementById('funnelVisualization');
                 if (container) {
@@ -7179,6 +7350,7 @@ ORDER BY converted_at DESC;</pre>
             }
             
             try {
+                try { resetLivePills(); } catch (_) {}
                 // Use silent refresh (no loading overlay)
                 await silentRefresh();
 
@@ -7524,8 +7696,21 @@ ORDER BY converted_at DESC;</pre>
             try {
                 listEl.innerHTML = '<div class="settings-empty">Loading rules…</div>';
                 
-                const response = await fetch(`${API_BASE}?action=path_rules&include_rules=1`);
+                const url = `${API_BASE}?action=path_rules&include_rules=1&_ts=${Date.now()}`;
+                const response = await fetch(url, {
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
                 const data = await response.json();
+
+                if (!response.ok || (data && data.ok === false)) {
+                    const msg = (data && data.error) ? String(data.error) : `Failed to load rules (${response.status})`;
+                    listEl.innerHTML = `<div class="settings-empty" style="color: var(--danger);">${escapeHtml(msg)}</div>`;
+                    return;
+                }
                 
                 const rules = data.path_rules || data.rules || [];
                 
@@ -7578,8 +7763,21 @@ ORDER BY converted_at DESC;</pre>
             try {
                 listEl.innerHTML = '<div class="settings-empty">Loading paths…</div>';
 
-                const response = await fetch(`${API_BASE}?action=observed_paths&include_rules=1&limit=200`);
+                const url = `${API_BASE}?action=observed_paths&include_rules=1&limit=200&_ts=${Date.now()}`;
+                const response = await fetch(url, {
+                    cache: 'no-store',
+                    headers: {
+                        'Cache-Control': 'no-cache',
+                        'Pragma': 'no-cache'
+                    }
+                });
                 const data = await response.json();
+
+                if (!response.ok || (data && data.ok === false)) {
+                    const msg = (data && data.error) ? String(data.error) : `Failed to load paths (${response.status})`;
+                    listEl.innerHTML = `<div class="settings-empty" style="color: var(--danger);">${escapeHtml(msg)}</div>`;
+                    return;
+                }
 
                 const payload = data.observed_paths || data.observedPaths || data;
                 const paths = (payload && payload.paths) ? payload.paths : (Array.isArray(payload) ? payload : []);

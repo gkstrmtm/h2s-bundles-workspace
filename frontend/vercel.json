@@ -26,6 +26,26 @@
       "destination": "https://h2s-backend.vercel.app/api/:path*"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/hub.html"
+    },
+    {
+      "source": "/hub",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/hub.html"
+    },
+    {
       "source": "/dash",
       "has": [
         {
@@ -33,7 +53,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash/(.*)",
@@ -43,7 +63,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dashboard",
@@ -53,7 +73,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash",
@@ -63,7 +83,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash/(.*)",
@@ -73,7 +93,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/Dash.html",
@@ -83,7 +103,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash.html",
@@ -93,7 +113,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "https://h2s-bundles-workspace.vercel.app/Dash.html"
+      "destination": "/dash.html"
     },
     {
       "source": "/dash.html",
@@ -128,6 +148,86 @@
         }
       ],
       "destination": "/funnel-track.html"
+    },
+    {
+      "source": "/library",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/deliverables.html"
+    },
+    {
+      "source": "/deliverables",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/deliverables.html"
+    },
+    {
+      "source": "/deliverables.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/deliverables.html"
+    },
+    {
+      "source": "/library/manifest.json",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/library/manifest.json"
+    },
+    {
+      "source": "/library/files/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/library/files/:path*"
+    },
+    {
+      "source": "/library/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/library/:path*"
+    },
+    {
+      "source": "/portal",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/portal.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/portal.html"
     },
     {
       "source": "/:path*",

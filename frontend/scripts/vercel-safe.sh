@@ -9,6 +9,9 @@ set -euo pipefail
 #   ./scripts/vercel-safe.sh --prod
 #   ./scripts/vercel-safe.sh --refresh-ca --prod
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+guard_script="$script_dir/portal-dash-guard.mjs"
+
 platform="$(uname -s 2>/dev/null || echo unknown)"
 case "${platform}" in
   Darwin*) is_macos=true ;;
@@ -21,6 +24,28 @@ if [[ "${1:-}" == "--refresh-ca" ]]; then
   shift
 fi
 
+if [[ "${H2S_SKIP_GUARDS:-}" != "1" ]]; then
+  if [[ -f "$guard_script" ]]; then
+    echo "[vercel-safe] Running pre-deploy guards" >&2
+    node "$guard_script" pre
+  else
+    echo "[vercel-safe] WARN: guard script not found at $guard_script (skipping)" >&2
+  fi
+else
+  echo "[vercel-safe] H2S_SKIP_GUARDS=1 set; skipping deploy guards" >&2
+fi
+
+if [[ "${H2S_SKIP_LIBRARY:-}" != "1" ]]; then
+  if [[ -f "$script_dir/generate-library-manifest.mjs" ]]; then
+    echo "[vercel-safe] Generating deliverables library" >&2
+    node "$script_dir/generate-library-manifest.mjs"
+  else
+    echo "[vercel-safe] WARN: library generator not found (skipping)" >&2
+  fi
+else
+  echo "[vercel-safe] H2S_SKIP_LIBRARY=1 set; skipping library generation" >&2
+fi
+
 cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/h2s"
 mkdir -p "$cache_root"
 
@@ -28,33 +53,40 @@ ca_file="$cache_root/macos-keychain-certs.pem"
 
 if ! $is_macos; then
   echo "[vercel-safe] Non-macOS (${platform}) detected; skipping Keychain CA export." >&2
-  exec vercel "$@"
-fi
+else
+  if $refresh || [[ ! -s "$ca_file" ]]; then
+    tmp="$(mktemp)"
+    # Ensure any exported CA bundle is not world-readable.
+    # (Certs aren't private keys, but corporate/root CAs still shouldn't be broadly exposed.)
+    umask 077
+    # System keychains (these calls can fail on some macOS setups; ignore and keep going).
+    security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$tmp" 2>/dev/null || true
+    security find-certificate -a -p /Library/Keychains/System.keychain >>"$tmp" 2>/dev/null || true
+    # Login keychain (where many corp/proxy roots are installed).
+    security find-certificate -a -p "$HOME/Library/Keychains/login.keychain-db" >>"$tmp" 2>/dev/null || true
 
-if $refresh || [[ ! -s "$ca_file" ]]; then
-  tmp="$(mktemp)"
-  # Ensure any exported CA bundle is not world-readable.
-  # (Certs aren't private keys, but corporate/root CAs still shouldn't be broadly exposed.)
-  umask 077
-  # System keychains (these calls can fail on some macOS setups; ignore and keep going).
-  security find-certificate -a -p /System/Library/Keychains/SystemRootCertificates.keychain >"$tmp" 2>/dev/null || true
-  security find-certificate -a -p /Library/Keychains/System.keychain >>"$tmp" 2>/dev/null || true
-  # Login keychain (where many corp/proxy roots are installed).
-  security find-certificate -a -p "$HOME/Library/Keychains/login.keychain-db" >>"$tmp" 2>/dev/null || true
+    if [[ ! -s "$tmp" ]]; then
+      echo "[vercel-safe] Could not export any certificates from Keychain." >&2
+      echo "[vercel-safe] Try running: security find-certificate -a -p /Library/Keychains/System.keychain" >&2
+      exit 2
+    fi
 
-  if [[ ! -s "$tmp" ]]; then
-    echo "[vercel-safe] Could not export any certificates from Keychain." >&2
-    echo "[vercel-safe] Try running: security find-certificate -a -p /Library/Keychains/System.keychain" >&2
-    exit 2
+    mv "$tmp" "$ca_file"
+    chmod 600 "$ca_file" 2>/dev/null || true
   fi
 
-  mv "$tmp" "$ca_file"
-  chmod 600 "$ca_file" 2>/dev/null || true
+  export NODE_EXTRA_CA_CERTS="$ca_file"
+
+  # Helpful visibility without being noisy.
+  echo "[vercel-safe] Using NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS" >&2
 fi
 
-export NODE_EXTRA_CA_CERTS="$ca_file"
+vercel "$@"
+rc=$?
 
-# Helpful visibility without being noisy.
-echo "[vercel-safe] Using NODE_EXTRA_CA_CERTS=$NODE_EXTRA_CA_CERTS" >&2
+if [[ $rc -eq 0 && "${H2S_SKIP_GUARDS:-}" != "1" && -f "$guard_script" ]]; then
+  echo "[vercel-safe] Running post-deploy guards" >&2
+  node "$guard_script" post
+fi
 
-exec vercel "$@"
+exit $rc

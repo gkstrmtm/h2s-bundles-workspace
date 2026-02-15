@@ -56,6 +56,107 @@ function extractMetadataType(md: any) {
   return safeLower((obj as any).type || (obj as any).kind || (obj as any).deliverableType || '');
 }
 
+function extractCustomerPriceFromText(text: any): number | null {
+  const s = safeTrim(text);
+  if (!s) return null;
+  try {
+    const m = s.match(/\bCustomer\s*Price\s*:\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i);
+    if (!m || !m[1]) return null;
+    const n = Number(String(m[1]).replace(/,/g, ''));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractServicesCountFromText(text: any): number | null {
+  const s = safeTrim(text);
+  if (!s) return null;
+  try {
+    const m = s.match(/\bServices\s*:\s*([\s\S]*?)(?=\n\s*(Customer\s*Price\s*:|Tech\s*Payout\s*:|Profit\s*:|Margin\s*:|Standards\s*Status\s*:|Headline\s*:|Promise\s*:|$))/i);
+    const block = safeTrim(m && m[1] ? m[1] : '');
+    if (!block) return null;
+    const lines = block
+      .split(/\r?\n/)
+      .map((x) => safeTrim(x).replace(/^[-*•\d.\)\s]+/, ''))
+      .filter(Boolean);
+    return lines.length ? lines.length : null;
+  } catch {
+    return null;
+  }
+}
+
+function computeOfferDataQuality(row: any, briefExists: boolean) {
+  let ctx: any = row ? (row.Message_Context || row.message_context || row.messageContext) : null;
+  ctx = parseMaybeJson(ctx) || ctx;
+  if (!ctx || typeof ctx !== 'object') ctx = {};
+
+  const ob = parseMaybeJson((ctx as any).offer_builder || (ctx as any).offerBuilder) || (ctx as any).offer_builder || (ctx as any).offerBuilder || {};
+  const obObj: any = ob && typeof ob === 'object' ? ob : {};
+
+  const name = safeTrim(
+    (ctx as any).offerName ||
+      (ctx as any).offer_name ||
+      (ctx as any).name ||
+      (ctx as any).title ||
+      obObj.name ||
+      (row && (row.Offer_Name || row.offerName || row.name || row.Title))
+  );
+
+  const lineItems = Array.isArray(obObj.lineItems) ? obObj.lineItems : [];
+  const pricedLineItems = lineItems.filter((it: any) => {
+    const qty = Number(it && it.qty);
+    const unit = Number(
+      it && it.baseUnitPrice != null ? it.baseUnitPrice : it && it.unitPrice != null ? it.unitPrice : 0
+    );
+    return Number.isFinite(qty) && Number.isFinite(unit) && qty > 0 && unit > 0;
+  });
+
+  const legacyDesc =
+    (ctx as any)?.latest_offer_brief?.metadata?.description ||
+    (ctx as any)?.latest_offer_brief?.Metadata?.description ||
+    (ctx as any)?.latest_offer_brief?.description ||
+    (ctx as any)?.latestOfferBrief?.metadata?.description ||
+    null;
+
+  const inferredCustomerPrice = extractCustomerPriceFromText(legacyDesc);
+  const inferredServicesCount = extractServicesCountFromText(legacyDesc);
+
+  const issues: string[] = [];
+  if (!name) issues.push('missing_name');
+  if (!lineItems.length) issues.push('missing_line_items');
+  if (lineItems.length && pricedLineItems.length === 0) issues.push('missing_priced_line_item');
+  if (!briefExists && !safeTrim(legacyDesc)) issues.push('missing_offer_brief');
+
+  const ok = issues.length === 0;
+
+  const summaryParts: string[] = [];
+  if (ok) {
+    summaryParts.push('Complete snapshot');
+  } else {
+    summaryParts.push('Incomplete snapshot');
+    if (issues.includes('missing_line_items')) summaryParts.push('missing services/line items');
+    else if (issues.includes('missing_priced_line_item')) summaryParts.push('missing pricing');
+    if (issues.includes('missing_offer_brief')) summaryParts.push('no Offer Brief linked');
+    if (issues.includes('missing_name')) summaryParts.push('missing name');
+  }
+
+  const notes: string[] = [];
+  if (!ok && inferredCustomerPrice) notes.push(`Offer Brief text suggests Customer Price $${inferredCustomerPrice.toFixed(0)}`);
+  if (!ok && inferredServicesCount) notes.push(`Offer Brief text suggests ~${inferredServicesCount} service line(s)`);
+
+  return {
+    ok,
+    issues,
+    summary: summaryParts.join(' • '),
+    inferred: {
+      customerPrice: inferredCustomerPrice,
+      servicesCount: inferredServicesCount,
+    },
+    notes,
+  };
+}
+
 function isOffersSchemaMismatchError(err: any) {
   const msg = String(err?.message || '').toLowerCase();
   return (
@@ -63,6 +164,11 @@ function isOffersSchemaMismatchError(err: any) {
     (msg.includes('column') && msg.includes('does not exist')) ||
     msg.includes('invalid input syntax for type uuid')
   );
+}
+
+function isInvalidApiKeyError(err: any) {
+  const msg = String(err?.message || '').toLowerCase();
+  return msg.includes('invalid api key') || msg.includes('invalid apikey');
 }
 
 function getOffersDbFallback() {
@@ -130,8 +236,23 @@ export async function GET(request: NextRequest) {
   };
 
   let { data: offers, error: offersError } = await buildOffersQuery(primary);
-  if (offersError && isOffersSchemaMismatchError(offersError)) {
+  if (offersError && (isOffersSchemaMismatchError(offersError) || isInvalidApiKeyError(offersError))) {
+    const primaryErr = offersError;
     ({ data: offers, error: offersError } = await buildOffersQuery(fallback));
+    if (offersError && isInvalidApiKeyError(primaryErr)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'Offers DB auth failed (invalid API key). Your SUPABASE_URL_MGMT does not match SUPABASE_SERVICE_KEY_MGMT/SUPABASE_SERVICE_ROLE_KEY_MGMT. Fix MGMT env vars, then retry.',
+          details: {
+            primaryError: primaryErr.message || String(primaryErr),
+            fallbackError: offersError.message || String(offersError)
+          }
+        },
+        { status: 500, headers: corsHeaders(request) }
+      );
+    }
   }
 
   if (offersError) {
@@ -300,9 +421,11 @@ export async function GET(request: NextRequest) {
 
   const offersWithBriefExists = (normalizedOffers || []).map((o: any) => {
     const id = safeTrim(o?.Offer_ID || o?.offer_id);
+    const briefExists = id ? briefOfferIds.has(id) : false;
     return {
       ...o,
-      briefExists: id ? briefOfferIds.has(id) : false,
+      briefExists,
+      dataQuality: computeOfferDataQuality(o, briefExists),
     };
   });
 

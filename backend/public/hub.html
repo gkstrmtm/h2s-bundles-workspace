@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>H2S Hub</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: rgba(255,255,255,0.06);
+      --card2: rgba(255,255,255,0.09);
+      --text: #e5e7eb;
+      --muted: rgba(229,231,235,0.72);
+      --border: rgba(148,163,184,0.22);
+      --accent: #60a5fa;
+    }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(1200px 800px at 20% 0%, rgba(96,165,250,0.18), transparent 55%),
+                  radial-gradient(900px 700px at 100% 40%, rgba(34,197,94,0.12), transparent 55%),
+                  var(--bg);
+      color: var(--text);
+    }
+
+    .wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 48px; }
+
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 10px 2px 18px;
+    }
+
+    h1 { margin: 0; font-size: 22px; letter-spacing: 0.2px; }
+    .sub { margin: 0; color: var(--muted); font-size: 13px; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+
+    .card {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--card), rgba(255,255,255,0.03));
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    }
+
+    .card:hover { border-color: rgba(96,165,250,0.45); background: linear-gradient(180deg, var(--card2), rgba(255,255,255,0.04)); }
+
+    .card h2 { margin: 0 0 6px; font-size: 15px; }
+    .card p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 11px;
+      border-radius: 10px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(15,23,42,0.55);
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    a.btn.primary { border-color: rgba(96,165,250,0.35); background: rgba(96,165,250,0.14); }
+    a.btn:hover { border-color: rgba(96,165,250,0.55); }
+
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.22);
+      color: var(--muted);
+    }
+
+    footer { margin-top: 14px; color: var(--muted); font-size: 12px; padding: 0 2px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>H2S Hub</h1>
+        <p class="sub">One bookmark → everything.</p>
+      </div>
+      <span class="pill">portal.home2smart.com</span>
+    </header>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Hiring Dashboard</h2>
+        <p>Hiring pipeline + Proof Packs (same dashboard).</p>
+        <div class="actions">
+          <a class="btn primary" href="/dash" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Funnel Track</h2>
+        <p>Revenue + funnel analytics (supports <code>exclude_test</code>).</p>
+        <div class="actions">
+          <a class="btn primary" href="/funnel-track" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Portal</h2>
+        <p>Ops portal (jobs, dispatch, admin tools).</p>
+        <div class="actions">
+          <a class="btn primary" href="/portal" target="_blank" rel="noopener">Open</a>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      <div style="margin-bottom: 10px;">
+        <strong>Direct paths on this domain</strong>
+        <div style="margin-top: 6px; line-height: 1.8;">
+          <div><a href="/" style="color: inherit;">/</a> → hub</div>
+          <div><a href="/hub" style="color: inherit;">/hub</a> → hub</div>
+          <div><a href="/dash" style="color: inherit;">/dash</a> and <a href="/dashboard" style="color: inherit;">/dashboard</a> → hiring dashboard</div>
+          <div><a href="/funnel-track" style="color: inherit;">/funnel-track</a> → funnel tracking</div>
+          <div><a href="/portal" style="color: inherit;">/portal</a> → ops portal</div>
+        </div>
+      </div>
+      Tip: these are hosted routes (aliases), not raw file links.
+    </footer>
+  </div>
+</body>
+</html>

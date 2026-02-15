@@ -1,15 +1,17 @@
-# Deploys the latest Dash.html behind the stable portal alias.
-# Goal: mitigate live caching / rendering issues by hosting the exact Dash.html on the portal subdomain.
-# Route: https://portal.home2smart.com/- (and /dash)
+# Deploys the frontend Vercel project and verifies the portal alias serves the canonical Dash.html.
+# Canonical portal dashboard is served via host-based rewrites to:
+#   https://h2s-bundles-workspace.vercel.app/Dash.html
+# Verification uses the meta marker:
+#   <meta name="h2s-source-file" content="Dash.html">
 
 [CmdletBinding()]
 param(
   [string]$PortalHost = 'portal.home2smart.com',
-  [string]$PortalPath = '/-',
+  [string]$ShopHost = 'shop.home2smart.com',
   [int]$MaxRetries = 12,
   [int]$RetryDelaySeconds = 5,
   [switch]$SkipDeploy,
-  [switch]$KeepDashCopy
+  [switch]$SkipAlias
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,52 +52,87 @@ function Get-HttpContent([string]$uri) {
   }
 }
 
+function Get-VercelDeploymentUrlFromText([string]$text) {
+  if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+  $vercelUrls = [regex]::Matches($text, 'https:\/\/[a-zA-Z0-9-]+\.vercel\.app')
+  if ($vercelUrls.Count -le 0) { return $null }
+  return $vercelUrls[$vercelUrls.Count - 1].Value
+}
+
+function Set-VercelAlias([string]$deploymentUrl, [string]$aliasHost) {
+  if ([string]::IsNullOrWhiteSpace($deploymentUrl)) { Fail 'Missing deployment URL for alias set' }
+  if ([string]::IsNullOrWhiteSpace($aliasHost)) { Fail 'Missing alias host for alias set' }
+
+  $deploymentHost = ($deploymentUrl -replace '^https?://', '').TrimEnd('/')
+  if ([string]::IsNullOrWhiteSpace($deploymentHost)) { Fail ("Invalid deployment URL: {0}" -f $deploymentUrl) }
+
+  Write-Host ("  Setting alias: {0} -> {1}" -f $aliasHost, $deploymentHost) -ForegroundColor Yellow
+  $oldEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $out = cmd /c "echo y | vercel alias set $deploymentHost $aliasHost" 2>&1
+  $ErrorActionPreference = $oldEap
+  $text = ($out | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0) {
+    if ($text) { Write-Host $text }
+    Fail ("vercel alias set failed for {0} (exit {1})" -f $aliasHost, $LASTEXITCODE)
+  }
+  if ($text) { Write-Host $text -ForegroundColor DarkGray }
+  Write-Host ("  OK - alias updated: {0}" -f $aliasHost) -ForegroundColor Green
+}
+
 $root = (Get-Location).Path
-$dashSource = Join-Path $root 'Dash.html'
 $designCssSource = Join-Path $root 'dashboard-design-system.css'
 $frontendDir = Join-Path $root 'frontend'
-$dashDest = Join-Path $frontendDir 'dash.html'
 $designCssDest = Join-Path $frontendDir 'dashboard-design-system.css'
 $vercelConfig = Join-Path $frontendDir 'vercel.json'
+$guardScript = Join-Path $frontendDir 'scripts' | Join-Path -ChildPath 'portal-dash-guard.mjs'
 
 Write-Host "" 
 Write-Host "  DEPLOY FRONTEND (PORTAL ALIAS)" -ForegroundColor Cyan
-Write-Host "  Hosting Dash.html at https://$PortalHost$PortalPath" -ForegroundColor Gray
+Write-Host "  Verifying https://$PortalHost/dash serves canonical Dash.html" -ForegroundColor Gray
 Write-Host "" 
 
 Write-Step "[1/4] Validating inputs + workspace"
-if (!(Test-Path $dashSource)) { Fail "Dash.html not found at $dashSource" }
 if (!(Test-Path $designCssSource)) { Fail "dashboard-design-system.css not found at $designCssSource" }
 if (!(Test-Path $frontendDir)) { Fail "frontend/ directory not found at $frontendDir" }
 if (!(Test-Path $vercelConfig)) { Fail "frontend/vercel.json not found at $vercelConfig" }
+if (!(Test-Path $guardScript)) { Fail "Guard script not found at $guardScript" }
 
-# Sanity check that routing exists (we patch it in repo, but guard anyway)
+# Ensure the canonical served file is the deflated one (prevents VS Code crashes + giant deploys)
+$dashEntry = Join-Path $frontendDir 'dash.html'
+if (!(Test-Path $dashEntry)) { Fail "frontend/dash.html not found at $dashEntry" }
 try {
-  $cfg = Get-Content $vercelConfig -Raw
-  if ($cfg -notmatch '"source"\s*:\s*"/\-"' -or $cfg -notmatch '"destination"\s*:\s*"/dash\.html"') {
-    Fail "frontend/vercel.json is missing the /- -> /dash.html rewrite."
+  $dashLines = (Get-Content $dashEntry | Measure-Object -Line).Lines
+  if ($dashLines -gt 8000) {
+    Fail "frontend/dash.html is too large ($dashLines lines). Canonical /dash serves dash.html; keep it deflated (external dash.css + dash.js)."
   }
-  if ($cfg -notmatch '"source"\s*:\s*"/dash"' -or $cfg -notmatch '"destination"\s*:\s*"/dash\.html"') {
-    Fail "frontend/vercel.json is missing the /dash -> /dash.html rewrite."
+  $dashRaw = Get-Content $dashEntry -Raw
+  if ($dashRaw -notmatch '\.\/dash\.css' -or $dashRaw -notmatch '\.\/dash\.js') {
+    Fail "frontend/dash.html does not appear to reference ./dash.css and ./dash.js. Deflate the HTML before deploying."
   }
 } catch {
-  Fail "Could not read/parse frontend/vercel.json: $_"
+  Fail "Could not validate frontend/dash.html size/refs: $_"
 }
 
-Write-Step "[2/4] Syncing Dash.html -> frontend/dash.html (deploy artifact)"
+Write-Step "[2/4] Running canonical Dash guard (pre)"
 try {
-  $content = Get-Content $dashSource -Raw
-  if ($content -notmatch 'proofpacks-pane') {
-    Write-Host "  WARN: Could not find 'proofpacks-pane' marker; verification may be weaker." -ForegroundColor Yellow
+  Push-Location
+  Set-Location $frontendDir
+  $oldEap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  $out = cmd /c node .\scripts\portal-dash-guard.mjs pre 2>&1
+  $ErrorActionPreference = $oldEap
+  $text = ($out | Out-String)
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host $text
+    Fail "Pre-deploy guard failed. Fix frontend/vercel.json routing before deploying."
   }
-
-  # Write exact content (UTF-8) so Vercel serves the current implementation
-  Set-Content -Path $dashDest -Value $content -NoNewline -Encoding utf8
-  Write-Host "  OK - Wrote: $dashDest" -ForegroundColor Green
-} catch {
-  Fail "Failed to write frontend/dash.html: $_"
+  Write-Host $text.Trim() -ForegroundColor DarkGray
+} finally {
+  Pop-Location
 }
 
+Write-Step "[2/4] Syncing dashboard-design-system.css into frontend/"
 try {
   Copy-Item -Path $designCssSource -Destination $designCssDest -Force
   Write-Host "  OK - Synced: $designCssDest" -ForegroundColor Green
@@ -133,82 +170,45 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "  OK - Deploy command finished" -ForegroundColor Green
 
-# Try to extract the Vercel production URL for immediate verification
-$prodUrl = ''
-try {
-  $m = [regex]::Match($deployText, 'Production:\s+(https?://\S+)', 'IgnoreCase')
-  if ($m.Success) { $prodUrl = $m.Groups[1].Value.Trim() }
-} catch {}
-
-Write-Step "[4/4] Verifying live alias"
-
-function Normalize-Path([string]$p) {
-  $x = [string]$p
-  if ([string]::IsNullOrWhiteSpace($x)) { return '/' }
-  if (-not $x.StartsWith('/')) { $x = '/' + $x }
-  return $x
-}
-
-$pathsToCheck = @(
-  (Normalize-Path $PortalPath),
-  '/dash',
-  '/dashboard'
-) | Select-Object -Unique
-
-$urlsToCheck = @()
-foreach ($p in $pathsToCheck) {
-  $urlsToCheck += ('https://' + $PortalHost + $p)
-}
-
-if (-not [string]::IsNullOrWhiteSpace($prodUrl)) {
-  foreach ($p in $pathsToCheck) {
-    $urlsToCheck += ($prodUrl.TrimEnd('/') + $p)
+if (-not $SkipAlias) {
+  Write-Step "[3.5/4] Syncing production aliases to this deployment"
+  $deployUrl = Get-VercelDeploymentUrlFromText $deployText
+  if (-not $deployUrl) {
+    Write-Host $deployText.Trim() -ForegroundColor DarkGray
+    Fail 'Could not determine Vercel deployment URL from deploy output; cannot set aliases. Re-run with -SkipAlias to bypass.'
   }
-  $urlsToCheck = $urlsToCheck | Select-Object -Unique
+
+  # Ensure both portal + shop are pinned to the exact deployment we just published.
+  Set-VercelAlias -deploymentUrl $deployUrl -aliasHost $PortalHost
+  Set-VercelAlias -deploymentUrl $deployUrl -aliasHost $ShopHost
+} else {
+  Write-Host "`nSkipAlias specified; not updating vercel aliases." -ForegroundColor Yellow
 }
+
+Write-Step "[4/4] Verifying live portal dash (post-deploy guard)"
 
 for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
-  foreach ($url in $urlsToCheck) {
-    Write-Host ("Attempt {0}/{1} - {2}" -f $attempt, $MaxRetries, $url) -NoNewline
-    $t = [int][double]::Parse((Get-Date -UFormat %s))
-    $probeUrl = $url + '?t=' + $t
-    $r = Get-HttpContent $probeUrl
-
-    $status = $r.status
-    $live = [string]$r.content
-
-    $ok = ($live -match 'proofpacks-pane' -or $live -match 'id="proofpacks-pane"')
-    if ($ok) {
-      Write-Host (" OK (HTTP {0})" -f $status) -ForegroundColor Green
-      Write-Host ("`nVERIFIED: Dash.html is live at {0}" -f $url) -ForegroundColor Green
-
-      if (-not $KeepDashCopy) {
-        Remove-Item -Force $dashDest -ErrorAction SilentlyContinue
-        Remove-Item -Force $designCssDest -ErrorAction SilentlyContinue
-        Write-Host "  OK - Cleaned up frontend/dash.html" -ForegroundColor DarkGray
-      }
-
+  Write-Host ("Attempt {0}/{1} - https://{2}/dash" -f $attempt, $MaxRetries, $PortalHost)
+  try {
+    Push-Location
+    Set-Location $frontendDir
+    $oldEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $out = cmd /c node .\scripts\portal-dash-guard.mjs post 2>&1
+    $ErrorActionPreference = $oldEap
+    $text = ($out | Out-String)
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host $text.Trim() -ForegroundColor Green
       exit 0
     }
-
-    if ($status -gt 0) {
-      Write-Host (" HTTP {0}" -f $status) -ForegroundColor Yellow
-    } else {
-      Write-Host " network/TLS error" -ForegroundColor Yellow
-    }
+    Write-Host $text.Trim() -ForegroundColor Yellow
+  } catch {
+    Write-Host ("WARN: guard check errored: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+  } finally {
+    Pop-Location
   }
 
   Start-Sleep -Seconds $RetryDelaySeconds
 }
 
-Write-Host "`nVERIFICATION TIMED OUT" -ForegroundColor Red
-Write-Host "- The deployment may still be propagating or cached." -ForegroundColor Gray
-Write-Host "- Try incognito and confirm one of:" -ForegroundColor Gray
-foreach ($u in $urlsToCheck) { Write-Host ("  - " + $u) -ForegroundColor Gray }
-
-if (-not $KeepDashCopy) {
-  Remove-Item -Force $dashDest -ErrorAction SilentlyContinue
-  Remove-Item -Force $designCssDest -ErrorAction SilentlyContinue
-}
-
-exit 1
+Fail "Post-deploy verification timed out: portal /dash did not confirm canonical Dash.html"

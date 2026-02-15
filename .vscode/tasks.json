@@ -4,18 +4,18 @@
     {
       "label": "Deploy Frontend (safe TLS)",
       "type": "shell",
-      "command": "./scripts/vercel-safe.sh --prod --yes",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-frontend-safe.ps1",
       "options": {
-        "cwd": "${workspaceFolder}/frontend"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },
     {
       "label": "Deploy Frontend (refresh CA + safe TLS)",
       "type": "shell",
-      "command": "./scripts/vercel-safe.sh --refresh-ca --prod --yes",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-frontend-safe.ps1",
       "options": {
-        "cwd": "${workspaceFolder}/frontend"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },

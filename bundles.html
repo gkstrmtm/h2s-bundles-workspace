@@ -135,6 +135,8 @@ body{background:#fff;}
 <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
+
+<link rel="preload" as="image" href="https://ulbzmgmxrqyipclrbohi.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp" type="image/webp">
 <link rel="dns-prefetch" href="https://connect.facebook.net">
 <link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
@@ -154,14 +156,30 @@ body{background:#fff;}
 <!-- Meta Pixel - Deferred (non-blocking) -->
 <script>
 (function(){
+  var started = false;
   function initPixel(){
-    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '2384221445259822');
-    fbq('track', 'PageView');
-    window.__H2S_FB_INIT__ = true;
+    if (started || window.__H2S_FB_INIT__) return;
+    started = true;
+    try {
+      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '2384221445259822');
+      fbq('track', 'PageView');
+      window.__H2S_FB_INIT__ = true;
+    } catch(_e) {}
   }
-  // Load after page interactive
-  if(document.readyState==='complete'){initPixel();}else{window.addEventListener('load',initPixel,{once:true});}
+
+  function scheduleInit(){
+    if (window.__H2S_FB_INIT__) return;
+    var run = function(){ initPixel(); };
+    if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 8000 });
+    else setTimeout(run, 8000);
+  }
+
+  // Keep early interactivity clean: load after first interaction OR as a late fallback.
+  ['pointerdown','touchstart','keydown','scroll'].forEach(function(evt){
+    window.addEventListener(evt, scheduleInit, { once: true, passive: true });
+  });
+  window.addEventListener('load', function(){ setTimeout(scheduleInit, 8000); }, { once: true });
 })();
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=2384221445259822&ev=PageView&noscript=1"/></noscript>
@@ -214,6 +232,7 @@ img, video { max-width: 100%; height: auto; }
 }
 
 :root {
+  --hero-bg-url: url("https://ulbzmgmxrqyipclrbohi.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp");
   --cobalt: #0a2a5a;
   --azure: #1493ff;
   --ink: #0b1420;
@@ -1194,6 +1213,8 @@ body.modal-open {
 #tv.section,
 #security.section {
   overflow: visible;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 1600px;
 }
 
 .section::before {
@@ -1782,6 +1803,8 @@ body.modal-open {
   background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
   padding: 80px 20px;
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 900px;
 }
 
 .why-order-inner {
@@ -1968,6 +1991,8 @@ body.modal-open {
 .faq-section {
   background: #fff;
   padding: 80px 20px;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 900px;
 }
 
 .faq-inner {
@@ -2052,6 +2077,8 @@ body.modal-open {
   color: #fff;
   position: relative;
   overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 600px;
 }
 
 .final-cta-section::before {
