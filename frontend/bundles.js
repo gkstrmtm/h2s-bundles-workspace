@@ -1637,11 +1637,46 @@ async function renderShopSuccessView() {
   
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id') || params.get('stripe_session_id') || '';
-  
+
+  function hideSuccessSchedulingUI(){
+    try {
+      const cal = byId('calendarWidget');
+      if (cal) cal.style.display = 'none';
+      const tw = byId('timeWindowSection');
+      if (tw) tw.style.display = 'none';
+      const btn = byId('confirmApptBtn');
+      if (btn) btn.style.display = 'none';
+    } catch(_e) {}
+  }
+
+  function setSuccessScheduleSummary(sel){
+    try {
+      const summary = byId('selectionSummary');
+      const msg = byId('schedMsg');
+      if (!summary && !msg) return;
+
+      const date = sel && sel.date ? String(sel.date) : '';
+      const time = sel && sel.time ? String(sel.time) : '';
+      if (date && time) {
+        let niceDate = date;
+        try {
+          const d = new Date(date + 'T12:00:00');
+          niceDate = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+        } catch(_e) {}
+        if (summary) summary.innerHTML = `<span style="color:#059669; font-weight:800;">Scheduled:</span> ${niceDate} @ ${time}`;
+        if (msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Appointment locked in at checkout.</span>';
+      } else {
+        if (summary) summary.innerHTML = '<span style="color:#0f172a; font-weight:800;">Next:</span> We\'ll confirm your install details.';
+        if (msg) msg.innerHTML = '<span style="color:#64748b;">Need to change your install time? Call (864) 528-1475.</span>';
+      }
+    } catch(_e) {}
+  }
+
+  // Never schedule after payment.
+  hideSuccessSchedulingUI();
+
   // Hydrate immediately - no delays, no animation frames
   if (sessionId) {
-    loadCalendarInteractive(params, sessionId);
-    
     // Fetch order data for hydration
     const cacheKey = `h2s_order_${sessionId}`;
     const cached = sessionStorage.getItem(cacheKey);
@@ -1655,27 +1690,23 @@ async function renderShopSuccessView() {
       if(itemsEl) itemsEl.textContent = order.order_summary || order.service_name || 'Home2Smart Bundle Service';
       window.__currentOrderData = order;
 
-      // If a time was already confirmed before payment, show it immediately.
+      // Show scheduled time if we have it (but no interactive scheduling UI).
+      let selection = null;
       try {
-        const raw = sessionStorage.getItem(`h2s_scheduled_selection_${sessionId}`);
-        if(raw) {
-          const sel = JSON.parse(raw);
-          if(sel && sel.date && sel.time) {
-            window.selectedDate = sel.date;
-            window.selectedWindow = sel.time;
-            try { updateSummary(); } catch(_e) {}
-            const msg = byId('schedMsg');
-            if(msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
-            const btn = byId('confirmApptBtn');
-            if(btn) {
-              btn.innerText = 'Confirmed ✓';
-              btn.disabled = true;
-              btn.classList.remove('active');
-              btn.style.background = '#059669';
-            }
-          }
-        }
+        const raw = sessionStorage.getItem(`h2s_scheduled_selection_${sessionId}`) || localStorage.getItem(`h2s_scheduled_selection_${sessionId}`);
+        if (raw) selection = JSON.parse(raw);
       } catch(_e) {}
+
+      if (!selection || !selection.date || !selection.time) {
+        try {
+          const metaRaw = order && (order.metadata_json || order.metadata);
+          const metaObj = (typeof metaRaw === 'string') ? JSON.parse(metaRaw) : (metaRaw || {});
+          const d = (order.delivery_date || metaObj.delivery_date || metaObj.install_date || '').toString().trim();
+          const t = (order.delivery_time || metaObj.delivery_time || metaObj.install_window || '').toString().trim();
+          if (d && t) selection = { date: d, time: t };
+        } catch(_e) {}
+      }
+      setSuccessScheduleSummary(selection);
     };
 
     if (cached) {
@@ -5243,6 +5274,61 @@ function h2sCoCalendarInit(opts){
   checkSubmitLocal();
 }
 
+async function h2sCoScheduleAppointmentWithRetries({ orderKey, deliveryDate, deliveryTime, maxAttempts = 5 }){
+  const key = String(orderKey || '').trim();
+  if (!key) throw new Error('Missing order/session key');
+  const d = String(deliveryDate || '').trim();
+  const t = String(deliveryTime || '').trim();
+  if (!d || !t) throw new Error('Missing date/time');
+
+  let attempt = 0;
+  let lastErr = null;
+
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: key,
+          delivery_date: d,
+          delivery_time: t
+        })
+      });
+
+      let result = null;
+      try { result = await response.json(); } catch(_e) { result = null; }
+
+      if (response.ok && result && result.ok) return result;
+
+      const msg = (result && (result.error || result.message)) ? String(result.error || result.message) : `HTTP ${response.status}`;
+      const err = new Error(msg);
+      err.status = response.status;
+      err.error_code = result && result.error_code ? result.error_code : null;
+      lastErr = err;
+
+      // If the order row isn't immediately available (eventual consistency), retry quickly.
+      if (response.status === 404) {
+        await new Promise(r => setTimeout(r, 450 * attempt));
+        continue;
+      }
+
+      // Slot is full: do not auto-retry.
+      if (response.status === 409) throw err;
+
+      // Other errors: short backoff then retry a couple times.
+      await new Promise(r => setTimeout(r, 350 * attempt));
+    } catch(e) {
+      lastErr = e;
+      if (e && e.status === 409) throw e;
+      await new Promise(r => setTimeout(r, 350 * attempt));
+    }
+  }
+
+  throw lastErr || new Error('Failed to schedule');
+}
+
 window.handleCheckoutBackToIntake = function(){
   h2sCoClearError();
   h2sCoSetStep('intake');
@@ -5375,65 +5461,52 @@ window.handleCheckoutContinue = async function(){
           }
 
           try {
-            const orderData2 = window.__currentOrderData || {};
-            const payload2 = {
-              session_id: window.__sessionId,
-              order_id: orderData2.order_id,
-              delivery_date: calendarState.selectedDate,
-              delivery_time: calendarState.selectedWindow,
-              customer_name: orderData2.customer_name,
-              customer_email: orderData2.customer_email,
-              customer_phone: orderData2.customer_phone,
-              service_address: orderData2.service_address,
-              service_city: orderData2.service_city,
-              service_state: orderData2.service_state,
-              service_zip: orderData2.service_zip,
-              service_name: orderData2.service_name,
-              order_total: orderData2.order_total,
-              order_subtotal: orderData2.order_subtotal,
-              items_json: orderData2.items_json,
-              metadata: orderData2.metadata
-            };
+            const sessionKey = String(window.__sessionId || '').trim();
+            const selectedDate = String(calendarState.selectedDate || '').trim();
+            const selectedWindow = String(calendarState.selectedWindow || '').trim();
+            if (!sessionKey) throw new Error('Missing checkout session. Please try again.');
+            if (!selectedDate || !selectedWindow) throw new Error('Please select a date and time window.');
 
-            console.log('[Schedule] Sending payload:', payload2);
-            const response = await fetch('https://h2s-backend.vercel.app/api/schedule-appointment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload2)
+            const result = await h2sCoScheduleAppointmentWithRetries({
+              orderKey: sessionKey,
+              deliveryDate: selectedDate,
+              deliveryTime: selectedWindow,
+              maxAttempts: 5
             });
 
-            const result = await response.json();
-            if (response.ok && result.ok) {
+            if (result && result.ok) {
               if(confirmBtn) {
                 confirmBtn.innerText = 'Confirmed ✓';
                 confirmBtn.style.background = '#059669';
               }
               const msg = byId('coSchedMsg');
-              if(msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Scheduled! Check your email.</span>';
+              if(msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Appointment confirmed. You can pay now.</span>';
 
               try {
-                sessionStorage.setItem(`h2s_scheduled_selection_${window.__sessionId}`,
-                  JSON.stringify({ date: calendarState.selectedDate, time: calendarState.selectedWindow, job_id: result.job_id, order_id: orderData2.order_id })
-                );
+                const sel = { date: selectedDate, time: selectedWindow, job_id: result.job_id || null, order_id: result.order_id || null, session_id: sessionKey };
+                sessionStorage.setItem(`h2s_scheduled_selection_${sessionKey}`, JSON.stringify(sel));
+                localStorage.setItem(`h2s_scheduled_selection_${sessionKey}`, JSON.stringify(sel));
               } catch(_e) {}
 
               try {
                 if (window.__h2sCheckoutFlow) {
                   window.__h2sCheckoutFlow.scheduled = {
-                    date: calendarState.selectedDate,
-                    time: calendarState.selectedWindow,
-                    job_id: result.job_id,
-                    order_id: orderData2.order_id
+                    date: selectedDate,
+                    time: selectedWindow,
+                    job_id: result.job_id || null,
+                    order_id: result.order_id || null,
+                    session_id: sessionKey
                   };
                 }
               } catch(_e) {}
 
               if(typeof h2sTrack === 'function') {
                 h2sTrack('ScheduleAppointment', {
-                  date: calendarState.selectedDate,
-                  time: calendarState.selectedWindow,
-                  job_id: result.job_id,
-                  order_id: orderData2.order_id
+                  date: selectedDate,
+                  time: selectedWindow,
+                  job_id: result.job_id || null,
+                  order_id: result.order_id || null,
+                  session_id: sessionKey
                 });
               }
 
@@ -5450,7 +5523,8 @@ window.handleCheckoutContinue = async function(){
           } catch(err2) {
             console.error('[Schedule] Error:', err2);
             const msg = byId('coSchedMsg');
-            if(msg) msg.innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
+            const detail = (err2 && err2.message) ? String(err2.message) : 'Failed to schedule';
+            if(msg) msg.innerHTML = '<span style="color:#ef4444; font-weight:700;">⚠ ' + escapeHtml(detail) + '</span><br/><span style="color:#64748b; font-size:12px;">Pick another slot or call (864) 528-1475.</span>';
             if(confirmBtn) {
               confirmBtn.innerText = 'Try Again';
               confirmBtn.style.background = '#ef4444';

@@ -1,0 +1,241 @@
+﻿            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            }
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            const s = String(dateStr).trim();
+            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            const date = m
+                ? new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
+                : new Date(s);
+            if (isNaN(date.getTime())) return '';
+            return date.toLocaleDateString();
+        }
+
+        // Refresh GHL form iframe (reload without full page refresh)
+        function refreshForm(iframeId) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                // Force iframe reload by resetting src
+                const currentSrc = iframe.src;
+                iframe.src = '';
+                setTimeout(() => {
+                    iframe.src = currentSrc;
+                }, 100);
+            }
+        }
+
+        // Load Training Resources
+        function renderTrainingResources(resources) {
+            const html = resources.map(resource => {
+                const type = (resource.Type || 'VIDEO').toUpperCase();
+                const typeClass = type === 'VIDEO' ? 'type-video' : type === 'PDF' ? 'type-pdf' : 'type-sop';
+                
+                // Check if completed
+                const completions = resource.completions || [];
+                const isCompleted = completions.length > 0;
+                const latestCompletion = isCompleted ? completions[0] : null;
+                const analysisStatus = latestCompletion && (latestCompletion.AI_Analysis_Raw || latestCompletion.AI_Extracted_Concepts || latestCompletion.AI_Knowledge_Gaps)
+                    ? `Analyzed ${formatDate(latestCompletion.Completed_At)}`
+                    : (isCompleted ? 'Pending AI analysis' : 'Not started');
+
+                // Course status badge
+                let statusLabel = 'Not Started';
+                let statusClass = 'status-not-started';
+                
+                if (isCompleted) {
+                    statusLabel = 'Completed';
+                    statusClass = 'status-completed';
+                } else if (resource.Progress && Number(resource.Progress) > 0) {
+                    statusLabel = 'In Progress';
+                    statusClass = 'status-in-progress';
+                }
+                
+                // Parse skills and difficulty
+                const skills = resource.Skills_Taught ? resource.Skills_Taught.split(',').map(s => s.trim()) : [];
+                const difficulty = resource.Difficulty_Level || 'BEGINNER';
+                
+                let content = '';
+
+                if (type === 'VIDEO' && resource.URL) {
+                    // Support both Loom and YouTube
+                    let videoId = '';
+                    let platform = 'loom';
+                    
+                    if (resource.URL.includes('youtube.com') || resource.URL.includes('youtu.be')) {
+                        platform = 'youtube';
+                        const ytMatch = resource.URL.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                        if (ytMatch) videoId = ytMatch[1];
+                    } else if (resource.URL.includes('loom.com/share/')) {
+                        videoId = resource.URL.split('loom.com/share/')[1].split('?')[0];
+                    } else if (resource.URL.includes('loom.com/embed/')) {
+                        videoId = resource.URL.split('loom.com/embed/')[1].split('?')[0];
+                    }
+                    
+                    if (videoId && platform === 'youtube') {
+                        content = `
+                            <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <iframe 
+                                    src="https://www.youtube.com/embed/${videoId}"
+                                    style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowfullscreen
+                                ></iframe>
+                            </div>
+                        `;
+                    } else if (videoId && platform === 'loom') {
+                        content = `
+                            <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <iframe 
+                                    src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true"
+                                    allow="fullscreen; picture-in-picture"
+                                    style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block;"
+                                ></iframe>
+                            </div>
+                        `;
+                    } else {
+                        content = `<div style="padding: 32px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #e0e0e0;">
+                            <a href="${resource.URL}" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: var(--cobalt); color: #fff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; transition: transform 0.2s;">
+                                Open Video Link
+                            </a>
+                        </div>`;
+                    }
+                } else if (type === 'PDF' && resource.URL) {
+                    const preview = (resource.Description || '').substring(0, 180);
+                    content = `
+                        <div style="padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+                            <div style="display:flex; align-items:center; gap:10px; font-weight:800; color:var(--cobalt); font-size:16px; margin-bottom:12px;">
+                                PDF Document
+                            </div>
+                            <p style="color:#4b5563; font-size:14px; line-height:1.6; margin-bottom: 16px;">${preview || 'No description available.'}</p>
+                            <a href="${resource.URL}" target="_blank" class="btn" style="background: white; color: var(--cobalt); border: 2px solid var(--cobalt); width: 100%; justify-content: center;">
+                                Open PDF
+                            </a>
+                        </div>`;
+                } else if (type === 'SOP' && resource.URL) {
+                    const preview = (resource.Description || '').substring(0, 200);
+                    content = `
+                        <div style="padding: 24px; background: #f0f7ff; border-radius: 8px; border: 1px solid #bfdbfe;">
+                            <div style="display:flex; align-items:center; gap:10px; font-weight:800; color:var(--azure); font-size:16px; margin-bottom:12px;">
+                                Standard Operating Procedure
+                            </div>
+                            <p style="color:#1e3a8a; font-size:14px; line-height:1.6; margin-bottom: 16px;">${preview || 'No description available.'}</p>
+                            <a href="${resource.URL}" target="_blank" class="btn" style="background: var(--azure); color: white; width: 100%; justify-content: center;">
+                                View SOP
+                            </a>
+                        </div>`;
+                }
+                
+                return `
+                    <div class="training-card" data-resource-id="${resource.Resource_ID}" style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 20px; transition: transform 0.2s, box-shadow 0.2s;">
+                        
+                        <!-- Header -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 12px;">
+                                <h3 style="font-size: 18px; font-weight: 800; color: var(--cobalt); line-height: 1.4; margin: 0;">${resource.Title || 'Untitled Resource'}</h3>
+                                ${isCompleted ? `<span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap;">Done</span>` : ''}
+                            </div>
+                            
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <span style="background: #f3f4f6; color: #4b5563; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${resource.Category || 'General'}</span>
+                                <span style="background: #f3f4f6; color: #4b5563; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${resource.Estimated_Minutes || '?'} min</span>
+                                <span style="background: #eff6ff; color: var(--azure); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;">${type}</span>
+                            </div>
+                        </div>
+
+                        <!-- Content -->
+                        <div style="flex: 1;">
+                            ${content}
+                        </div>
+                        
+                        <!-- Description -->
+                        ${resource.Description ? `<p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${resource.Description}</p>` : ''}
+                        
+                        <!-- Footer / Action -->
+                        <div style="padding-top: 20px; border-top: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; color: #9ca3af; font-weight: 500;">
+                                    ${isCompleted ? `Completed ${formatDate(latestCompletion.Completed_At)}` : 'Not completed yet'}
+                                </div>
+                            </div>
+                            
+                            ${!isCompleted ? `
+                                <button 
+                                    onclick="openCompletionModal('${resource.Resource_ID}', '${resource.Title.replace(/'/g, "\\'")}')"
+                                    style="padding: 14px 20px; background: var(--cobalt); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(10, 42, 90, 0.2); width: 100%; text-align: center;"
+                                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(10, 42, 90, 0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(10, 42, 90, 0.2)'"
+                                >
+                                    Complete Learnings
+                                </button>
+                            ` : `
+                                <button disabled style="padding: 14px 20px; background: #f3f4f6; color: #9ca3af; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: not-allowed; width: 100%; text-align: center;">
+                                    Completed
+                                </button>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('trainingContainer').innerHTML = `<div class="training-grid">${html}</div>`;
+            
+            // Update counts
+            const allCount = resources.length;
+            const completedCount = resources.filter(r => (r.completions || []).length > 0).length;
+            document.getElementById('allCount').textContent = allCount;
+            document.getElementById('inprogressCount').textContent = completedCount;
+            
+            // Load recommendations and apply default filter
+            loadRecommendationsForFilter().then(() => {
+                // If no recommendations found, default to showing all training
+                if (currentFilterMode === 'recommended' && recommendedResourceIds.length === 0) {
+                    currentFilterMode = 'all';
+                }
+                filterTrainingResources(currentFilterMode);
+            });
+        }
+
+        // Knowledge Profile Functions
+        let currentFilterMode = 'all'; // Track current filter (recommended, inprogress, all)
+        let recommendedResourceIds = []; // Store recommended Resource_IDs
+
+        // Identity / mode (soft guardrails)
+        let currentUser = null; // Set via user gate or localStorage
+        let currentRole = 'VA'; // 'VA' | 'ADMIN'
+
+        // User Gate Logic with localStorage persistence
+        const STORAGE_KEY = 'h2s_current_user';
+        // Shared admin password/credential: uses the same key as Proof Packs admin key.
+        const ADMIN_CREDENTIAL_KEY = 'h2s_proof_admin_key';
+        const ADMIN_AUTH_KEY = 'h2s_admin_authenticated';
+
+        // Check if admin is authenticated
+        function checkAdminAuth() {
+            try {
+                const authState = sessionStorage.getItem(ADMIN_AUTH_KEY);
+                if (authState === 'true') return true;
+                const key = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim();
+                return !!key;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // Set admin authentication state
+        function setAdminAuth(authenticated) {
+            try {
+                sessionStorage.setItem(ADMIN_AUTH_KEY, authenticated ? 'true' : 'false');
+            } catch (e) {
+                console.warn('Could not save admin auth state:', e);
+            }
+        }
+
+        // Prompt for admin password
+        function promptAdminPassword(callback) {
+            const overlay = document.getElementById('modalOverlay');

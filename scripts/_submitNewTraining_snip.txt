@@ -1,0 +1,190 @@
+﻿                'Home2Smart': ''
+            };
+            return icons[category] || '';
+        }
+
+        // Submit New Training
+        async function submitNewTraining(event) {
+            event.preventDefault();
+
+            // Ensure API_URL is available
+            const endpoint = (typeof API_URL !== 'undefined') ? API_URL : `${DEFAULT_API_HOST}/api/v1`;
+
+            const safeVal = (id) => {
+                const el = document.getElementById(id);
+                return el ? String(el.value || '') : '';
+            };
+
+            const titleRaw = safeVal('newTrainingTitle').trim();
+            const descriptionRaw = safeVal('newTrainingDescription').trim();
+            const categoryRaw = safeVal('newTrainingCategory').trim();
+
+            // Prefer the new multi-link UI (#newTrainingUrls). Fall back to legacy #newTrainingURL.
+            const urls = [];
+            try {
+                const container = document.getElementById('newTrainingUrls');
+                if (container) {
+                    container.querySelectorAll('input.training-url-input').forEach((input) => {
+                        const v = String(input && input.value || '').trim();
+                        if (v) urls.push(v);
+                    });
+                }
+            } catch (_) {}
+
+            if (urls.length === 0) {
+                const legacyUrl = safeVal('newTrainingURL').trim();
+                if (legacyUrl) urls.push(legacyUrl);
+            }
+
+            const uniqueUrls = Array.from(new Set(urls));
+            if (uniqueUrls.length === 0) {
+                showToast('Please add at least one training link', 'error');
+                return;
+            }
+
+            let estimatedMinutes = null;
+            try {
+                const raw = safeVal('newTrainingDuration').trim();
+                if (raw) {
+                    const parsed = parseInt(raw, 10);
+                    estimatedMinutes = Number.isFinite(parsed) ? parsed : null;
+                }
+            } catch (_) {}
+
+            // Build assetsMeta via linkPreview (best-effort; never blocks upload).
+            const assetsMeta = [];
+            for (const url of uniqueUrls) {
+                try {
+                    const resp = await fetch(`${endpoint}?action=linkPreview`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                        body: JSON.stringify({ url })
+                    });
+                    const json = await resp.json();
+                    if (json && json.ok && json.linkPreview) {
+                        assetsMeta.push({ ...json.linkPreview, url });
+                    } else {
+                        assetsMeta.push({ url });
+                    }
+                } catch (_) {
+                    assetsMeta.push({ url });
+                }
+            }
+
+            const title = titleRaw || (assetsMeta[0] && assetsMeta[0].title) || 'Training Video';
+
+            const formData = {
+                title,
+                type: 'Video', // Always video for now
+                url: uniqueUrls[0],
+                urls: uniqueUrls,
+                assetsMeta,
+                description: descriptionRaw || null,
+                category: categoryRaw || 'General',
+                difficultyLevel: 'BEGINNER', // Default
+                estimatedMinutes,
+                skillsTaught: null, // Will be extracted by AI
+                order: 0,
+                createdBy: 'Tabari'
+            };
+
+            try {
+                showToast('\ud83d\udce4 Uploading training video...', 'info');
+
+                const response = await fetch(`${endpoint}?action=createTraining`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.ok) {
+                    showToast('\u2705 Training uploaded successfully!', 'success');
+                    const f = document.getElementById('newTrainingForm');
+                    if (f && typeof f.reset === 'function') f.reset();
+                    loadAdminTrainingList();
+                    loadTrainingResources(true); // Refresh main view
+                } else {
+                    showToast(`\u274c Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast('\u274c Failed to upload training', 'error');
+                console.error(error);
+            }
+        }
+
+        // Delete Training
+        async function deleteTraining(resourceId, title) {
+            if (!confirm(`Are you sure you want to delete "${title}"? This will also delete all completion records.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}?action=deleteTraining`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resourceId })
+                });
+                
+                const data = await response.json();
+                
+                if (data.ok) {
+                    showToast('Training resource deleted', 'success');
+                    loadAdminTrainingList();
+                    loadTrainingResources(true);
+                } else {
+                    showToast(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showToast('Failed to delete training resource', 'error');
+                console.error(error);
+            }
+        }
+
+        // Edit Training (TODO: Add edit modal)
+        function editTraining(resourceId) {
+            showToast('Edit functionality coming soon! For now, delete and recreate.', 'info');
+        }
+
+
+
+        // Filter Training by Tier
+        let allTrainingResources = [];
+
+        function filterTrainingByTier(tier) {
+            // Update active button
+            document.querySelectorAll('.tier-btn').forEach(btn => {
+                if (btn.dataset.tier === tier) {
+                    btn.style.background = 'linear-gradient(135deg, var(--azure) 0%, #667eea 100%)';
+                    btn.style.color = 'white';
+                    btn.style.borderColor = 'var(--azure)';
+                    btn.style.boxShadow = '0 4px 15px rgba(20, 147, 255, 0.3)';
+                } else {
+                    btn.style.background = 'white';
+                    btn.style.color = 'var(--cobalt)';
+                    btn.style.borderColor = '#e0e0e0';
+                    btn.style.boxShadow = 'none';
+                }
+            });
+
+            // Map tiers to specific categories found in data
+            // Foundation (Build): Business basics, systems, ops
+            // Core Skills (Work): Marketing, offers, customer work
+            // Advanced (Launch): Tech skills, AI
+            const tierMapping = {
+                'Foundation': ['Operations', 'Home2Smart', 'Business', 'Onboarding', 'Admin', 'Foundation'],
+                'Core Skills': ['Marketing', 'CRM', 'Sales', 'Customer Service', 'Hiring Process', 'Fulfillment', 'Core Skills'],
+                'Advanced': ['Technical', 'Web Design', 'AI', 'Automation', 'Development', 'Advanced']
+            };
+
+            // Filter resources
+            if (tier === 'all') {
+                renderTrainingResources(allTrainingResources);
+            } else {
+                const allowed = tierMapping[tier] || [tier];
+                const filtered = allTrainingResources.filter(r => {
+                     const cat = (r.Category || 'General');
+                     // Match exact category OR if category contains the keyword (e.g. "Technical Skills" matches "Technical")
+                     return allowed.includes(cat) || allowed.some(a => cat.indexOf(a) !== -1);
+                });

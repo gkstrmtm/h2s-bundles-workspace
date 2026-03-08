@@ -2,18 +2,26 @@ import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/adminAuth';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+
 function safeParseJson(value: any): any {
   if (value == null) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
   const s = value.trim();
   if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(s);
   } catch {
     try {
       const inner = JSON.parse(s);
-      if (typeof inner === 'string') return JSON.parse(inner);
+      if (typeof inner === 'string') {
+        const innerTrim = inner.trim();
+        if (!innerTrim) return null;
+        if (innerTrim.length > MAX_JSON_PARSE_CHARS) return null;
+        return JSON.parse(innerTrim);
+      }
       return inner;
     } catch {
       return null;

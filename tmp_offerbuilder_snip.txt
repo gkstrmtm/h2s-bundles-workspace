@@ -1,0 +1,23 @@
+ 24106:            },
+ 24107:
+ 24108:            _shortRef(id) {
+ 24109:                const s = this._safeTrim(id);
+ 24110:                if (!s) return '';
+ 24111:                if (s.length <= 14) return s;
+ 24112:                return `${s.slice(0, 8)}…${s.slice(-4)}`;
+ 24113:            },
+ 24114:
+ 24115:            _renderActiveOfferLabel() {
+ 24116:                const el = document.getElementById('obAfActiveOffer');
+ 24117:                if (!el) return;
+ 24118:                try {
+ 24119:                    const name = this._safeTrim(this.offer && this.offer.name);
+ 24120:                    const id = this._safeTrim(this.offer && this.offer.offer_id);
+ 24121:                    const ref = id ? this._shortRef(id) : '';
+ 24122:                    el.textContent = name ? (ref ? `${name} (${ref})` : name) : (ref ? `Draft (${ref})` : 'Draft');
+ 24123:                } catch (_) {
+ 24124:                    el.textContent = '—';
+ 24125:                }
+ 24126:            }, // patched
+ 24127:
+ 24128:            _parseMaybeJson(value) {

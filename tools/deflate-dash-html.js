@@ -29,45 +29,61 @@ function nowStamp() {
   ].join('');
 }
 
-function findBlockByMarker(html, tagOpen, tagClose, marker) {
+function findContainingTagBlockByMarker(html, tagName, marker, withinStart = 0, withinEnd = html.length) {
+  const lower = html.toLowerCase();
   const markerIndex = html.indexOf(marker);
   if (markerIndex < 0) return null;
+  if (markerIndex < withinStart || markerIndex >= withinEnd) return null;
 
-  const openIndex = html.lastIndexOf(tagOpen, markerIndex);
-  if (openIndex < 0) return null;
+  const tagOpenNeedle = `<${tagName}`;
+  const tagCloseNeedle = `</${tagName}>`;
 
-  const contentStart = openIndex + tagOpen.length;
-  const closeIndex = html.indexOf(tagClose, markerIndex);
-  if (closeIndex < 0) return null;
+  const openIndex = lower.lastIndexOf(tagOpenNeedle, markerIndex);
+  if (openIndex < withinStart) return null;
+
+  const openTagEnd = lower.indexOf('>', openIndex);
+  if (openTagEnd < 0 || openTagEnd >= withinEnd) return null;
+  const contentStart = openTagEnd + 1;
+
+  const closeIndex = lower.indexOf(tagCloseNeedle, markerIndex);
+  if (closeIndex < 0 || closeIndex >= withinEnd) return null;
 
   const content = html.slice(contentStart, closeIndex);
   return {
     openIndex,
-    closeIndex: closeIndex + tagClose.length,
+    closeIndex: closeIndex + tagCloseNeedle.length,
     content,
   };
 }
 
-function findLargestInlineBlock(html, tagOpen, tagClose, withinStart = 0, withinEnd = html.length) {
+function findLargestInlineTagBlock(html, tagName, withinStart = 0, withinEnd = html.length) {
+  const lower = html.toLowerCase();
+  const openNeedle = `<${tagName}`;
+  const closeNeedle = `</${tagName}>`;
+
   let cursor = withinStart;
   let best = null;
 
   while (cursor < withinEnd) {
-    const openIndex = html.indexOf(tagOpen, cursor);
+    const openIndex = lower.indexOf(openNeedle, cursor);
     if (openIndex < 0 || openIndex >= withinEnd) break;
-    const contentStart = openIndex + tagOpen.length;
-    const closeIndex = html.indexOf(tagClose, contentStart);
+
+    const openTagEnd = lower.indexOf('>', openIndex);
+    if (openTagEnd < 0 || openTagEnd >= withinEnd) break;
+    const contentStart = openTagEnd + 1;
+
+    const closeIndex = lower.indexOf(closeNeedle, contentStart);
     if (closeIndex < 0 || closeIndex >= withinEnd) break;
 
     const content = html.slice(contentStart, closeIndex);
     const candidate = {
       openIndex,
-      closeIndex: closeIndex + tagClose.length,
+      closeIndex: closeIndex + closeNeedle.length,
       content,
     };
 
     if (!best || candidate.content.length > best.content.length) best = candidate;
-    cursor = closeIndex + tagClose.length;
+    cursor = closeIndex + closeNeedle.length;
   }
 
   return best;
@@ -92,19 +108,19 @@ function main() {
   const headWithinEnd = headEnd >= 0 ? headEnd : before.length;
 
   // CSS: extract the big head inline CSS block.
-  let cssBlock = findBlockByMarker(before, '<style>', '</style>', 'CRITICAL CSS');
+  let cssBlock = findContainingTagBlockByMarker(before, 'style', 'CRITICAL CSS', headWithinStart, headWithinEnd);
   if (!cssBlock) {
-    cssBlock = findLargestInlineBlock(before, '<style>', '</style>', headWithinStart, headWithinEnd);
+    cssBlock = findLargestInlineTagBlock(before, 'style', headWithinStart, headWithinEnd);
   }
 
   // JS: extract the large bottom script (the one that defines API_BASE/API_URL etc).
   // Important: do NOT extract the tiny head script (console filtering / about badge),
   // because it needs to stay in <head>.
-  let jsBlock = findBlockByMarker(before, '<script>', '</script>', '// Configuration - H2S Backend API');
+  let jsBlock = findContainingTagBlockByMarker(before, 'script', '// Configuration - H2S Backend API');
   if (!jsBlock) {
     const appEndIndex = before.indexOf('<!-- End #h2s-app -->');
     const searchStart = appEndIndex >= 0 ? appEndIndex : 0;
-    jsBlock = findLargestInlineBlock(before, '<script>', '</script>', searchStart, before.length);
+    jsBlock = findLargestInlineTagBlock(before, 'script', searchStart, before.length);
   }
 
   if (!cssBlock && !jsBlock) {

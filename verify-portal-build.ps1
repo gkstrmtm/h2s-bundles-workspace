@@ -12,7 +12,7 @@ try {
         throw "Failed to fetch URL"
     }
     
-    $allMatches = [regex]::Matches($html, 'PORTAL_BUILD_\d{8}_\d{4}_[a-f0-9]{7}')
+    $allMatches = [regex]::Matches($html, 'PORTAL_BUILD_\d{8}_\d{4,6}_[a-f0-9]{7}')
     
     if ($allMatches.Count -eq 0) {
         Write-Host "No build ID found!" -ForegroundColor Red

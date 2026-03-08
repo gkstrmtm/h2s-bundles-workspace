@@ -4,18 +4,35 @@ import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { AdminJobDTO, AdminAddress, AdminCustomer, AdminServiceScope, AdminJobFinancials, AdminProAssignment } from '@/lib/dtos';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+const DEFAULT_JOBS_LIMIT = 500;
+const MAX_JOBS_LIMIT = 800;
+const DEFAULT_ORDERS_WINDOW = 400;
+const MAX_ORDERS_WINDOW = 800;
+const MAX_VIRTUAL_JOBS = 200;
+const DEFAULT_PROS_INDEX_LIMIT = 800;
+const MAX_PAYOUT_ROWS = 5000;
+const ORDERS_SELECT_LITE =
+  'id,order_id,user_id,status,created_at,updated_at,service_name,address,city,state,zip,items,special_instructions,customer_name,customer_email,customer_phone,metadata_json,metadata,order_subtotal,subtotal,total_amount,total,order_total';
+
 function safeParseJson(value: any): any {
   if (value == null) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
   const s = value.trim();
   if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(s);
   } catch {
     try {
       const inner = JSON.parse(s);
-      if (typeof inner === 'string') return JSON.parse(inner);
+      if (typeof inner === 'string') {
+        const innerTrim = inner.trim();
+        if (!innerTrim) return null;
+        if (innerTrim.length > MAX_JSON_PARSE_CHARS) return null;
+        return JSON.parse(innerTrim);
+      }
       return inner;
     } catch {
       return null;
@@ -27,6 +44,12 @@ function parseDays(raw: any): number {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 30;
   return Math.min(365, Math.max(1, Math.floor(n)));
+}
+
+function parseLimit(raw: any, fallback: number, max: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(max, Math.max(1, Math.floor(n)));
 }
 
 function normalizeStatus(raw: any): string {
@@ -63,12 +86,12 @@ function pickAssignedProValue(job: any): string {
   return '';
 }
 
-async function loadProsIndex(primary: any, secondary: any | null): Promise<Map<string, any>> {
+async function loadProsIndex(primary: any, secondary: any | null, limit: number): Promise<Map<string, any>> {
   const index = new Map<string, any>();
 
   const tryLoad = async (sb: any, table: string) => {
     try {
-      const { data, error } = await sb.from(table).select('*').limit(2000);
+      const { data, error } = await sb.from(table).select('*').limit(limit);
       if (error || !Array.isArray(data)) return false;
       for (const p of data) {
         const proId = String(p?.pro_id || p?.tech_id || p?.id || '').trim();
@@ -113,7 +136,8 @@ async function loadPayoutsForJobs(dispatchClient: any, jobIds: string[]): Promis
       const { data } = await dispatchClient
         .from(table)
         .select('*')
-        .in('job_id', jobIds); // Efficient backend filtering
+        .in('job_id', jobIds)
+        .limit(MAX_PAYOUT_ROWS); // Guardrail: avoid pathological ledger fanout
       
       if (data && data.length > 0) {
         data.forEach((p: any) => {
@@ -149,6 +173,10 @@ async function handle(request: Request, body: any) {
   const status = normalizeStatus(body?.status);
   const days = parseDays(body?.days);
   const specificJobIds = Array.isArray(body?.specific_job_ids) ? body.specific_job_ids.map(String) : (body?.specific_job_id ? [String(body.specific_job_id)] : []);
+  const jobsLimit = parseLimit(body?.limit ?? body?.jobs_limit, DEFAULT_JOBS_LIMIT, MAX_JOBS_LIMIT);
+  const ordersWindow = parseLimit(body?.orders_limit, DEFAULT_ORDERS_WINDOW, MAX_ORDERS_WINDOW);
+  const prosIndexLimit = parseLimit(body?.pros_limit, DEFAULT_PROS_INDEX_LIMIT, 2000);
+  const boundedSpecificJobIds = specificJobIds.slice(0, MAX_JOBS_LIMIT);
   const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   let rows: any[] = [];
@@ -157,11 +185,11 @@ async function handle(request: Request, body: any) {
   try {
     let q = sb.from(jobsTable).select('*').order('created_at', { ascending: false });
 
-    if (specificJobIds.length > 0) {
+    if (boundedSpecificJobIds.length > 0) {
       // Direct lookup bypasses date and status filters
-      q = q.in(idCol, specificJobIds).limit(specificJobIds.length);
+      q = q.in(idCol, boundedSpecificJobIds).limit(boundedSpecificJobIds.length);
     } else {
-      q = q.limit(2000); // Increased from 500
+      q = q.limit(jobsLimit);
       
       // Filter by date
       try { q = q.gte('created_at', sinceIso); } catch {}
@@ -187,21 +215,62 @@ async function handle(request: Request, body: any) {
 
   // 2. Prepare for Enrichment
   const jobIds = rows.map((j: any) => String(j.job_id || j[idCol] || j.id || '')).filter(Boolean);
+  const orderIdsFromJobs = Array.from(
+    new Set(
+      rows
+        .map((j: any) => String(j?.order_id ?? j?.orderId ?? j?.job_number ?? '').trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 500);
   
   // 3. Parallel Fetching (Pros, Orders, Payouts)
   let mainClient: any | null = null;
   try { mainClient = getSupabase(); } catch {}
 
   const [prosIndex, ordersData, payoutsMap] = await Promise.all([
-    loadProsIndex(sb, mainClient),
+    loadProsIndex(sb, mainClient, prosIndexLimit),
     
     // Link to Orders (Main DB) - FETCH ALL MATCHING ORDERS
     (async () => {
       const res = { map: new Map(), list: [] as any[] };
       if (!mainClient) return res;
       try {
-        // Fetch extended history to maximize matches
-        const { data: orders } = await mainClient.from('h2s_orders').select('*').order('created_at', { ascending: false }).limit(2000);
+        let orders: any[] = [];
+        // Highest-impact OOM fix: avoid pulling huge order history into memory.
+        // Prefer targeted lookups by order_id (if job rows include it); otherwise use a smaller recency window.
+        if (orderIdsFromJobs.length > 0) {
+          try {
+            const r = await mainClient
+              .from('h2s_orders')
+              .select(ORDERS_SELECT_LITE)
+              .in('order_id', orderIdsFromJobs)
+              .order('created_at', { ascending: false })
+              .limit(orderIdsFromJobs.length);
+            if (!r.error && Array.isArray(r.data)) orders = r.data;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (orders.length === 0) {
+          try {
+            const r = await mainClient
+              .from('h2s_orders')
+              .select(ORDERS_SELECT_LITE)
+              .order('created_at', { ascending: false })
+              .limit(ordersWindow);
+            if (!r.error && Array.isArray(r.data)) orders = r.data;
+          } catch {
+            // ignore
+          }
+        }
+
+        // Fallback: some deployments may not have all columns; use select('*') but keep a smaller cap.
+        if (orders.length === 0) {
+          const r2 = await mainClient.from('h2s_orders').select('*').order('created_at', { ascending: false }).limit(Math.min(500, ordersWindow));
+          if (!r2.error && Array.isArray(r2.data)) orders = r2.data;
+        }
+
         if (orders) {
           res.list = orders;
           orders.forEach((o: any) => {
@@ -225,11 +294,11 @@ async function handle(request: Request, body: any) {
   // VIRTUAL JOIN: If an order exists but no job row, create a virtual job row
   const existingJobIds = new Set(rows.map((r: any) => String(r.job_id || r[idCol] || r.id || '')));
   
-  const virtualJobs = ordersData.list.filter((o: any) => {
+    const virtualJobs = ordersData.list.filter((o: any) => {
       const meta = safeParseJson(o.metadata_json) || safeParseJson(o.metadata) || {};
       const targetJobId = String(meta.dispatch_job_id || meta.job_id || o.id || '');
       return targetJobId && !existingJobIds.has(targetJobId);
-  }).map((o: any) => {
+    }).slice(0, MAX_VIRTUAL_JOBS).map((o: any) => {
       const meta = safeParseJson(o.metadata_json) || safeParseJson(o.metadata) || {};
       const jid = String(meta.dispatch_job_id || meta.job_id || o.id || '');
       
@@ -254,7 +323,7 @@ async function handle(request: Request, body: any) {
   rows = [...rows, ...virtualJobs];
 
   // 4. Construct DTOs
-  const jobs = rows.map((j: any) => {
+  const jobs = rows.slice(0, jobsLimit + MAX_VIRTUAL_JOBS).map((j: any) => {
     const rawId = j.job_id || j[idCol] || j.id;
     const jobId = String(rawId || '');
     

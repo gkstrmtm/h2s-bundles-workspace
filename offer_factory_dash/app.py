@@ -839,7 +839,7 @@ def on_set_current_brief(_n, selected_rows, table_data, selected_offer, auth_sto
 def load_full_brief(_n, workspace_store, brief_full_store):
     payload = (workspace_store or {}).get("payload") or {}
     brief = payload.get("brief") or {}
-    deliverable_id = brief.get("deliverableId")
+    deliverable_id = brief.get("deliverableId") or brief.get("Deliverable_ID") or brief.get("deliverable_id")
     if not deliverable_id:
         return {"state": "idle", "body": None, "deliverableId": None}
 
@@ -866,7 +866,33 @@ def load_full_brief(_n, workspace_store, brief_full_store):
         if not (200 <= resp.status_code < 300):
             return {"state": "error", "body": resp.text[:500], "deliverableId": deliverable_id}
         d = resp.json() if resp.text else {}
-        return {"state": "ok", "body": d.get("body"), "deliverableId": deliverable_id}
+
+        def pick_body(payload: dict) -> str:
+            if not isinstance(payload, dict):
+                return ""
+            # Mock backend shape
+            if payload.get("body"):
+                return payload.get("body")
+            # New Next endpoint shape: { ok, deliverable: { body } }
+            deliverable = payload.get("deliverable") or {}
+            if isinstance(deliverable, dict):
+                if deliverable.get("body"):
+                    return deliverable.get("body")
+                if deliverable.get("Description"):
+                    return deliverable.get("Description")
+                md = deliverable.get("metadata") or deliverable.get("Metadata") or {}
+                if isinstance(md, dict) and md.get("description"):
+                    return md.get("description")
+            # Fallbacks
+            if payload.get("Description"):
+                return payload.get("Description")
+            md2 = payload.get("metadata") or payload.get("Metadata") or {}
+            if isinstance(md2, dict) and md2.get("description"):
+                return md2.get("description")
+            return ""
+
+        body = pick_body(d)
+        return {"state": "ok", "body": body, "deliverableId": str(deliverable_id)}
     except Exception as e:
         return {"state": "error", "body": str(e), "deliverableId": deliverable_id}
 

@@ -3,8 +3,8 @@ const path = require('path');
 
 const files = [
     path.join(__dirname, '..', 'frontend', 'bundles.html'),
+    path.join(__dirname, '..', 'frontend', 'dash.html'),
     path.join(__dirname, '..', 'frontend', 'portal.html'),
-    path.join(__dirname, '..', 'Dashboard-LIVE.html')
 ];
 
 const replacements = [

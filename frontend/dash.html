@@ -11,10 +11,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
     <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="2026-02-10T00:00:00Z">
+    <meta name="h2s-dash-build" content="PORTAL_BUILD_20260306_115025_4809419">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
-            const DASH_BUILD_STAMP = '2026-02-10T00:00:00Z';
+            const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260306_115025_4809419';
             const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
@@ -61,6 +61,112 @@
             // Falls back on client if not injected.
             try { window.API_URL = '<?= API_URL ?>'; } catch (e) { /* not templated */ }
 
+            // Canonical backend selection (dash.html is the source of truth)
+            // - If templated injection provides an absolute URL, keep it.
+            // - If hosted on home2smart.com / *.vercel.app, use same-origin (so rewrites/proxies work).
+            // - Otherwise (local file / random host), default to the public backend.
+            (function normalizeDashApiUrl() {
+                try {
+                    const DEFAULT_API_HOST = 'https://h2s-backend.vercel.app';
+                    const raw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
+                    const isAbsolute = raw && !raw.includes('<?') && /^https?:\/\//i.test(raw);
+                    if (isAbsolute) {
+                        window.__H2S_API_URL_SOURCE = 'injected';
+                        return;
+                    }
+
+                    const host = String(location.hostname || '').toLowerCase();
+                    const isPortalHosted = host.endsWith('home2smart.com') || host.endsWith('.vercel.app');
+                    if (isPortalHosted) {
+                        // IMPORTANT: store base (origin), not /api/v1, because dash.js derives /api/v1.
+                        window.API_URL = String(location.origin || '').trim();
+                        window.__H2S_API_URL_SOURCE = 'same-origin';
+                        return;
+                    }
+
+                    window.API_URL = DEFAULT_API_HOST;
+                    window.__H2S_API_URL_SOURCE = 'default';
+                } catch {
+                    // Best-effort only.
+                    try { window.API_URL = 'https://h2s-backend.vercel.app'; } catch { /* ignore */ }
+                    try { window.__H2S_API_URL_SOURCE = 'default'; } catch { /* ignore */ }
+                }
+            })();
+
+            // Sidebar group collapse/expand
+            // dash.html uses inline onclick handlers, so this must exist on window.
+            // Some stamped JS bundles have regressed and shipped without the global.
+            (function ensureToggleSidebarGroupGlobal() {
+                try {
+                    if (typeof window === 'undefined') return;
+                    if (typeof window.toggleSidebarGroup === 'function') return;
+
+                    const STORAGE_PREFIX = 'h2s_sidebar_group_';
+
+                    const setSidebarGroupOpen = (groupEl, open, opts = {}) => {
+                        try {
+                            if (!groupEl) return;
+                            const groupId = String(groupEl.getAttribute('data-group-id') || '').trim();
+                            groupEl.classList.toggle('open', !!open);
+                            const headerBtn = groupEl.querySelector('.app-sidebar-group-header');
+                            if (headerBtn) headerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+                            if (opts && opts.persist && groupId) {
+                                try {
+                                    localStorage.setItem(`${STORAGE_PREFIX}${groupId}`, open ? 'open' : 'closed');
+                                } catch (_) {}
+                            }
+                        } catch (_) {}
+                    };
+
+                    const findGroupElById = (groupId) => {
+                        try {
+                            const gid = String(groupId || '').trim();
+                            if (!gid) return null;
+                            const groups = document.querySelectorAll('.app-sidebar-group[data-group-id]');
+                            for (const g of groups) {
+                                if (String(g.getAttribute('data-group-id') || '').trim() === gid) return g;
+                            }
+                            return null;
+                        } catch {
+                            return null;
+                        }
+                    };
+
+                    window.toggleSidebarGroup = (groupId) => {
+                        try {
+                            const groupEl = findGroupElById(groupId);
+                            if (!groupEl) return;
+                            const isOpen = groupEl.classList.contains('open');
+                            setSidebarGroupOpen(groupEl, !isOpen, { persist: true });
+                        } catch (e) {
+                            try { console.warn('toggleSidebarGroup failed:', e); } catch (_) {}
+                        }
+                    };
+
+                    const restoreSidebarGroups = () => {
+                        try {
+                            document.querySelectorAll('.app-sidebar-group[data-group-id]').forEach((groupEl) => {
+                                const gid = String(groupEl.getAttribute('data-group-id') || '').trim();
+                                if (!gid) return;
+                                let saved = null;
+                                try { saved = localStorage.getItem(`${STORAGE_PREFIX}${gid}`); } catch (_) {}
+                                if (saved === 'open') setSidebarGroupOpen(groupEl, true, { persist: false });
+                                if (saved === 'closed') setSidebarGroupOpen(groupEl, false, { persist: false });
+                            });
+                        } catch (_) {}
+                    };
+
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', restoreSidebarGroups);
+                    } else {
+                        restoreSidebarGroups();
+                    }
+                } catch (_) {
+                    // Best-effort only.
+                }
+            })();
+
             // Tangible "which file is this?" marker
             // Visit /dash?about=1 (or add &about=1) to show.
             window.__h2sShowAboutBadge = function __h2sShowAboutBadge() {
@@ -72,11 +178,32 @@
                     const src = document.querySelector('meta[name="h2s-source-file"]')?.getAttribute('content') || H2S_SOURCE_FILE || '';
                     const host = location.host;
                     const path = location.pathname + location.search + location.hash;
+
+                    const apiUrlRaw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
+                    const apiSource = (typeof window.__H2S_API_URL_SOURCE === 'string') ? window.__H2S_API_URL_SOURCE : '';
+                    let apiBase = '';
+                    try {
+                        if (apiUrlRaw && /^https?:\/\//i.test(apiUrlRaw) && !apiUrlRaw.includes('<?')) {
+                            apiBase = new URL(apiUrlRaw).origin;
+                        } else {
+                            // Mirror dash.js logic: same-origin on portal hosts.
+                            const hn = String(location.hostname || '').toLowerCase();
+                            const portal = hn.endsWith('home2smart.com') || hn.endsWith('.vercel.app');
+                            apiBase = portal ? '(same-origin)' : 'https://h2s-backend.vercel.app';
+                        }
+                    } catch {
+                        apiBase = '(unknown)';
+                    }
+
+                    const apiV1 = apiBase === '(same-origin)' ? '/api/v1' : `${apiBase.replace(/\/$/, '')}/api/v1`;
                     lines.textContent = [
                         `host: ${host}`,
                         `path: ${path}`,
                         `source: ${src}`,
                         `build: ${build}`,
+                        `api_source: ${apiSource || 'n/a'}`,
+                        `api_base: ${apiBase}`,
+                        `api_v1: ${apiV1}`,
                     ].join('\n');
                     badge.style.display = 'block';
                 } catch { /* ignore */ }
@@ -105,9 +232,119 @@
       href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
         <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
-        <link rel="stylesheet" href="./dash.css">
+        <link rel="stylesheet" href="/dash.PORTAL_BUILD_20260306_115025_4809419.css">
 <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        /* Training UI: keep cards compact + scanable (dash.html only) */
+        #trainingResourcesCard {
+            width: 100%;
+            max-width: none;
+        }
+
+        #training-pane .training-tier-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+
+        #training-pane .tier-btn {
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: #fff;
+            color: var(--cobalt);
+            font-weight: 900;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        }
+
+        #training-pane .tier-btn.active {
+            background: var(--cobalt);
+            border-color: var(--cobalt);
+            color: #fff;
+        }
+
+        #training-pane .tier-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(20, 147, 255, 0.18);
+        }
+
+        #trainingContainer {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+            gap: 14px;
+            width: 100%;
+            max-width: none;
+        }
+
+        #trainingContainer > .spinner {
+            grid-column: 1 / -1;
+        }
+
+        /* Clamp any injected “parts / pills” rows so they don’t become a wall */
+        #trainingContainer .parts,
+        #trainingContainer .video-pills,
+        #trainingContainer .videoParts,
+        #trainingContainer .training-parts,
+        #trainingContainer .training-videos,
+        #trainingContainer .training-video-list {
+            max-height: 72px;
+            overflow: hidden;
+        }
+
+        /* Training viewer modal: tighter list + better scannability */
+        #trainingViewerList {
+            scrollbar-gutter: stable;
+        }
+
+        #trainingViewerList button,
+        #trainingViewerList a {
+            text-align: left;
+        }
+
+        /* Training admin: structured 2-column console */
+        #trainingAdminPanel .training-admin-grid {
+            display: grid;
+            grid-template-columns: minmax(380px, 560px) minmax(320px, 1fr);
+            gap: 14px;
+            align-items: start;
+        }
+
+        @media (max-width: 980px) {
+            #trainingAdminPanel .training-admin-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        #trainingAdminPanel .training-admin-card {
+            background: #fff;
+            padding: 18px;
+            border-radius: 16px;
+            border: 1px solid var(--border);
+            box-shadow: 0 2px 14px rgba(0,0,0,0.06);
+        }
+
+        #trainingAdminPanel .training-admin-section {
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        #trainingAdminPanel .training-admin-section__title {
+            margin: 0 0 10px;
+            font-size: 12px;
+            font-weight: 900;
+            color: var(--cobalt);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+    </style>
 </head>
 <body style="background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #f1f5f9 100%) !important; background-color: #f8fafc !important;">
 
@@ -225,55 +462,79 @@
         <!-- SIDEBAR -->
         <div class="app-sidebar">
             <nav class="app-sidebar-nav">
-                <a class="app-sidebar-nav-item active" data-tab="pipeline" onclick="switchToTab('pipeline')">
-                    Pipeline
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="screening" onclick="switchToTab('screening')">
-                    Screening Form
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="techinterview" onclick="switchToTab('techinterview')">
-                    Tech Interview
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="hours" onclick="switchToTab('hours')">
-                    Log Hours
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="reports" onclick="switchToTab('reports')">
-                    Candidate Review
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="training" onclick="switchToTab('training')">
-                    Training
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="tasks" onclick="switchToTab('tasks')">
-                    Tasks
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">
-                    Offer Builder
-                </a>
-                <a class="app-sidebar-nav-item" href="#" onclick="openOfferLibraryFromNav(); return false;" style="padding-left: 28px; font-size: 13px; opacity: 0.9;">
-                    Offer Library
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">
-                    Deliverables
-                </a>
+                <div class="app-sidebar-group open" data-group-id="hiringpipeline">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('hiringpipeline')" aria-expanded="true">
+                        <span>Hiring Pipeline</span>
+                        <span class="app-sidebar-group-chevron">▾</span>
+                    </button>
+                    <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item active" data-tab="pipeline" onclick="switchToTab('pipeline')">Pipeline</a>
+                        <a class="app-sidebar-nav-item" data-tab="screening" onclick="switchToTab('screening')">Screening Form</a>
+                        <a class="app-sidebar-nav-item" data-tab="techinterview" onclick="switchToTab('techinterview')">Tech Interview</a>
+                        <a class="app-sidebar-nav-item" data-tab="reports" onclick="switchToTab('reports')">Candidate Review</a>
+                    </div>
+                </div>
+
+                <div class="app-sidebar-group" data-group-id="training">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('training')" aria-expanded="false">
+                        <span>Training</span>
+                        <span class="app-sidebar-group-chevron">▾</span>
+                    </button>
+                    <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" data-tab="training" onclick="switchToTab('training')">Training</a>
+                        <a class="app-sidebar-nav-item" data-tab="tasks" onclick="switchToTab('tasks')">Tasks</a>
+                    </div>
+                </div>
+
+                <div class="app-sidebar-group" data-group-id="salestools">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('salestools')" aria-expanded="false">
+                        <span>Sales Tools</span>
+                        <span class="app-sidebar-group-chevron">▾</span>
+                    </button>
+                    <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">Offer Builder</a>
+                        <a class="app-sidebar-nav-item" href="#" onclick="openOfferLibraryFromNav(); return false;">Offer Library</a>
+                        <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">Deliverables</a>
+                    </div>
+                </div>
+
+                <div class="app-sidebar-group" data-group-id="admin">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('admin')" aria-expanded="false">
+                        <span>Admin</span>
+                        <span class="app-sidebar-group-chevron">▾</span>
+                    </button>
+                    <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">Admin Dashboard</a>
+                        <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Proof Packs</a>
+                        <a class="app-sidebar-nav-item" data-tab="hours" onclick="switchToTab('hours')">Log Hours</a>
+                    </div>
+                </div>
+
+                <div class="app-sidebar-group" data-group-id="feedback">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('feedback')" aria-expanded="false">
+                        <span>Feedback</span>
+                        <span class="app-sidebar-group-chevron">▾</span>
+                    </button>
+                    <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" href="#" onclick="bugReportsUI.openReportModal(); return false;">Report Bugs</a>
+                    </div>
+                </div>
+
                 <div class="app-sidebar-nav-divider"></div>
-                <div class="app-sidebar-nav-label">Admin</div>
-                <a class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">
-                    Admin Dashboard
-                </a>
-                <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">
-                    Proof Packs
+                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Messaging</div>
+                <a class="app-sidebar-nav-item has-badge" data-tab="sms" onclick="switchToTab('sms')">
+                    <span class="app-sidebar-nav-item__label">SMS Inbox</span>
+                    <span class="h2s-badge" id="smsNavUnreadBadge" style="display:none;" aria-label="Unread SMS"></span>
                 </a>
 
                 <div class="app-sidebar-nav-divider"></div>
-                <div class="app-sidebar-nav-label">Feedback</div>
-                <a class="app-sidebar-nav-item" href="#" onclick="bugReportsUI.openReportModal(); return false;">
-                    Report Bugs
-                </a>
-
-                <div class="app-sidebar-nav-divider"></div>
-                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Build</div>
-                <div style="padding: 8px 18px 14px 18px; font-size: 11px; font-weight: 800; color: rgba(15, 23, 42, 0.55);">
-                    {{BUILD_ID}}
+                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Version</div>
+                <div class="h2s-build" style="padding: 6px 16px 14px 16px;">
+                    <button class="h2s-build-pill" id="sidebarBuildPill" type="button" onclick="copyBuildIdFromEl('sidebarBuildId','sidebarBuildPill')" aria-label="Copy build ID">
+                        <span class="h2s-build-pill__label">Version</span>
+                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260306_115025_4809419</span>
+                        <span class="h2s-build-pill__copy">Copy</span>
+                    </button>
                 </div>
             </nav>
         </div>
@@ -291,6 +552,7 @@
                     <button class="tab" data-tab="training">Training</button>
                     <button class="tab" data-tab="tasks">Tasks</button>
                     <button class="tab" data-tab="deliverables">Deliverables</button>
+                    <button class="tab" data-tab="sms">SMS Inbox</button>
                 </nav>
 
                 <!-- PIPELINE PANE -->
@@ -683,123 +945,145 @@
             </div>
 
             <!-- Training Resources Card -->
-            <div class="card">
+            <div class="card" id="trainingResourcesCard">
                 <!-- Header -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <div>
                         <h2 class="card-title" style="margin-bottom: 4px;">Training Resources</h2>
                         <p style="color: var(--cobalt); margin: 0;">Complete trainings to build your knowledge base</p>
                     </div>
-                    <button onclick="toggleAdminPanel()" class="btn" style="padding: 10px 20px; font-size: 14px; background: #eff6ff; color: var(--azure); border: 1px solid #bfdbfe; font-weight: 700; border-radius: 10px; transition: all 0.2s;">
-                        Manage Training
-                    </button>
+                    <div style="display:flex; gap: 12px; align-items:center; flex-wrap: wrap; justify-content:flex-end;">
+                        <div id="trainingDebugToggleWrap" style="display:none; align-items:center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff;">
+                            <input type="checkbox" id="trainingDebugToggle" style="width: 16px; height: 16px;" />
+                            <label for="trainingDebugToggle" style="font-size: 12px; color: var(--cobalt); font-weight: 900; user-select:none;">Admin debug</label>
+                        </div>
+                        <button onclick="toggleAdminPanel()" class="btn" style="padding: 10px 20px; font-size: 14px; background: #eff6ff; color: var(--azure); border: 1px solid #bfdbfe; font-weight: 700; border-radius: 10px; transition: all 0.2s;">
+                            Manage Training
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Learning Path Tiers -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 32px;">
-                    <button class="tier-btn active" data-tier="all" onclick="filterTrainingByTier('all')" style="padding: 20px; border-radius: 16px; border: 2px solid #0a2a5a; background: #0a2a5a; color: white; font-weight: 700; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(10,42,90,0.2);">
-                        <div style="font-size: 24px; margin-bottom: 8px;"></div>
-                        <div style="font-size: 16px;">All Training</div>
-                    </button>
-                    <button class="tier-btn" data-tier="Foundation" onclick="filterTrainingByTier('Foundation')" style="padding: 20px; border-radius: 16px; border: 3px solid #e0e0e0; background: white; color: var(--cobalt); font-weight: 700; cursor: pointer; transition: all 0.3s;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">Build</div>
-                        <div style="font-size: 16px;">Foundation</div>
-                        <div style="font-size: 12px; font-weight: 400; color: #666; margin-top: 4px;">Business basics, systems, ops</div>
-                    </button>
-                    <button class="tier-btn" data-tier="Core Skills" onclick="filterTrainingByTier('Core Skills')" style="padding: 20px; border-radius: 16px; border: 3px solid #e0e0e0; background: white; color: var(--cobalt); font-weight: 700; cursor: pointer; transition: all 0.3s;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">Work</div>
-                        <div style="font-size: 16px;">Core Skills</div>
-                        <div style="font-size: 12px; font-weight: 400; color: #666; margin-top: 4px;">Marketing, offers, customer work</div>
-                    </button>
-                    <button class="tier-btn" data-tier="Advanced" onclick="filterTrainingByTier('Advanced')" style="padding: 20px; border-radius: 16px; border: 3px solid #e0e0e0; background: white; color: var(--cobalt); font-weight: 700; cursor: pointer; transition: all 0.3s;">
-                        <div style="font-size: 24px; margin-bottom: 8px;">Launch</div>
-                        <div style="font-size: 16px;">Advanced</div>
-                        <div style="font-size: 12px; font-weight: 400; color: #666; margin-top: 4px;">Web design, AI tools, tech skills</div>
-                    </button>
+                <!-- Learning Path Tiers (compact) -->
+                <div class="training-tier-bar" aria-label="Training tier filter">
+                    <button type="button" class="tier-btn active" data-tier="all" onclick="filterTrainingByTier('all')">All</button>
+                    <button type="button" class="tier-btn" data-tier="Foundation" onclick="filterTrainingByTier('Foundation')">Foundation</button>
+                    <button type="button" class="tier-btn" data-tier="Core Skills" onclick="filterTrainingByTier('Core Skills')">Core Skills</button>
+                    <button type="button" class="tier-btn" data-tier="Advanced" onclick="filterTrainingByTier('Advanced')">Advanced</button>
                 </div>
 
                 <!-- Admin Panel (Hidden by default) -->
-                <div id="trainingAdminPanel" style="display: none; margin-bottom: 24px; padding: 32px; background: linear-gradient(135deg, #0a2a5a 0%, #144a8a 100%); border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                        <div>
-                            <h3 style="color: white; margin: 0; font-size: 24px; margin-bottom: 4px;">Training Management Console</h3>
-                            <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 14px;">Upload videos, create SOPs, manage all training content</p>
+                <div id="trainingAdminPanel" style="display: none; margin-bottom: 24px; padding: 18px; background: #fff; border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 12px;">
+                        <div style="min-width:0;">
+                            <h3 style="color: var(--cobalt); margin: 0; font-size: 18px; font-weight: 900;">Training Management</h3>
+                            <p style="color: #6b7280; margin: 4px 0 0; font-size: 13px; font-weight: 700;">Add or edit training modules.</p>
                         </div>
-                        <button onclick="toggleAdminPanel()" style="padding: 10px 20px; background: rgba(255,255,255,0.2); color: white; border: 2px solid white; border-radius: 10px; font-weight: 600; cursor: pointer;">
+                        <button onclick="toggleAdminPanel()" class="btn" style="padding: 8px 12px; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer;">
                             Close
                         </button>
                     </div>
-                    
-                    <!-- Quick Add Form -->
-                    <form id="newTrainingForm" onsubmit="submitNewTraining(event)" style="background: white; padding: 32px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);">
-                        <h4 style="color: var(--cobalt); margin-bottom: 24px; font-size: 22px; font-weight: 700;">Upload New Training</h4>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Title -->
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Video Title</label>
-                                <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers" required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+
+                    <div class="training-admin-grid">
+                        <!-- Create / Edit -->
+                        <form id="newTrainingForm" onsubmit="submitNewTraining(event)" class="training-admin-card">
+                            <input type="hidden" id="editResourceId" value="">
+                            <h4 id="trainingFormTitle" style="color: var(--cobalt); margin: 0 0 14px; font-size: 16px; font-weight: 900;">Create Training</h4>
+
+                            <!-- Basics -->
+                            <div class="training-admin-section" style="margin-bottom: 12px;">
+                                <div class="training-admin-section__title">Basics</div>
+                                <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">
+                                    <div>
+                                        <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Training Title</label>
+                                        <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                        <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Required.</p>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+                                        <div>
+                                            <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Type</label>
+                                            <select id="newTrainingType" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                                <option value="VIDEO" selected>Video</option>
+                                                <option value="PDF">PDF</option>
+                                                <option value="SOP">SOP</option>
+                                            </select>
+                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Video supports multiple parts; PDF/SOP is a single link.</p>
+                                        </div>
+                                        <div>
+                                            <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Training Category</label>
+                                            <select id="newTrainingCategory" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                                <option value="Marketing">Marketing & Lead Generation</option>
+                                                <option value="CRM">CRM & Sales Management</option>
+                                                <option value="Technical">Technical Implementation</option>
+                                                <option value="Operations">Operations & Fulfillment</option>
+                                                <option value="Home2Smart">Home2Smart</option>
+                                            </select>
+                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Pick the category that fits.</p>
+                                        </div>
+                                        <div>
+                                            <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Estimated Minutes</label>
+                                            <input type="number" id="newTrainingDuration" inputmode="numeric" min="1" step="1" placeholder="e.g., 12" style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Optional.</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Loom URL -->
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Loom Video URL</label>
-                                <input type="url" id="newTrainingURL" placeholder="https://loom.com/share/abc123..." required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: monospace;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
-                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Copy the share link from your Loom video</p>
+                            <!-- Assets -->
+                            <div class="training-admin-section" style="margin-bottom: 12px;">
+                                <div class="training-admin-section__title">Assets</div>
+                                <div id="newTrainingUrls" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div class="training-url-row" draggable="true" style="display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: start; margin-bottom: 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff;">
+                                        <button type="button" class="training-drag-handle" title="Drag to reorder" style="width: 40px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: #f9fafb; color: var(--cobalt); font-weight: 900; cursor: grab;">≡</button>
+                                        <div style="display:flex; flex-direction:column; gap:8px;">
+                                            <div>
+                                                 <input type="hidden" class="training-title-cleared" value="0" />
+                                                 <input type="text" class="training-title-input" placeholder="Video title (optional)" oninput="try{ const r=this.closest('.training-url-row'); const h=r && r.querySelector('.training-title-cleared'); if(h) h.value='0'; }catch(e){}" style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 700;">
+                                            </div>
+                                            <div>
+                                                <input type="url" class="training-url-input" placeholder="https://loom.com/share/..." required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-family: monospace;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                            </div>
+                                        </div>
+                                        <div style="display:flex; flex-direction:column; gap:6px; height:100%;">
+                                            <button type="button" onclick="return clearTrainingVideoTitle(this)" aria-label="Reset title" title="Reset title" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">↺</button>
+                                            <button type="button" class="training-url-remove" onclick="return removeTrainingUrlInput(this)" aria-label="Remove" title="Remove" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                    <button type="button" id="addTrainingUrlBtn" onclick="return addTrainingUrlInput()" style="padding: 10px 14px; background: color-mix(in srgb, var(--azure) 25%, var(--white)); color: var(--cobalt); border: 2px solid color-mix(in srgb, var(--azure) 45%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer;">+ Add video</button>
+                                </div>
+                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Video: YouTube + Loom only (multiple parts supported). PDF/SOP: paste a single https link.</p>
                             </div>
-                        </div>
 
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                            <!-- Learning Category -->
-                            <div style="margin-bottom: 20px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Training Category</label>
-                                <select id="newTrainingCategory" required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
-                                    <option value="Marketing">Marketing & Lead Generation</option>
-                                    <option value="CRM">CRM & Sales Management</option>
-                                    <option value="Technical">Technical Implementation</option>
-                                    <option value="Operations">Operations & Fulfillment</option>
-                                    <option value="Home2Smart">Home2Smart</option>
+                            <!-- Description -->
+                            <div class="training-admin-section" style="margin-bottom: 14px;">
+                                <div class="training-admin-section__title">Description <span style="font-weight: 700; text-transform: none; color: #6b7280;">(optional)</span></div>
+                                <textarea id="newTrainingDescription" rows="3" placeholder="Brief overview of what's covered..." style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-family: inherit; resize: vertical; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'"></textarea>
+                                <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">If blank, we auto-generate a clean summary from the video titles.</p>
+                            </div>
+
+                            <button type="submit" style="width: 100%; padding: 12px 14px; background: var(--cobalt); color: var(--white); border: 1px solid var(--cobalt); border-radius: 12px; font-weight: 900; font-size: 14px; cursor: pointer; transition: background 0.2s, opacity 0.2s; letter-spacing: 0.02em;">
+                                Save Training
+                            </button>
+                        </form>
+
+                        <!-- Existing Resources -->
+                        <div class="training-admin-card">
+                            <h4 style="color: var(--cobalt); margin: 0 0 12px; font-size: 15px; font-weight: 900;">Existing Resources</h4>
+                            <div style="display:flex; gap: 10px; flex-wrap: wrap; align-items:center; margin-bottom: 14px;">
+                                <input id="adminTrainingSearch" class="form-input" type="text" placeholder="Search title, category, description…" style="flex: 1; min-width: 240px;" oninput="filterAdminTrainingList()" />
+                                <select id="adminTrainingSort" class="form-input" style="min-width: 170px; cursor: pointer;" onchange="filterAdminTrainingList()">
+                                    <option value="updated_desc">Newest</option>
+                                    <option value="updated_asc">Oldest</option>
+                                    <option value="title_asc">Title A→Z</option>
+                                    <option value="title_desc">Title Z→A</option>
                                 </select>
-                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Choose the category that best fits this training</p>
                             </div>
-
-                            <!-- Duration -->
-                            <div style="margin-bottom: 28px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Video Length (minutes)</label>
-                                <input type="number" id="newTrainingDuration" placeholder="e.g., 15" min="1" style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+                            <div id="adminTrainingList">
+                                <div class="spinner"></div>
                             </div>
                         </div>
-
-                        <!-- Optional: Description -->
-                        <div style="margin-bottom: 24px;">
-                            <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Description <span style="font-weight: 400; text-transform: none; color: #999;">(Optional)</span></label>
-                            <textarea id="newTrainingDescription" rows="3" placeholder="Brief overview of what's covered..." style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-family: inherit; resize: vertical; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'"></textarea>
-                        </div>
-
-                        <button type="submit" style="width: 100%; padding: 18px; background: linear-gradient(135deg, var(--azure) 0%, #667eea 100%); color: white; border: none; border-radius: 14px; font-weight: 700; font-size: 17px; cursor: pointer; box-shadow: 0 6px 20px rgba(20, 147, 255, 0.4); transition: all 0.3s; text-transform: uppercase; letter-spacing: 1px;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 25px rgba(20, 147, 255, 0.5)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 6px 20px rgba(20, 147, 255, 0.4)'">
-                            Upload Training Video
-                        </button>
-                    </form>
-
-                    <!-- Manage Existing Resources -->
-                    <div style="background: white; padding: 28px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-                        <h4 style="color: var(--cobalt); margin-bottom: 16px; font-size: 18px;">Manage Existing Resources</h4>
-                        <div id="adminTrainingList">
-                            <div class="spinner"></div>
-                        </div>
-
-                <!-- Smart Filter Tabs -->
-                <div style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 2px solid #e5e7eb;">
-                    <button class="training-filter-tab" data-filter="recommended" onclick="filterTrainingResources('recommended')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                        Recommended for You <span id="recommendedCount" style="background: #e5e7eb; color: #6b7280; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
-                    </button>
-                    <button class="training-filter-tab" data-filter="inprogress" onclick="filterTrainingResources('inprogress')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #6b7280; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                        In Progress <span id="inprogressCount" style="background: #e5e7eb; color: #6b7280; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
-                    </button>
-                    <button class="training-filter-tab active" data-filter="all" onclick="filterTrainingResources('all')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid #0a2a5a; color: #0a2a5a; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s;">
-                        All Resources <span id="allCount" style="background: #0a2a5a; color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; margin-left: 6px;">0</span>
-                    </button>
-                </div>
                     </div>
                 </div>
 
@@ -886,6 +1170,55 @@
             </div>
                 </div>
 
+                <!-- SMS INBOX PANE -->
+                <div class="pane" id="sms-pane">
+                    <div class="card sms-inbox-card">
+                        <div class="sms-inbox">
+                            <div class="sms-inbox__sidebar">
+                                <div class="sms-inbox__sidebar-header">
+                                    <div>
+                                        <div class="sms-inbox__title">SMS Inbox</div>
+                                        <div class="sms-inbox__subtitle">Threads from Twilio</div>
+                                        <div id="smsHiddenEntry" style="display:none; margin-top: 8px;">
+                                            <button type="button" class="btn-secondary" style="height: 28px; padding: 0 10px; font-size: 12px;" onclick="smsOpenHiddenModal()">
+                                                Archived <span id="smsHiddenCount" style="font-weight:900;">0</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <button class="btn sms-new-btn" type="button" onclick="smsStartNewMessage()">New</button>
+                                </div>
+                                <div style="padding: 10px 10px 8px 10px;">
+                                    <input id="smsThreadSearch" class="form-input" type="text" placeholder="Search threads…" oninput="smsFilterThreads()" style="width: 100%;" />
+                                </div>
+                                <div id="smsThreadsList" class="sms-threads">
+                                    <div class="spinner"></div>
+                                </div>
+                            </div>
+
+                            <div class="sms-inbox__main">
+                                <div id="smsThreadHeader" class="sms-thread-header">
+                                    <div class="sms-thread-header__title">Select a thread</div>
+                                    <div class="sms-thread-header__subtitle">Click a phone number on the left — or press New to start one</div>
+                                </div>
+
+                                <div id="smsMessagesList" class="sms-messages">
+                                    <div class="sms-empty">No thread selected.</div>
+                                </div>
+
+                                <form class="sms-composer" onsubmit="smsSendFromComposer(event)">
+                                    <div class="sms-input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
+                                        <input id="smsSendInput" class="sms-composer__input" type="text" placeholder="Type a message…" disabled style="padding-right: 40px; width: 100%;" />
+                                        <button type="button" id="smsMicBtn" onclick="smsToggleDictation()" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; display: flex; align-items: center; justify-content: center; z-index: 10;" title="Dictate (AI Voice)">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                                        </button>
+                                    </div>
+                                    <button id="smsSendBtn" class="btn sms-composer__send" type="submit" disabled>Send</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- TASKS PANE -->
                 <div class="pane" id="tasks-pane">
             <div class="card">
@@ -942,18 +1275,25 @@
                             <div>
                                 <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Proof Packs</div>
                                 <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload proof photos and videos for your bundles page. The system handles rotation automatically.</div>
+                                <div style="margin-top: 10px;">
+                                    <button class="h2s-build-pill h2s-build-pill--inline" id="ppBuildPill" type="button" onclick="copyBuildIdFromEl('ppBuildId','ppBuildPill')" aria-label="Copy version ID">
+                                        <span class="h2s-build-pill__label">Version</span>
+                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260306_115025_4809419</span>
+                                        <span class="h2s-build-pill__copy">Copy</span>
+                                    </button>
+                                </div>
                             </div>
                             <div class="button-group u-flex u-wrap u-gap-12"></div>
                         </div>
 
                         <!-- Service Selection & Upload Toolbar -->
-                        <div class="upload-toolbar" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:24px;">
-                            <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:20px;">
+                        <div class="upload-toolbar" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:24px;">
+                            <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px;">
                                 
                                 <!-- Service Select -->
                                 <div style="flex:1; min-width:200px;">
                                     <label for="ppService" style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; letter-spacing:0.5px; text-transform:uppercase;">
-                                        Service Category
+                                        Service
                                     </label>
                                     <div class="custom-select-wrapper" style="position:relative;">
                                         <select id="ppService" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
@@ -966,7 +1306,7 @@
                                 <!-- Proof Type Select -->
                                 <div style="flex:1; min-width:260px;">
                                     <label for="ppIntent" style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; letter-spacing:0.5px; text-transform:uppercase;">
-                                        Proof Type <span style="color:#ef4444">*</span>
+                                        Type <span style="color:#ef4444">*</span>
                                     </label>
                                     <select id="ppIntent" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
                                         <option value="" selected>Select Proof Type (Required)</option>
@@ -975,18 +1315,11 @@
                                         <option value="result_proof">Result Proof (Finished job)</option>
                                     </select>
                                 </div>
-
-                                <!-- Help Text (Visual Only) -->
-                                <div style="flex:2; padding-bottom:4px;">
-                                    <div style="font-size:13px; color:#64748b; line-height:1.4;">
-                                        Start your upload by selecting the category and type above. Images and videos will be tagged automatically.
-                                    </div>
-                                </div>
                             </div>
                         </div>
                         
                         <!-- Hidden for backend -->
-                        <input type="hidden" id="ppPackSelect" value="default" />
+                        <input type="hidden" id="ppPackSelect" value="" />
                         <input type="hidden" id="ppSurface" value="bundles" />
                         <input type="hidden" id="ppWeekOf" value="" />
                         <input type="hidden" id="ppPackTitle" value="" />
@@ -996,16 +1329,65 @@
                         <div class="card u-mt-3" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                             <div class="card-header u-mb-2" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Upload</div>
 
-                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="border: 1px solid #e5e7eb; border-radius: 16px; padding: 60px 32px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: #fafafa;">
-                                <div style="max-width: 400px; margin: 0 auto;">
-                                    <p style="font-size: 17px; font-weight: 500; color: #1e293b; margin-bottom: 8px;">Drop files here</p>
-                                    <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">or click to browse</p>
+                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="cursor: pointer;">
+                                <div id="ppDropzonePrompt" style="max-width: 820px; margin: 0 auto;">
+                                    <div class="pp-dropzone-left">
+                                        <div class="pp-dropzone-icon" aria-hidden="true">
+                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                                <polyline points="17 8 12 3 7 8"/>
+                                                <line x1="12" y1="3" x2="12" y2="15"/>
+                                            </svg>
+                                        </div>
+                                        <div style="flex:1; min-width:240px;">
+                                            <p class="pp-dropzone-title">Drop files to add to your library</p>
+                                            <p class="pp-dropzone-sub">Click anywhere to browse. Right-click assets in the Library to optimize/replace.</p>
+                                            <div class="pp-dropzone-hint">Defaults are tuned for speed: WebP/AVIF + resize + quality.</div>
+                                        </div>
+                                    </div>
                                     <div id="ppConvertToMp4Wrapper" class="u-text-sm u-muted u-mt-1" style="display:none;">
                                         <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                             <input id="ppConvertToMp4" type="checkbox" checked />
                                             Convert to MP4 (applies rotation/trim)
                                         </label>
                                     </div>
+                                    <div id="ppOptimizeImagesWrapper" class="u-text-sm u-muted u-mt-1" style="display:block;">
+                                        <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                            <input id="ppOptimizeImages" type="checkbox" checked />
+                                            Optimize images (WebP/AVIF + compress)
+                                        </label>
+                                        <div class="u-text-xs u-muted u-mt-1" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Format
+                                                <select id="ppImageFormat" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
+                                                    <option value="auto" selected>Auto</option>
+                                                    <option value="avif">AVIF</option>
+                                                    <option value="webp">WebP</option>
+                                                </select>
+                                            </label>
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Quality
+                                                <input id="ppImageQuality" type="range" min="35" max="95" value="72" style="width:120px;" />
+                                                <span id="ppImageQualityLabel" style="min-width:30px; text-align:right; font-variant-numeric: tabular-nums;">72</span>
+                                            </label>
+                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
+                                                Max px
+                                                <select id="ppImageMaxDim" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
+                                                    <option value="0">Original</option>
+                                                    <option value="2560">2560</option>
+                                                    <option value="1920" selected>1920</option>
+                                                    <option value="1600">1600</option>
+                                                    <option value="1280">1280</option>
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <div class="u-text-xs u-muted" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
+                                    </div>
+                                </div>
+
+                                <!-- Inline previews live INSIDE the dropzone so files "pop up" immediately -->
+                                <div id="ppFilePreviews" class="u-mt-3" style="display:none; text-align:left;">
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                                 </div>
                                 <input id="ppFileInput" class="pp-hidden-file-input" type="file" accept="image/*,video/*" multiple />
                                 <input id="ppCameraPhotoInput" class="pp-hidden-file-input" type="file" accept="image/*" capture="environment" />
@@ -1019,10 +1401,6 @@
                                     <div id="ppUploadProgressBar" style="background:linear-gradient(90deg,#3b82f6,#2563eb);height:100%;width:0%;transition:width 0.3s ease;"></div>
                                 </div>
                                 <div class="u-text-xs u-muted u-mt-1" id="ppUploadProgressText" style="text-align:center;"></div>
-                            </div>
-
-                            <div id="ppFilePreviews" class="u-mt-3" style="display:none;">
-                                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                             </div>
 
                             <div id="ppFileSummary" class="u-mt-3" style="display:none;"></div>
@@ -1070,7 +1448,8 @@
                             </div>
                             
                             <!-- Hidden fields for backend compatibility -->
-                            <input type="hidden" id="ppShotType" value="after" />
+                            <!-- NOTE: This must be a <select> because the Proof Packs UI dynamically populates options + hints. -->
+                            <select id="ppShotType" style="display:none;"></select>
                             <div id="ppShotTypeHint" class="u-text-xs u-muted" style="margin-top:4px; padding:6px 10px; background:#f8fafc; border-left:3px solid #3b82f6; border-radius:4px; display:none;"></div>
                             <input type="hidden" id="ppTimeOfDay" value="day" />
                             <input type="hidden" id="ppSlotKey" value="mid_proof_rail" />
@@ -1084,10 +1463,12 @@
                             <input type="hidden" id="ppFilterContrastVal" value="100" />
                             <input type="hidden" id="ppFilterSaturationVal" value="100" />
 
-                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:none;"></div>
-                            <button onclick="proofPacks.uploadAndAssign()" id="ppUploadBtn" style="display:none;"></button>
+                            <div class="pp-upload-actions u-mt-3" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                                <button id="ppClearStagedBtn" class="btn btn-secondary" type="button" onclick="proofPacks.clearStagedFiles()" style="min-width:180px; display:none;">Clear queue</button>
+                            </div>
 
-                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:none;"></div>
+                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:block;"></div>
+                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:block;"></div>
                             <div id="ppDetectedKind" style="display:none;"></div>
 
                             <!-- Meters removed for cleaner UI -->
@@ -1099,6 +1480,26 @@
                         </div>
 
                         <!-- Library (Always Visible) -->
+                        <div class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background:#f8fafc;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-size: 13px; font-weight: 800; color:#0f172a; letter-spacing:0.2px;">Quick Asset Tools</div>
+                                    <div class="u-text-xs u-muted" style="margin-top:2px; max-width: 760px; line-height:1.5;">
+                                        Paste an <strong>asset_id</strong> (best) or a storage URL. Use this to open an asset in the editor or optimize it to WebP/AVIF.
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                    <input id="ppQuickAssetInput" type="text" placeholder="asset_id (e.g. 9c1b...) or storage URL" style="min-width: 320px; max-width: 520px; width: min(520px, 70vw); height: 40px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13px; background: white;" />
+                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOpenAsset()" style="height:40px;">Open</button>
+                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'download' })" style="height:40px;">Optimize + Download</button>
+                                    <button class="pp-btn-primary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'replace' })" style="height:40px;">Optimize + Replace</button>
+                                </div>
+                            </div>
+                            <div class="u-text-xs u-muted" style="margin-top:10px; opacity:0.92;">
+                                Tip: The optimization settings above (Format/Quality/Max px) apply here too.
+                            </div>
+                        </div>
+
                         <div id="ppLibraryWorkspace" class="u-mt-4">
                             <div class="card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                                 <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Bundles Page</div>
@@ -1287,6 +1688,7 @@
                                         <label class="form-label" for="ppBackendUrl">Backend URL</label>
                                         <input id="ppBackendUrl" class="form-input" placeholder="https://h2s-backend.vercel.app" />
                                         <span class="form-help">Where the Proof Packs API is hosted.</span>
+                                        <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-02T00:00:00Z</span>
                                     </div>
                                     <div class="form-field u-mt-2">
                                         <label class="form-label" for="ppAdminKey">Admin key (optional)</label>
@@ -1316,44 +1718,38 @@
                 -->
                 <div class="pane" id="offerbuilder-pane" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 50; background: var(--surface-2); padding-top: 24px;">
                     <div class="ob-container">
+                        <div class="ob-header-wrap">
                         <div class="ob-header">
-                            <div>
-                                <h2 class="ob-title">Build Your Offer</h2>
-                                <p class="ob-subtitle">Create service packages and bundles. Add services, set pricing, and generate a complete offer brief.</p>
-                                <div class="ob-subtabs" role="tablist" aria-label="Offer Builder tabs">
-                                    <button type="button" class="ob-subtab is-active" id="offerBuilderTabBuilder" onclick="offerBuilder.setSubTab('builder')" role="tab" aria-selected="true">Offer Builder</button>
-                                    <button type="button" class="ob-subtab" id="offerBuilderTabLibrary" onclick="offerBuilder.setSubTab('library')" role="tab" aria-selected="false">Offer Library</button>
-                                    <button type="button" class="ob-subtab" id="offerBuilderTabAdFrameworks" onclick="offerBuilder.setSubTab('adframeworks')" role="tab" aria-selected="false">Ad Frameworks</button>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap: 14px; flex-wrap:wrap;">
+                                    <div style="min-width: 320px; flex: 1;">
+                                        <div style="font-size: 12px; font-weight: 900; color: #64748b; letter-spacing: 0.04em; text-transform: uppercase;">Active offer</div>
+                                        <div style="margin-top: 6px; display:flex; align-items:center; gap: 10px; flex-wrap:wrap;">
+                                            <div id="obAfActiveOffer" style="font-size: 16px; font-weight: 1000; color: var(--cobalt); line-height: 1.2; cursor: pointer;" onclick="try{ offerBuilder.setSubTab('builder'); offerBuilder._autoEnsureActiveOfferHydratedInBuilder({ reason: 'header_active_offer_click', force: true }); }catch(e){}">Select an offer to begin</div>
+                                        </div>
+                                    </div>
+
+                                    <div style="margin-left: auto; display:flex; align-items:center; gap: 10px; flex-wrap:wrap; justify-content:flex-end;">
+                                        <button type="button" class="ob-btn ob-btn--tertiary" style="font-weight: 950;" onclick="try{ offerBuilder.openOfferBuilderTutorial({ force: true, reason: 'header_help_click' }); }catch(e){}">Help</button>
+                                        <button type="button" class="ob-btn ob-btn--tertiary" style="font-weight: 950;" onclick="offerBuilder.setSubTab('library')">Change</button>
+                                    </div>
+                                </div>
+
+                                <div class="ob-subtabs" role="tablist" aria-label="Offer Factory tabs" style="margin-top: 14px;">
+                                    <button type="button" class="ob-subtab is-active" id="offerBuilderTabLibrary" onclick="offerBuilder.setSubTab('library')" role="tab" aria-selected="true">Offer Library</button>
+                                    <button type="button" class="ob-subtab" id="offerBuilderTabBuilder" onclick="offerBuilder.setSubTab('builder'); try{ offerBuilder._autoEnsureActiveOfferHydratedInBuilder({ reason: 'subtab_builder_click', bypassThrottle: true }); }catch(e){}" role="tab" aria-selected="false">Offer Builder</button>
+                                    <button type="button" class="ob-subtab" id="offerBuilderTabAdFrameworks" onclick="offerBuilder.setSubTab('adframeworks')" role="tab" aria-selected="false">Frameworks</button>
                                 </div>
                             </div>
-                            <div class="ob-actions">
-                                <button onclick="offerBuilder.recalculateOffer()" id="offerBuilderRecalcBtn" class="ob-btn ob-btn--secondary">
-                                    Recalculate
-                                </button>
-                                <span id="offerBuilderLastUpdate" style="display: none;"></span>
-                                <button onclick="offerBuilder.openOfferLibrary()" id="offerBuilderLibraryBtn" class="ob-btn ob-btn--secondary">
-                                    Offer Library
-                                </button>
-                                <button onclick="offerBuilder.saveOffer()" id="offerBuilderSaveBtn" class="ob-btn ob-btn--primary">
-                                    Save Offer
-                                </button>
-                                <button onclick="offerBuilder.generateBrief()" id="offerBuilderGenerateBriefBtn" class="ob-btn ob-btn--secondary">
-                                    Generate Brief
-                                </button>
-                                <button onclick="offerBuilder.markReady()" id="offerBuilderMarkReadyBtn" class="ob-btn ob-btn--success" style="display: none;">
-                                    Mark Ready
-                                </button>
-                                <button onclick="offerBuilder.generateSampleOffer()" id="offerBuilderSampleBtn" class="ob-btn ob-btn--tertiary">
-                                    Sample Offer
-                                </button>
-                                <button onclick="offerBuilder.showHelp()" class="ob-btn ob-btn--secondary ob-btn--icon" title="How to use" aria-label="How to use">
-                                    ?
-                                </button>
-                            </div>
+                        </div>
                         </div>
 
                         <div id="offerBuilderBuilderView">
                         <div class="ob-workspace">
+                        <div style="display:flex; justify-content:flex-end; gap: 10px; margin-bottom: 12px; flex-wrap:wrap;">
+                            <button onclick="offerBuilder.saveOffer()" id="offerBuilderSaveBtn" class="ob-btn ob-btn--primary">Save</button>
+                            <button onclick="offerBuilder.generateBrief()" id="offerBuilderGenerateBriefBtn" class="ob-btn ob-btn--secondary">Brief</button>
+                        </div>
                         <!-- Build Order Strip -->
                         <div id="offerBuilderBuildOrder" class="ob-strip">
                             <div class="ob-stepper" aria-label="Offer build steps">
@@ -1405,38 +1801,33 @@
 
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start;">
                                         <div style="min-width: 0;">
-                                            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 8px;">
-                                                <label style="display: block; font-size: 13px; font-weight: 700; color: var(--cobalt); margin: 0;">Offer Name <span style="color: #ef4444;">*</span></label>
-                                                <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.suggestOfferTitle()" title="Generate a unique, memorable name">Suggest title</button>
-                                            </div>
+                                            <label style="display: block; font-size: 13px; font-weight: 700; color: var(--cobalt); margin: 0 0 8px 0;">Offer Name <span style="color: #ef4444;">*</span></label>
                                             <input type="text" id="offerBuilderName" placeholder="e.g., Spring Security Bundle" oninput="offerBuilder.updateOfferName(this.value); offerBuilder.recalculateOffer();" style="width: 100%; height: 42px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px;">
                                             <div id="offerBuilderNameGuidance" style="font-size: 11px; color: #6b7280; margin-top: 6px; display: none;">Enter a clear, descriptive offer name</div>
-                                            <div style="font-size: 11px; color: #64748b; margin-top: 6px; visibility: hidden;">Spacer</div>
+                                            <div style="font-size: 11px; color: #64748b; margin-top: 6px;">&nbsp;</div>
                                         </div>
 
                                         <div style="min-width: 0;" id="offerBuilderPriceCard">
                                             <label style="display: block; font-size: 13px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Offer Price</label>
                                             <div style="position: relative;">
                                                 <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 16px; font-weight: 800; color: #9ca3af; pointer-events: none;">$</span>
-                                                <input type="number" id="offerBuilderDirectPrice" min="0" step="0.01" placeholder="299.00" oninput="offerBuilder.handleDirectPriceInput(this.value)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); offerBuilder.applyDirectPrice(); }" style="width: 100%; height: 42px; padding: 10px 12px 10px 30px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 16px; font-weight: 800; color: var(--cobalt); text-align: right; transition: all 0.2s;" onfocus="this.style.borderColor='var(--cobalt)'; this.style.boxShadow='0 0 0 3px rgba(10,42,90,0.1)'" onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+                                                <input type="number" id="offerBuilderDirectPrice" min="0" step="0.01" placeholder="299.00" oninput="offerBuilder.handleDirectPriceInput(this.value)" onkeydown="if(event.key==='Enter'){ event.preventDefault(); offerBuilder.applyDirectPrice(); }" style="width: 100%; height: 42px; padding: 10px 12px 10px 30px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 16px; font-weight: 800; color: var(--cobalt); text-align: right; transition: all 0.2s;" onfocus="this.style.borderColor='var(--cobalt)'; this.style.boxShadow='0 0 0 3px rgba(10,42,90,0.1)'" onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'; try{ offerBuilder.applyDirectPriceIfPresent({ silent: true }); }catch(e){}">
                                             </div>
                                             <div style="font-size: 11px; color: #64748b; margin-top: 6px;">Press Enter to set a fixed package price (optional).</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div id="offerBuilderPriceHelp" style="margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 6px; font-size: 11px; color: #6b7280; display: none;">
-                                        <!-- Dynamic help text will appear here -->
-                                    </div>
-                                    
-                                    <div id="offerBuilderCurrentPrice" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; display: none;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
-                                            <div style="flex: 1;">
-                                                <div style="font-size: 11px; color: #0369a1; margin-bottom: 2px;">Current Offer Price</div>
-                                                <div id="offerBuilderCurrentPriceDisplay" style="font-size: 20px; font-weight: 700; color: var(--cobalt);">$0</div>
+
+                                            <div id="offerBuilderPriceHelp" style="margin-top: 12px; padding: 12px; background: #f9fafb; border-radius: 10px; font-size: 11px; color: #6b7280; display: none;">
+                                                <!-- Dynamic help text will appear here -->
                                             </div>
-                                            <button onclick="offerBuilder.clearOfferPrice()" style="padding: 6px 12px; background: white; color: #6b7280; border: 1px solid #e5e7eb; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; transition: all 0.2s;" onmouseover="this.style.borderColor='#ef4444'; this.style.color='#ef4444'" onmouseout="this.style.borderColor='#e5e7eb'; this.style.color='#6b7280'">
-                                                Clear
-                                            </button>
+
+                                            <div id="offerBuilderCurrentPrice" style="margin-top: 12px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px; display: none;">
+                                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+                                                    <div style="flex: 1;">
+                                                        <div style="font-size: 11px; color: #0369a1; margin-bottom: 2px;">Current Offer Price</div>
+                                                        <div id="offerBuilderCurrentPriceDisplay" style="font-size: 20px; font-weight: 700; color: var(--cobalt);">$0</div>
+                                                    </div>
+                                                    <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" id="offerBuilderClearPriceBtn" onclick="offerBuilder.clearOfferPrice()">Clear</button>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1475,14 +1866,14 @@
                                     <div id="pricingStrategySection" style="display: none; margin-top: 16px; padding-top: 16px; border-top: 2px solid #e5e7eb;">
                                         <p style="font-size: 12px; color: #6b7280; margin: 0 0 16px 0;">Let the system calculate your offer price by adding up individual service prices. Most people just set the price above instead.</p>
                                         <div style="display: flex; flex-direction: column; gap: 12px;">
-                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#f9fafb'; this.style.borderColor='var(--cobalt)'" onmouseout="this.style.background='white'; this.style.borderColor='#e5e7eb'">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;">
                                             <input type="radio" name="offerBuilderPricingStrategy" value="sum" checked onchange="offerBuilder.updatePricingStrategy('sum')" style="cursor: pointer;">
                                             <div style="flex: 1;">
                                                 <div style="font-size: 14px; color: var(--cobalt); font-weight: 600;">Regular Pricing</div>
                                                 <div style="font-size: 11px; color: #6b7280;">Add up all service prices (no discount)</div>
                                             </div>
                                         </label>
-                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#f9fafb'; this.style.borderColor='var(--cobalt)'" onmouseout="this.style.background='white'; this.style.borderColor='#e5e7eb'">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;">
                                             <input type="radio" name="offerBuilderPricingStrategy" value="percentOff" onchange="offerBuilder.updatePricingStrategy('percentOff')" style="cursor: pointer;">
                                             <div style="flex: 1;">
                                                 <div style="font-size: 14px; color: var(--cobalt); font-weight: 600;">Percentage Discount</div>
@@ -1495,7 +1886,7 @@
                                                 <span style="font-size: 14px; color: #374151; font-weight: 500;">% off</span>
                                             </div>
                         </div>
-                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#f9fafb'; this.style.borderColor='var(--cobalt)'" onmouseout="this.style.background='white'; this.style.borderColor='#e5e7eb'">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;">
                                             <input type="radio" name="offerBuilderPricingStrategy" value="dollarOff" onchange="offerBuilder.updatePricingStrategy('dollarOff')" style="cursor: pointer;">
                                             <div style="flex: 1;">
                                                 <div style="font-size: 14px; color: var(--cobalt); font-weight: 600;">Dollar Discount</div>
@@ -1509,7 +1900,7 @@
                                                 <span style="font-size: 14px; color: #374151; font-weight: 500;">off total</span>
                                             </div>
                                         </div>
-                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;" onmouseover="this.style.background='#f9fafb'; this.style.borderColor='var(--cobalt)'" onmouseout="this.style.background='white'; this.style.borderColor='#e5e7eb'">
+                                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; transition: all 0.2s;">
                                             <input type="radio" name="offerBuilderPricingStrategy" value="bundlePrice" onchange="offerBuilder.updatePricingStrategy('bundlePrice')" style="cursor: pointer;">
                                             <div style="flex: 1;">
                                                 <div style="font-size: 14px; color: var(--cobalt); font-weight: 600;">Fixed Package Price</div>
@@ -1785,12 +2176,11 @@
                             <!-- ========== RIGHT COLUMN ========== -->
                             <div id="offerBuilderRightColumn" style="display: flex; flex-direction: column; gap: 16px; position: relative; min-width: 0;">
 
-                                <!-- Offer Factory Workspace (single-call) -->
-                                <div id="obWorkspaceCard" class="ob-card" style="padding: 20px;">
+                                <div id="obWorkspaceCard" class="ob-card" style="padding: 20px; display:none;">
                                     <div style="display:flex; justify-content:space-between; align-items:center; gap: 12px; margin-bottom: 12px;">
                                         <div>
                                             <h3 style="font-size: 14px; font-weight: 900; color: var(--cobalt); margin: 0;">Offer Factory</h3>
-                                            <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">READY = brief exists + linked. Hydrates from one endpoint.</p>
+                                            <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">Ready means the offer brief is created and linked.</p>
                                         </div>
                                     </div>
 
@@ -1820,15 +2210,19 @@
                                             <div style="padding: 12px; border-bottom: 1px solid rgba(148,163,184,0.20); background: linear-gradient(180deg, rgba(248,250,252,0.9), rgba(248,250,252,0.6)); position: sticky; top: 0; z-index: 5;">
                                                 <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap: wrap;">
                                                     <div style="min-width: 240px; flex: 1;">
-                                                        <div id="obWsOfferName" style="font-size: 13px; font-weight: 1000; color: var(--cobalt);">No offer selected</div>
-                                                        <div style="margin-top: 4px; display:flex; gap: 8px; align-items:center; flex-wrap:wrap;">
-                                                            <span id="obWsLifecyclePill" style="display:inline-flex; align-items:center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 900; border: 1px solid rgba(148,163,184,0.35); color: #475569; background: rgba(248,250,252,0.9);">—</span>
-                                                            <span id="obWsOfferId" style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">—</span>
+                                                        <div id="obWsOfferName" style="font-size: 13px; font-weight: 1000; color: var(--cobalt);">Select an offer to start</div>
+                                                        <div id="obWsActiveOfferSlot" style="display:none;"></div>
+                                                        <div id="obWsOfferEmptyActions" style="margin-top: 6px; display:flex; gap: 10px; align-items:center; flex-wrap:wrap;">
+                                                            <a href="#" class="ob-btn ob-btn--tertiary ob-btn--small" style="text-decoration:none;" onclick="offerBuilder.openOfferLibrary(); return false;">Go to Offer Library</a>
+                                                        </div>
+                                                        <div style="margin-top: 6px; display:flex; gap: 8px; align-items:center; flex-wrap:wrap;">
+                                                            <span id="obWsLifecyclePill" style="display:inline-flex; align-items:center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 900; border: 1px solid rgba(148,163,184,0.35); color: #475569; background: rgba(248,250,252,0.9);">N/A</span>
+                                                            <span id="obWsOfferId" style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">N/A</span>
                                                         </div>
                                                     </div>
                                                     <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                                                         <button id="obWsNamingBtn" type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.openNamingDrawer()">Auto-fix naming</button>
-                                                        <button id="obWsPrimaryCta" type="button" class="ob-btn ob-btn--primary ob-btn--small" onclick="offerBuilder.workspacePrimaryCta()" disabled>—</button>
+                                                        <button id="obWsPrimaryCta" type="button" class="ob-btn ob-btn--primary ob-btn--small" onclick="offerBuilder.workspacePrimaryCta()" disabled>Select offer</button>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
@@ -1844,7 +2238,7 @@
 
                                             <div id="obNamingDrawer" style="display:none; border-top: 1px solid rgba(148,163,184,0.20); background: #ffffff;">
                                                 <div style="padding: 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px;">
-                                                    <div style="font-size: 12px; font-weight: 1000; color: var(--cobalt);">Auto-fix naming — results</div>
+                                                    <div style="font-size: 12px; font-weight: 1000; color: var(--cobalt);">Auto-fix naming results</div>
                                                     <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.closeNamingDrawer()">Close</button>
                                                 </div>
                                                 <div id="obNamingDrawerBody" style="padding: 0 12px 12px;"></div>
@@ -1885,8 +2279,8 @@
                                     </div>
                                     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 10px;">
                                         <div style="font-size: 12px; font-weight: 900; color: #0f172a; margin-bottom: 6px;">Preview</div>
-                                        <div style="font-size: 12px; color: #475569; line-height: 1.5;">Bundle 3+ services to increase perceived value. Keep the offer name outcome-driven and time-bound.</div>
-                                        <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" style="margin-top: 10px;" onclick="offerBuilder.toggleSection('offerBuilderInsights')">See all insights</button>
+                                        <div id="offerBuilderInsightsPreviewText" style="font-size: 12px; color: #475569; line-height: 1.5;">Add an offer description to unlock copy suggestions (nothing auto-fills).</div>
+                                        <button id="offerBuilderInsightsPreviewBtn" type="button" class="ob-btn ob-btn--secondary ob-btn--small" style="margin-top: 10px;" onclick="offerBuilder.toggleSection('offerBuilderInsights')">See suggestions</button>
                                     </div>
                                     <div id="offerBuilderInsights" style="display: none;">
                                         <p style="font-size: 13px; color: #6b7280; margin-bottom: 16px; line-height: 1.6;">Get suggestions based on successful past offers and performance data.</p>
@@ -1960,12 +2354,12 @@
                                                 <div class="ob-workspace">
                                                     <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap; margin-bottom: 12px;">
                                                         <div style="min-width: 320px; flex: 1;">
-                                                            <div style="font-size: 18px; font-weight: 1000; color: var(--cobalt); margin-bottom: 6px;">Offer Library</div>
-                                                            <div style="font-size: 12px; color:#475569; line-height: 1.5;">Shows READY offers only (Offer Brief deliverable exists and is linked).</div>
+                                                            <div style="font-size: 18px; font-weight: 1000; color: var(--cobalt); margin-bottom: 6px;">Select an offer</div>
+                                                            <div style="font-size: 12px; color:#475569; line-height: 1.5;">Click an offer on the left to set it as the active offer. The active offer is used across Builder + Frameworks, and it stays selected.</div>
                                                         </div>
                                                         <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                                                            <button id="obOfferLibraryBulkAutoTitleBtn" class="ob-btn ob-btn--secondary" onclick="offerBuilder.autoTitleWeakOffersBulk()" title="Bulk-fix weak offer names in the library" style="display:none;">Auto-title weak offers</button>
-                                                            <button id="obOfferLibraryBulkFrameworksBtn" class="ob-btn ob-btn--secondary" onclick="offerBuilder.generateFrameworksForVisibleOffersMissing()" title="Generate frameworks for visible offers that are missing them">Generate frameworks (missing)</button>
+                                                                <button type="button" class="ob-btn ob-btn--primary" onclick="offerBuilder.createNewOfferFromLibrary()" style="font-weight: 950;">Create new</button>
+                                                                <button id="obOfferLibraryBulkAutoTitleBtn" class="ob-btn ob-btn--secondary" onclick="offerBuilder.autoTitleWeakOffersBulk()" title="Bulk-fix weak offer names in the library" style="display:none;">Auto-title weak offers</button>
                                                         </div>
                                                     </div>
 
@@ -1998,128 +2392,141 @@
                                             </div>
 
                                             <div id="offerBuilderAdFrameworksView" style="display:none;">
-                        <div class="ob-workspace">
-                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom: 12px;">
-                                <div style="min-width: 280px; flex: 1;">
-                                    <div style="font-size: 18px; font-weight: 1000; color: var(--cobalt); margin-bottom: 6px;">Ad Frameworks</div>
-                                    <div style="font-size: 12px; color: #475569; line-height: 1.5;">Checklist + copy reference for TOF/BOF. Use <span style="font-weight:900;">Copy packet</span> / <span style="font-weight:900;">Copy finalized packet</span> to paste into docs. <span style="font-weight:900;">Submit for review</span> creates a Deliverable (PENDING) in Deliverables → Review Queue.</div>
-                                    <div style="margin-top: 8px; display:flex; align-items:center; gap: 10px; flex-wrap:wrap; font-size: 12px; color:#64748b;">
-                                        <span style="font-weight: 900; color:#0f172a;">Active offer:</span>
-                                        <span id="obAfActiveOffer" style="font-weight: 900; color:#334155;">—</span>
-                                        <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" style="padding: 6px 10px; font-weight: 900;" onclick="offerBuilder.setSubTab('library')">Pick from Library</button>
-                                    </div>
-                                </div>
-                                <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.copyPacket()">Copy packet</button>
-                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.copyFinalPacket()">Copy finalized packet</button>
-                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.submitFinalPacket()">Submit for review</button>
-                                </div>
-                            </div>
-
-                            <div class="af-topbar" style="margin-bottom: 12px;">
-                                <div class="af-field" style="flex: 1 1 320px;">
-                                    <div class="af-label">Keyword / Title</div>
-                                    <input id="obAfKeyword" class="form-input" placeholder="e.g., Same-day TV Mounting" />
-                                    <div class="af-help">Primary input. Auto-fills Offer/Campaign + Angle unless you override below.</div>
-                                </div>
-                                <div class="af-field" style="flex: 0 0 auto; min-width: 260px;">
-                                    <div class="af-label">Stage</div>
-                                    <div class="af-tabs" role="tablist" aria-label="Funnel stage">
-                                        <button type="button" class="af-tab" id="obAfTabTOF" onclick="adFrameworks.setStage('TOF')">TOF</button>
-                                        <button type="button" class="af-tab is-active" id="obAfTabBOF" onclick="adFrameworks.setStage('BOF')">BOF</button>
-                                    </div>
-                                    <div class="af-chiprow" style="margin-top: 8px;">
-                                        <label class="af-chip" style="cursor:pointer; user-select:none;">
-                                            <input id="obAfIncludePriceAnchor" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
-                                            Include Price Anchor
-                                        </label>
-                                        <label class="af-chip" style="cursor:pointer; user-select:none;">
-                                            <input id="obAfIncludeObjectionKiller" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
-                                            Include Objection Killer
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <details class="af-acc" style="margin-bottom: 12px;">
-                                <summary>Advanced fields (auto-filled)</summary>
-                                <div class="af-acc-body">
-                                    <div class="af-topbar" style="margin: 0;">
-                                        <div class="af-field" style="flex: 1 1 280px;">
-                                            <div class="af-label">Offer / Campaign</div>
-                                            <input id="obAfOfferName" class="form-input" placeholder="e.g., TV Mounting Bundle" />
-                                            <div class="af-help">Defaults to your Offer Builder offer name or Keyword if blank.</div>
-                                        </div>
-                                        <div class="af-field" style="flex: 1 1 280px;">
-                                            <div class="af-label">Angle / Concept</div>
-                                            <input id="obAfAngle" class="form-input" placeholder="e.g., Same-day install / clean look / safety" />
-                                            <div class="af-help">Angle = the message lens. Asset = the specific ad you ship.</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </details>
-
-                            <div id="offerBuilderOfferFrameworksAi" style="margin-bottom: 12px;"></div>
-
-                            <div id="offerBuilderAdFrameworkBody"></div>
-                        </div>
-                    </div>
+                                                <div class="ob-workspace">
+                                                    <div id="obCampaignReadinessMount" style="margin-bottom: 12px;"></div>
+                                                </div>
+                                            </div>
                     <!-- End offer builder workspace -->
                 </div>
             </div>
         </div>
 
-        <!-- Training Completion Modal -->
-        <div id="completionModal" class="completion-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.60); z-index: 10000; align-items: center; justify-content: center;">
-            <div class="completion-modal-content" style="background: #ffffff; border-radius: 16px; max-width: 820px; width: 94%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(10,42,90,0.30);">
-                <div style="padding: 20px 24px; border-bottom: 1px solid rgba(10,42,90,0.12); background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%); position: relative; overflow: hidden;">
-                    <div style="position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 2s infinite;"></div>
-                    <h3 style="color: #ffffff; font-size: 20px; font-weight: 900; margin: 0; position: relative; z-index: 1;" id="completionModalTitle">Training Completion Report</h3>
-                    <p style="color: rgba(255,255,255,0.85); font-size: 13px; margin: 6px 0 0; position: relative; z-index: 1;">Detailed responses build your knowledge profile and unlock better recommendations.</p>
+        <!-- TRAINING COMPLETION MODAL -->
+        <div class="task-modal-overlay" id="completionModal" style="display:none; z-index: 10000;" onclick="if(event && event.target === this) closeCompletionModal()">
+            <div class="task-modal" onclick="event.stopPropagation()" style="max-width: 760px;">
+                <div class="task-modal-header">
+                    <div style="flex: 1;">
+                        <div class="task-title" id="completionModalTitle" style="font-size: 22px; margin-bottom: 6px;">Training Completion Report</div>
+                        <div style="color: var(--cobalt); font-size: 13px;">Write what you learned. AI will analyze and update your profile.</div>
+                    </div>
+                    <button class="task-modal-close" onclick="closeCompletionModal()">X</button>
                 </div>
-                <div style="padding: 20px 24px;">
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">1. What specific concept, tool, or process did you learn?</label>
-                        <textarea id="conceptLearned" placeholder="Example: Learned how to build multi-step email automation in GoHighLevel. The process includes: 1) Create workflow in Automation tab, 2) Set up trigger (form submission or tag added), 3) Add email actions with delays between them, 4) Use merge fields for personalization, 5) Set up A/B testing for subject lines." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Be specific:</strong> Name the tool/feature, list the steps, mention settings or configurations.</p>
+
+                <div class="task-modal-body">
+                    <div id="completionAssetsBlock" style="display:none; margin-bottom: 14px;">
+                        <div style="font-weight: 900; color: #0a2a5a; font-size: 12px; margin-bottom: 8px;">Videos / Assets watched</div>
+                        <div id="completionAssetsList" style="display:flex; flex-direction:column; gap: 8px;"></div>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">2. How will you apply this to client work or internal operations?</label>
-                        <textarea id="practicalApplication" placeholder="Example: Will use this to set up automated lead nurture sequences for HVAC clients. When a lead fills out ''Free Quote'' form, they''ll get: Day 1 = Welcome + service overview, Day 3 = Customer testimonials, Day 5 = Limited-time discount offer. This replaces manual follow-up emails and ensures no leads fall through cracks." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Real scenarios:</strong> Which client? What problem does it solve? What''s the outcome?</p>
+
+                    <div class="form-group">
+                        <label class="form-label">1. What is the main concept you learned?</label>
+                        <textarea class="form-textarea" id="conceptLearned" rows="3" placeholder="Write the key takeaway…" required></textarea>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">3. What''s your next action or what will change in your workflow?</label>
-                        <textarea id="nextActions" placeholder="Example: Next steps: 1) Create template automation in our GHL agency account, 2) Document the setup process in ClickUp with screenshots, 3) Add ''Email Automation Setup'' to client onboarding checklist, 4) Test with 1-2 pilot clients before rolling out to all. This will save ~3 hours/week previously spent on manual follow-ups." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Actionable steps:</strong> What will you build, test, or implement? What changes in your process?</p>
+
+                    <div class="form-group">
+                        <label class="form-label">2. How will you apply this in your day-to-day work?</label>
+                        <textarea class="form-textarea" id="practicalApplication" rows="3" placeholder="Explain how you will use it…" required></textarea>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #fff7ed; border-left: 3px solid #f59e0b; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #f59e0b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">4. What''s unclear or what do you need help with? (Optional)</label>
-                        <textarea id="challengesQuestions" placeholder="Example: Not sure how to handle unsubscribes in the automation - do I need a separate workflow? Also unclear on best practice for email frequency (don''t want to spam). Need guidance on A/B testing setup - which metrics should I track?" style="width: 100%; min-height: 90px; padding: 12px; border: 2px solid #fed7aa; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fed7aa'"></textarea>
-                        <p style="color: #92400e; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Flag gaps:</strong> What confused you? What needs clarification? What''s the next skill to learn?</p>
+
+                    <div class="form-group">
+                        <label class="form-label">3. What are your next actions?</label>
+                        <textarea class="form-textarea" id="nextActions" rows="3" placeholder="List your next steps…" required></textarea>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-                        <div>
-                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">Comprehension Level</label>
-                            <div class="star-rating" id="starRating" style="display: flex; gap: 8px; align-items: center;">
-                                <span class="star" data-rating="1" title="1 - Need to rewatch"></span>
-                                <span class="star" data-rating="2" title="2 - Understood basics"></span>
-                                <span class="star" data-rating="3" title="3 - Can explain it"></span>
-                                <span class="star" data-rating="4" title="4 - Can apply with guidance"></span>
-                                <span class="star" data-rating="5" title="5 - Can apply independently"></span>
+
+                    <div class="form-group">
+                        <label class="form-label">4. Any challenges or questions? <span style="font-weight: 600; color: #6b7280;">(optional)</span></label>
+                        <textarea class="form-textarea" id="challengesQuestions" rows="2" placeholder="Optional…"></textarea>
+                    </div>
+
+                    <div class="form-row" style="gap: 12px; align-items: flex-end;">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Time Spent (minutes)</label>
+                            <input class="form-input" id="timeSpent" type="number" min="1" step="1" value="30" />
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Comprehension Rating</label>
+                            <div id="starRating" style="display:flex; gap: 6px; align-items:center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff;">
+                                <span class="star" data-rating="1" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
+                                <span class="star" data-rating="2" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
+                                <span class="star" data-rating="3" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
+                                <span class="star" data-rating="4" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
+                                <span class="star" data-rating="5" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
                             </div>
-                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">1 = rewatch needed  5 = ready to implement</p>
-                        </div>
-                        <div>
-                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">Time Spent (minutes)</label>
-                            <input type="number" id="timeSpent" value="30" min="1" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'">
-                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">Total time including pauses/rewatches</p>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
-                        <button onclick="closeCompletionModal()" style="padding: 14px 18px; background: #f3f4f6; color: #0a2a5a; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Cancel</button>
-                        <button onclick="submitTrainingCompletion()" style="padding: 14px 18px; background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%); color: #ffffff; border: none; border-radius: 10px; font-weight: 900; font-size: 14px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 20px rgba(10,42,90,0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"><span style="position: relative; z-index: 1;">Submit Training Report</span></button>
+                </div>
+
+                <div class="task-modal-actions">
+                    <button type="button" class="task-action-btn taskfinal-action-btn" onclick="closeCompletionModal()" style="background: #f3f4f6; color: var(--cobalt);">Cancel</button>
+                    <button type="button" class="task-action-btn task-complete-btn" onclick="submitTrainingCompletion()">Submit Learnings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRAINING VIDEO PICKER / VIEWER MODAL -->
+        <div class="task-modal-overlay" id="trainingViewerModal" style="display:none; z-index: 10000;" onclick="if(event && event.target === this) closeTrainingViewer()">
+            <div class="task-modal" onclick="event.stopPropagation()" style="max-width: 980px;">
+                <div class="task-modal-header">
+                    <div style="flex: 1; min-width: 0;">
+                        <div class="task-title" id="trainingViewerTitle" style="font-size: 20px; margin-bottom: 6px;">Training Videos</div>
+                        <div style="color: var(--cobalt); font-size: 13px;">Search and select a video to watch.</div>
                     </div>
+                    <button class="task-modal-close" onclick="closeTrainingViewer()">X</button>
+                </div>
+
+                <div class="task-modal-body">
+                    <div style="display:flex; gap: 14px; align-items: stretch;">
+                        <div style="flex: 1; min-width: 320px; max-width: 420px; display:flex; flex-direction:column; gap: 10px;">
+                            <input id="trainingViewerSearch" class="form-input" type="text" placeholder="Filter videos by title or URL…" oninput="filterTrainingViewerList()" />
+                            <div id="trainingViewerList" style="flex: 1; overflow:auto; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px; display:flex; flex-direction:column; gap: 10px; max-height: 60vh;"></div>
+                        </div>
+                        <div style="flex: 2; min-width: 0; display:flex; flex-direction:column; gap: 10px;">
+                            <div style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px; display:flex; align-items:center; justify-content:space-between; gap: 10px; flex-wrap: wrap;">
+                                <div style="min-width: 0; flex: 1;">
+                                    <div id="trainingViewerSubtitle" style="font-size: 12px; color:#6b7280; font-weight: 800;">0/0 videos • 0% complete</div>
+                                    <div id="trainingViewerCurrentLabel" style="font-size: 13px; color: var(--cobalt); font-weight: 900; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Select a video</div>
+                                    <div id="trainingViewerResourceDescription" title="" style="display:none; margin-top: 6px; font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.35; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></div>
+                                </div>
+                                <div style="display:flex; gap: 8px; align-items:center; justify-content:flex-end; flex-wrap: wrap;">
+                                    <button type="button" class="btn" id="trainingViewerPrevBtn" onclick="trainingViewerPrev()" aria-label="Previous" title="Previous" style="width: 36px; height: 36px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; display:flex; align-items:center; justify-content:center;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+                                    <button type="button" class="btn" id="trainingViewerNextBtn" onclick="trainingViewerNext()" aria-label="Next" title="Next" style="width: 36px; height: 36px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; display:flex; align-items:center; justify-content:center;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+
+                                    <button type="button" class="btn" onclick="markTrainingViewerVideoComplete()" aria-label="Mark complete" title="Mark complete" style="width: 36px; height: 36px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; display:flex; align-items:center; justify-content:center;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M20 6 9 17l-5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </button>
+
+                                    <button type="button" class="btn" id="trainingViewerSubmitLearningsBtn" onclick="openCompletionModal(currentTrainingViewerResourceId, document.getElementById('trainingViewerTitle') ? document.getElementById('trainingViewerTitle').textContent : '')" style="display:none; height: 36px; padding: 0 12px; background: var(--cobalt); color: #fff; border: none; border-radius: 10px; font-weight: 900; font-size: 13px;">Submit</button>
+
+                                    <a class="btn" id="trainingViewerOpenExternalLink" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open" title="Open" style="width: 36px; height: 36px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; display:flex; align-items:center; justify-content:center; text-decoration:none;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M14 3h7v7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M10 14 21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M21 14v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </div>
+                            <div id="trainingViewerPlayer" style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px;">
+                                <div style="width:100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #f3f4f6; border: 1px solid rgba(148,163,184,0.25); display:flex; align-items:center; justify-content:center;">
+                                    <div class="spinner" style="width:22px; height:22px;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="task-modal-actions">
+                    <button type="button" class="task-action-btn taskfinal-action-btn" onclick="closeTrainingViewer()" style="background: #f3f4f6; color: var(--cobalt);">Close</button>
                 </div>
             </div>
         </div>
@@ -2130,20 +2537,16 @@
                 <div class="task-modal-header">
                     <div style="flex: 1;">
                         <div class="task-title" style="font-size: 24px; margin-bottom: 8px;">Add New Task</div>
-                        <div style="color: var(--cobalt); font-size: 14px;">Quick Task or Built Task (AI with guardrails)</div>
+                        <div style="color: var(--cobalt); font-size: 14px;">Add notes + links (AI Assist is optional)</div>
                     </div>
                     <button class="task-modal-close" onclick="attemptCloseAddTaskModal('x')">X</button>
                 </div>
                 <div class="task-modal-body">
                     <form id="addTaskForm" onsubmit="submitTaskCreator(event)">
-                        <div class="form-group">
-                            <label class="form-label">Mode</label>
-                            <div class="task-creator-mode-toggle">
-                                <button type="button" id="taskModeQuickBtn" class="btn-secondary" onclick="setTaskCreatorMode('quick')" style="flex:1; font-weight: 800;">Quick Task</button>
-                                <button type="button" id="taskModeBuiltBtn" class="btn-secondary" onclick="setTaskCreatorMode('built')" style="flex:1; font-weight: 800;">Built Task</button>
-                            </div>
+                        <details id="taskCreatorAiAssistDetails" style="margin-bottom: 14px;">
+                            <summary style="cursor:pointer; font-weight: 900; color: #0a2a5a; font-size: 13px;">AI Assist (optional)</summary>
                             <div id="taskCreatorModeHint" style="margin-top: 8px; font-size: 12px; color: #6b7280;"></div>
-                        </div>
+                        </details>
 
                         <div id="taskCreatorStickyBar" class="task-creator-stickybar" style="display:none;">
                             <div class="task-creator-stickybar-left">
@@ -2258,6 +2661,12 @@
                                     <label class="form-label">Assigned To</label>
                                     <select id="newTaskAssignedTo" class="form-select"></select>
                                     <div style="margin-top: 6px; font-size: 12px; color: #64748b;">Only active employees are selectable (prevents typos).</div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Assets / Links</label>
+                                    <textarea id="newTaskAssets" class="form-textarea" placeholder="Paste one or more links (one per line).\nExample: https://youtu.be/..." style="min-height: 90px;"></textarea>
+                                    <div style="margin-top: 6px; font-size: 12px; color: #64748b;">These show up as clickable links in the task popup.</div>
                                 </div>
 
                                 <div class="form-row" style="display: flex; gap: 16px; flex-wrap: wrap;">
@@ -2426,9 +2835,137 @@
         </div>
     </div> <!-- End #h2s-app -->
 
-    <script src="./dash.js" defer></script>
+    <script>
+        // Training upload: compatibility fallback for multi-video rows.
+        // If the stamped /dash.PORTAL_BUILD_*.js fails to load (404/cache/etc),
+        // we still want the Training admin form to be usable.
+        (function () {
+            function el(id) { return document.getElementById(id); }
+            function normalizeStr(v) { return (v == null) ? '' : String(v).trim(); }
+
+            function getRowInputs(row) {
+                const urlInput = row ? row.querySelector('.training-url-input') : null;
+                const titleInput = row ? row.querySelector('.training-title-input') : null;
+                const titleCleared = row ? row.querySelector('.training-title-cleared') : null;
+                return { urlInput, titleInput, titleCleared };
+            }
+
+            function cloneTemplateRow(container) {
+                try {
+                    const template = container ? container.querySelector('.training-url-row') : null;
+                    if (template && template.cloneNode) return template.cloneNode(true);
+                } catch (_) { }
+                return null;
+            }
+
+            if (typeof window.addTrainingUrlInput !== 'function') {
+                window.addTrainingUrlInput = function (url, title) {
+                    const container = el('newTrainingUrls');
+                    if (!container) return false;
+
+                    let row = cloneTemplateRow(container);
+                    if (!row) return false;
+
+                    const { urlInput, titleInput, titleCleared } = getRowInputs(row);
+                    if (titleCleared) titleCleared.value = '0';
+                    if (titleInput) titleInput.value = normalizeStr(title);
+                    if (urlInput) {
+                        urlInput.value = normalizeStr(url);
+                        // keep only the first row required to allow drafts with multiple blank rows
+                        urlInput.required = false;
+                    }
+
+                    container.appendChild(row);
+                    try { (urlInput || titleInput).focus(); } catch (_) { }
+
+                    // Ensure the first row remains required.
+                    try {
+                        const first = container.querySelector('.training-url-row .training-url-input');
+                        if (first) first.required = true;
+                    } catch (_) { }
+
+                    return false;
+                };
+            }
+
+            if (typeof window.removeTrainingUrlInput !== 'function') {
+                window.removeTrainingUrlInput = function (btn) {
+                    const container = el('newTrainingUrls');
+                    if (!container) return false;
+
+                    const rows = Array.from(container.querySelectorAll('.training-url-row'));
+                    const row = btn && btn.closest ? btn.closest('.training-url-row') : null;
+                    if (!row) return false;
+
+                    if (rows.length <= 1) {
+                        const { urlInput, titleInput, titleCleared } = getRowInputs(rows[0]);
+                        if (titleInput) titleInput.value = '';
+                        if (urlInput) urlInput.value = '';
+                        if (titleCleared) titleCleared.value = '0';
+                        return false;
+                    }
+
+                    try { row.remove(); } catch (_) { }
+
+                    try {
+                        const first = container.querySelector('.training-url-row .training-url-input');
+                        if (first) first.required = true;
+                    } catch (_) { }
+                    return false;
+                };
+            }
+
+            if (typeof window.clearTrainingVideoTitle !== 'function') {
+                window.clearTrainingVideoTitle = function (btn) {
+                    const row = btn && btn.closest ? btn.closest('.training-url-row') : null;
+                    if (!row) return false;
+                    const { titleInput, titleCleared } = getRowInputs(row);
+                    if (titleInput) titleInput.value = '';
+                    if (titleCleared) titleCleared.value = '1';
+                    return false;
+                };
+            }
+
+            if (typeof window.resetTrainingForm !== 'function') {
+                window.resetTrainingForm = function () {
+                    const form = el('newTrainingForm');
+                    if (form && form.reset) form.reset();
+
+                    const container = el('newTrainingUrls');
+                    if (container) {
+                        const rows = Array.from(container.querySelectorAll('.training-url-row'));
+                        rows.forEach((r, idx) => {
+                            if (idx === 0) return;
+                            try { r.remove(); } catch (_) { }
+                        });
+                        const firstRow = container.querySelector('.training-url-row');
+                        if (firstRow) {
+                            const { urlInput, titleInput, titleCleared } = getRowInputs(firstRow);
+                            if (titleInput) titleInput.value = '';
+                            if (urlInput) urlInput.value = '';
+                            if (titleCleared) titleCleared.value = '0';
+                            try { urlInput.required = true; } catch (_) { }
+                        }
+                    }
+
+                    const editId = el('editResourceId');
+                    if (editId) editId.value = '';
+
+                    const formTitle = el('trainingFormTitle');
+                    if (formTitle) formTitle.textContent = 'Create Training';
+
+                    const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+                    if (submitBtn) submitBtn.textContent = 'Save Training';
+                    return false;
+                };
+            }
+        })();
+    </script>
+    <script src="/dash.PORTAL_BUILD_20260306_115025_4809419.js" defer></script>
+    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260306_115025_4809419" defer></script>
 </body>
 </html>
+
 
 
 

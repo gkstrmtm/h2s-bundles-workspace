@@ -39,6 +39,58 @@
 
         // Dashboard account session token (DB-backed login)
         const DASH_SESSION_TOKEN_KEY = 'h2s_dashboard_session_token_v1';
+        // Global helper for build pills (dash.html uses inline onclick).
+        // Must exist even if __dashBoot() fails early.
+        try {
+            if (typeof window !== 'undefined' && typeof window.copyBuildIdFromEl !== 'function') {
+                window.copyBuildIdFromEl = (valueElId, pillBtnId) => {
+                    try {
+                        const el = document.getElementById(String(valueElId || ''));
+                        const pill = document.getElementById(String(pillBtnId || ''));
+                        const v = String(el && el.dataset && el.dataset.fullBuildId || '').trim()
+                            || String(el && (el.textContent || el.value) || '').trim();
+                        if (!v || v.includes('{{')) return;
+
+                        const setCopied = (on) => {
+                            if (!pill) return;
+                            pill.classList.toggle('is-copied', !!on);
+                            const copyEl = pill.querySelector('.h2s-build-pill__copy');
+                            if (copyEl) copyEl.textContent = on ? 'Copied' : 'Copy';
+                        };
+
+                        const done = () => {
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 1200);
+                        };
+
+                        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(v).then(done).catch(() => {
+                                const ta = document.createElement('textarea');
+                                ta.value = v;
+                                document.body.appendChild(ta);
+                                ta.select();
+                                document.execCommand('copy');
+                                ta.remove();
+                                done();
+                            });
+                            return;
+                        }
+
+                        const ta = document.createElement('textarea');
+                        ta.value = v;
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        ta.remove();
+                        done();
+                    } catch (_) {
+                        // ignore
+                    }
+                };
+            }
+        } catch (_) {
+            // ignore
+        }
 
         function getDashboardSessionToken() {
             try {
@@ -207,6 +259,12 @@
 
         // Toast Notification System
         function showToast(message, type = 'info') {
+            // Light copy fix: normalize a common backend typo without changing logic.
+            // Example: "to low offers" -> "too low offers"
+            try {
+                const msg = (message == null) ? '' : String(message);
+                message = msg.replace(/\bto\s+low\b/gi, (m) => (m[0] === 'T' ? 'Too low' : 'too low'));
+            } catch (_) {}
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
@@ -539,7 +597,7 @@
                         const targetTab = urlTab || (isValid ? savedTab : 'pipeline');
                         
                         // Validate tab exists
-                        const validTabs = ['pipeline', 'screening', 'techinterview', 'hours', 'reports', 'training', 'tasks', 'deliverables', 'admin', 'offerbuilder', 'proofpacks'];
+                        const validTabs = ['pipeline', 'screening', 'techinterview', 'hours', 'reports', 'training', 'tasks', 'deliverables', 'sms', 'admin', 'offerbuilder', 'proofpacks'];
                         if (validTabs.includes(targetTab)) {
                             // Small delay to ensure DOM is ready
                             setTimeout(() => {
@@ -683,6 +741,11 @@
                     if (window.offerBuilder && typeof window.offerBuilder.flushDraftAutosave === 'function') {
                         window.offerBuilder.flushDraftAutosave({ reason: 'tab_switch' });
                     }
+                }
+
+                // If we're leaving SMS, stop background polling.
+                if (activeTab === 'sms' && targetTab !== 'sms') {
+                    if (typeof stopSmsAutoRefresh === 'function') stopSmsAutoRefresh();
                 }
             } catch (_) {}
             
@@ -842,6 +905,7 @@
                 'training': 'Training',
                 'tasks': 'Tasks',
                 'deliverables': 'Deliverables',
+                'sms': 'SMS Inbox',
                 'admin': 'Admin Dashboard',
                 'offerbuilder': 'Offer Builder',
                 'proofpacks': 'Proof Packs'
@@ -905,8 +969,1260 @@
                     loadTasks();
                 } else if (targetTab === 'hours') {
                     loadHoursHistory();
+                } else if (targetTab === 'sms') {
+                    loadSmsThreads(false);
+                    loadSmsGroups(false);
+                    startSmsAutoRefresh();
+                    // Default UX: entering the SMS tab should show the composer
+                    // ("New message" + To input) when no thread/group is selected.
+                    // Use a small delay so any state restoration has a chance to run first.
+                    setTimeout(() => {
+                    try {
+                        if (!__smsActiveThreadId && !__smsActiveGroupId) {
+                            if (!document.getElementById('smsToInput')) smsStartNewMessage('');
+                        }
+                    } catch (_) {}
+                        try {
+                            const hasActive = !!(__smsActiveThreadId || __smsActiveGroupId || __smsActiveContactPhone);
+                            if (hasActive) return;
+                            const hasToInput = !!document.getElementById('smsToInput');
+                            if (hasToInput) return;
+                            if (typeof smsStartNewMessage === 'function') smsStartNewMessage('');
+                        } catch (_) {
+                            // ignore
+                        }
+                    }, 150);
                 }
             }, 50);
+        }
+
+        // =====================
+        // SMS Inbox (Twilio)
+        // =====================
+        let __smsActiveThreadId = '';
+        let __smsActiveGroupId = '';
+        let __smsActiveContactPhone = '';
+        let __smsActiveContactName = '';
+        let __smsThreads = [];
+        let __smsGroups = [];
+        let __smsActiveGroupMembers = [];
+        let __smsAutoGroupLastKey = '';
+        let __smsAutoGroupTimer = null;
+        let __smsAutoGroupInFlight = false;
+        let __smsThreadIsLoading = false;
+        let __smsAutoRefreshTimer = null;
+        let __smsActiveLastMessageId = '';
+        let __smsDraftRecipients = [];
+        let __smsContactsByPhone = {};
+        let __smsRecipientSuggest = [];
+        let __smsEditingRecipientPhone = '';
+        let __smsActiveMessages = [];
+        let __smsMessagesPage = { limit: 80, has_more: false, before: null, next_before: null };
+        let __smsMessagesLoadingOlder = false;
+        let __smsMessagesScrollBound = false;
+
+        let __smsHiddenCache = [];
+
+        // Heuristic index of recent group fan-out sends so the UI can label them as a
+        // single group-send event (even though they are stored as multiple 1:1 messages).
+        let __smsRecentGroupSends = new Map();
+        let __smsPhoneToGroup = new Map();
+
+        const SMS_MAX_ACTIVE_MESSAGES = 800;
+
+        function smsNormalizePhoneCandidate(raw) {
+            const s = String(raw || '').trim();
+            if (!s) return '';
+            if (s.startsWith('+') && s.length >= 8) return s;
+            const digits = s.replace(/\D+/g, '');
+            if (digits.length === 10) return `+1${digits}`;
+            if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+            if (digits.length >= 8 && digits.length <= 15) {
+                // Best effort: treat as E.164-ish without '+'
+                return `+${digits}`;
+            }
+            return '';
+        }
+
+        function smsExtractPhonesFromText(text) {
+            const t = String(text || '');
+            if (!t.trim()) return [];
+            const parts = t
+                .split(/[\s,;\n\r\t]+/g)
+                .map(p => p.trim())
+                .filter(Boolean);
+            const out = [];
+            const seen = new Set();
+            for (const p of parts) {
+                const norm = smsNormalizePhoneCandidate(p);
+                if (!norm) continue;
+                if (seen.has(norm)) continue;
+                seen.add(norm);
+                out.push(norm);
+            }
+            return out;
+        }
+
+        function smsRenderRecipientsBar() {
+            const chips = document.getElementById('smsToChips');
+            if (!chips) return;
+            const contacts = (__smsContactsByPhone && typeof __smsContactsByPhone === 'object') ? __smsContactsByPhone : {};
+            const html = (__smsDraftRecipients || []).map((p, idx) => {
+                const display = smsFormatPhoneDisplay(p);
+                const c = contacts[String(p || '').trim()] || null;
+                const name = c && c.contact_name ? String(c.contact_name || '').trim() : '';
+                const label = name ? name : (display || p);
+                return `
+                    <span class="sms-to-chip">
+                        <button type="button" class="sms-to-chip__label" onclick="smsOpenRecipientContactModal('${smsEscapeHtml(String(p || '').trim())}')">${smsEscapeHtml(label)}</button>
+                        <button type="button" class="sms-to-chip__x" onclick="smsRemoveRecipient(${idx})">×</button>
+                    </span>
+                `;
+            }).join('');
+            chips.innerHTML = html;
+
+            // If user is composing a new message and adds 2+ recipients,
+            // automatically consolidate into a per-employee group conversation.
+            smsMaybeAutoCreateGroupFromDraftRecipients();
+        }
+
+        function smsIsNewMessageMode() {
+            return !__smsActiveThreadId && !__smsActiveContactPhone && !__smsActiveGroupId;
+        }
+
+        function smsComputeRecipientsKey(list) {
+            try {
+                const arr = Array.isArray(list) ? list.slice(0) : [];
+                const normalized = arr.map(x => smsNormalizePhoneCandidate(String(x || '').trim())).filter(Boolean);
+                const uniq = Array.from(new Set(normalized));
+                uniq.sort();
+                return uniq.join('|');
+            } catch {
+                return '';
+            }
+        }
+
+        function smsMaybeAutoCreateGroupFromDraftRecipients() {
+            try {
+                if (!smsIsNewMessageMode()) return;
+                const rec = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients : [];
+                if (rec.length < 2) return;
+                if (__smsAutoGroupInFlight) return;
+
+                const memberKey = smsComputeRecipientsKey(rec);
+                if (!memberKey) return;
+                if (memberKey === __smsAutoGroupLastKey) return;
+
+                __smsAutoGroupLastKey = memberKey;
+
+                if (__smsAutoGroupTimer) {
+                    clearTimeout(__smsAutoGroupTimer);
+                    __smsAutoGroupTimer = null;
+                }
+
+                __smsAutoGroupTimer = setTimeout(async () => {
+                    try {
+                        if (!smsIsNewMessageMode()) return;
+                        const cur = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients : [];
+                        if (cur.length < 2) return;
+                        const curKey = smsComputeRecipientsKey(cur);
+                        if (!curKey || curKey !== __smsAutoGroupLastKey) return;
+
+                        __smsAutoGroupInFlight = true;
+
+                        const gid = await smsUpsertGroupForRecipients(cur);
+                        if (gid) {
+                            // Keep composing (do NOT navigate away and hide the To input).
+                            try { await loadSmsGroups(true); } catch (_) {}
+                        }
+                    } catch (e) {
+                        // Silent failure: user can still send individual messages.
+                    } finally {
+                        __smsAutoGroupInFlight = false;
+                    }
+                }, 350);
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsRemoveRecipient(idx) {
+            try {
+                const i = Number(idx);
+                if (!Number.isFinite(i)) return;
+                const list = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients.slice(0) : [];
+                if (i < 0 || i >= list.length) return;
+                list.splice(i, 1);
+                __smsDraftRecipients = list;
+                smsRenderRecipientsBar();
+                try {
+                    const input = document.getElementById('smsToInput');
+                    if (input) input.focus();
+                } catch (e) {}
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsPickRecipientSuggestion(phone) {
+            const p = smsNormalizePhoneCandidate(phone);
+            if (!p) return;
+            const list = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients.slice(0) : [];
+            if (!list.includes(p)) list.push(p);
+            __smsDraftRecipients = list;
+            smsRenderRecipientsBar();
+
+            try {
+                const suggest = document.getElementById('smsToSuggest');
+                if (suggest) suggest.style.display = 'none';
+                const input = document.getElementById('smsToInput');
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                }
+            } catch (e) {}
+        }
+
+        function smsSetRecipientSuggestions(list) {
+            __smsRecipientSuggest = Array.isArray(list) ? list : [];
+        }
+
+        function smsRenderRecipientSuggestions() {
+            const wrap = document.getElementById('smsToSuggest');
+            if (!wrap) return;
+            const list = Array.isArray(__smsRecipientSuggest) ? __smsRecipientSuggest : [];
+            if (list.length <= 0) {
+                wrap.style.display = 'none';
+                wrap.innerHTML = '';
+                return;
+            }
+            const html = list.map((c) => {
+                const phone = String(c && c.phone || '').trim();
+                const name = String(c && c.contact_name || '').trim();
+                const label = name ? `${name} (${smsFormatPhoneDisplay(phone)})` : (smsFormatPhoneDisplay(phone) || phone);
+                return `
+                    <button type="button" class="sms-to-suggest__row" onclick="smsPickRecipientSuggestion('${smsEscapeHtml(phone)}')">
+                        <div class="sms-to-suggest__title">${smsEscapeHtml(label)}</div>
+                    </button>
+                `;
+            }).join('');
+            wrap.innerHTML = html;
+            wrap.style.display = '';
+        }
+
+        function smsHandleToInputInput(e) {
+            try {
+                const input = e && e.target ? e.target : document.getElementById('smsToInput');
+                const raw = String(input && input.value || '').trim();
+                if (!raw) {
+                    smsSetRecipientSuggestions([]);
+                    smsRenderRecipientSuggestions();
+                    return;
+                }
+
+                // Suggest from known contacts.
+                const contacts = (__smsContactsByPhone && typeof __smsContactsByPhone === 'object') ? __smsContactsByPhone : {};
+                const rows = Object.keys(contacts).map(p => {
+                    const c = contacts[p];
+                    return {
+                        phone: p,
+                        contact_name: (c && c.contact_name) ? String(c.contact_name || '').trim() : ''
+                    };
+                });
+
+                const q = raw.toLowerCase();
+                const suggestions = rows
+                    .filter(r => {
+                        if (!r || !r.phone) return false;
+                        const name = String(r.contact_name || '').toLowerCase();
+                        const phone = String(r.phone || '');
+                        return name.includes(q) || phone.includes(raw);
+                    })
+                    .slice(0, 7);
+
+                // Also allow the raw input if it looks like a phone.
+                const rawPhones = smsExtractPhonesFromText(raw);
+                if (rawPhones.length > 0) {
+                    for (const p of rawPhones) {
+                        if (suggestions.find(s => String(s.phone || '') === p)) continue;
+                        suggestions.unshift({ phone: p, contact_name: '' });
+                    }
+                }
+
+                smsSetRecipientSuggestions(suggestions);
+                smsRenderRecipientSuggestions();
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsHandleToInputPaste(e) {
+            try {
+                const text = (e && e.clipboardData) ? e.clipboardData.getData('text') : '';
+                const phones = smsExtractPhonesFromText(text);
+                if (phones.length <= 0) return;
+
+                e.preventDefault();
+
+                const list = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients.slice(0) : [];
+                for (const p of phones) {
+                    if (!list.includes(p)) list.push(p);
+                }
+                __smsDraftRecipients = list;
+                smsRenderRecipientsBar();
+
+                const input = document.getElementById('smsToInput');
+                if (input) input.value = '';
+                smsSetRecipientSuggestions([]);
+                smsRenderRecipientSuggestions();
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsHandleToInputKeydown(e) {
+            try {
+                if (!e) return;
+                const input = e.target;
+                const raw = String(input && input.value || '');
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const phones = smsExtractPhonesFromText(raw);
+                    if (phones.length <= 0) return;
+                    const list = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients.slice(0) : [];
+                    for (const p of phones) {
+                        if (!list.includes(p)) list.push(p);
+                    }
+                    __smsDraftRecipients = list;
+                    smsRenderRecipientsBar();
+                    if (input) input.value = '';
+                    smsSetRecipientSuggestions([]);
+                    smsRenderRecipientSuggestions();
+                } else if (e.key === 'Backspace') {
+                    const v = String(input && input.value || '');
+                    if (!v) {
+                        const list = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients.slice(0) : [];
+                        if (list.length > 0) {
+                            list.pop();
+                            __smsDraftRecipients = list;
+                            smsRenderRecipientsBar();
+                        }
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsFormatPhoneDisplay(p) {
+            const s = String(p || '').trim();
+            if (!s) return '';
+            const digits = s.replace(/\D+/g, '');
+            if (digits.length === 11 && digits.startsWith('1')) {
+                const a = digits.slice(1, 4);
+                const b = digits.slice(4, 7);
+                const c = digits.slice(7);
+                return `(${a}) ${b}-${c}`;
+            }
+            if (digits.length === 10) {
+                const a = digits.slice(0, 3);
+                const b = digits.slice(3, 6);
+                const c = digits.slice(6);
+                return `(${a}) ${b}-${c}`;
+            }
+            return s;
+        }
+
+        function smsEscapeHtml(s) {
+            const str = String(s == null ? '' : s);
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function smsSetLoading(isLoading, label) {
+            __smsThreadIsLoading = !!isLoading;
+            const list = document.getElementById('smsThreadsList');
+            if (!list) return;
+            if (isLoading) {
+                list.innerHTML = `<div class="sms-empty" style="padding: 10px;">${smsEscapeHtml(label || 'Loading...')}</div>`;
+            }
+        }
+
+        function smsSetMessagesLoading(isLoading, label) {
+            const wrap = document.getElementById('smsMessagesList');
+            if (!wrap) return;
+            if (isLoading) {
+                wrap.innerHTML = `<div class="sms-empty">${smsEscapeHtml(label || 'Loading...')}</div>`;
+            }
+        }
+
+        function smsResetComposerUi() {
+            try {
+                const input = document.getElementById('smsSendInput') || document.getElementById('smsMessageInput');
+                if (input) input.value = '';
+            } catch (e) {}
+
+            try {
+                smsSetComposerEnabled(false);
+            } catch (e) {}
+
+            try {
+                const header = document.getElementById('smsThreadHeader');
+                if (header) header.innerHTML = '';
+            } catch (e) {}
+
+            try {
+                const messagesWrap = document.getElementById('smsMessagesList');
+                if (messagesWrap) messagesWrap.innerHTML = '<div class="sms-empty">Select a conversation.</div>';
+            } catch (e) {}
+
+            try {
+                const toWrap = document.getElementById('smsToWrap');
+                if (toWrap) toWrap.style.display = 'none';
+            } catch (e) {}
+
+            __smsDraftRecipients = [];
+            smsRenderRecipientsBar();
+        }
+
+        function smsGetComposerEls() {
+            const input = document.getElementById('smsSendInput') || document.getElementById('smsMessageInput');
+            const btn = document.getElementById('smsSendBtn');
+            return { input, btn };
+        }
+
+        function smsSetComposerEnabled(enabled) {
+            const { input, btn } = smsGetComposerEls();
+            const ok = !!enabled;
+            if (input) input.disabled = !ok;
+            if (btn) btn.disabled = !ok;
+        }
+
+        function smsSendFromComposer(e) {
+            try { if (e && typeof e.preventDefault === 'function') e.preventDefault(); } catch (_) {}
+            smsSendMessage();
+        }
+
+        function smsUpdateHiddenEntryUi() {
+            try {
+                const entry = document.getElementById('smsHiddenEntry');
+                const countEl = document.getElementById('smsHiddenCount');
+                const n = Array.isArray(__smsHiddenCache) ? __smsHiddenCache.length : 0;
+                if (countEl) countEl.textContent = String(n);
+                if (entry) entry.style.display = (n > 0) ? '' : 'none';
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsOpenHiddenModal() {
+            try {
+                const n = Array.isArray(__smsHiddenCache) ? __smsHiddenCache.length : 0;
+                if (n <= 0) {
+                    showToast('No archived threads', 'info');
+                } else {
+                    showToast(`Archived threads: ${n}`, 'info');
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsFilterThreads() {
+            try {
+                const q = String(document.getElementById('smsThreadSearch')?.value || '').trim().toLowerCase();
+                const rows = Array.isArray(__smsThreads) ? __smsThreads : [];
+                if (!q) {
+                    renderSmsThreads(rows);
+                    return;
+                }
+                const filtered = rows.filter(t => {
+                    const phone = String(t && t.contact_phone || '').toLowerCase();
+                    const name = String(t && t.contact_name || '').toLowerCase();
+                    const preview = String(t && t.last_message_preview || '').toLowerCase();
+                    return phone.includes(q) || name.includes(q) || preview.includes(q);
+                });
+                renderSmsThreads(filtered);
+            } catch {
+                // ignore
+            }
+        }
+
+        function smsShowToBar() {
+            try {
+                const toWrap = document.getElementById('smsToWrap');
+                if (toWrap) toWrap.style.display = '';
+            } catch (e) {}
+        }
+
+        function smsHideToBar() {
+            try {
+                const toWrap = document.getElementById('smsToWrap');
+                if (toWrap) toWrap.style.display = 'none';
+            } catch (e) {}
+        }
+
+        function smsUpdateThreadHeader(title, subtitle) {
+            const header = document.getElementById('smsThreadHeader');
+            if (!header) return;
+            header.innerHTML = `
+                <div class="sms-thread-header__title">${smsEscapeHtml(title || '')}</div>
+                <div class="sms-thread-header__subtitle">${smsEscapeHtml(subtitle || '')}</div>
+            `;
+        }
+
+        function smsIsTabActive() {
+            return document.querySelector('.app-sidebar-nav-item.active')?.dataset?.tab === 'sms'
+                || document.querySelector('.tab.active')?.dataset?.tab === 'sms';
+        }
+
+        function startSmsAutoRefresh() {
+            stopSmsAutoRefresh();
+            // No refresh button UX: auto-poll quietly while the SMS tab is active.
+            __smsAutoRefreshTimer = setInterval(() => {
+                try {
+                    if (!smsIsTabActive()) return;
+                    loadSmsThreads(true);
+                    // If a thread is open, refresh messages as well.
+                    if (__smsActiveThreadId) {
+                        loadSmsThreadMessages(__smsActiveThreadId, true);
+                    }
+                    if (__smsActiveGroupId) {
+                        loadSmsGroupMessages(__smsActiveGroupId, true);
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }, 8000);
+        }
+
+        function stopSmsAutoRefresh() {
+            try {
+                if (__smsAutoRefreshTimer) {
+                    clearInterval(__smsAutoRefreshTimer);
+                    __smsAutoRefreshTimer = null;
+                }
+            } catch (e) {
+                __smsAutoRefreshTimer = null;
+            }
+        }
+
+        async function loadSmsContacts() {
+            try {
+                const response = await fetch(`${API_URL}?action=smsContacts`);
+                const data = await response.json();
+                if (data && data.ok && data.contacts) {
+                    const next = {};
+                    for (const c of data.contacts) {
+                        const p = String(c && c.phone || '').trim();
+                        if (!p) continue;
+                        next[p] = c;
+                    }
+                    __smsContactsByPhone = next;
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        async function loadSmsThreads(silent) {
+            const list = document.getElementById('smsThreadsList');
+            if (!list) return;
+            if (!silent) smsSetLoading(true, 'Loading threads...');
+
+            try {
+                const response = await fetch(`${API_URL}?action=smsThreads`);
+                const data = await response.json();
+                if (!data || !data.ok) {
+                    throw new Error(data && data.error ? data.error : 'Failed to load SMS threads');
+                }
+                __smsThreads = Array.isArray(data.threads) ? data.threads : [];
+                __smsHiddenCache = Array.isArray(data.hidden_threads) ? data.hidden_threads : [];
+                smsUpdateHiddenEntryUi();
+                await loadSmsContacts();
+                renderSmsThreads(__smsThreads);
+            } catch (e) {
+                if (!silent) {
+                    const msg = (e && e.message) ? e.message : 'Failed to load threads';
+                    list.innerHTML = `<div class="sms-empty" style="padding: 10px;">${smsEscapeHtml(msg)}</div>`;
+                }
+            } finally {
+                __smsThreadIsLoading = false;
+            }
+        }
+
+        async function loadSmsGroups(silent) {
+            try {
+                const response = await fetch(`${API_URL}?action=smsGroups`);
+                const data = await response.json();
+                if (!data || !data.ok) {
+                    throw new Error(data && data.error ? data.error : 'Failed to load groups');
+                }
+                __smsGroups = Array.isArray(data.groups) ? data.groups : [];
+                __smsActiveGroupMembers = Array.isArray(data.group_members) ? data.group_members : [];
+
+                // Build phone->group lookup for sender attribution in the thread view.
+                __smsPhoneToGroup = new Map();
+                for (const g of (__smsGroups || [])) {
+                    const gid = String(g && g.group_id || '').trim();
+                    if (!gid) continue;
+                    const members = (g && g.members) ? g.members : null;
+                    const arr = Array.isArray(members) ? members : [];
+                    for (const m of arr) {
+                        const p = String(m || '').trim();
+                        if (!p) continue;
+                        __smsPhoneToGroup.set(p, gid);
+                    }
+                }
+
+                renderSmsGroups(__smsGroups);
+            } catch (e) {
+                if (!silent) {
+                    const msg = (e && e.message) ? e.message : 'Failed to load groups';
+                    showToast(msg, 'error');
+                }
+            }
+        }
+
+        function renderSmsGroups(groups) {
+            // Groups list is optional in the UI; safe no-op if container missing.
+            const el = document.getElementById('smsGroupsList');
+            if (!el) return;
+            const rows = Array.isArray(groups) ? groups : [];
+            if (rows.length <= 0) {
+                el.innerHTML = '';
+                return;
+            }
+            const html = rows.map(g => {
+                const id = String(g && g.group_id || '').trim();
+                const title = String(g && g.title || '').trim() || 'Group';
+                const active = id && id === __smsActiveGroupId;
+                return `
+                    <div class="sms-thread-row is-group ${active ? 'is-active' : ''}" onclick="openSmsGroup('${smsEscapeHtml(id)}')">
+                        <div class="sms-thread-row__top">
+                            <div class="sms-thread-row__name">${smsEscapeHtml(title)}</div>
+                        </div>
+                        <div class="sms-thread-row__phone">Group</div>
+                    </div>
+                `;
+            }).join('');
+            el.innerHTML = html;
+        }
+
+        
+function renderSmsThreads(threads) {
+            const list = document.getElementById('smsThreadsList');
+            if (!list) return;
+            const rows = Array.isArray(threads) ? threads : [];
+            if (rows.length <= 0) {
+                list.innerHTML = '<div class="sms-empty" style="padding: 10px;">No threads yet.</div>';
+                return;
+            }
+
+            const html = rows.map(t => {
+                const id = String(t && t.thread_id || '').trim();
+                const phone = String(t && t.contact_phone || '').trim();
+                const name = String(t && t.contact_name || '').trim();
+                const last = String(t && t.last_message_preview || '').trim();
+                const unread = Number(t && t.unread_count || 0) || 0;
+                const badge = unread > 0 ? `<span class="sms-unread">${unread}</span>` : '';
+
+                const phoneDisplay = smsFormatPhoneDisplay(phone) || phone || '';
+                const title = name || phoneDisplay || phone || 'Unknown';
+                const active = (id && id === __smsActiveThreadId);
+
+                return `
+                    <div class="sms-thread-row ${active ? 'is-active' : ''}" onclick="openSmsThread('${smsEscapeHtml(id)}')">
+                        <div class="sms-thread-row__top">
+                            <div class="sms-thread-row__name">${smsEscapeHtml(title)} ${badge}</div>
+                        </div>
+                        <div class="sms-thread-row__phone">${smsEscapeHtml(phoneDisplay)}</div>
+                        <div class="sms-thread-row__preview">${smsEscapeHtml(last || '')}</div>
+                    </div>
+                `;
+            }).join('');
+            list.innerHTML = html;
+        }
+
+        
+async function openSmsThread(threadId) {
+            const id = String(threadId || '').trim();
+            if (!id) return;
+            __smsActiveThreadId = id;
+            __smsActiveGroupId = '';
+            __smsActiveContactPhone = '';
+            __smsActiveContactName = '';
+            smsHideToBar();
+
+            // Ensure threads list highlights.
+            renderSmsThreads(__smsThreads);
+            renderSmsGroups(__smsGroups);
+
+            // Fetch thread details and messages.
+            await loadSmsThreadMessages(id, false);
+
+            try {
+                smsSetComposerEnabled(true);
+                const { input } = smsGetComposerEls();
+                if (input) input.focus();
+            } catch (e) {}
+        }
+
+        async function openSmsGroup(groupId) {
+            const id = String(groupId || '').trim();
+            if (!id) return;
+            __smsActiveGroupId = id;
+            __smsActiveThreadId = '';
+            __smsActiveContactPhone = '';
+            __smsActiveContactName = '';
+            smsHideToBar();
+
+            renderSmsThreads(__smsThreads);
+            renderSmsGroups(__smsGroups);
+
+            await loadSmsGroupMessages(id, false);
+
+            try {
+                smsSetComposerEnabled(true);
+                const { input } = smsGetComposerEls();
+                if (input) input.focus();
+            } catch (e) {}
+        }
+
+        async function loadSmsThreadMessages(threadId, silent) {
+            const wrap = document.getElementById('smsMessagesList');
+            if (!wrap) return;
+            if (!silent) smsSetMessagesLoading(true, 'Loading...');
+
+            try {
+                const response = await fetch(`${API_URL}?action=smsMessages&thread_id=${encodeURIComponent(threadId)}`);
+                const data = await response.json();
+                if (!data || !data.ok) {
+                    throw new Error(data && data.error ? data.error : 'Failed to load messages');
+                }
+                const messages = Array.isArray(data.messages) ? data.messages : [];
+                __smsActiveMessages = messages;
+                __smsMessagesPage = data.page || { limit: 80, has_more: false, before: null, next_before: null };
+                renderSmsMessages(messages);
+
+                // Update header.
+                const thread = (Array.isArray(__smsThreads) ? __smsThreads : []).find(t => String(t && t.thread_id || '').trim() === String(threadId || '').trim()) || null;
+                const phone = thread ? String(thread.contact_phone || '').trim() : '';
+                const name = thread ? String(thread.contact_name || '').trim() : '';
+                smsUpdateThreadHeader(name || smsFormatPhoneDisplay(phone) || phone || 'Conversation', phone || '');
+
+                // Mark read.
+                try {
+                    await fetch(`${API_URL}?action=smsMarkRead`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ thread_id: threadId })
+                    });
+                    // Refresh thread list (unread badges) silently.
+                    loadSmsThreads(true);
+                } catch (e) {}
+            } catch (e) {
+                if (!silent) {
+                    const msg = (e && e.message) ? e.message : 'Failed to load messages';
+                    wrap.innerHTML = `<div class="sms-empty">${smsEscapeHtml(msg)}</div>`;
+                }
+            }
+        }
+
+        async function loadSmsGroupMessages(groupId, silent) {
+            const wrap = document.getElementById('smsMessagesList');
+            if (!wrap) return;
+            if (!silent) smsSetMessagesLoading(true, 'Loading...');
+
+            try {
+                const response = await fetch(`${API_URL}?action=smsGroupMessages&group_id=${encodeURIComponent(groupId)}`);
+                const data = await response.json();
+                if (!data || !data.ok) {
+                    throw new Error(data && data.error ? data.error : 'Failed to load messages');
+                }
+                const messages = Array.isArray(data.messages) ? data.messages : [];
+                __smsActiveMessages = messages;
+                __smsMessagesPage = data.page || { limit: 80, has_more: false, before: null, next_before: null };
+                renderSmsMessages(messages);
+
+                const g = (Array.isArray(__smsGroups) ? __smsGroups : []).find(x => String(x && x.group_id || '').trim() === String(groupId || '').trim()) || null;
+                const title = g ? (String(g.title || '').trim() || 'Group') : 'Group';
+                smsUpdateThreadHeader(title, '');
+            } catch (e) {
+                if (!silent) {
+                    const msg = (e && e.message) ? e.message : 'Failed to load messages';
+                    wrap.innerHTML = `<div class="sms-empty">${smsEscapeHtml(msg)}</div>`;
+                }
+            }
+        }
+
+        function smsMessageSignature(m) {
+            const dir = String(m && m.direction || '').trim().toUpperCase();
+            const body = String(m && m.body || '').trim();
+            const bodyKey = body.replace(/\s+/g, ' ').slice(0, 120);
+            const sender = String(m && (m.sent_by_user_id || m.sent_by_username || m.sent_by_display_name) || '').trim();
+            return `${sender}::${bodyKey}`;
+        }
+
+        function smsCollapseGroupOutboundFanout(messages) {
+            // When sending to a group of members, the backend fans out to each number,
+            // producing multiple OUTBOUND rows. Collapse them into a single UI event.
+            try {
+                const rows = Array.isArray(messages) ? messages : [];
+                const out = [];
+
+                for (let i = 0; i < rows.length; i++) {
+                    const m = rows[i];
+                    if (!m) continue;
+                    const dir = String(m.direction || '').trim().toUpperCase();
+                    if (dir !== 'OUTBOUND') {
+                        out.push(m);
+                        continue;
+                    }
+
+                    const hint = String(m && (m.sent_by_display_name || m.sent_by_username || '') || '').trim();
+                    const sender = String(m && (m.sent_by_user_id || m.sent_by_username || m.sent_by_display_name) || '').trim();
+                    const sig = smsMessageSignature(m);
+                    if (!sig) {
+                        out.push(m);
+                        continue;
+                    }
+
+                    const prev = out.length > 0 ? out[out.length - 1] : null;
+                    const prevDir = prev ? String(prev.direction || '').trim().toUpperCase() : '';
+                    const prevSig = prev ? smsMessageSignature(prev) : '';
+
+                    // Collapse consecutive identical outbound messages from same sender.
+                    if (prev && prevDir === 'OUTBOUND' && prevSig === sig) {
+                        // Track recipient count for UI.
+                        const prevCount = Number(prev._fanout_count || 1) || 1;
+                        prev._fanout_count = prevCount + 1;
+                        prev._fanout_hint = hint || prev._fanout_hint || '';
+                        prev._fanout_sender = sender || prev._fanout_sender || '';
+                        continue;
+                    }
+
+                    // Start new outbound entry.
+                    m._fanout_count = 1;
+                    m._fanout_hint = hint;
+                    m._fanout_sender = sender;
+                    out.push(m);
+                }
+                return out;
+            } catch {
+                return Array.isArray(messages) ? messages : [];
+            }
+        }
+
+        function smsExtractSentByLabel(m) {
+            try {
+                const dir = String(m && m.direction || '').trim().toUpperCase();
+                if (dir && dir.startsWith('IN')) return '';
+                const sentBy = String(m.sent_by_user_id || m.sent_by_username || m.sent_by_display_name || '').trim();
+                const hint = String(m.sent_by_display_name || m.sent_by_username || '').trim();
+                if (hint) return hint;
+                if (sentBy) return sentBy;
+                return '';
+            } catch {
+                return '';
+            }
+        }
+
+        function smsFormatTime(ts) {
+            try {
+                const d = new Date(ts);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleString();
+            } catch {
+                return '';
+            }
+        }
+
+        function smsIsOutboundMessageForRender(m) {
+            try {
+                const normalizeDigits = (p) => {
+                    const digits = String(p || '').replace(/\D+/g, '');
+                    if (!digits) return '';
+                    return digits.length > 10 ? digits.slice(-10) : digits;
+                };
+                const normalizeKey = (v) => String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+                const staffDigits = new Set(['8643239776', '9513318992']);
+                const staffKeys = new Set(['aces43239776']);
+                const managerNameKeys = new Set(['tabari', 'jalen', 'admin']);
+
+                const meUser = String(typeof currentUser !== 'undefined' ? currentUser : '').trim().toUpperCase();
+
+                const activeRaw = (typeof __smsActiveContactPhone !== 'undefined') ? __smsActiveContactPhone : '';
+                const activeDigits = normalizeDigits(activeRaw);
+                const activeKey = normalizeKey(activeRaw);
+
+                const fromRaw = (m && (m.from_phone || m.from || m.from_number || m.fromNumber || m.sender)) || '';
+                const toRaw = (m && (m.to_phone || m.to || m.to_number || m.toNumber || m.recipient)) || '';
+                const fromDigits = normalizeDigits(fromRaw);
+                const toDigits = normalizeDigits(toRaw);
+                const fromKey = normalizeKey(fromRaw);
+
+                const dirRaw = String(m && m.direction || '').trim().toUpperCase();
+
+                const sentByRaw = String(m && (m.sent_by_username || m.sent_by_display_name || m.sent_by_user_id) || '').trim();
+                const sentByUser = sentByRaw.toUpperCase();
+                const sentByKey = normalizeKey(sentByRaw);
+
+                const roleRaw = String(m && (m.sent_by_role || m.sent_by_user_role || m.sentByRole || m.role) || '').trim().toUpperCase();
+                const isAdminFlag = roleRaw === 'ADMIN'
+                    || (m && (m.sent_by_is_admin === true || m.sent_by_admin === true || m.is_admin === true || m.isAdmin === true));
+
+                const activeIsStaff = (!!activeDigits && staffDigits.has(activeDigits)) || (!!activeKey && staffKeys.has(activeKey));
+                const fromIsStaff = (!!fromDigits && staffDigits.has(fromDigits)) || (!!fromKey && staffKeys.has(fromKey));
+                const sentByIsManager = !!sentByKey && (managerNameKeys.has(sentByKey) || sentByKey.includes('tabari') || sentByKey.includes('jalen'));
+                const privilegedSender = fromIsStaff
+                    || sentByIsManager
+                    || isAdminFlag
+                    || (!!sentByKey && staffKeys.has(sentByKey));
+
+                // Manager/admin senders should always render on the staff side (blue)
+                // when viewing an employee's thread (i.e. active contact is not staff).
+                if (privilegedSender && !activeIsStaff) return true;
+
+                const isInbound = dirRaw && (dirRaw === 'INBOUND' || dirRaw === 'IN' || dirRaw.startsWith('IN'));
+                const isOutbound = dirRaw && (dirRaw === 'OUTBOUND' || dirRaw === 'OUT' || dirRaw.startsWith('OUT'));
+
+                if (isInbound) return false;
+
+                // If a message is attributed to a staff user, only render it as outbound
+                // for the *currently logged-in* dashboard user.
+                if (sentByRaw) {
+                    return !!meUser && sentByUser === meUser;
+                }
+
+                // If it's explicitly outbound but un-attributed, don't assume "you" sent it.
+                if (isOutbound) return false;
+
+                // Fallback: infer based on which side matches the active contact.
+                if (!activeDigits) return false;
+                if (fromDigits && fromDigits === activeDigits) return false;
+                if (toDigits && toDigits === activeDigits) return true;
+
+                return false;
+            } catch {
+                return false;
+            }
+        }
+        function smsShouldShowTimestampForIndex(messages, index) {
+            try {
+                const rows = Array.isArray(messages) ? messages : [];
+                if (!rows.length) return false;
+                if (index <= 0) return true;
+                if (index >= rows.length - 1) return true;
+
+                const pickTs = (m) => (m && (m.sent_at || m.created_at || m.timestamp || m.date))
+                    ? (m.sent_at || m.created_at || m.timestamp || m.date)
+                    : '';
+
+                const curRaw = pickTs(rows[index]);
+                if (!curRaw) return false;
+                const prevRaw = pickTs(rows[index - 1]);
+                if (!prevRaw) return true;
+
+                const curMs = new Date(curRaw).getTime();
+                const prevMs = new Date(prevRaw).getTime();
+                if (!Number.isFinite(curMs) || !Number.isFinite(prevMs)) return true;
+
+                const cur = new Date(curMs);
+                const prev = new Date(prevMs);
+                const dayChanged = cur.getFullYear() !== prev.getFullYear()
+                    || cur.getMonth() !== prev.getMonth()
+                    || cur.getDate() !== prev.getDate();
+                if (dayChanged) return true;
+
+                const GAP_MS = 30 * 60 * 1000;
+                const gap = Math.abs(curMs - prevMs);
+                return gap >= GAP_MS;
+            } catch {
+                return false;
+            }
+        }
+
+        function renderSmsMessages(messages) {
+            const wrap = document.getElementById('smsMessagesList');
+            if (!wrap) return;
+            let rows = Array.isArray(messages) ? messages : [];
+
+            // Collapse group fan-out for group view.
+            if (__smsActiveGroupId) {
+                rows = smsCollapseGroupOutboundFanout(rows);
+            }
+
+            if (rows.length <= 0) {
+                wrap.innerHTML = '<div class="sms-empty">No messages yet.</div>';
+                return;
+            }
+
+            const html = rows.map((m, idx) => {
+                const body = String(m && m.body || '').trim();
+                const ts = m && (m.sent_at || m.created_at || m.timestamp || m.date) ? (m.sent_at || m.created_at || m.timestamp || m.date) : '';
+                const dir = String(m && m.direction || '').trim().toUpperCase();
+                const isOut = smsIsOutboundMessageForRender(m);
+                const sentByLabel = smsExtractSentByLabel(m);
+
+                const metaParts = [];
+                const showTs = smsShouldShowTimestampForIndex(rows, idx);
+                const tstr = showTs ? smsFormatTime(ts) : "";
+                if (tstr) metaParts.push(tstr);
+
+                // Thread view (1:1): keep sender attribution since multiple employees can send.
+                if (__smsActiveThreadId && isOut && sentByLabel) {
+                    metaParts.push(`Sent by ${sentByLabel}`);
+                }
+
+                // Group view: show fanout count + sender label.
+                if (__smsActiveGroupId && isOut) {
+                    const fan = Number(m && m._fanout_count || 0) || 0;
+                    if (fan > 1) {
+                        metaParts.push(`Sent to ${fan} members`);
+                    }
+                    if (sentByLabel) metaParts.push(`Sent by ${sentByLabel}`);
+                }
+
+                const meta = metaParts.length > 0
+                    ? `<div class="sms-meta ${isOut ? 'is-outbound' : 'is-inbound'}">${metaParts.join('  | ')}</div>`
+                    : '';
+
+                return `
+                    <div class="sms-msg has-stack ${isOut ? 'is-outbound' : 'is-inbound'}">
+                        <div class="sms-msg__stack">
+                            <div class="sms-bubble ${isOut ? 'is-outbound' : 'is-inbound'}">${smsEscapeHtml(body)}</div>
+                            ${meta}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            wrap.innerHTML = html;
+
+            // Scroll to bottom.
+            try {
+                wrap.scrollTop = wrap.scrollHeight;
+            } catch (e) {}
+        }
+
+        
+function smsStartNewMessage(prefillPhone) {
+            __smsActiveThreadId = '';
+            __smsActiveGroupId = '';
+            __smsActiveContactPhone = '';
+            __smsActiveContactName = '';
+            __smsActiveLastMessageId = '';
+            __smsActiveMessages = [];
+            __smsMessagesPage = { limit: 80, has_more: false, before: null, next_before: null };
+            __smsMessagesLoadingOlder = false;
+            smsResetComposerUi();
+            smsShowToBar();
+
+            try {
+                smsSetComposerEnabled(true);
+                const { input } = smsGetComposerEls();
+                if (input) input.disabled = false;
+            } catch (e) {}
+
+            if (prefillPhone) {
+                const p = smsNormalizePhoneCandidate(prefillPhone);
+                if (p) {
+                    __smsDraftRecipients = [p];
+                    smsRenderRecipientsBar();
+                }
+            }
+
+            smsUpdateThreadHeader('New message', 'Enter a phone number below and send your first message');
+        }
+        async function smsUpsertGroupForRecipients(recipients) {
+            const list = Array.isArray(recipients) ? recipients.slice(0) : [];
+            if (list.length < 2) return '';
+
+            const res = await fetch(`${API_URL}?action=smsGroupUpsert`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to_phones: list })
+            });
+            const data = await res.json().catch(() => null);
+            if (!data || !data.ok || !data.smsGroupUpsert || !data.smsGroupUpsert.upserted) {
+                const msg = (data && data.error) ? String(data.error) : 'Failed to create group';
+                throw new Error(msg);
+            }
+            const gid = String(data.smsGroupUpsert.group && data.smsGroupUpsert.group.group_id || '').trim();
+            return gid;
+        }
+
+        async function smsSendMessage() {
+            const { input, btn } = smsGetComposerEls();
+            const body = String(input && input.value || '').trim();
+            if (!body) return;
+            if (btn) btn.disabled = true;
+
+            try {
+                const isAdmin = (typeof isAdminRole === 'function' && isAdminRole());
+                if (isAdmin) {
+                    let payload = { body };
+
+                    if (__smsActiveGroupId) {
+                        payload.group_id = __smsActiveGroupId;
+                    } else if (__smsActiveThreadId) {
+                        payload.thread_id = __smsActiveThreadId;
+                    } else {
+                        const toList = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients : [];
+                        const recipients = toList.map(p => smsNormalizePhoneCandidate(p)).filter(Boolean);
+                        if (recipients.length <= 0) {
+                            showToast('Add a recipient', 'warning');
+                            return;
+                        }
+                        if (recipients.length >= 2) {
+                            const gid = await smsUpsertGroupForRecipients(recipients);
+                            payload.group_id = gid;
+                        } else {
+                            payload.contact_phone = recipients[0];
+                        }
+                    }
+
+                    const response = await fetch(`${API_URL}?action=smsAdminInjectInbound`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const data = await response.json().catch(() => null);
+                    if (!data || !data.ok || !data.smsAdminInjectInbound || !data.smsAdminInjectInbound.injected) {
+                        throw new Error(data && data.error ? data.error : 'Inject failed');
+                    }
+
+                    if (input) input.value = '';
+                    loadSmsThreads(true);
+                    loadSmsGroups(true);
+
+                    const injected = data.smsAdminInjectInbound || {};
+                    const injectedGroupId = String(injected.group_id || '').trim();
+                    const injectedThreadId = String(injected.thread_id || '').trim();
+
+                    if (injectedGroupId) {
+                        await openSmsGroup(injectedGroupId);
+                    } else if (injectedThreadId) {
+                        await openSmsThread(injectedThreadId);
+                    } else if (__smsActiveGroupId) {
+                        await loadSmsGroupMessages(__smsActiveGroupId, true);
+                    } else if (__smsActiveThreadId) {
+                        await loadSmsThreadMessages(__smsActiveThreadId, true);
+                    }
+
+                    showToast('Injected inbound message', 'success');
+                    return;
+                }
+                if (__smsActiveThreadId) {
+                    const response = await fetch(`${API_URL}?action=smsSend`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ thread_id: __smsActiveThreadId, body })
+                    });
+                    const data = await response.json();
+                    if (!data || !data.ok) {
+                        throw new Error(data && data.error ? data.error : 'Send failed');
+                    }
+                    if (input) input.value = '';
+                    await loadSmsThreadMessages(__smsActiveThreadId, true);
+                    loadSmsThreads(true);
+                } else if (__smsActiveGroupId) {
+                    const response = await fetch(`${API_URL}?action=smsGroupSend`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ group_id: __smsActiveGroupId, body })
+                    });
+                    const data = await response.json();
+                    if (!data || !data.ok) {
+                        throw new Error(data && data.error ? data.error : 'Send failed');
+                    }
+                    if (input) input.value = '';
+                    await loadSmsGroupMessages(__smsActiveGroupId, true);
+                    loadSmsThreads(true);
+                } else {
+                    await smsSendNewMessage(body);
+                }
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : 'Send failed';
+                showToast(msg, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+                try { input && input.focus && input.focus(); } catch (e) {}
+            }
+        }
+
+        async function smsSendNewMessage(body) {
+            // New outbound conversation: enter a number + send.
+            const input = document.getElementById('smsMessageInput');
+            const btn = document.getElementById('smsSendBtn');
+            const toList = Array.isArray(__smsDraftRecipients) ? __smsDraftRecipients : [];
+            const recipients = toList.map(p => smsNormalizePhoneCandidate(p)).filter(Boolean);
+            if (recipients.length <= 0) {
+                showToast('Add a recipient', 'warning');
+                return;
+            }
+            const text = String(body || '').trim();
+            if (!text) return;
+            if (btn) btn.disabled = true;
+
+            try {
+                const okThreads = [];
+                let okCount = 0;
+                let failCount = 0;
+                let firstThreadId = '';
+
+                for (const to of recipients) {
+                    try {
+                        const response = await fetch(`${API_URL}?action=smsSend`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ thread_id: null, to_phone: to, body: text })
+                        });
+                        const data = await response.json().catch(() => null);
+                            if (!data || !data.ok || !data.smsSend || !data.smsSend.sent) throw new Error(data && data.error ? data.error : 'Send failed');
+                            okCount++;
+                            const tid = data.smsSend.thread_id || data.thread_id;
+                            if (tid) {
+                                okThreads.push(String(tid));
+                                if (!firstThreadId) firstThreadId = String(tid);
+                            }
+                    } catch {
+                        failCount++;
+                    }
+                }
+
+                if (input) input.value = '';
+                loadSmsThreads(true);
+
+                if (okCount <= 0) {
+                    showToast('Send failed', 'error');
+                    return;
+                }
+
+                if (failCount > 0) {
+                    showToast(`Sent to ${okCount} recipient(s); ${failCount} failed`, 'warning');
+                } else {
+                    showToast(`Sent to ${okCount} recipient(s)`, 'success');
+                }
+
+                if (firstThreadId) {
+                    await openSmsThread(firstThreadId);
+                } else {
+                    smsStartNewMessage('');
+                }
+            } catch (e) {
+                const msg = (e && e.message) ? e.message : 'Send failed';
+                showToast(msg, 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+                try { input && input.focus && input.focus(); } catch (e) {}
+            }
         }
 
         function openOfferBuilderAdFrameworks() {
@@ -4139,7 +5455,7 @@
                         <div style="padding: 16px 18px; border-bottom: 1px solid #eef2f7; display:flex; align-items:center; justify-content:space-between; gap:12px;">
                             <div>
                                 <div style="font-weight: 900; font-size: 14px; color:#0f172a; letter-spacing: 0.2px;">Bulk Optimize (WebP/AVIF)</div>
-                                <div id="ppBulkOptSubtitle" style="margin-top: 2px; font-size: 12px; color:#64748b;">Preparing…</div>
+                                <div id="ppBulkOptSubtitle" style="margin-top: 2px; font-size: 12px; color:#64748b;">Preparing...</div>
                             </div>
                             <div style="display:flex; gap:10px; align-items:center;">
                                 <label style="display:flex; align-items:center; gap:8px; font-size:12px; color:#334155; user-select:none;">
@@ -4161,9 +5477,9 @@
 
                             <div style="display:flex; gap:12px; align-items:flex-start; margin-top: 12px;">
                                 <div style="flex: 1;">
-                                    <div id="ppBulkOptLine1" style="font-size: 12px; color:#0f172a; font-weight: 800;">Starting…</div>
-                                    <div id="ppBulkOptLine2" style="margin-top: 4px; font-size: 12px; color:#64748b;">—</div>
-                                    <div id="ppBulkOptCounts" style="margin-top: 8px; font-size: 12px; color:#334155; font-variant-numeric: tabular-nums;">Done: 0 • OK: 0 • Skipped: 0 • Failed: 0</div>
+                                    <div id="ppBulkOptLine1" style="font-size: 12px; color:#0f172a; font-weight: 800;">Starting...</div>
+                                    <div id="ppBulkOptLine2" style="margin-top: 4px; font-size: 12px; color:#64748b;">...”</div>
+                                    <div id="ppBulkOptCounts" style="margin-top: 8px; font-size: 12px; color:#334155; font-variant-numeric: tabular-nums;">Done: 0  | OK: 0  | Skipped: 0  | Failed: 0</div>
                                 </div>
                                 <div style="width: 260px; border: 1px solid #e2e8f0; border-radius: 12px; overflow:hidden; background:#0b1220;">
                                     <div id="ppBulkOptThumb" style="width:100%; aspect-ratio: 4/3; background:#0b1220; display:flex; align-items:center; justify-content:center; color: rgba(255,255,255,0.8); font-size:12px;">Preview</div>
@@ -4203,7 +5519,7 @@
                 if (sub) sub.textContent = String(state?.subtitle || '');
                 if (l1) l1.textContent = String(state?.line1 || '');
                 if (l2) l2.textContent = String(state?.line2 || '');
-                if (counts) counts.textContent = `Done: ${state?.done || 0} • OK: ${state?.ok || 0} • Skipped: ${state?.skipped || 0} • Failed: ${state?.failed || 0}`;
+                if (counts) counts.textContent = `Done: ${state?.done || 0}  | OK: ${state?.ok || 0}  | Skipped: ${state?.skipped || 0}  | Failed: ${state?.failed || 0}`;
 
                 if (log && Array.isArray(state?.logLines)) {
                     log.textContent = state.logLines.join('\n');
@@ -4373,7 +5689,7 @@
                     failed: 0,
                     pct: 0,
                     subtitle: `${list.length} assets queued`,
-                    line1: 'Starting…',
+                    line1: 'Starting...',
                     line2: '',
                     logLines: [],
                 };
@@ -4410,7 +5726,7 @@
                     state.finished = true;
                     state.subtitle = state.cancelled ? 'Cancelled' : 'Complete';
                     state.line1 = state.cancelled ? 'Stopped by user' : 'All done';
-                    state.line2 = `OK: ${state.ok} • Skipped: ${state.skipped} • Failed: ${state.failed}`;
+                    state.line2 = `OK: ${state.ok}  | Skipped: ${state.skipped}  | Failed: ${state.failed}`;
                     update();
                     try { await this.refreshAssets(); } catch (_) {}
                     try { await this.refreshLivePreview(); } catch (_) {}
@@ -4593,7 +5909,7 @@
                         const msg = resp?.error || 'Failed to load live content';
                         container.innerHTML = `
                             <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                                <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:4px;">⚠️ Could not load live preview</div>
+                                <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:4px;">...š ï¸ Could not load live preview</div>
                                 <div style="color:#991b1b;font-size:12px;">${msg}</div>
                             </div>
                         `;
@@ -4716,7 +6032,7 @@
                     console.error('[Live Preview] Error:', e);
                     container.innerHTML = `
                         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                            <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">⚠️ Failed to load live preview</div>
+                            <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">...š ï¸ Failed to load live preview</div>
                             <div style="color:#991b1b;font-size:12px;margin-bottom:12px;">${this.escapeHtml(e?.message || 'Unknown error')}</div>
                             <button onclick="proofPacks.refreshLivePreview()" style="background:#3b82f6;color:white;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
                                 Try Again
@@ -6012,7 +7328,7 @@
                 }
                 
                 const assetId = this._currentEditingAssetId;
-                const ok = confirm('⚠️ DELETE THIS ASSET?\n\nThis will permanently remove the asset record from the database.\n\nThe media file will remain in storage but will no longer be accessible from the library.\n\nContinue?');
+                const ok = confirm('...š ï¸ DELETE THIS ASSET?\n\nThis will permanently remove the asset record from the database.\n\nThe media file will remain in storage but will no longer be accessible from the library.\n\nContinue?');
                 if (!ok) return;
                 
                 try {
@@ -6976,7 +8292,7 @@
                                 // Calculate scale to fill 4:3 frame
                                 let scale = 135; // Default fallback
                                 if (currentRatio && targetRatio) {
-                                    // If image is wider (e.g. 16:9), scale = (1.77 / 1.33) * 100 ≈ 133%
+                                    // If image is wider (e.g. 16:9), scale = (1.77 / 1.33) * 100 ...~ 133%
                                     // If image is taller (e.g. 3:4), scale needs to be based on width fitting?
                                     // For simplicity and "fill" behavior:
                                     scale =  (currentRatio > targetRatio) 
@@ -9101,7 +10417,7 @@
                             const fmt = this.getImageFormatPreference();
                             const q = this.getImageQualityPreference();
                             const maxDim = this.getImageMaxDimPreference();
-                            if (statusEl) statusEl.textContent = 'Optimizing image…';
+                            if (statusEl) statusEl.textContent = 'Optimizing image...';
                             const converted = await this.convertImageFile(file, { format: fmt, quality: q, maxDim });
                             if (converted) {
                                 file = converted;
@@ -9889,7 +11205,7 @@
                 if (!validation.valid) {
                     const warnEl = document.getElementById('ppUploadWarning');
                     if (warnEl) {
-                        warnEl.innerHTML = `<span class="error-text" style="color:#dc2626; font-weight:800;">❌ ${this.escapeHtml(validation.error)}</span>`;
+                        warnEl.innerHTML = `<span class="error-text" style="color:#dc2626; font-weight:800;">..." ${this.escapeHtml(validation.error)}</span>`;
                     }
                     if (typeof showToast === 'function') {
                         showToast(validation.error, 'error');
@@ -10108,7 +11424,7 @@
                 const minDim = Math.min(w, h);
                 
                 if (minDim < minRequired) {
-                    warnEl.innerHTML = `<span class="warning-text" style="color:#f59e0b; font-weight:800;">⚠️ Low resolution: ${w}x${h}px. Recommended minimum: ${minRequired}px for sharp display in ${context} context.</span>`;
+                    warnEl.innerHTML = `<span class="warning-text" style="color:#f59e0b; font-weight:800;">...š ï¸ Low resolution: ${w}x${h}px. Recommended minimum: ${minRequired}px for sharp display in ${context} context.</span>`;
                     if (typeof showToast === 'function') {
                         showToast(`Low resolution image detected (${w}x${h}). Consider using ${minRequired}px+ for best quality.`, 'warning');
                     }
@@ -11515,8 +12831,8 @@
                 if (!hint) return;
                 const mode = this.normalizeCropMode(this.state?.cropping?.mode);
                 hint.textContent = (mode === 'manual')
-                    ? 'Drag to pan • Scroll to zoom'
-                    : 'Drag to set focal • Scroll to zoom (auto Custom)';
+                    ? 'Drag to pan  | Scroll to zoom'
+                    : 'Drag to set focal  | Scroll to zoom (auto Custom)';
             },
 
             updatePreviewContext(contextName) {
@@ -11687,9 +13003,9 @@
                 // Get current preview context
                 const contextName = this.state?.previewContext || 'proof_rail';
                 
-                console.log('🟡 [SAFE ZONE] ========================================');
-                console.log('🟡 [SAFE ZONE] Context:', contextName);
-                console.log('🟡 [SAFE ZONE] Placement from click:', this.state?._editPlacement);
+                console.log('ðŸŸ¡ [SAFE ZONE] ========================================');
+                console.log('ðŸŸ¡ [SAFE ZONE] Context:', contextName);
+                console.log('ðŸŸ¡ [SAFE ZONE] Placement from click:', this.state?._editPlacement);
                 
                 // FIXED: Use exact frontend tile dimensions (from bundles.html .proof-tile CSS)
                 // Frontend uses: width: 160px; height: 120px; aspect-ratio: 4/3;
@@ -11705,8 +13021,8 @@
                 const targetDims = FRONTEND_TILE_DIMENSIONS[contextName] || FRONTEND_TILE_DIMENSIONS.proof_rail;
                 const targetRatio = targetDims.width / targetDims.height;
                 
-                console.log('🟡 [SAFE ZONE] Frontend tile dimensions:', targetDims.width + 'x' + targetDims.height);
-                console.log('🟡 [SAFE ZONE] Target ratio:', targetRatio.toFixed(3));
+                console.log('ðŸŸ¡ [SAFE ZONE] Frontend tile dimensions:', targetDims.width + 'x' + targetDims.height);
+                console.log('ðŸŸ¡ [SAFE ZONE] Target ratio:', targetRatio.toFixed(3));
                 
                 // USER REQUIREMENT: EXPLICIT PIXEL DIMENSIONS - NO SCALING TO CONTAINER
                 // The Safe Zone must render at the exact pixel size of the frontend output (e.g., 160x120).
@@ -11715,7 +13031,7 @@
                 let safeWidth = targetDims.width;
                 let safeHeight = targetDims.height;
                 
-                console.log('🟡 [SAFE ZONE] Setting EXACT Dimensions:', safeWidth + 'px x ' + safeHeight + 'px');
+                console.log('ðŸŸ¡ [SAFE ZONE] Setting EXACT Dimensions:', safeWidth + 'px x ' + safeHeight + 'px');
                 
                 // Note: We previously applied 'scaleMultiplier' here to shrink the box for zoomed assets.
                 // However, user reports indicate the box was already too large.
@@ -11726,7 +13042,7 @@
                 const geom = asset?.smart_crop_details?.geometry || {};
                 const scalePct = Number(geom?.scale_pct || 100);
                 
-                console.log('🟡 [SAFE ZONE] Asset scale:', scalePct + '%');
+                console.log('ðŸŸ¡ [SAFE ZONE] Asset scale:', scalePct + '%');
                 
                 // Apply dimensions
                 rect.style.boxSizing = 'border-box';
@@ -11754,13 +13070,13 @@
                     const actualHeight = rect.clientHeight;
                     const actualComputedWidth = window.getComputedStyle(rect).width;
                     const actualComputedHeight = window.getComputedStyle(rect).height;
-                    console.log('🔴 [SAFE ZONE VERIFY] clientWidth:', actualWidth, 'clientHeight:', actualHeight);
-                    console.log('🔴 [SAFE ZONE VERIFY] computed width:', actualComputedWidth, 'height:', actualComputedHeight);
-                    console.log('🔴 [SAFE ZONE VERIFY] Actual ratio:', (actualWidth / actualHeight).toFixed(3));
-                    console.log('🔴 [SAFE ZONE VERIFY] Is ACTUALLY wider than tall?', actualWidth > actualHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] clientWidth:', actualWidth, 'clientHeight:', actualHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] computed width:', actualComputedWidth, 'height:', actualComputedHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] Actual ratio:', (actualWidth / actualHeight).toFixed(3));
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] Is ACTUALLY wider than tall?', actualWidth > actualHeight);
                 }, 50);
                 
-                console.log('🟡 [SAFE ZONE] ========================================');
+                console.log('ðŸŸ¡ [SAFE ZONE] ========================================');
                 
                 // Update label
                 const contextLabels = {
@@ -12087,8 +13403,8 @@
 
             const toOpt = (t) => {
                 const title = (t.Title || t.title || 'Untitled Task');
-                const cat = t.Category ? ` • ${t.Category}` : '';
-                const assigned = t.Assigned_To ? ` • ${t.Assigned_To}` : '';
+                const cat = t.Category ? `  | ${t.Category}` : '';
+                const assigned = t.Assigned_To ? `  | ${t.Assigned_To}` : '';
                 return `<option value="${escapeHtml(t.Task_ID)}">${escapeHtml(title + cat + assigned)}</option>`;
             };
 
@@ -12096,7 +13412,7 @@
             const doneBlock = done.length ? `<optgroup label="Done">${done.map(toOpt).join('')}</optgroup>` : '';
 
             sel.innerHTML = `
-                <option value="" ${(!prev || prev === '__OTHER__') ? 'selected' : ''} disabled>Select a task…</option>
+                <option value="" ${(!prev || prev === '__OTHER__') ? 'selected' : ''} disabled>Select a task...</option>
                 <option value="__OTHER__" ${prev === '__OTHER__' ? 'selected' : ''}>Other / not listed</option>
                 ${todoBlock}
                 ${doneBlock}
@@ -12342,7 +13658,7 @@
         // === Deliverables (Apple-like list + preview) ===
         function deliverablesFormatBytes(bytes) {
             const n = Number(bytes || 0);
-            if (!isFinite(n) || n <= 0) return '—';
+            if (!isFinite(n) || n <= 0) return '...”';
             const units = ['B', 'KB', 'MB', 'GB'];
             let v = n;
             let i = 0;
@@ -12362,7 +13678,7 @@
 
         function deliverablesFormatDate(value) {
             const dt = deliverablesSafeDate(value);
-            if (!dt) return '—';
+            if (!dt) return '...”';
             try {
                 return dt.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
             } catch {
@@ -12551,7 +13867,7 @@
                                 ${deliverablesBuildAttachmentThumb(f)}
                                 <div class="deliverables-attachment__body">
                                     <div class="deliverables-attachment__name">${escapeHtml(f.name || 'Attachment')}</div>
-                                    <div class="deliverables-attachment__sub">${escapeHtml(mime || '—')} • ${deliverablesFormatBytes(f.size)}</div>
+                                    <div class="deliverables-attachment__sub">${escapeHtml(mime || '...”')}  | ${deliverablesFormatBytes(f.size)}</div>
                                     <div class="deliverables-actions" style="margin-top: 10px;">
                                         ${previewBtn}
                                         ${openBtn}
@@ -12743,13 +14059,13 @@
             const cur = deliverablesAnnoGet(id);
             const hasTags = (cur.tags || []).length > 0;
             el.innerHTML = `
-                <button class="deliverables-context__item" onclick="deliverablesContextAction('add_tag')">Add tag…</button>
-                <button class="deliverables-context__item" onclick="deliverablesContextAction('month_tag')">Tag month…</button>
+                <button class="deliverables-context__item" onclick="deliverablesContextAction('add_tag')">Add tag...</button>
+                <button class="deliverables-context__item" onclick="deliverablesContextAction('month_tag')">Tag month...</button>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('repurpose')">Quick tag: repurpose</button>
                 <div class="deliverables-context__sep"></div>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('toggle_outdated')">${cur.outdated ? 'Unmark outdated' : 'Mark outdated'}</button>
-                <button class="deliverables-context__item" onclick="deliverablesContextAction('note')">Add/edit note…</button>
-                ${hasTags ? `<button class="deliverables-context__item" onclick="deliverablesContextAction('remove_tag')">Remove tag…</button>` : ''}
+                <button class="deliverables-context__item" onclick="deliverablesContextAction('note')">Add/edit note...</button>
+                ${hasTags ? `<button class="deliverables-context__item" onclick="deliverablesContextAction('remove_tag')">Remove tag...</button>` : ''}
                 <div class="deliverables-context__sep"></div>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('clear')" style="color:#991b1b;">Clear local labels</button>
             `;
@@ -12997,7 +14313,7 @@
                 }
             })();
 
-            const headerSubtitle = opts.subtitle || `${offerLabel ? (offerLabel + ' • ') : ''}Items: ${items.length.toLocaleString()}`;
+            const headerSubtitle = opts.subtitle || `${offerLabel ? (offerLabel + '  | ') : ''}Items: ${items.length.toLocaleString()}`;
 
             const offerSelect = (() => {
                 try {
@@ -13032,12 +14348,12 @@
 
             const controlsHtml = `
                 <div class="deliverables-toolbar">
-                    <input class="deliverables-input" value="${escapeHtml(st.search || '')}" placeholder="Search title, task, person, status…" oninput="deliverablesBrowserSetSearch(${deliverablesJsStringLiteral(mode)}, this.value)">
+                    <input class="deliverables-input" value="${escapeHtml(st.search || '')}" placeholder="Search title, task, person, status..." oninput="deliverablesBrowserSetSearch(${deliverablesJsStringLiteral(mode)}, this.value)">
                     <select class="deliverables-select" onchange="deliverablesBrowserSetSort(${deliverablesJsStringLiteral(mode)}, this.value)">
                         <option value="created_desc" ${String(st.sort)==='created_desc'?'selected':''}>Newest</option>
                         <option value="created_asc" ${String(st.sort)==='created_asc'?'selected':''}>Oldest</option>
                         <option value="quality_desc" ${String(st.sort)==='quality_desc'?'selected':''}>AI Quality</option>
-                        <option value="title_asc" ${String(st.sort)==='title_asc'?'selected':''}>Title A–Z</option>
+                        <option value="title_asc" ${String(st.sort)==='title_asc'?'selected':''}>Title A...“Z</option>
                     </select>
                     ${offerSelect}
                     <select class="deliverables-select" onchange="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, this.value)" title="Local label filter">
@@ -13065,7 +14381,7 @@
                     ...((anno.tags || []).slice(0, 3).map(t => `<span class="deliverables-chip deliverables-chip--tag">#${escapeHtml(String(t))}</span>`))
                 ].filter(Boolean);
                 const topRight = `${deliverablesStatusPill(status)}`;
-                const hintBits = [task ? `Task: ${escapeHtml(task)}` : '', fileCount ? `• ${escapeHtml(fileCount)}` : '', d.AI_Summary ? '• AI' : '']
+                const hintBits = [task ? `Task: ${escapeHtml(task)}` : '', fileCount ? ` | ${escapeHtml(fileCount)}` : '', d.AI_Summary ? ' | AI' : '']
                     .filter(Boolean).join(' ');
                 return `
                     <button class="deliverables-row ${isActive ? 'active' : ''}" onclick="deliverablesBrowserSelect(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(id)})" oncontextmenu="deliverablesOpenContextMenu(event, ${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(id)})" title="Right-click to tag / mark outdated">
@@ -13091,7 +14407,7 @@
                 const status = deliverablesGetStatus(selected);
                 const files = deliverablesParseFiles(selected.File_Link);
                 const created = deliverablesFormatDate(selected.Created_At);
-                const published = selected.Published_At ? deliverablesFormatDate(selected.Published_At) : '—';
+                const published = selected.Published_At ? deliverablesFormatDate(selected.Published_At) : '...”';
                 const by = selected.Submitted_By ? String(selected.Submitted_By) : 'Unknown';
                 const anno = deliverablesAnnoGet(deliverablesGetId(selected));
                 const annoChips = [
@@ -13136,9 +14452,9 @@
                     </div>
                     ${annoChips ? `<div style="margin-top: 10px; display:flex; gap:6px; flex-wrap:wrap;">${annoChips}</div>` : ''}
                     <div style="margin-top: 10px; display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoAddTag(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Tag:') || '')">Tag…</button>
+                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoAddTag(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Tag:') || '')">Tag...</button>
                         <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoToggleOutdated(${deliverablesJsStringLiteral(deliverablesGetId(selected))}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">${anno.outdated ? 'Unmark outdated' : 'Mark outdated'}</button>
-                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoSetNote(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Note:', ${deliverablesJsStringLiteral(anno.note || '')}) ?? ${deliverablesJsStringLiteral(anno.note || '')}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">Note…</button>
+                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoSetNote(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Note:', ${deliverablesJsStringLiteral(anno.note || '')}) ?? ${deliverablesJsStringLiteral(anno.note || '')}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">Note...</button>
                     </div>
                     ${anno.note ? `<div class="deliverables-callout" style="margin-top: 12px;"><div class="deliverables-callout__label">Local note</div><div style="font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap;">${escapeHtml(anno.note)}</div></div>` : ''}
                     <div class="deliverables-preview__desc">${escapeHtml(selected.Description || '')}</div>
@@ -13194,7 +14510,7 @@
 
                     deliverablesBrowserMount('review', 'deliverablesReviewContainer', items, {
                         title: 'Review Queue',
-                        subtitle: `Pending${(!isAdmin ? ' • Mine only' : '')} • Right-click to tag / mark outdated (local only) • Items: ${(items || []).length.toLocaleString()}`,
+                        subtitle: `Pending${(!isAdmin ? '  | Mine only' : '')}  | Right-click to tag / mark outdated (local only)  | Items: ${(items || []).length.toLocaleString()}`,
                         controlsHtml: `<button class="deliverables-action-btn secondary" onclick="loadDeliverablesReview()" style="height:38px; padding: 0 12px;">Refresh</button>`,
                         emptyText: 'No deliverables pending review.'
                     });
@@ -13251,7 +14567,7 @@
 
                     deliverablesBrowserMount('library', 'deliverablesLibraryContainer', data.deliverables, {
                         title: 'Deliverables Library',
-                        subtitle: `Status: ${statusLabel} • Items: ${(data.deliverables || []).length.toLocaleString()}`,
+                        subtitle: `Status: ${statusLabel}  | Items: ${(data.deliverables || []).length.toLocaleString()}`,
                         controlsHtml: `
                             ${statusSelect}
                             <button class="deliverables-action-btn secondary" onclick="loadDeliverablesLibrary()" style="height:38px; padding: 0 12px;">Refresh</button>
@@ -14228,7 +15544,7 @@
                 if (!firstLine) return '';
                 const cleaned = firstLine.replace(/\s+/g, ' ').trim();
                 if (!cleaned) return '';
-                return cleaned.length > 80 ? (cleaned.slice(0, 77) + '…') : cleaned;
+                return cleaned.length > 80 ? (cleaned.slice(0, 77) + '...') : cleaned;
             } catch (_) {
                 return '';
             }
@@ -14326,8 +15642,8 @@
                     finalText: ''
                 };
 
-                showToast('Listening…', 'info');
-                target.placeholder = 'Listening… speak now.';
+                showToast('Listening...', 'info');
+                target.placeholder = 'Listening... speak now.';
 
                 if (micBtn) {
                     micBtn.classList.add('is-listening');
@@ -14345,8 +15661,8 @@
                             else interim += text;
                         }
                         const interimTrimmed = String(interim || '').trim();
-                        const preview = interimTrimmed.length > 80 ? (interimTrimmed.slice(0, 80) + '…') : interimTrimmed;
-                        target.placeholder = preview ? `Listening… ${preview}` : 'Listening… speak now.';
+                        const preview = interimTrimmed.length > 80 ? (interimTrimmed.slice(0, 80) + '...') : interimTrimmed;
+                        target.placeholder = preview ? `Listening... ${preview}` : 'Listening... speak now.';
                     };
 
                     recognition.onerror = (e) => {
@@ -14596,7 +15912,7 @@
             } catch (_) {}
 
             taskCreatorUpdateGateHint();
-            taskCreatorSetAutosaveHint('Unsaved changes…');
+            taskCreatorSetAutosaveHint('Unsaved changes...');
             if (taskCreatorAutosaveTimer) clearTimeout(taskCreatorAutosaveTimer);
             taskCreatorAutosaveTimer = setTimeout(() => taskCreatorSaveBuiltDraft(true), 800);
 
@@ -14633,7 +15949,7 @@
                 return;
             }
 
-            taskCreatorSetAutosaveHint('Saving…');
+            taskCreatorSetAutosaveHint('Saving...');
 
             const payload = {
                 taskId: taskCreatorBuiltTaskId,
@@ -14689,7 +16005,7 @@
             const btn = document.getElementById('taskCreatorGenerateBtn');
             const original = btn ? btn.innerHTML : '';
             if (btn) {
-                btn.innerHTML = 'Generating…';
+                btn.innerHTML = 'Generating...';
                 btn.disabled = true;
             }
 
@@ -15484,7 +16800,9 @@
 
         // Load Training Resources
         function renderTrainingResources(resources) {
-            const html = resources.map(resource => {
+                        try { return renderTrainingResourcesCompact(resources); } catch (e) { console.error('[Training] compact renderer failed', e); }
+
+const html = resources.map(resource => {
                 const type = (resource.Type || 'VIDEO').toUpperCase();
                 const typeClass = type === 'VIDEO' ? 'type-video' : type === 'PDF' ? 'type-pdf' : 'type-sop';
                 
@@ -15652,6 +16970,531 @@
                 filterTrainingResources(currentFilterMode);
             });
         }
+
+
+
+        // Training Viewer (modal) + compact cards (no inline embeds)
+        let currentTrainingViewerResourceId = null;
+        let trainingViewerState = {
+            resourceId: null,
+            videos: [],
+            visibleIndexes: [],
+            currentIndex: -1
+        };
+
+        function normalizeAssetUrlForComparison(url) {
+            const v = String(url || '').trim();
+            return v;
+        }
+
+        function getTrainingVideosFromResource(resource) {
+            try {
+                if (!resource) return [];
+
+                if (Array.isArray(resource.videos)) {
+                    return resource.videos
+                        .map(v => ({
+                            url: (v && (v.url || v.URL || v.assetUrl || v.Asset_URL)) || '',
+                            title: (v && (v.title || v.Title)) || null,
+                            thumbnail: (v && (v.thumbnail || v.thumbnailUrl || v.Thumbnail || v.ThumbnailUrl)) || null,
+                            source: (v && (v.source || v.Source)) || '',
+                            durationSeconds: (v && (v.durationSeconds || v.duration_seconds || v.duration)) ?? null
+                        }))
+                        .filter(v => !!String(v.url || '').trim());
+                }
+
+                if (typeof resource.videos === 'string' && resource.videos.trim().startsWith('[')) {
+                    const parsed = JSON.parse(resource.videos);
+                    if (Array.isArray(parsed)) {
+                        resource.videos = parsed;
+                        return getTrainingVideosFromResource(resource);
+                    }
+                }
+
+                const url = String(resource.URL || resource.url || '').trim();
+                if (url) return [{ url, title: null, thumbnail: null, source: '', durationSeconds: null }];
+            } catch (_) {
+                // ignore
+            }
+            return [];
+        }
+
+        function getTrainingAssetProgress(resource) {
+            const rows = (resource && (resource.assetProgress || resource.AssetProgress || resource.progress)) || [];
+            return Array.isArray(rows) ? rows : [];
+        }
+
+        function isTrainingVideoWatched(resource, videoUrl) {
+            const target = normalizeAssetUrlForComparison(videoUrl);
+            if (!target) return false;
+            const rows = getTrainingAssetProgress(resource);
+            return rows.some(r => {
+                const watched = r && (r.Watched === true || r.watched === true);
+                if (!watched) return false;
+                const assetUrl = normalizeAssetUrlForComparison(r.Asset_URL || r.assetUrl || r.URL || r.url);
+                return assetUrl && assetUrl === target;
+            });
+        }
+
+        function computeTrainingWatchedCount(resource, videos) {
+            const list = Array.isArray(videos) ? videos : [];
+            let watchedCount = 0;
+            for (const v of list) {
+                if (isTrainingVideoWatched(resource, v && v.url)) watchedCount++;
+            }
+            return watchedCount;
+        }
+
+        function embedHtmlForTrainingUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+
+            if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+                const ytMatch = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                const videoId = ytMatch ? ytMatch[1] : '';
+                if (videoId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            if (raw.includes('loom.com/share/') || raw.includes('loom.com/embed/')) {
+                let loomId = '';
+                if (raw.includes('loom.com/share/')) loomId = raw.split('loom.com/share/')[1].split('?')[0];
+                if (!loomId && raw.includes('loom.com/embed/')) loomId = raw.split('loom.com/embed/')[1].split('?')[0];
+                if (loomId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.loom.com/embed/${loomId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            return `
+                <div style="width:100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #f3f4f6; border: 1px solid rgba(148,163,184,0.25); display:flex; align-items:center; justify-content:center;">
+                    <a href="${escapeHtml(raw)}" target="_blank" rel="noopener noreferrer" style="font-weight: 900; color: var(--cobalt); text-decoration:none;">Open video</a>
+                </div>
+            `;
+        }
+
+        function trainingViewerSelect(index) {
+            const idx = Number(index);
+            if (!Number.isFinite(idx) || idx < 0 || idx >= trainingViewerState.videos.length) return;
+            trainingViewerState.currentIndex = idx;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(trainingViewerState.resourceId));
+            const video = trainingViewerState.videos[idx];
+
+            const currentLabel = document.getElementById('trainingViewerCurrentLabel');
+            if (currentLabel) currentLabel.textContent = (video && (video.title || `Video ${idx + 1}`)) || `Video ${idx + 1}`;
+
+            const openExternal = document.getElementById('trainingViewerOpenExternalLink');
+            if (openExternal) {
+                openExternal.href = video && video.url ? video.url : '#';
+                openExternal.style.pointerEvents = video && video.url ? 'auto' : 'none';
+                openExternal.style.opacity = video && video.url ? '1' : '0.4';
+            }
+
+            const player = document.getElementById('trainingViewerPlayer');
+            if (player) player.innerHTML = embedHtmlForTrainingUrl(video && video.url);
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                    const elIdx = Number(el.getAttribute('data-training-viewer-index'));
+                    const isActive = elIdx === idx;
+                    el.style.borderColor = isActive ? 'var(--cobalt)' : 'var(--border)';
+                    el.style.background = isActive ? 'rgba(10, 42, 90, 0.06)' : '#fff';
+                });
+            }
+
+            const pos = trainingViewerState.visibleIndexes.indexOf(idx);
+            const prevBtn = document.getElementById('trainingViewerPrevBtn');
+            const nextBtn = document.getElementById('trainingViewerNextBtn');
+            if (prevBtn) prevBtn.disabled = pos <= 0;
+            if (nextBtn) nextBtn.disabled = pos < 0 || pos >= trainingViewerState.visibleIndexes.length - 1;
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const vids = trainingViewerState.videos;
+                const watchedCount = resource ? computeTrainingWatchedCount(resource, vids) : 0;
+                const isCompleted = resource && Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && vids.length > 0 && watchedCount === vids.length) ? 'inline-flex' : 'none';
+            }
+        }
+
+        function openTrainingViewer(resourceId) {
+            const rid = String(resourceId || '').trim();
+            if (!rid) return;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === rid);
+            if (!resource) {
+                showToast('Training not found', 'error');
+                return;
+            }
+
+            const videos = getTrainingVideosFromResource(resource);
+            if (!videos.length) {
+                const url = String(resource.URL || '').trim();
+                if (url) {
+                    window.open(url, '_blank', 'noopener');
+                    return;
+                }
+                showToast('No videos found for this training', 'error');
+                return;
+            }
+
+            currentTrainingViewerResourceId = rid;
+            trainingViewerState.resourceId = rid;
+            trainingViewerState.videos = videos;
+            trainingViewerState.visibleIndexes = videos.map((_, i) => i);
+            trainingViewerState.currentIndex = -1;
+
+            const modal = document.getElementById('trainingViewerModal');
+            const titleEl = document.getElementById('trainingViewerTitle');
+            if (titleEl) titleEl.textContent = resource.Title || 'Training Videos';
+
+            const descEl = document.getElementById('trainingViewerResourceDescription');
+            if (descEl) {
+                const d = String(resource.Description || '').trim();
+                if (d) {
+                    descEl.style.display = 'block';
+                    descEl.textContent = d;
+                    descEl.title = d;
+                } else {
+                    descEl.style.display = 'none';
+                }
+            }
+
+            const searchEl = document.getElementById('trainingViewerSearch');
+            if (searchEl) searchEl.value = '';
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                list.innerHTML = videos.map((v, i) => {
+                    const watched = isTrainingVideoWatched(resource, v.url);
+                    const displayTitle = escapeHtml((v && v.title) ? v.title : `Video ${i + 1}`);
+                    const displayUrl = escapeHtml(v && v.url ? v.url : '');
+                    return `
+                        <button type="button" data-training-viewer-index="${i}" onclick="trainingViewerSelect(${i})" style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px 12px; cursor: pointer; display:flex; flex-direction:column; gap: 6px;">
+                            <div style="display:flex; justify-content:space-between; gap: 10px; align-items:flex-start;">
+                                <div style="font-weight: 900; color: var(--cobalt); font-size: 13px; line-height: 1.25;">${displayTitle}</div>
+                                ${watched ? '<div style="font-size: 11px; font-weight: 900; color: #166534; background:#dcfce7; border-radius: 999px; padding: 2px 8px; white-space:nowrap;">Watched</div>' : ''}
+                            </div>
+                            <div style="font-size: 11px; color: #6b7280; font-weight: 700; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${displayUrl}</div>
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            const subtitle = document.getElementById('trainingViewerSubtitle');
+            if (subtitle) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+                subtitle.textContent = `${watchedCount}/${videos.length} videos | ${pct}% complete`;
+            }
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const isCompleted = Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && videos.length > 0 && watchedCount === videos.length) ? 'inline-flex' : 'none';
+            }
+
+            if (modal) {
+                modal.style.display = 'flex';
+                const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+                if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+                document.body.style.overflow = 'hidden';
+            }
+
+            trainingViewerSelect(0);
+        }
+
+        function closeTrainingViewer() {
+            const modal = document.getElementById('trainingViewerModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+
+            trainingViewerState.resourceId = null;
+            trainingViewerState.videos = [];
+            trainingViewerState.visibleIndexes = [];
+            trainingViewerState.currentIndex = -1;
+        }
+
+        function filterTrainingViewerList() {
+            const list = document.getElementById('trainingViewerList');
+            const q = String(document.getElementById('trainingViewerSearch')?.value || '').trim().toLowerCase();
+            if (!list) return;
+
+            const visible = [];
+            Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                const idx = Number(el.getAttribute('data-training-viewer-index'));
+                const v = trainingViewerState.videos[idx];
+                const hay = `${(v && v.title) || ''} ${(v && v.url) || ''}`.toLowerCase();
+                const ok = !q || hay.includes(q);
+                el.style.display = ok ? 'flex' : 'none';
+                if (ok) visible.push(idx);
+            });
+            trainingViewerState.visibleIndexes = visible;
+
+            if (visible.length) {
+                const currentVisiblePos = visible.indexOf(trainingViewerState.currentIndex);
+                if (currentVisiblePos === -1) {
+                    trainingViewerSelect(visible[0]);
+                } else {
+                    trainingViewerSelect(trainingViewerState.currentIndex);
+                }
+            }
+        }
+
+        function trainingViewerPrev() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos > 0) trainingViewerSelect(trainingViewerState.visibleIndexes[pos - 1]);
+        }
+
+        function trainingViewerNext() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos >= 0 && pos < trainingViewerState.visibleIndexes.length - 1) trainingViewerSelect(trainingViewerState.visibleIndexes[pos + 1]);
+        }
+
+        async function markTrainingViewerVideoComplete() {
+            const rid = trainingViewerState.resourceId;
+            const idx = trainingViewerState.currentIndex;
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(rid));
+            const video = trainingViewerState.videos[idx];
+
+            if (!rid || !resource || !video || !video.url) {
+                showToast('Select a video first', 'error');
+                return;
+            }
+            if (!currentUser) {
+                showToast('User not set; reload dashboard', 'error');
+                return;
+            }
+            if (isTrainingVideoWatched(resource, video.url)) {
+                showToast('Already marked complete', 'info');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}?action=setTrainingAssetWatched`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        resourceId: rid,
+                        completedBy: currentUser,
+                        assetUrl: video.url,
+                        watched: true
+                    })
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    showToast(data.error || 'Failed to save progress', 'error');
+                    return;
+                }
+
+                if (!Array.isArray(resource.assetProgress)) resource.assetProgress = [];
+                resource.assetProgress.push(data.result || data.progress || data.row || { Asset_URL: video.url, Watched: true });
+                showToast('Marked complete', 'success');
+
+                openTrainingViewer(rid);
+            } catch (e) {
+                showToast('Failed to save progress', 'error');
+                console.error(e);
+            }
+        }
+
+        const TRAINING_THUMB_BLANK_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+        const trainingThumbCache = new Map();
+
+        function hydrateTrainingThumbs(rootEl) {
+            try {
+                const root = rootEl || document;
+                const imgs = Array.from(root.querySelectorAll('img[data-thumb-fetch-url]'));
+                for (const img of imgs) {
+                    try {
+                        if (!img || img.getAttribute('data-thumb-hydrated') === '1') continue;
+                        const videoUrl = String(img.getAttribute('data-thumb-fetch-url') || '').trim();
+                        if (!videoUrl) continue;
+
+                        const cached = trainingThumbCache.get(videoUrl);
+                        if (cached) {
+                            img.setAttribute('src', String(cached));
+                            img.style.opacity = '1';
+                            img.style.display = 'block';
+                            img.setAttribute('data-thumb-hydrated', '1');
+                            continue;
+                        }
+
+                        img.setAttribute('data-thumb-hydrated', '1');
+
+                        // Fetch server-side oEmbed preview (works for Loom share links).
+                        fetch(`${API_URL}?action=linkPreview&url=${encodeURIComponent(videoUrl)}&_ts=${Date.now()}`, { cache: 'no-store' })
+                            .then(r => r.json())
+                            .then(data => {
+                                const payload = (data && (data.linkPreview || data.result || data.preview)) || null;
+                                const thumb = payload && (payload.thumbnailUrl || payload.thumbnail_url || payload.thumbnail) ? String(payload.thumbnailUrl || payload.thumbnail_url || payload.thumbnail).trim() : '';
+                                if (thumb) {
+                                    trainingThumbCache.set(videoUrl, thumb);
+                                    img.setAttribute('src', thumb);
+                                    img.style.opacity = '1';
+                                    img.style.display = 'block';
+                                    return;
+                                }
+
+                                // If we still only have a blank pixel, hide the image but keep the frame.
+                                if (String(img.getAttribute('src') || '').includes(TRAINING_THUMB_BLANK_PIXEL)) {
+                                    img.style.display = 'none';
+                                }
+                            })
+                            .catch(() => {
+                                if (String(img.getAttribute('src') || '').includes(TRAINING_THUMB_BLANK_PIXEL)) {
+                                    img.style.display = 'none';
+                                }
+                            });
+                    } catch {
+                        // ignore single image
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        function renderTrainingResourcesCompact(resources) {
+            const container = document.getElementById('trainingContainer');
+            
+            if (!container) return;
+
+if (!container) return;
+
+            const html = (resources || []).map(resource => {
+                const type = (resource.Type || 'VIDEO').toUpperCase();
+                const completions = resource.completions || [];
+                const isCompleted = completions.length > 0;
+                const latestCompletion = isCompleted ? completions[0] : null;
+
+                const videos = getTrainingVideosFromResource(resource);
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+
+                const title = escapeHtml(resource.Title || 'Untitled Training');
+                const category = escapeHtml(resource.Category || 'General');
+                const minutes = escapeHtml(resource.Estimated_Minutes || '?');
+                const description = String(resource.Description || '').trim();
+
+                let previewFallback = '';
+                const previewUrl = (() => {
+                    try {
+                        const first = (videos && videos[0]) ? videos[0] : null;
+                        if (!first) return '';
+
+                        const existing = String(first.thumbnail || '').trim();
+                        if (existing) return existing;
+
+                        const raw = String(first.url || '').trim();
+                        if (!raw) return '';
+
+                        if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+                            const ytMatch = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                            const videoId = ytMatch ? ytMatch[1] : '';
+                            if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                        }
+
+                        if (raw.includes('loom.com/')) {
+                            const loomMatch = raw.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
+                            const loomId = loomMatch ? loomMatch[1] : '';
+                            if (loomId) {
+                                previewFallback = [
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.png`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-00001.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-00001.png`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}.png`
+                                ].join('|');
+                                return `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.gif`;
+                            }
+                        }
+                    } catch (_) {
+                        // ignore
+                    }
+                    return '';
+                })();
+
+                const previewFallbackAttr = previewFallback ? ` data-fallback="${escapeHtml(previewFallback)}"` : '';
+                const firstVideoUrl = (videos && videos[0] && videos[0].url) ? String(videos[0].url).trim() : '';
+                const needsServerPreview = !!firstVideoUrl && (!previewUrl || firstVideoUrl.includes('loom.com/'));
+                const fetchAttr = needsServerPreview ? ` data-thumb-fetch-url="${escapeHtml(firstVideoUrl)}"` : '';
+                const src = previewUrl ? escapeHtml(previewUrl) : TRAINING_THUMB_BLANK_PIXEL;
+                const isVideo = type === 'VIDEO' || videos.length > 0;
+                const previewHtml = isVideo ? `
+                    <div data-training-thumb style="width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #f3f4f6; border: 1px solid var(--border);">
+                        <img src="${src}"${fetchAttr}${previewFallbackAttr} alt="" loading="lazy" style="width:100%; height:100%; object-fit: cover; display:block; opacity:${previewUrl ? '1' : '0'};" onload="this.style.opacity='1';" onerror="(function(img){try{var s=img.getAttribute('data-fallback')||''; if(s){var parts=s.split('|'); var next=parts.shift(); img.setAttribute('data-fallback', parts.join('|')); if(next){ img.src=next; img.style.opacity='1'; img.style.display='block'; return; }}}catch(e){} img.onerror=null; img.style.display='none';})(this)" />
+                    </div>
+                ` : '';
+
+                const clickHandler = isVideo
+                    ? `openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')`
+                    : (resource.URL ? `window.open('${String(resource.URL).replace(/'/g, "\\'")}', '_blank', 'noopener')` : '');
+
+                return `
+                    <div class="training-card" data-resource-id="${resource.Resource_ID}" style="background: #fff; border-radius: 16px; padding: 18px; border: 1px solid var(--border); box-shadow: 0 2px 14px rgba(0,0,0,0.06); display:flex; flex-direction:column; gap: 12px; cursor: ${clickHandler ? 'pointer' : 'default'};" onclick="${clickHandler}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 10px;">
+                            <div style="min-width:0;">
+                                <div style="font-size: 15px; font-weight: 900; color: var(--cobalt); line-height: 1.25; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${title}</div>
+                                <div style="margin-top: 6px; display:flex; gap: 8px; flex-wrap: wrap;">
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${category}</span>
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${minutes} min</span>
+                                    <span style="background: #eff6ff; color: var(--azure); padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 900;">${escapeHtml(type)}</span>
+                                </div>
+                            </div>
+                            ${isCompleted ? '<span class="training-completed-badge" style="background:#dcfce7; color:#166534; padding: 4px 8px; border-radius: 10px; font-size: 12px; font-weight: 900; white-space:nowrap;">Done</span>' : ''}
+                        </div>
+
+                        ${description ? `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(description)}</div>` : ''}
+
+                        ${isVideo ? previewHtml : ''}
+                        
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap: wrap;">
+                            ${videos.length ? `<div style="font-size: 12px; color: #6b7280; font-weight: 900;">${watchedCount}/${videos.length} watched | ${pct}%</div>` : `<div style="font-size: 12px; color: #9ca3af; font-weight: 900;">No videos</div>`}
+                            <div style="display:flex; gap: 8px; align-items:center;">
+                                ${isVideo ? `<button type="button" class="btn" onclick="event.stopPropagation(); openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')" style="height: 34px; padding: 0 12px; background: var(--cobalt); color: #fff; border: none; border-radius: 10px; font-weight: 900; font-size: 13px;">Open</button>` : (resource.URL ? `<a class="btn" href="${escapeHtml(resource.URL)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="height: 34px; padding: 0 12px; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; font-size: 13px; text-decoration:none; display:inline-flex; align-items:center;">Open</a>` : '')}
+                            </div>
+                        </div>
+
+                        <div style="font-size: 12px; color: #9ca3af; font-weight: 700;">
+                            ${isCompleted ? `Submitted ${formatDate(latestCompletion && latestCompletion.Completed_At)}` : 'Not submitted yet'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+
+            // Best-effort hydrate for Loom/share previews (server-side oEmbed)
+            hydrateTrainingThumbs(container);
+
+            const allCount = (resources || []).length;
+            const completedCount = (resources || []).filter(r => (r.completions || []).length > 0).length;
+            const allCountEl = document.getElementById('allCount');
+            const inprogressCountEl = document.getElementById('inprogressCount');
+            if (allCountEl) allCountEl.textContent = allCount;
+            if (inprogressCountEl) inprogressCountEl.textContent = completedCount;
+
+            loadRecommendationsForFilter().then(() => {
+                if (currentFilterMode === 'recommended' && recommendedResourceIds.length === 0) currentFilterMode = 'all';
+                filterTrainingResources(currentFilterMode);
+            });
+        }
+
+
 
         // Knowledge Profile Functions
         let currentFilterMode = 'all'; // Track current filter (recommended, inprogress, all)
@@ -15850,7 +17693,7 @@
             }
 
             if (btn) { btn.disabled = true; btn.style.opacity = '0.85'; }
-            if (status) status.textContent = 'Signing in…';
+            if (status) status.textContent = 'Signing in...';
 
             try {
                 const resp = await fetch(`${API_URL}?action=dashboardLogin`, {
@@ -15929,7 +17772,7 @@
             }
 
             try {
-                if (status) status.textContent = 'Creating first admin…';
+                if (status) status.textContent = 'Creating first admin...';
                 const resp = await fetch(`${API_URL}?action=dashboardBootstrapAdmin`, {
                     method: 'POST',
                     headers: {
@@ -16122,6 +17965,54 @@
         function safeParseJSON(text, fallback) {
             if (!text || typeof text !== 'string') return fallback;
             try { return JSON.parse(text); } catch { return fallback; }
+        }
+
+        function safeParseJSONLenient(text, fallback) {
+            try {
+                if (text == null) return fallback;
+                if (typeof text !== 'string') return text;
+
+                let s = String(text).trim();
+                if (!s) return fallback;
+
+                // Strip markdown code fences if present
+                s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+
+                // Fast path
+                try { return JSON.parse(s); } catch (_) {}
+
+                // Common AI output cleanup
+                s = s
+                    .replace(/[\u201C\u201D]/g, '"')
+                    .replace(/[\u2018\u2019]/g, "'")
+                    .replace(/,\s*([}\]])/g, '$1'); // trailing commas
+
+                // Convert simple single-quoted keys/values to double quotes
+                // (best-effort; only handles basic cases)
+                s = s
+                    .replace(/\{\s*'/g, '{"')
+                    .replace(/\[\s*'/g, '["')
+                    .replace(/'\s*:\s*'/g, '":"')
+                    .replace(/'\s*:/g, '":')
+                    .replace(/:\s*'/g, ':"')
+                    .replace(/'\s*([,}\]])/g, '"$1');
+
+                try { return JSON.parse(s); } catch (_) {}
+
+                // Last resort: extract the first JSON-looking block
+                const start = s.search(/[\[{]/);
+                if (start >= 0) {
+                    const end = Math.max(s.lastIndexOf('}'), s.lastIndexOf(']'));
+                    if (end > start) {
+                        const block = s.slice(start, end + 1);
+                        try { return JSON.parse(block); } catch (_) {}
+                    }
+                }
+
+                return fallback;
+            } catch (_) {
+                return fallback;
+            }
         }
 
         async function loadKnowledgeProfile() {
@@ -16684,7 +18575,8 @@ async function loadRecommendationsForFilter() {
                 .map(r => r.resourceId);
             
             // Update recommended count
-            document.getElementById('recommendedCount').textContent = recommendedResourceIds.length;
+            const recommendedCountEl = document.getElementById('recommendedCount');
+            if (recommendedCountEl) recommendedCountEl.textContent = recommendedResourceIds.length;
         }
     } catch (error) {
     }
@@ -16694,13 +18586,19 @@ async function loadRecommendationsForFilter() {
         async function loadTrainingResources(silent = false) {
             const container = document.getElementById('trainingContainer');
             
-            // Only show spinner on initial load
+            
+            if (!container) return;
+
+// Only show spinner on initial load
             if (!silent) {
                 container.innerHTML = '<div class="spinner"></div>';
             }
             
             try {
-                const response = await fetch(`${API_URL}?action=training`, { cache: 'no-store' });
+                const base = `${API_URL}?action=training`;
+                const vaParam = currentUser ? `&vaName=${encodeURIComponent(currentUser)}` : '';
+                const url = `${base}${vaParam}&_ts=${Date.now()}`;
+                const response = await fetch(url, { cache: 'no-store' });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
@@ -16833,17 +18731,64 @@ async function loadRecommendationsForFilter() {
             // Ensure API_URL is available
             const endpoint = (typeof API_URL !== 'undefined') ? API_URL : `${DEFAULT_API_HOST}/api/v1`;
 
+            const title = String(document.getElementById('newTrainingTitle')?.value || '').trim();
+            const category = String(document.getElementById('newTrainingCategory')?.value || 'General').trim() || 'General';
+            const estimatedMinutes = parseInt(String(document.getElementById('newTrainingDuration')?.value || ''), 10);
+            const estimatedMinutesValue = Number.isFinite(estimatedMinutes) && estimatedMinutes > 0 ? estimatedMinutes : null;
+            const descriptionRaw = String(document.getElementById('newTrainingDescription')?.value || '').trim();
+
+            const rows = Array.from(document.querySelectorAll('#newTrainingUrls .training-url-row'));
+            const assets = [];
+            const assetsMeta = [];
+
+            for (const row of rows) {
+                const url = String(row && row.querySelector && row.querySelector('.training-url-input') ? row.querySelector('.training-url-input').value : '').trim();
+                if (!url) continue;
+                assets.push(url);
+
+                const titleInput = row && row.querySelector ? row.querySelector('.training-title-input') : null;
+                const clearedEl = row && row.querySelector ? row.querySelector('.training-title-cleared') : null;
+                const titleCleared = String(clearedEl && clearedEl.value ? clearedEl.value : '0') === '1';
+                const videoTitle = titleCleared ? '' : String(titleInput && titleInput.value ? titleInput.value : '').trim();
+
+                if (videoTitle || titleCleared) {
+                    assetsMeta.push({ url, title: videoTitle || undefined, titleCleared });
+                }
+            }
+
+            if (!assets.length) {
+                showToast('Add at least one video URL', 'error');
+                return;
+            }
+
+            // If description is blank, generate a simple one from titles to match UI promise.
+            const derivedDescription = (() => {
+                try {
+                    const lines = [];
+                    lines.push(assets.length === 1 ? 'Video:' : `Videos (${assets.length}):`);
+                    for (let i = 0; i < assets.length; i++) {
+                        const meta = assetsMeta.find(m => m && m.url === assets[i]);
+                        const t = meta && meta.title ? String(meta.title).trim() : '';
+                        lines.push(t ? `- ${t}` : `- Video ${i + 1}`);
+                    }
+                    return lines.join('\n');
+                } catch {
+                    return null;
+                }
+            })();
+
             const formData = {
-                title: document.getElementById('newTrainingTitle').value,
-                type: 'Video', // Always video for now
-                url: document.getElementById('newTrainingURL').value,
-                description: document.getElementById('newTrainingDescription').value || null,
-                category: document.getElementById('newTrainingCategory').value,
-                difficultyLevel: 'BEGINNER', // Default
-                estimatedMinutes: parseInt(document.getElementById('newTrainingDuration').value) || null,
-                skillsTaught: null, // Will be extracted by AI
+                title,
+                type: 'Video',
+                assets,
+                assetsMeta: assetsMeta.length ? assetsMeta : null,
+                description: descriptionRaw ? descriptionRaw : derivedDescription,
+                category,
+                difficultyLevel: 'BEGINNER',
+                estimatedMinutes: estimatedMinutesValue,
+                skillsTaught: null,
                 order: 0,
-                createdBy: 'Tabari'
+                createdBy: currentUser || 'ADMIN'
             };
             
             try {
@@ -16851,7 +18796,7 @@ async function loadRecommendationsForFilter() {
                 
                 const response = await fetch(`${endpoint}?action=createTraining`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
                 
@@ -16949,17 +18894,24 @@ async function loadRecommendationsForFilter() {
             }
         }
 
-        // Load and Display Knowledge Profile
+        // Load and Display Knowledge Profile (per-user)
         async function loadAndDisplayKnowledgeProfile() {
             try {
-                const response = await fetch(`${API_URL}?action=trainingCompletions&vaName=ROSEL`);
+                const userKey = String(currentUser || '').trim();
+                const card = document.getElementById('knowledgeProfileCard');
+                if (!userKey) {
+                    if (card) card.style.display = 'none';
+                    return;
+                }
+
+                const response = await fetch(`${API_URL}?action=trainingCompletions&vaName=${encodeURIComponent(userKey)}&_ts=${Date.now()}`, { cache: 'no-store' });
                 const data = await response.json();
-                
+
                 if (data.ok && data.trainingCompletions) {
                     const completions = data.trainingCompletions;
-                    
-                    if (completions.length === 0) {
-                        document.getElementById('knowledgeProfileCard').style.display = 'none';
+
+                    if (!Array.isArray(completions) || completions.length === 0) {
+                        if (card) card.style.display = 'none';
                         return;
                     }
 
@@ -16969,11 +18921,13 @@ async function loadRecommendationsForFilter() {
                     const learningHours = (totalMinutes / 60).toFixed(1);
 
                     // Update minimal stats
-                    document.getElementById('totalTrainings').textContent = totalTrainings;
-                    document.getElementById('learningHours').textContent = `${learningHours}h`;
+                    const totalEl = document.getElementById('totalTrainings');
+                    const hoursEl = document.getElementById('learningHours');
+                    if (totalEl) totalEl.textContent = totalTrainings;
+                    if (hoursEl) hoursEl.textContent = `${learningHours}h`;
 
                     // Show the profile card
-                    document.getElementById('knowledgeProfileCard').style.display = 'block';
+                    if (card) card.style.display = 'block';
                 }
             } catch (error) {
                 console.error('Error loading knowledge profile:', error);
@@ -17206,7 +19160,7 @@ async function loadRecommendationsForFilter() {
                     ${safeUrl ? `
                     <div class="task-card-link-row">
                         <a class="task-card-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">
-                            ${type === 'DOCUMENT' ? 'Open Doc' : 'Open Link'} <span style="opacity:0.8;">↗</span>
+                            ${type === 'DOCUMENT' ? 'Open Doc' : 'Open Link'} <span style="opacity:0.8;">...—</span>
                         </a>
                         ${safeUrlHint ? `<div class="task-card-link-hint">${safeUrlHint}</div>` : ''}
                     </div>
@@ -17454,7 +19408,7 @@ async function loadRecommendationsForFilter() {
             try {
                 const editBtn = document.getElementById('modalTaskEditBtn');
                 if (editBtn) {
-                    editBtn.textContent = 'Editing…';
+                    editBtn.textContent = 'Editing...';
                     editBtn.disabled = true;
                 }
             } catch (_) {}
@@ -17622,7 +19576,7 @@ async function loadRecommendationsForFilter() {
             try {
                 const delBtn = document.getElementById('modalTaskDeleteBtn');
                 const original = delBtn ? delBtn.textContent : '';
-                if (delBtn) { delBtn.textContent = 'Deleting…'; delBtn.disabled = true; }
+                if (delBtn) { delBtn.textContent = 'Deleting...'; delBtn.disabled = true; }
 
                 const resp = await fetch(`${API_URL}?action=deleteTask`, {
                     method: 'POST',
@@ -17926,7 +19880,7 @@ async function loadRecommendationsForFilter() {
                 const loading = `
                     <div style="display:flex; flex-direction:column; align-items:center; gap:12px; padding: 24px;">
                         <div class="spinner"></div>
-                        <div style="font-weight:900; color:#0f172a;">Loading accounts…</div>
+                        <div style="font-weight:900; color:#0f172a;">Loading accounts...</div>
                         <div style="font-size:12px; color:#64748b;">Fetching users from the database.</div>
                     </div>
                 `;
@@ -18037,8 +19991,8 @@ async function loadRecommendationsForFilter() {
                     <div style="display:grid; grid-template-columns: 1.6fr 120px 160px 170px 260px; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid rgba(148,163,184,0.18);">
                         <div style="min-width:0;">
                             <div style="font-weight:900; color:#0f172a;">${username}</div>
-                            <div style="color:#334155; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${display || '—'}</div>
-                            <div style="color:#64748b; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${email || '—'}</div>
+                            <div style="color:#334155; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${display || '...”'}</div>
+                            <div style="color:#64748b; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${email || '...”'}</div>
                         </div>
                         <div style="font-weight:900; color: var(--cobalt);">${role}</div>
                         <div style="font-size:12px; color:#334155; font-weight:900;">${escapeHtml(tasksText)}</div>
@@ -21576,7 +23530,7 @@ async function loadRecommendationsForFilter() {
         };
 
         /* ===== OFFER BUILDER - CART-BASED MULTI-SERVICE SYSTEM ===== */
-        // Ad Frameworks (TOF/BOF) – minimal reference + optional task packet creator.
+        // Ad Frameworks (TOF/BOF) ...“ minimal reference + optional task packet creator.
         // NOTE: Inline onclick handlers can reference global lexicals, but we also attach to window for safety.
         const adFrameworks = (() => {
             const state = {
@@ -21750,14 +23704,131 @@ async function loadRecommendationsForFilter() {
             };
 
             const doneKey = (stage, key) => `${String(stage || 'BOF').toUpperCase()}:${String(key || '').trim()}`;
-            const getDone = (stage, key) => {
-                try { return !!(state.done && state.done[doneKey(stage, key)]); } catch { return false; }
+
+            const _getOfferBuilderCtx = () => {
+                try {
+                    const ob = (typeof offerBuilder !== 'undefined' && offerBuilder) ? offerBuilder : null;
+                    const offerId = String(ob && ob.offer && (ob.offer.offer_id || ob.offer.Offer_ID) || '').trim();
+                    const fw = (ob && typeof ob._getFrameworksFromOffer === 'function') ? ob._getFrameworksFromOffer() : null;
+                    const hasAuth = (() => {
+                        try { return !!(ob && typeof ob._hasOfferLibraryAuth === 'function' && ob._hasOfferLibraryAuth()); } catch (_) { return false; }
+                    })();
+
+                    const linksVal = (ob && offerId && ob._offerLibraryCreativeLinksByOffer && typeof ob._offerLibraryCreativeLinksByOffer.get === 'function')
+                        ? ob._offerLibraryCreativeLinksByOffer.get(offerId)
+                        : null;
+                    const linksState = Array.isArray(linksVal) ? 'known' : (hasAuth ? 'loading' : 'auth');
+                    const links = Array.isArray(linksVal) ? linksVal : null;
+                    return { ob, offerId, fw, links, linksState };
+                } catch {
+                    return { ob: null, offerId: '', fw: null, links: null, linksState: 'loading' };
+                }
             };
+
+            const _mapChecklistKeyToFrameworkModule = (stage, checklistKey) => {
+                const st = String(stage || '').toUpperCase() === 'BOF' ? 'BOF' : 'TOF';
+                const key = String(checklistKey || '').trim();
+                if (!key) return '';
+
+                // Bridge adFrameworks (template) keys ...-> Offer Library frameworks module keys.
+                // This enables hands-off progress based on real copy/resources.
+                if (st === 'BOF') {
+                    if (key === 'offer') return 'offer_stack';
+                    if (key === 'objection') return 'objection_killer';
+                    if (key === 'price') return 'price_anchor';
+                    if (key === 'scarcity') return 'urgency_scarcity';
+                    return '';
+                }
+
+                // TOF checklist is intentionally light here; map only what we can safely bridge.
+                if (key === 'offer') return 'how_it_works';
+                if (key === 'objection') return 'myth_bust';
+                return '';
+            };
+
+            const _countFrameworkModuleResources = (stageLower, moduleKey, links) => {
+                try {
+                    const s = String(stageLower || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                    const k = String(moduleKey || '').trim();
+                    if (!k) return 0;
+                    const rows = Array.isArray(links) ? links : [];
+                    return rows.filter(l => String(l && l.framework_stage || '').toLowerCase() === s && String(l && l.framework_ad_type_key || '').trim() === k).length;
+                } catch {
+                    return 0;
+                }
+            };
+
+            const _hasFrameworkModuleCopy = (stageLower, moduleKey, fw) => {
+                try {
+                    const s = String(stageLower || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                    const k = String(moduleKey || '').trim();
+                    if (!k || !fw || typeof fw !== 'object') return false;
+                    const modules = (fw.modules && typeof fw.modules === 'object') ? fw.modules : {};
+                    const bucket = (modules[s] && typeof modules[s] === 'object') ? modules[s] : {};
+                    const m = (bucket[k] && typeof bucket[k] === 'object') ? bucket[k] : null;
+                    if (!m) return false;
+
+                    const hook = String(m.hook || '').trim();
+                    const primary = String(m.primary_text || m.primaryText || '').trim();
+                    const headline = String(m.headline || '').trim();
+                    const body = String(m.body || '').trim();
+                    return !!(hook || primary || headline || body);
+                } catch {
+                    return false;
+                }
+            };
+
+            const _getAutoChecklistStatus = (stage, checklistKey) => {
+                try {
+                    const st = String(stage || '').toUpperCase() === 'BOF' ? 'BOF' : 'TOF';
+                    const stageLower = st === 'BOF' ? 'bof' : 'tof';
+                    const mapped = _mapChecklistKeyToFrameworkModule(st, checklistKey);
+                    const { ob, offerId, fw, links, linksState } = _getOfferBuilderCtx();
+
+                    // Proactively keep library context warm (resources count).
+                    try {
+                        if (ob && offerId && typeof ob._queueOfferLibraryContextFetch === 'function') {
+                            ob._queueOfferLibraryContextFetch(offerId);
+                        }
+                    } catch { /* ignore */ }
+
+                    if (!mapped) {
+                        return { missing: true, waiting: false, complete: false, resCount: 0, hasCopy: false, mappedKey: '' };
+                    }
+
+                    const resCount = (linksState === 'known') ? _countFrameworkModuleResources(stageLower, mapped, links) : 0;
+                    const hasCopy = _hasFrameworkModuleCopy(stageLower, mapped, fw);
+
+                    const complete = !!(linksState === 'known' && hasCopy && resCount > 0);
+
+                    // Truthful status rules:
+                    // - If copy is missing, it's Missing (we can know that).
+                    // - If copy exists but resources are unknown (loading/auth), it's Waiting (don't lie "Missing").
+                    // - If resources are known but none attached, it's Waiting.
+                    const missing = !hasCopy;
+                    const waiting = !complete && !missing;
+                    return { missing, waiting, complete, resCount, hasCopy, mappedKey: mapped };
+                } catch {
+                    return { missing: true, waiting: false, complete: false, resCount: 0, hasCopy: false, mappedKey: '' };
+                }
+            };
+
+            // Checklist state is now auto-derived from real work (copy + resources), not manually toggled.
+            // Done means: copy exists AND at least one resource is attached.
+            const getDone = (stage, key) => {
+                try {
+                    const st = _getAutoChecklistStatus(stage, key);
+                    return !!(st && st.complete);
+                } catch {
+                    return false;
+                }
+            };
+
             const setDone = (stage, key, val) => {
                 try {
-                    if (!state.done) state.done = {};
-                    state.done[doneKey(stage, key)] = !!val;
-                    saveDone();
+                    // Back-compat no-op: we intentionally don't persist manual checks anymore.
+                    // Keep old storage untouched to avoid breaking existing users' local state.
+                    void stage; void key; void val;
                 } catch {
                 }
             };
@@ -21796,14 +23867,14 @@ async function loadRecommendationsForFilter() {
                     title: 'Offer clarity',
                     purpose: 'Make it obvious what they get.',
                     useWhen: 'Any time someone could misunderstand the package or outcome.',
-                    rule: 'If a stranger can’t repeat the offer in 5 seconds, rewrite it.',
+                    rule: 'If a stranger can repeat the offer in 5 seconds, rewrite it.',
                     examples: [
-                        `“${offerName}: clean, level, safe install — quote in minutes.”`,
-                        `“Includes mount + hardware check + clean finish. No surprises.”`,
-                        `“Perfect for apartments and family rooms. Clean look, done right.”`,
-                        `“Flat-rate options • upfront quote • clean finish.”`,
-                        `“Same-day slots available • pro install • clean result.”`,
-                        `“We bring the right hardware — you get a clean, safe setup.”`
+                        `..."${offerName}: clean, level, safe install. Quote in minutes....`,
+                        `..."Includes mount + hardware check + clean finish. No surprises....`,
+                        `..."Perfect for apartments and family rooms. Clean look, done right....`,
+                        `..."Flat-rate options  | upfront quote  | clean finish....`,
+                        `..."Same-day slots available  | pro install  | clean result....`,
+                        `..."We bring the right hardware. You get a clean, safe setup....`
                     ],
                     recStages: ['TOF', 'BOF'],
                     optionalStages: [],
@@ -21815,15 +23886,15 @@ async function loadRecommendationsForFilter() {
                         key: 'objection',
                         title: 'Objection killer',
                         purpose: 'Remove fear (mess, trust, timing, surprise fees).',
-                        useWhen: 'When people click but don’t book — or ask the same questions.',
+                        useWhen: 'When people click but don book, or ask the same questions.',
                         rule: 'Name the objection, then answer it in one line.',
                         examples: [
-                            '“Upfront pricing. No surprises.”',
-                            '“We protect floors/walls — clean work.”',
-                            '“If it’s not right, we fix it.”',
-                            '“Arrive on time. Respect your home.”',
-                            '“Licensed + insured • pro hardware.”',
-                            '“Text updates • simple scheduling.”'
+                            '..."Upfront pricing. No surprises....',
+                            '..."We protect floors and walls. Clean work....',
+                            '..."If it not right, we fix it....',
+                            '..."Arrive on time. Respect your home....',
+                            '..."Licensed + insured  | pro hardware....',
+                            '..."Text updates  | simple scheduling....'
                         ],
                         recStages: ['BOF'],
                         optionalStages: ['TOF'],
@@ -21835,15 +23906,15 @@ async function loadRecommendationsForFilter() {
                     modules.push({
                         key: 'price',
                         title: 'Price anchor',
-                        purpose: 'Make the price feel reasonable via “normally vs today” (or “value vs price”).',
+                        purpose: 'Make the price feel reasonable via ..."normally vs today... (or ..."value vs price...).',
                         useWhen: 'BOF retargeting, high-intent clicks, or when price sensitivity blocks conversion.',
-                        rule: 'Anchor → clarify what’s included → give a simple CTA.',
+                        rule: 'Anchor ...-> clarify what included ...-> give a simple CTA.',
                         examples: [
-                            '“Normally $X. Today: $X − $DISCOUNT.”',
-                            '“Book by $DEADLINE and we include $BONUS.”',
-                            'TOF-safe fallback: “Transparent pricing • quote in minutes.”',
-                            '“No hidden fees • upfront quote • pro install.”',
-                            '“Bundle pricing beats à la carte.”'
+                            '..."Normally $X. Today: $X ...- $DISCOUNT....',
+                            '..."Book by $DEADLINE and we include $BONUS....',
+                            'TOF-safe fallback: ..."Transparent pricing  | quote in minutes....',
+                            '..."No hidden fees  | upfront quote  | pro install....',
+                            '..."Bundle pricing beats a la carte....'
                         ],
                         recStages: ['BOF'],
                         optionalStages: ['TOF'],
@@ -21858,11 +23929,11 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'When you need urgency without discounting.',
                     rule: 'Only use real scarcity. Keep it specific.',
                     examples: [
-                        '“Limited installs this week — first come, first served.”',
-                        '“Two crews • limited daily slots.”',
-                        '“Spots available through $DEADLINE.”',
-                        '“Next openings: today + tomorrow.”',
-                        '“Schedule is filling — grab a slot.”'
+                        '..."Limited installs this week. First come, first served....',
+                        '..."Two crews  | limited daily slots....',
+                        '..."Spots available through $DEADLINE....',
+                        '..."Next openings: today + tomorrow....',
+                        '..."Schedule is filling. Grab a slot....'
                     ],
                     recStages: [],
                     optionalStages: ['BOTH'],
@@ -21876,11 +23947,11 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'TOF or when scroll-stopping is the issue.',
                     rule: 'Hook in 2 seconds. No fluff.',
                     examples: [
-                        '“Tired of a crooked / unsafe setup?”',
-                        `“Here’s the cleanest way to get ${offerName}.”`,
-                        `“If you want ${angle}, do this first.”`,
-                        '“Stop the wobble. Make it clean + safe.”',
-                        '“Make your living room look finished.”'
+                        '..."Tired of a crooked / unsafe setup?...',
+                        `..."Here the cleanest way to get ${offerName}....`,
+                        `..."If you want ${angle}, do this first....`,
+                        '..."Stop the wobble. Make it clean + safe....',
+                        '..."Make your living room look finished....'
                     ],
                     recStages: ['TOF'],
                     optionalStages: ['BOF'],
@@ -21894,10 +23965,10 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'Always. Proof is the easiest multiplier.',
                     rule: 'Put proof early (first 3 seconds / top third of static).',
                     examples: [
-                        '“200+ installs • clean finish • on-time.”',
+                        '..."200+ installs  | clean finish  | on-time....',
                         'Use 1 review line + star visual + a proof photo.',
                         'If video: show the finished result before explaining.',
-                        'Before/after: crooked → clean + level.',
+                        'Before/after: crooked ...-> clean + level.',
                         'Show hardware + tools (signals pro, not DIY).'
                     ],
                     recStages: ['TOF', 'BOF'],
@@ -21955,7 +24026,7 @@ async function loadRecommendationsForFilter() {
                 const stageExplainer = (stage === 'TOF')
                     ? {
                         title: 'Top of Funnel (TOF)',
-                        para: 'TOF is for cold/warm audiences who do not know you yet. The job is to earn attention, make the problem obvious, and build trust fast — not to “close the sale” immediately.',
+                        para: 'TOF is for cold or warm audiences who do not know you yet. The job is to earn attention, make the problem obvious, and build trust fast, not to ..."close the sale... immediately.',
                         summary: 'Simple rule: TOF = hooks + proof + clarity. Keep offers light.'
                     }
                     : {
@@ -21965,10 +24036,10 @@ async function loadRecommendationsForFilter() {
                     };
 
                 const definitions = {
-                    headline: 'A short top-line promise. It answers “why should I care?” in one sentence.',
+                    headline: 'A short top-line promise. It answers ..."why should I care?... in one sentence.',
                     offer: 'What you are selling/promoting (bundle/package/promise).',
                     limitedAvailability: 'A real constraint (calendar/crew capacity). It gives urgency without discounting.',
-                    priceAnchor: 'Shows “normally vs today” (or “value vs price”) so the price feels reasonable.'
+                    priceAnchor: 'Shows ..."normally vs today... (or ..."value vs price...) so the price feels reasonable.'
                 };
 
                 const vars = [
@@ -21981,18 +24052,18 @@ async function loadRecommendationsForFilter() {
                 ];
 
                 const naming = {
-                    base: `[${stage}] ${offerName || '$OFFER'} — ${angle || '$ANGLE'} — {ASSET}`,
-                    example: `[${stage}] TV Mounting Bundle — Same-day install — 15s Video 01`
+                    base: `[${stage}] ${offerName || '$OFFER'} - ${angle || '$ANGLE'} - {ASSET}`,
+                    example: `[${stage}] TV Mounting Bundle - Same-day install - 15s Video 01`
                 };
 
                 const recommendedMix = (stage === 'TOF')
                     ? [
-                        'Start with: 1–2 short videos (15–30s) + 2 statics (problem/solution + proof).',
+                        'Start with: 1...“2 short videos (15...“30s) + 2 statics (problem/solution + proof).',
                         'Optional: carousel can work if it tells a simple story fast.',
                         'Avoid: hard price/discount language on cold audiences (often hurts CTR/quality).'
                     ]
                     : [
-                        'Start with: 2 offer statics + 1 objection-killer video (10–20s) + 1 proof/reviews static.',
+                        'Start with: 2 offer statics + 1 objection-killer video (10...“20s) + 1 proof/reviews static.',
                         'Optional: longer explainer video if audience is already warm.',
                         'Avoid: vague brand messaging with no terms/CTA (wastes retargeting budget).'
                     ];
@@ -22004,14 +24075,14 @@ async function loadRecommendationsForFilter() {
                     def: definitions.headline,
                     body: (stage === 'TOF')
                         ? [
-                            `“Tired of a crooked / unsafe setup?”`,
-                            `“Here’s the cleanest way to get ${offerName || 'this done'}.”`,
-                            `“If you want ${angle || 'a better result'}, do this first.”`
+                            `..."Tired of a crooked / unsafe setup?...`,
+                            `..."Here the cleanest way to get ${offerName || 'this done'}....`,
+                            `..."If you want ${angle || 'a better result'}, do this first....`
                         ]
                         : [
-                            `${offerName || 'TV Mounting Bundle'} — book this week`,
-                            `Limited availability • ${angle || 'clean + safe install'}`,
-                            `Ready today? Let’s schedule it.`
+                            `${offerName || 'TV Mounting Bundle'} - book this week`,
+                            `Limited availability  | ${angle || 'clean + safe install'}`,
+                            `Ready today? Let schedule it.`
                         ]
                 });
 
@@ -22019,9 +24090,9 @@ async function loadRecommendationsForFilter() {
                     title: 'Offer clarity (what it is / what you get)',
                     def: definitions.offer,
                     body: [
-                        `What’s included: ${offerName || 'TV mounting + clean cable management'} (keep it simple).`,
-                        `Who it’s for: “Anyone who wants it clean, level, and safe.”`,
-                        `CTA: “Get a quote” (TOF) / “Book now” (BOF).`
+                        `What included: ${offerName || 'TV mounting + clean cable management'} (keep it simple).`,
+                        `Who it for: ..."Anyone who wants it clean, level, and safe....`,
+                        `CTA: ..."Get a quote... (TOF) / ..."Book now... (BOF).`
                     ]
                 });
 
@@ -22029,9 +24100,9 @@ async function loadRecommendationsForFilter() {
                     title: 'Limited availability (scarcity)',
                     def: definitions.limitedAvailability,
                     body: [
-                        `“Limited installs this week — first come, first served.”`,
-                        `“Spots available: $DEADLINE (or: ‘this week’ if no hard date).”`,
-                        `“Two crews • limited daily slots.”`
+                        `..."Limited installs this week. First come, first served....`,
+                        `..."Spots available: $DEADLINE (or: ...˜this week...' if no hard date)....`,
+                        `..."Two crews  | limited daily slots....`
                     ]
                 });
 
@@ -22040,9 +24111,9 @@ async function loadRecommendationsForFilter() {
                         title: 'Price anchor (optional)',
                         def: definitions.priceAnchor,
                         body: [
-                            `Normally $PRICE. Today: $PRICE - $DISCOUNT (or: “Save $DISCOUNT”).`,
+                            `Normally $PRICE. Today: $PRICE - $DISCOUNT (or: ..."Save $DISCOUNT...).`,
                             `Book by $DEADLINE and we include $BONUS.`,
-                            `If you can’t say numbers yet: use “Transparent pricing • quote in minutes” (TOF-friendly).`
+                            `If you can say numbers yet: use ..."Transparent pricing  | quote in minutes... (TOF-friendly).`
                         ]
                     });
                 }
@@ -22061,23 +24132,23 @@ async function loadRecommendationsForFilter() {
 
                 blocks.push({
                     title: 'Proof / reviews (trust)',
-                    def: 'Credibility fast: review snippet, before/after, “X installs”, partner logos.',
+                    def: 'Credibility fast: review snippet, before/after, ..."X installs..., partner logos.',
                     body: [
                         `Use 1 review line + star visual + 1 proof photo.`,
                         `If video: 1 proof line in the first 3 seconds.`,
-                        `Example: “200+ installs • clean finish • on-time.”`
+                        `Example: ..."200+ installs  | clean finish  | on-time....`
                     ]
                 });
 
                 const packetTasks = [];
                 const offerLabel = offerName || 'Offer';
                 const angleLabel = angle || (stage === 'TOF' ? 'Broad Angle' : 'Direct Angle');
-                const commonTitlePrefix = `[${stage}] ${offerLabel} — ${angleLabel}`;
+                const commonTitlePrefix = `[${stage}] ${offerLabel} - ${angleLabel}`;
                 const dateTag = todayIso();
 
                 const add = (asset, description) => {
                     packetTasks.push({
-                        title: safeName(`${commonTitlePrefix} — ${asset}` + (dateTag ? ` (${dateTag})` : '')),
+                        title: safeName(`${commonTitlePrefix} - ${asset}` + (dateTag ? ` (${dateTag})` : '')),
                         description: description,
                         category: 'Ads',
                         priority: stage === 'BOF' ? 'HIGH' : 'MEDIUM'
@@ -22086,8 +24157,8 @@ async function loadRecommendationsForFilter() {
 
                 if (stage === 'TOF') {
                     add('UGC 30s Video (Hook + Proof)',
-                        `Stage: TOF (cold/warm).\nGoal: earn attention + build trust.\n\nStructure (30s):\n- 0–2s: Hook (problem/aspiration)\n- 2–10s: What happens if ignored\n- 10–22s: Simple solution + proof\n- 22–30s: Soft CTA (get quote / learn more)\n\nNotes:\n- Avoid heavy price/discount language on cold audiences.\n- Use proof: review line, before/after, “X installs”.`);
-                    add('Static 1: Problem → Solution',
+                        `Stage: TOF (cold/warm).\nGoal: earn attention + build trust.\n\nStructure (30s):\n- 0...“2s: Hook (problem/aspiration)\n- 2...“10s: What happens if ignored\n- 10...“22s: Simple solution + proof\n- 22...“30s: Soft CTA (get quote / learn more)\n\nNotes:\n- Avoid heavy price/discount language on cold audiences.\n- Use proof: review line, before/after, ..."X installs....`);
+                    add('Static 1: Problem ...-> Solution',
                         `Stage: TOF.\nGoal: broad pain + simple promise.\n\nInclude:\n- Headline hook\n- 1 proof point\n- CTA: Get quote / Learn more\n\nNaming: ${naming.base.replace('{ASSET}', 'Static 01')}`);
                     add('Static 2: Proof / Reviews',
                         `Stage: TOF/BOF safe.\nGoal: trust.\n\nInclude:\n- 1 review snippet\n- star visual\n- before/after or clean finish photo`);
@@ -22097,11 +24168,11 @@ async function loadRecommendationsForFilter() {
                     add('Retarget Video 15s: Objection Killer',
                         `Stage: BOF.\nGoal: kill top objection.\n\nStructure (15s):\n- Objection (1 line)\n- Reassurance (proof + process)\n- Direct CTA (book today)`);
                     add('Landing/Checkout QA',
-                        `Stage: BOF support.\nGoal: make sure the conversion path doesn’t leak.\n\nCheck:\n- speed + mobile\n- CTA clarity\n- form submits + tracking\n- thank-you page + next step`);
+                        `Stage: BOF support.\nGoal: make sure the conversion path doesn leak.\n\nCheck:\n- speed + mobile\n- CTA clarity\n- form submits + tracking\n- thank-you page + next step`);
                 }
 
                 const packetText = [
-                    `Ad Frameworks Packet`,
+                    `Frameworks Packet`,
                     `Stage: ${stage}`,
                     `Offer: ${offerName || '$OFFER'}`,
                     `Angle: ${angle || '$ANGLE'}`,
@@ -22115,7 +24186,7 @@ async function loadRecommendationsForFilter() {
                     ...recommendedMix.map(x => `- ${x}`),
                     ``,
                     `Copy blocks:`,
-                    ...blocks.flatMap(b => [`- ${b.title} (${b.def})`, ...b.body.map(line => `  • ${line}`)]),
+                    ...blocks.flatMap(b => [`- ${b.title} (${b.def})`, ...b.body.map(line => `   | ${line}`)]),
                     ``,
                     `Tasks:`,
                     ...packetTasks.map(t => `- ${t.title}`)
@@ -22160,6 +24231,18 @@ async function loadRecommendationsForFilter() {
                 } catch {
                 }
 
+                // Hands-off: clicking checklist items opens the real module editor (copy + resources), when possible.
+                try {
+                    const { ob, offerId } = _getOfferBuilderCtx();
+                    const st = String(state.stage || '').toUpperCase() === 'BOF' ? 'BOF' : 'TOF';
+                    const stageLower = st === 'BOF' ? 'bof' : 'tof';
+                    const mapped = _mapChecklistKeyToFrameworkModule(st, key);
+                    if (ob && offerId && mapped && typeof ob.openOfferLibraryModuleDrawer === 'function') {
+                        ob.openOfferLibraryModuleDrawer(offerId, stageLower, mapped);
+                    }
+                } catch {
+                }
+
                 setTimeout(() => {
                     const el = getEl(cardIdFor(key));
                     if (!el) return;
@@ -22181,18 +24264,13 @@ async function loadRecommendationsForFilter() {
             };
 
             const toggleDone = (key) => {
-                const stage = state.stage;
-                const next = !getDone(stage, key);
-                setDone(stage, key, next);
-                render();
+                // Manual toggles removed; keep function for backwards compatibility.
+                try { jump(key); } catch (_) {}
             };
 
             const resetChecklist = () => {
                 try {
-                    const stage = state.stage;
-                    const inputs = readInputs();
-                    const modules = getModules(stage, inputs).filter(m => m.checklist);
-                    for (const m of modules) setDone(stage, m.key, false);
+                    showToast('Checklist is auto-tracked from copy + resources', 'info');
                 } catch {
                 }
                 render();
@@ -22214,17 +24292,17 @@ async function loadRecommendationsForFilter() {
                     ? {
                         title: 'Bottom of Funnel (BOF) = Conversion path',
                         para: 'Use BOF when the person already engaged (clicked, visited, watched). The job is to remove friction: terms, proof, urgency, and a direct CTA.',
-                        doFirst: 'Offer clarity → Objection killer → Price anchor → Proof.',
+                        doFirst: 'Offer clarity ...-> Objection killer ...-> Price anchor ...-> Proof.',
                         avoid: 'Vague branding with no terms/CTA.'
                     }
                     : {
                         title: 'Top of Funnel (TOF) = Attention + trust',
-                        para: 'Use TOF for colder audiences. The job is to earn attention, make the problem obvious, and build trust fast — without trying to “close” too early.',
-                        doFirst: 'Headline/Hook → Proof → Offer clarity → Soft CTA.',
+                        para: 'Use TOF for colder audiences. The job is to earn attention, make the problem obvious, and build trust fast, without trying to ..."close... too early.',
+                        doFirst: 'Headline/Hook ...-> Proof ...-> Offer clarity ...-> Soft CTA.',
                         avoid: 'Heavy price/discount language on cold audiences.'
                     };
 
-                const namingRule = `[${stage}] ${offerName} — ${angle} — {ASSET}`;
+                const namingRule = `[${stage}] ${offerName} - ${angle} - {ASSET}`;
 
                 const groups = getChecklistGroups(stage, inputs);
                 const modules = groups.modules;
@@ -22250,7 +24328,7 @@ async function loadRecommendationsForFilter() {
                                 <span class="af-mini">(${rest.length} more)</span>
                             </div>
                             <div class="af-examples-more" style="display:${expanded ? 'block' : 'none'};">
-                                ${rest.map(x => `<div>• ${escapeHtml(String(x))}</div>`).join('')}
+                                ${rest.map(x => `<div> | ${escapeHtml(String(x))}</div>`).join('')}
                             </div>
                         `
                         : '';
@@ -22259,14 +24337,14 @@ async function loadRecommendationsForFilter() {
                         <div class="af-card" id="${escapeHtml(cardIdFor(m.key))}" style="scroll-margin-top: 16px;">
                             <div class="af-row">
                                 <div class="af-card-title">${escapeHtml(m.title)}</div>
-                                <span class="af-pill ${pill.cls}">${escapeHtml(pill.text)}</span>
+                                <span class="af-mini">${escapeHtml(pill.text)}</span>
                             </div>
                             <div class="af-kv"><strong>Purpose:</strong> ${escapeHtml(m.purpose)}</div>
                             <div class="af-kv"><strong>Use when:</strong> ${escapeHtml(m.useWhen)}</div>
                             <div class="af-kv"><strong>Rule:</strong> ${escapeHtml(m.rule)}</div>
                             <div class="af-example">
                                 <div class="af-kv" style="margin:0;"><strong>Example:</strong></div>
-                                <div class="af-example-line">${escapeHtml(example0 || '—')}</div>
+                                <div class="af-example-line">${escapeHtml(example0 || 'N/A')}</div>
                                 ${moreHtml}
                             </div>
                         </div>
@@ -22275,19 +24353,24 @@ async function loadRecommendationsForFilter() {
 
                 const navItemHtml = (m, meta) => {
                     const exists = !!m;
-                    const isDone = exists ? getDone(stage, m.key) : false;
                     const disabled = !exists;
                     const showCheck = exists && !!m.checklist;
+
+                    const st = (exists && showCheck) ? _getAutoChecklistStatus(stage, m.key) : null;
+                    const mark = st ? (st.complete ? '..."“' : (st.waiting ? '...|' : '')) : '';
+                    const doneCls = st && st.complete ? 'is-done' : '';
+                    const statusLabel = st ? (st.missing ? 'missing' : (st.complete ? 'done' : 'waiting')) : '';
+                    const metaText = [String(meta || '').trim(), statusLabel].filter(Boolean).join('  | ');
                     return `
                         <button type="button" class="af-nav-item" id="${escapeHtml(exists ? navIdFor(m.key) : '')}" onclick="${exists ? `adFrameworks.jump('${escapeHtml(m.key)}')` : ''}" ${disabled ? 'disabled style="opacity:.55; cursor:not-allowed;"' : ''}>
                             <span class="af-nav-left">
                                 ${showCheck
-                                    ? `<span class="af-check ${isDone ? 'is-done' : ''}" onclick="event.stopPropagation(); adFrameworks.toggleDone('${escapeHtml(m.key)}')">${isDone ? '✓' : ''}</span>`
+                                    ? `<span class="af-check ${doneCls}" aria-hidden="true">${escapeHtml(mark)}</span>`
                                     : `<span class="af-check" style="opacity:.35;" aria-hidden="true"></span>`
                                 }
                                 <span class="af-nav-label">${escapeHtml(exists ? m.title : '')}</span>
                             </span>
-                            <span class="af-nav-meta">${escapeHtml(meta || '')}</span>
+                            <span class="af-nav-meta">${escapeHtml(metaText)}</span>
                         </button>
                     `;
                 };
@@ -22297,9 +24380,9 @@ async function loadRecommendationsForFilter() {
                         <summary>Glossary (quick definitions)</summary>
                         <div class="af-acc-body">
                             <div class="af-kv"><strong>Headline:</strong> One-sentence promise/problem that stops the scroll.</div>
-                            <div class="af-kv"><strong>Offer:</strong> What you’re selling/promoting (bundle/package/promise).</div>
+                            <div class="af-kv"><strong>Offer:</strong> What youe selling/promoting (bundle/package/promise).</div>
                             <div class="af-kv"><strong>Limited availability:</strong> Real constraint (calendar/crew). Urgency without discounting.</div>
-                            <div class="af-kv"><strong>Price anchor:</strong> “Normally vs today” (or “value vs price”) to make price feel reasonable.</div>
+                            <div class="af-kv"><strong>Price anchor:</strong> ..."Normally vs today... (or ..."value vs price...) to make price feel reasonable.</div>
                         </div>
                     </details>
                 `;
@@ -22341,7 +24424,7 @@ async function loadRecommendationsForFilter() {
                             <details class="af-acc" style="margin-top: 14px;">
                                 <summary>Task packet (optional)</summary>
                                 <div class="af-acc-body">
-                                    <div class="af-help">Creates tasks in Tasks → To Do (category: Ads). Nothing touches Deliverables.</div>
+                                    <div class="af-help">Creates tasks in Tasks ...-> To Do (category: Ads). Nothing touches Deliverables.</div>
                                     <div class="af-code" style="margin-top:10px;">${escapeHtml(tasksPreview || 'No tasks yet.')}</div>
                                 </div>
                             </details>
@@ -22355,7 +24438,7 @@ async function loadRecommendationsForFilter() {
                     <div class="af-layout">
                         <div class="af-nav">
                             <div class="af-nav-title">${stage === 'BOF' ? 'BOF Checklist' : 'TOF Checklist'}</div>
-                            <div class="af-nav-sub">Click an item to jump. Check items off as you build.</div>
+                            <div class="af-nav-sub">Open a module to write copy. Add a resource to attach an asset. Missing means no copy or assets yet.</div>
                             ${required.map(m => navItemHtml(m, 'required')).join('')}
                             ${optional.length ? `<div class="af-mini" style="margin: 10px 6px 8px; font-weight:1000; color:#0a2a5a;">Optional</div>` : ''}
                             ${optional.map(m => navItemHtml(m, 'optional')).join('')}
@@ -22365,7 +24448,7 @@ async function loadRecommendationsForFilter() {
                                 ${optionalToggle}
                                 ${progressHtml}
                                 ${nextBtnHtml}
-                                <button type="button" class="btn-secondary" onclick="adFrameworks.resetChecklist()" style="width:100%;">Reset checks</button>
+                                <button type="button" class="btn-secondary" onclick="adFrameworks.resetChecklist()" style="width:100%;">Refresh status</button>
                                 ${glossaryHtml}
                             </div>
                         </div>
@@ -22387,15 +24470,15 @@ async function loadRecommendationsForFilter() {
                                 <div class="af-card">
                                     <div class="af-card-title">Default build</div>
                                     <div class="af-help">${stage === 'BOF'
-                                        ? 'Start with: 2 offer statics + 1 objection-killer video (10–20s) + 1 proof/reviews static.'
-                                        : 'Start with: 1–2 short videos (15–30s) + 2 statics (problem/solution + proof).'
+                                        ? 'Start with: 2 offer statics + 1 objection-killer video (10...“20s) + 1 proof/reviews static.'
+                                        : 'Start with: 1...“2 short videos (15...“30s) + 2 statics (problem/solution + proof).'
                                     }</div>
                                     <div class="af-kv" style="margin-top:10px;"><strong>Optional:</strong> carousel can work if it tells a simple story fast.</div>
                                 </div>
                             </div>
 
                             <div class="af-grid" style="grid-template-columns: 1fr; margin-top: 14px;">
-                                ${modulesHtml || '<div class="af-card"><div class="af-card-title">Nothing to show</div><div class="af-help">Enable “Show optional” or check your inputs.</div></div>'}
+                                ${modulesHtml || '<div class="af-card"><div class="af-card-title">Nothing to show</div><div class="af-help">Enable ..."Show optional... or check your inputs.</div></div>'}
                             </div>
 
                         </div>
@@ -22406,7 +24489,7 @@ async function loadRecommendationsForFilter() {
                     try { console.error('[adFrameworks.render] failed', e); } catch (_) {}
                     body.innerHTML = `
                         <div class="af-card">
-                            <div class="af-card-title">Ad Frameworks failed to render</div>
+                            <div class="af-card-title">Frameworks failed to render</div>
                             <div class="af-help">${escapeHtml(msg)}</div>
                             <div class="af-help" style="margin-top:8px;">Open DevTools console for details.</div>
                         </div>
@@ -22505,11 +24588,11 @@ async function loadRecommendationsForFilter() {
                     setStage(nextStage);
                 } catch (e) {
                     try { console.error('[adFrameworks.showInOfferBuilder] setStage failed', e); } catch (_) {}
-                    try { showToast('Ad Frameworks failed to set stage. Check console.', 'error'); } catch (_) {}
+                    try { showToast('Frameworks failed to set stage. Check console.', 'error'); } catch (_) {}
                 }
                 try { render(); } catch (e) {
                     try { console.error('[adFrameworks.showInOfferBuilder] render failed', e); } catch (_) {}
-                    try { showToast('Ad Frameworks failed to render. Check console.', 'error'); } catch (_) {}
+                    try { showToast('Frameworks failed to render. Check console.', 'error'); } catch (_) {}
                 }
             };
 
@@ -22605,7 +24688,7 @@ async function loadRecommendationsForFilter() {
                     economicsLines.length ? `## Unit Economics` : '',
                     ...economicsLines,
                     ``,
-                    `## Ad Frameworks Packet`,
+                    `## Frameworks Packet`,
                     `\n\n${String(model.packetText || state.packetText || '').trim()}`
                 ].filter(Boolean).join('\n');
 
@@ -22786,7 +24869,7 @@ async function loadRecommendationsForFilter() {
                 const original = btn ? btn.innerHTML : '';
                 if (btn) {
                     btn.disabled = true;
-                    btn.innerHTML = 'Creating…';
+                    btn.innerHTML = 'Creating...';
                 }
 
                 try {
@@ -22877,8 +24960,399 @@ async function loadRecommendationsForFilter() {
         }
 
         const offerBuilder = {
-            subTab: 'builder',
+            subTab: 'library',
             frameworksUi: { kind: 'pillar', key: 'offer_clarity' },
+
+            _tutorialState: { lastAt: 0 },
+
+            _tutorialStorageKey() {
+                return 'h2s_ob_tutorial_seen_v1';
+            },
+
+            hasSeenOfferBuilderTutorial() {
+                try {
+                    return String(localStorage.getItem(this._tutorialStorageKey()) || '') === '1';
+                } catch (_) {
+                    return false;
+                }
+            },
+
+            markOfferBuilderTutorialSeen() {
+                try { localStorage.setItem(this._tutorialStorageKey(), '1'); } catch (_) {}
+            },
+
+            maybeShowOfferBuilderTutorialOnce(opts = {}) {
+                try {
+                    if (this.hasSeenOfferBuilderTutorial()) return;
+                    const now = Date.now();
+                    const last = Number(this._tutorialState && this._tutorialState.lastAt || 0) || 0;
+                    if (last && (now - last) < 1500) return;
+                    this._tutorialState.lastAt = now;
+                    this.openOfferBuilderTutorial({ force: false, reason: String(opts.reason || 'auto') });
+                } catch (_) {}
+            },
+
+            openOfferBuilderTutorial(opts = {}) {
+                const force = !!(opts && opts.force);
+                try {
+                    if (!force && this.hasSeenOfferBuilderTutorial()) return;
+                } catch (_) {}
+
+                // Mark as seen on open to avoid any nagging loops.
+                try { this.markOfferBuilderTutorialSeen(); } catch (_) {}
+
+                const html = `
+                    <div style="padding: 6px 2px 2px; display:flex; flex-direction:column; gap: 14px;">
+                        <div style="padding: 14px; border-radius: 14px; background: linear-gradient(135deg, rgba(10,42,90,0.10), rgba(37,99,235,0.10)); border: 1px solid rgba(148,163,184,0.25);">
+                            <div style="font-size: 16px; font-weight: 1100; color: var(--cobalt);">Offer Builder quick tour</div>
+                            <div style="font-size: 12px; color:#475569; margin-top: 6px; line-height: 1.5;">This pops up one time. You can reopen it anytime using the <b>Help</b> button.</div>
+                        </div>
+
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <div style="padding: 12px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.25); background:#fff;">
+                                <div style="font-size: 12px; font-weight: 1000; color:#0f172a;">1) Offer Library</div>
+                                <div style="font-size: 12px; color:#475569; margin-top: 6px; line-height: 1.5;">Pick an offer, create a new one, and set the <b>Active offer</b> for the session.</div>
+                                <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" style="margin-top: 10px;" onclick="try{ offerBuilder.setSubTab('library'); closeModal(false); }catch(e){}">Open Offer Library</button>
+                            </div>
+                            <div style="padding: 12px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.25); background:#fff;">
+                                <div style="font-size: 12px; font-weight: 1000; color:#0f172a;">2) Offer Builder</div>
+                                <div style="font-size: 12px; color:#475569; margin-top: 6px; line-height: 1.5;">Build services, pricing, and messaging. Use <b>Save</b> often. The active offer auto-loads here.</div>
+                                <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" style="margin-top: 10px;" onclick="try{ offerBuilder.setSubTab('builder'); offerBuilder._autoEnsureActiveOfferHydratedInBuilder({ reason: 'tutorial_open_builder', force: true }); closeModal(false); }catch(e){}">Open Builder</button>
+                            </div>
+                        </div>
+
+                        <div style="padding: 12px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.25); background:#fff;">
+                            <div style="font-size: 12px; font-weight: 1000; color:#0f172a;">3) Standards check</div>
+                            <div style="font-size: 12px; color:#475569; margin-top: 6px; line-height: 1.5;">The right side shows what is required for a deployable offer. Click the <b>Next Fix</b> to jump to the missing field.</div>
+                        </div>
+
+                        <div style="padding: 12px; border-radius: 14px; border: 1px solid rgba(148,163,184,0.25); background:#fff;">
+                            <div style="font-size: 12px; font-weight: 1000; color:#0f172a;">4) Suggestions (optional)</div>
+                            <div style="font-size: 12px; color:#475569; margin-top: 6px; line-height: 1.5;">Add an offer description and you will get copy suggestions. Nothing auto-fills. You can copy or apply a suggestion with one click.</div>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap:wrap; padding-top: 4px;">
+                            <button type="button" class="ob-btn ob-btn--tertiary" onclick="closeModal(false)">Close</button>
+                            <button type="button" class="ob-btn ob-btn--primary" onclick="try{ offerBuilder.setSubTab('adframeworks'); closeModal(false); }catch(e){}">Open Frameworks</button>
+                        </div>
+                    </div>
+                `;
+
+                try {
+                    showModal('Offer Builder Help', html, { width: '920px', html: true, hideConfirm: true, hideActions: true, backdropClose: true, maxHeight: '86vh' });
+                } catch (_) {
+                    showToast('Help unavailable', 'error');
+                }
+            },
+
+            _messagingSuggestionCache: { byField: {}, items: [], at: 0 },
+
+            _getOfferTextContext() {
+                const o = (this.offer && typeof this.offer === 'object') ? this.offer : {};
+                const safe = (v) => {
+                    try { return String(v == null ? '' : v).trim(); } catch (_) { return ''; }
+                };
+
+                const desc = safe(o.offerDescription || o.description || '');
+                const included = safe(o.whatsIncluded || '');
+                const name = safe(o.name || '');
+                const category = safe(o.category || '');
+                const market = safe(o.market || '');
+                const avatar = safe(o.primaryAvatar || '');
+                const goal = safe(o.intendedGoal || '');
+
+                const services = (Array.isArray(o.lineItems) ? o.lineItems : [])
+                    .filter(it => it && typeof it === 'object')
+                    .filter(it => it.isIncludedInOffer !== false)
+                    .map(it => safe(it.name || it.serviceName || it.serviceId || ''))
+                    .filter(Boolean);
+
+                return {
+                    name,
+                    category,
+                    market,
+                    avatar,
+                    goal,
+                    desc,
+                    included,
+                    services,
+                    fullText: [desc, included, name, category, services.join(' ')].filter(Boolean).join('\n')
+                };
+            },
+
+            _guessPrimaryServicePhrase(ctx) {
+                const t = String((ctx && ctx.fullText) || '').toLowerCase();
+                const services = Array.isArray(ctx && ctx.services) ? ctx.services : [];
+                const svcStr = services.join(' ').toLowerCase();
+
+                const hasTv = /\btv\b|mount/.test(t) || /tv/.test(svcStr);
+                const hasSound = /soundbar|speaker/.test(t) || /soundbar/.test(svcStr);
+                const hasCamera = /camera|security/.test(t) || /camera/.test(svcStr);
+                const hasDoorbell = /doorbell/.test(t) || /doorbell/.test(svcStr);
+                const hasWifi = /wifi|network|router/.test(t) || /wifi/.test(svcStr);
+                const hasSmart = /smart\s?home|automation/.test(t);
+
+                if (hasTv && hasSound) return 'TV mount + soundbar setup';
+                if (hasTv) return 'TV mounting';
+                if (hasDoorbell) return 'doorbell camera install';
+                if (hasCamera) return 'home security camera install';
+                if (hasWifi) return 'WiFi setup';
+                if (hasSmart) return 'smart home setup';
+                return 'home service installation';
+            },
+
+            _priceTextBestEffort(totals = null) {
+                try {
+                    const o = this.offer || {};
+                    const strat = String(o.pricingStrategy || '').trim();
+                    const bp = Number(o.bundlePrice);
+                    let price = 0;
+                    if (strat === 'bundlePrice' && isFinite(bp) && bp > 0) price = bp;
+                    if (!price && totals && isFinite(Number(totals.customerPrice)) && Number(totals.customerPrice) > 0) price = Number(totals.customerPrice);
+                    if (!price) return '';
+                    const rounded = Math.round(price);
+                    if (!isFinite(rounded) || rounded <= 0) return '';
+                    return `$${rounded}`;
+                } catch (_) {
+                    return '';
+                }
+            },
+
+            _computeMessagingSuggestions(totals = null) {
+                const ctx = this._getOfferTextContext();
+                const hasDesc = !!String(ctx.desc || ctx.included || '').trim();
+                const servicePhrase = this._guessPrimaryServicePhrase(ctx);
+                const priceText = this._priceTextBestEffort(totals);
+
+                if (!hasDesc && (!ctx.services || ctx.services.length === 0)) {
+                    return [];
+                }
+
+                const marketClause = ctx.market ? ` in ${ctx.market}` : '';
+                const priceClause = priceText ? ` from ${priceText}` : '';
+                const goalClause = String(ctx.goal || '').toLowerCase().includes('book') ? 'Book now' : 'Get started';
+
+                const headline = `Professional ${servicePhrase}${marketClause}${priceClause}`.replace(/\s+/g, ' ').trim();
+                const promise = `We handle the install, test everything, and leave it clean so you get the result fast.`;
+                const booking = `${goalClause} to lock in a time window. We will confirm by text and arrive ready to complete a clean install.`;
+                const sms = `You are booked. Reply YES to confirm. If you can, send a quick photo of the install area so we show up prepared.`;
+                const priceLine = priceText ? `Most jobs are from ${priceText}. Final price depends on wall type and any add-ons. We will confirm after your photos.` : `Pricing depends on wall type and add-ons. We will confirm after your photos so there are no surprises.`;
+
+                const items = [
+                    { field: 'headline', label: 'Headline', value: headline },
+                    { field: 'oneSentencePromise', label: '1-Sentence Promise', value: promise },
+                    { field: 'bookingPageMicrocopy', label: 'Booking page microcopy', value: booking },
+                    { field: 'smsConfirmation', label: 'SMS confirmation', value: sms },
+                    { field: 'priceQuestionLine', label: 'Price question line', value: priceLine }
+                ].filter(x => x.value && String(x.value).trim().length > 0);
+
+                return items;
+            },
+
+            _refreshMessagingSuggestionsCache(opts = {}) {
+                try {
+                    const totals = opts && opts.totals ? opts.totals : null;
+                    const items = this._computeMessagingSuggestions(totals);
+                    const byField = {};
+                    items.forEach(it => { byField[it.field] = String(it.value || '').trim(); });
+                    this._messagingSuggestionCache = { byField, items, at: Date.now() };
+                } catch (_) {
+                    this._messagingSuggestionCache = { byField: {}, items: [], at: Date.now() };
+                }
+            },
+
+            _fieldDomIdForKey(field) {
+                const f = String(field || '').trim();
+                const map = {
+                    headline: 'offerBuilderHeadline',
+                    oneSentencePromise: 'offerBuilderOneSentencePromise',
+                    bookingPageMicrocopy: 'offerBuilderBookingPageMicrocopy',
+                    smsConfirmation: 'offerBuilderSmsConfirmation',
+                    priceQuestionLine: 'offerBuilderPriceQuestionLine'
+                };
+                return map[f] || '';
+            },
+
+            copySuggestion(field) {
+                try {
+                    const text = String(this._messagingSuggestionCache && this._messagingSuggestionCache.byField && this._messagingSuggestionCache.byField[field] || '').trim();
+                    if (!text) {
+                        showToast('Nothing to copy', 'warning');
+                        return;
+                    }
+                    const doCopy = async () => {
+                        try {
+                            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(text);
+                                showToast('Copied', 'success');
+                                return;
+                            }
+                        } catch (_) {}
+
+                        try {
+                            const ta = document.createElement('textarea');
+                            ta.value = text;
+                            ta.style.position = 'fixed';
+                            ta.style.left = '-9999px';
+                            ta.style.top = '0';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            ta.remove();
+                            showToast('Copied', 'success');
+                        } catch (_) {
+                            showToast('Copy failed', 'error');
+                        }
+                    };
+                    doCopy();
+                } catch (_) {
+                    showToast('Copy failed', 'error');
+                }
+            },
+
+            applySuggestion(field) {
+                try {
+                    const text = String(this._messagingSuggestionCache && this._messagingSuggestionCache.byField && this._messagingSuggestionCache.byField[field] || '').trim();
+                    if (!text) {
+                        showToast('No suggestion available', 'warning');
+                        return;
+                    }
+
+                    const id = this._fieldDomIdForKey(field);
+                    if (id) {
+                        const el = document.getElementById(id);
+                        if (el) el.value = text;
+                    }
+
+                    if (typeof this.updateField === 'function') {
+                        this.updateField(field, text);
+                    } else {
+                        // Fallback in case updateField is renamed.
+                        try { this.offer[field] = text; } catch (_) {}
+                    }
+
+                    // Guardrails for key fields
+                    try {
+                        if (field === 'headline' && typeof this.validateHeadline === 'function') this.validateHeadline(text);
+                        if (field === 'oneSentencePromise' && typeof this.validatePromise === 'function') this.validatePromise(text);
+                    } catch (_) {}
+
+                    try { this.recalculateOffer(); } catch (_) {}
+                    showToast('Suggestion applied', 'success');
+                } catch (_) {
+                    showToast('Apply failed', 'error');
+                }
+            },
+
+            _renderMessagingSuggestionsHtml() {
+                const items = (this._messagingSuggestionCache && Array.isArray(this._messagingSuggestionCache.items)) ? this._messagingSuggestionCache.items : [];
+                if (!items.length) {
+                    return `
+                        <div style="padding: 12px; border-radius: 12px; background:#f9fafb; border:1px dashed rgba(148,163,184,0.35);">
+                            <div style="font-size:12px; font-weight:1000; color:#0f172a;">Suggestions</div>
+                            <div style="font-size:12px; color:#64748b; margin-top:6px; line-height:1.5;">Add an offer description or services to unlock copy suggestions.</div>
+                        </div>
+                    `;
+                }
+
+                const card = (it) => {
+                    const field = escapeHtml(String(it.field || ''));
+                    const label = escapeHtml(String(it.label || ''));
+                    const val = escapeHtml(String(it.value || ''));
+                    return `
+                        <div style="padding: 12px; border-radius: 12px; border:1px solid rgba(148,163,184,0.22); background:#fff;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                                <div style="font-size:12px; font-weight:1000; color:#0f172a;">${label}</div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.copySuggestion('${field}')">Copy</button>
+                                    <button type="button" class="ob-btn ob-btn--primary ob-btn--small" onclick="offerBuilder.applySuggestion('${field}')">Apply</button>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px; font-size:12px; color:#334155; line-height:1.5; white-space:pre-wrap;">${val}</div>
+                            <div style="font-size:11px; color:#64748b; margin-top:8px;">Nothing auto-fills. Apply is always manual.</div>
+                        </div>
+                    `;
+                };
+
+                return `
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <div style="padding: 12px; border-radius: 12px; background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.20);">
+                            <div style="font-size:12px; font-weight:1100; color: var(--cobalt);">Suggested Copy (optional)</div>
+                            <div style="font-size:12px; color:#475569; margin-top:6px; line-height:1.5;">Based on your offer text and services. Use Copy or Apply.</div>
+                        </div>
+                        ${items.slice(0, 6).map(card).join('')}
+                    </div>
+                `;
+            },
+
+            _refreshMessagingSuggestionsUi() {
+                try {
+                    const el = document.getElementById('offerBuilderInsightsPreviewText');
+                    const btn = document.getElementById('offerBuilderInsightsPreviewBtn');
+                    const items = (this._messagingSuggestionCache && Array.isArray(this._messagingSuggestionCache.items)) ? this._messagingSuggestionCache.items : [];
+                    if (el) {
+                        if (items.length) {
+                            const first = items[0];
+                            el.textContent = `${first.label}: ${String(first.value || '').trim()}`;
+                        } else {
+                            el.textContent = 'Add an offer description to unlock copy suggestions (nothing auto-fills).';
+                        }
+                    }
+                    if (btn) btn.textContent = items.length ? 'See suggestions' : 'Add description for suggestions';
+                } catch (_) {}
+            },
+
+            setFrameworksStage(stage) {
+                try {
+                    const st = String(stage || '').toLowerCase() === 'tof' ? 'tof' : 'bof';
+                    if (!this.frameworksUi || typeof this.frameworksUi !== 'object') this.frameworksUi = { kind: 'pillar', key: '' };
+                    this.frameworksUi.stage = st;
+                    this.renderOfferFrameworksPanel();
+                } catch (_) {}
+            },
+
+            openFrameworkGroupModal(index) {
+                try {
+                    const cache = this._fwGroupCache;
+                    if (!cache || !Array.isArray(cache.groups)) return;
+                    const idx = Number(index);
+                    if (!Number.isFinite(idx)) return;
+                    const g = cache.groups[idx];
+                    if (!g) return;
+                    const st = String(cache.stage || '').toLowerCase() === 'tof' ? 'tof' : 'bof';
+                    const name = String(g.name || '').trim() || 'Group';
+                    const items = Array.isArray(g.items) ? g.items : [];
+                    const done = Number(g.done || 0) || 0;
+                    const total = Number(g.total || 0) || 0;
+
+                    try { ensureFrameworkChartCleanUiStyles(); } catch (_) {}
+
+                    const html = `
+                        <div style="padding: 10px 0; display:flex; flex-direction:column; gap: 12px;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-weight: 1100; font-size: 16px; color:#0f172a;">${escapeHtml(name)}</div>
+                                    <div style="margin-top: 4px; font-size: 12px; color:#64748b;">Stage: <b>${escapeHtml(st.toUpperCase())}</b>  | Checklist: <b>${done}</b>/${total}</div>
+                                </div>
+                                <div style="display:flex; gap: 8px; flex-wrap:wrap; justify-content:flex-end;">
+                                    <button class="ob-btn ob-btn--secondary" onclick="offerBuilder._attachFromLibrary('${st}')">Add stage resource</button>
+                                    <button class="ob-btn ob-btn--tertiary" onclick="closeModal(false)">Close</button>
+                                </div>
+                            </div>
+
+                            <div class="fc-card" style="padding: 16px;">
+                                <div class="fc-card-title" style="display:flex; align-items:center; justify-content:space-between; gap: 10px;">
+                                    <span>Checklist</span>
+                                    <span style="font-size: 12px; color:#64748b; font-weight: 900;">Click an item for details</span>
+                                </div>
+                                <div class="fc-list">${this._renderChecklistItemsAll(st, items, { readonly: false })}</div>
+                            </div>
+                        </div>
+                    `;
+
+                    showModal(`${st.toUpperCase()}  | ${name}`, html, { width: '980px', html: true, hideConfirm: true, hideActions: true, backdropClose: true, maxHeight: '88vh' });
+                } catch (_) {}
+            },
 
             _autosave: {
                 timerId: null,
@@ -22901,13 +25375,197 @@ async function loadRecommendationsForFilter() {
                 lastFetchedAt: 0
             },
 
+            // Canonical active offer contract (single source of truth across Offer Library / Builder / Frameworks)
+            activeOfferId: '',
+            activeOfferName: '',
+            _activeOfferHydrated: false,
+
+            _activeOfferStorageKeys() {
+                return {
+                    id: 'h2s_ob_active_offer_id_v1',
+                    name: 'h2s_ob_active_offer_name_v1'
+                };
+            },
+
+            _hydrateActiveOfferFromStorageIfNeeded() {
+                try {
+                    if (this._activeOfferHydrated) return;
+                    this._activeOfferHydrated = true;
+                    const keys = this._activeOfferStorageKeys();
+                    const id = this._safeTrim(localStorage.getItem(keys.id) || '');
+                    const rawName = localStorage.getItem(keys.name);
+                    const name = this._safeTrim(rawName || '');
+                    if (id) this.activeOfferId = id;
+                    // IMPORTANT: allow clearing the stored name (avoid stale carry-over).
+                    if (rawName !== null) this.activeOfferName = name;
+                } catch (_) {
+                    this._activeOfferHydrated = true;
+                }
+            },
+
+            getActiveOffer() {
+                try { this._hydrateActiveOfferFromStorageIfNeeded(); } catch (_) {}
+                return {
+                    id: this._safeTrim(this.activeOfferId),
+                    name: this._safeTrim(this.activeOfferName)
+                };
+            },
+
+            setActiveOffer(offerId, offerName) {
+                const id = this._safeTrim(offerId);
+                let name = this._safeTrim(offerName);
+                if (!id) return;
+
+                // If no name was provided, try to derive it from best-known sources.
+                // Also: NEVER keep an old name when switching offers.
+                if (!name) {
+                    try {
+                        if (this.offer && String(this.offer.offer_id || '').trim() === String(id) && String(this.offer.name || '').trim()) {
+                            name = String(this.offer.name || '').trim();
+                        }
+                    } catch (_) {}
+                }
+                if (!name) {
+                    try {
+                        const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                        let row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '').trim() === String(id)) || null;
+                        if (!row) {
+                            row = (this._offerRowCacheById && typeof this._offerRowCacheById.get === 'function') ? (this._offerRowCacheById.get(String(id)) || null) : null;
+                        }
+                        if (row) {
+                            const fw = this._extractFrameworks(row || {});
+                            name = this._deriveOfferDisplayName(row, row, fw);
+                            if (!name) name = this._safeTrim((row.Offer_Name || row.offerName || row.name) || '');
+                        }
+                    } catch (_) {}
+                }
+
+                try { this._activeOfferHydrated = true; } catch (_) {}
+                this.activeOfferId = id;
+                // Always set (even blank) so we never display a stale name.
+                this.activeOfferName = name;
+
+                try {
+                    const keys = this._activeOfferStorageKeys();
+                    localStorage.setItem(keys.id, id);
+                    if (name) localStorage.setItem(keys.name, name);
+                    else localStorage.removeItem(keys.name);
+                } catch (_) {}
+
+                // Keep Offer Library selection aligned (best-effort)
+                try {
+                    if (!this.offerLibraryState) this.offerLibraryState = {};
+                    this.offerLibraryState.selectedId = id;
+                } catch (_) {}
+
+                try { this._renderActiveOfferLabel(); } catch (_) {}
+
+                // Keep Offer Workspace header aligned when it is showing this same offer.
+                try {
+                    const wsId = this._safeTrim(this.workspace && this.workspace.offerId) || this._safeTrim(document.getElementById('obWsOfferId')?.textContent);
+                    if (wsId && wsId === id && name) {
+                        const wsNameEl = document.getElementById('obWsOfferName');
+                        if (wsNameEl) wsNameEl.textContent = name;
+                    }
+                } catch (_) {}
+
+                // Keep Included Services qty aligned with context (title/description) when possible.
+                try { this.syncDetectedQuantitiesFromContext({ silent: true }); } catch (_) {}
+
+                // If Frameworks is visible, update without refresh.
+                try {
+                    if (String(this.subTab || '').toLowerCase() === 'adframeworks') {
+                        this.renderOfferFrameworksPanel();
+                    }
+                } catch (_) {}
+
+                // If Builder is visible, ensure it is hydrated with the active offer.
+                try {
+                    if (String(this.subTab || '').toLowerCase() === 'builder') {
+                        this._autoEnsureActiveOfferHydratedInBuilder({ reason: 'set_active_offer' });
+                    }
+                } catch (_) {}
+            },
+
             _offerLibraryRows: null,
             _offerLibraryDeliverablesByOffer: null,
             _offerLibraryCreativesByOffer: null,
             _offerLibraryCreativeLinksByOffer: null,
+            _offerRowCacheById: null,
 
             _safeTrim(value) {
                 try { return String(value == null ? '' : value).trim(); } catch (_) { return ''; }
+            },
+
+            _computeOfferNameFallback(offer = null) {
+                try {
+                    const ob = (offer && typeof offer === 'object') ? offer : (this.offer || {});
+                    const safeTrim = (v) => {
+                        try { return String(v == null ? '' : v).trim(); } catch (_) { return ''; }
+                    };
+
+                    const cat = safeTrim(ob.category);
+                    const items = Array.isArray(ob.lineItems) ? ob.lineItems : [];
+                    const included = items
+                        .filter(it => it && typeof it === 'object')
+                        .filter(it => it.isIncludedInOffer !== false)
+                        .filter(it => safeTrim(it.name).toLowerCase() !== 'package price');
+
+                    const labelForService = (it) => {
+                        const sid = safeTrim(it && it.serviceId);
+                        const map = {
+                            'tv-install': 'TV Mount',
+                            'soundbar-mount': 'Soundbar',
+                            'security-system': 'Cameras',
+                            'doorbell-camera': 'Doorbell',
+                            'wifi-setup': 'WiFi',
+                            'smart-lock-install': 'Smart Lock',
+                            'thermostat-install': 'Thermostat'
+                        };
+                        const base = map[sid] || safeTrim(it && it.name) || sid;
+                        const qty = parseInt(it && it.qty, 10);
+                        if (isFinite(qty) && qty > 1) return `${base} x${qty}`;
+                        return base;
+                    };
+
+                    if (included.length > 0) {
+                        const parts = included.slice(0, 3).map(labelForService).filter(Boolean);
+                        let title = parts.join(' + ');
+                        if (included.length > 3) title = `${title} + More`;
+                        if (title.length > 72) title = `${title.slice(0, 69).trim()}...`;
+                        return title || 'New Offer';
+                    }
+
+                    if (cat) return `${cat} Offer`;
+                    return 'New Offer';
+                } catch (_) {
+                    return 'New Offer';
+                }
+            },
+
+            _getOfferNameForUI() {
+                const explicit = this._safeTrim(this.offer && this.offer.name);
+                if (explicit) return explicit;
+                return this._computeOfferNameFallback(this.offer);
+            },
+
+            _updateOfferNameInputUI() {
+                try {
+                    const el = document.getElementById('offerBuilderName');
+                    if (!el) return;
+
+                    if (!el.dataset) el.dataset = {};
+                    if (el.dataset.origPlaceholder == null) {
+                        el.dataset.origPlaceholder = String(el.placeholder || '');
+                    }
+
+                    const hasExplicit = !!this._safeTrim(this.offer && this.offer.name) || !!this._safeTrim(el.value);
+                    if (!hasExplicit) {
+                        el.placeholder = this._getOfferNameForUI();
+                    } else {
+                        el.placeholder = String(el.dataset.origPlaceholder || '');
+                    }
+                } catch (_) {}
             },
 
             _isWeakOfferTitle(name) {
@@ -22928,25 +25586,53 @@ async function loadRecommendationsForFilter() {
                 const s = this._safeTrim(id);
                 if (!s) return '';
                 if (s.length <= 14) return s;
-                return `${s.slice(0, 8)}…${s.slice(-4)}`;
+                return `${s.slice(0, 8)}...${s.slice(-4)}`;
             },
 
             _renderActiveOfferLabel() {
                 const el = document.getElementById('obAfActiveOffer');
                 if (!el) return;
                 try {
-                    const name = this._safeTrim(this.offer && this.offer.name);
-                    const id = this._safeTrim(this.offer && this.offer.offer_id);
+                    try { this._hydrateActiveOfferFromStorageIfNeeded(); } catch (_) {}
+                    const id = this._safeTrim(this.activeOfferId) || this._safeTrim(this.offer && this.offer.offer_id);
+                    const name = this._safeTrim(this.activeOfferName) || this._safeTrim(this.offer && this.offer.name) || this._computeOfferNameFallback(this.offer);
                     const ref = id ? this._shortRef(id) : '';
-                    el.textContent = name ? (ref ? `${name} (${ref})` : name) : (ref ? `Draft (${ref})` : 'Draft');
+
+                    // Informational context only (no pill/badge). The header already establishes the active offer.
+                    el.innerHTML = '';
+                    el.style.display = id ? 'block' : 'none';
+                    el.style.alignItems = '';
+                    el.style.gap = '';
+                    el.style.padding = '';
+                    el.style.borderRadius = '';
+                    el.style.border = '';
+                    el.style.background = '';
+                    el.style.color = 'var(--pp-text-muted)';
+                    el.style.boxShadow = '';
+
+                    const labelSpan = document.createElement('span');
+                    labelSpan.style.fontWeight = '800';
+                    labelSpan.style.fontSize = '12px';
+                    labelSpan.textContent = name ? (ref ? `Active offer: ${name} (${ref})` : `Active offer: ${name}`) : (ref ? `Active offer: ${ref}` : '');
+                    el.appendChild(labelSpan);
                 } catch (_) {
-                    el.textContent = '—';
+                    try {
+                        el.innerHTML = '';
+                        el.textContent = 'N/A';
+                        el.style.display = '';
+                        el.style.padding = '';
+                        el.style.border = '';
+                        el.style.background = '';
+                    } catch (_) {}
                 }
             },
 
             _parseMaybeJson(value) {
                 try {
-                    if (value && typeof value === 'string') return JSON.parse(value);
+                    if (value && typeof value === 'string') {
+                        const parsed = safeParseJSONLenient(value, '__H2S_PARSE_FAIL__');
+                        if (parsed !== '__H2S_PARSE_FAIL__') return parsed;
+                    }
                 } catch (_) {}
                 return value;
             },
@@ -22996,7 +25682,7 @@ async function loadRecommendationsForFilter() {
                 if (who) bits.push(who);
                 if (dateLabel) bits.push(dateLabel);
 
-                if (bits.length) return `Offer • ${bits.join(' • ')}`;
+                if (bits.length) return `Offer  | ${bits.join('  | ')}`;
                 return 'Untitled Offer';
             },
 
@@ -23132,35 +25818,38 @@ async function loadRecommendationsForFilter() {
                 }
             },
 
-            async autoTitleWeakOffersBulk() {
+            async autoTitleWeakOffersBulk(opts = {}) {
                 try {
                     if (typeof isAdminRole === 'function' && !isAdminRole()) {
-                        showToast('Admin only', 'error');
+                        if (!(opts && opts.silent)) showToast('Admin only', 'error');
                         return;
                     }
 
-                    const ok = await showConfirm(
-                        'Auto-title weak offers?',
-                        'This scans older offers first and renames up to ~50 offers per run. Run it again to keep cleaning.',
-                        { confirmText: 'Run', cancelText: 'Cancel', danger: false, width: '520px' }
-                    );
-                    if (!ok) return;
+                    const silent = !!(opts && opts.silent);
+                    const updateMeta = (opts && opts.updateMeta != null) ? !!opts.updateMeta : !silent;
+                    const scanLimit = Number(opts && opts.scanLimit) || 250;
+                    const maxApply = Number(opts && opts.maxApply) || 50;
+                    const order = String((opts && opts.order) || 'oldest');
 
-                    const meta = document.getElementById('obOfferLibraryMeta');
-                    const buttons = Array.from(document.querySelectorAll('button'));
-                    const bulkBtn = buttons.find(b => String(b && b.textContent || '').trim() === 'Auto-title weak offers');
-                    if (bulkBtn) {
-                        try { bulkBtn.disabled = true; bulkBtn.style.opacity = '0.7'; } catch (_) {}
+                    if (!silent) {
+                        const ok = await showConfirm(
+                            'Auto-title weak offers?',
+                            'This scans older offers first and renames up to ~50 offers per run. Run it again to keep cleaning.',
+                            { confirmText: 'Run', cancelText: 'Cancel', danger: false, width: '520px' }
+                        );
+                        if (!ok) return;
                     }
 
-                    if (meta) {
-                        meta.innerHTML = `<span style="font-weight:900; color:#0f172a;">Auto-titling…</span> <span style="color:#64748b;">Fixing weak names (older first)…</span>`;
+                    const meta = document.getElementById('obOfferLibraryMeta');
+
+                    if (meta && updateMeta) {
+                        meta.innerHTML = `<span style="font-weight:900; color:#0f172a;">Auto-titling...</span> <span style="color:#64748b;">Fixing weak names (older first)...</span>`;
                     }
 
                     const resp = await fetch(`${API_URL}?action=autoTitleWeakOffers`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ scanLimit: 250, maxApply: 50, order: 'oldest' })
+                        body: JSON.stringify({ scanLimit, maxApply, order })
                     });
 
                     let data = null;
@@ -23177,7 +25866,7 @@ async function loadRecommendationsForFilter() {
                             ? String(data.error)
                             : `HTTP ${resp.status} ${resp.statusText || ''}`.trim();
                         const suffix = rawText && rawText.length
-                            ? ` — ${String(rawText).slice(0, 220)}`
+                            ? ` - ${String(rawText).slice(0, 220)}`
                             : '';
                         throw new Error(`${msg}${suffix}`);
                     }
@@ -23187,27 +25876,97 @@ async function loadRecommendationsForFilter() {
                     const scanned = Number(data.scanned || 0) || 0;
                     const errors = Number(data.errors || 0) || 0;
 
-                    if (meta) {
+                    if (meta && updateMeta) {
                         meta.innerHTML = `<span style="font-weight:900; color:#0f172a;">Bulk auto-title done.</span> <span style="color:#64748b;">Scanned ${scanned}. Weak found ${weakFound}. Updated ${applied}. Errors ${errors}. Run again to keep cleaning.</span>`;
                     }
 
-                    showToast(applied ? `Auto-titled ${applied} offers` : 'No weak offers updated in this batch', applied ? 'success' : 'info');
+                    if (!silent) {
+                        showToast(applied ? `Auto-titled ${applied} offers` : 'No weak offers updated in this batch', applied ? 'success' : 'info');
+                    }
                     await this.refreshOfferLibrary(false, { forceFetch: true });
                 } catch (e) {
-                    showToast(e && e.message ? e.message : 'Bulk auto-title failed', 'error');
+                    if (!(opts && opts.silent)) showToast(e && e.message ? e.message : 'Bulk auto-title failed', 'error');
                 } finally {
-                    try {
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        const bulkBtn = buttons.find(b => String(b && b.textContent || '').trim() === 'Auto-title weak offers');
-                        if (bulkBtn) { bulkBtn.disabled = false; bulkBtn.style.opacity = ''; }
-                    } catch (_) {}
+                    // no-op (bulk button is now hidden)
                 }
+            },
+
+            _runOfferLibraryAutoMaintenance(reason) {
+                try {
+                    if (!this.offerLibraryState) this.offerLibraryState = {};
+                    if (!Array.isArray(this._offerLibraryRows) || !this._offerLibraryRows.length) return;
+
+                    const fetchedAt = Number(this.offerLibraryState.lastFetchedAt || 0) || 0;
+                    if (!fetchedAt) return;
+
+                    if (!this._offerLibraryAutoMaint) {
+                        this._offerLibraryAutoMaint = { lastFetchStamp: 0, inFlight: false };
+                    }
+
+                    // Only run once per fetch.
+                    if (this._offerLibraryAutoMaint.lastFetchStamp === fetchedAt) return;
+                    if (this._offerLibraryAutoMaint.inFlight) return;
+                    this._offerLibraryAutoMaint.lastFetchStamp = fetchedAt;
+
+                    const now = Date.now();
+                    const isAdmin = (typeof isAdminRole === 'function') ? !!isAdminRole() : false;
+
+                    const shouldRun = (key, minMs) => {
+                        try {
+                            const last = Number(localStorage.getItem(key) || 0) || 0;
+                            if (!last) return true;
+                            return (now - last) >= minMs;
+                        } catch (_) {
+                            return true;
+                        }
+                    };
+
+                    const markRan = (key) => {
+                        try { localStorage.setItem(key, String(now)); } catch (_) {}
+                    };
+
+                    // Throttle these so they don't hammer the backend on every library open.
+                    const KEY_TITLE = 'h2s_ob_autotitle_last';
+                    const KEY_FW = 'h2s_ob_autofw_last';
+
+                    const doTitle = isAdmin && shouldRun(KEY_TITLE, 12 * 60 * 60 * 1000);
+                    const doFw = shouldRun(KEY_FW, 6 * 60 * 60 * 1000);
+
+                    if (!doTitle && !doFw) return;
+
+                    this._offerLibraryAutoMaint.inFlight = true;
+
+                    setTimeout(async () => {
+                        try {
+                            if (doTitle) {
+                                await this.autoTitleWeakOffersBulk({ silent: true, updateMeta: false });
+                                markRan(KEY_TITLE);
+                            }
+                        } catch (_) {
+                            // Silent by design
+                        }
+
+                        try {
+                            if (doFw) {
+                                await this.generateFrameworksForVisibleOffersMissing({ silent: true, max: 8 });
+                                markRan(KEY_FW);
+                            }
+                        } catch (_) {
+                            // Silent by design
+                        }
+
+                        try { this._offerLibraryAutoMaint.inFlight = false; } catch (_) {}
+                    }, 800);
+                } catch (_) {}
             },
 
             setSubTab(tab) {
                 const t = String(tab || '').toLowerCase();
                 const next = (t === 'adframeworks') ? 'adframeworks' : (t === 'library' ? 'library' : 'builder');
                 this.subTab = next;
+
+                try { this._hydrateActiveOfferFromStorageIfNeeded(); } catch (_) {}
+                try { this._renderActiveOfferLabel(); } catch (_) {}
 
                 try {
                     const pane = document.getElementById('offerbuilder-pane');
@@ -23253,10 +26012,6 @@ async function loadRecommendationsForFilter() {
 
                 if (next === 'library') {
                     try {
-                        const bulk = document.getElementById('obOfferLibraryBulkAutoTitleBtn');
-                        if (bulk) bulk.style.display = ((typeof isAdminRole === 'function' && isAdminRole()) ? '' : 'none');
-                    } catch (_) {}
-                    try {
                         const now = Date.now();
                         const last = Number(this.offerLibraryState.lastFetchedAt || 0) || 0;
                         const freshEnough = (now - last) < 20 * 1000;
@@ -23264,26 +26019,35 @@ async function loadRecommendationsForFilter() {
                             this.refreshOfferLibrary(false, { forceFetch: true }).catch(() => {});
                         } else {
                             this._renderOfferLibraryFromCache();
+                            try { this._runOfferLibraryAutoMaintenance('subtab'); } catch (_) {}
                         }
                     } catch (_) {}
                 }
 
                 if (next === 'adframeworks') {
+                    try { this.renderOfferFrameworksPanel(); } catch (_) {}
+                }
+
+                // UX: If an active offer is already selected, hydrate it into the Builder so
+                // name/price/details populate without requiring a manual "Edit in Builder" click.
+                try {
+                    if (next === 'builder') {
+                        this._autoEnsureActiveOfferHydratedInBuilder({ reason: 'subtab_builder' });
+                    }
+                } catch (_) {}
+
+                // One-time onboarding tutorial (Help button can always reopen)
+                try {
+                    if (next === 'builder' || next === 'library') {
+                        this.maybeShowOfferBuilderTutorialOnce({ reason: `subtab_${next}` });
+                    }
+                } catch (_) {}
+
+                if (next !== 'adframeworks') {
                     try {
                         const body = document.getElementById('offerBuilderAdFrameworkBody');
-                        if (body && !String(body.innerHTML || '').trim()) {
-                            body.innerHTML = '<div class="af-card"><div class="af-card-title">Loading…</div><div class="af-help">Rendering checklist…</div></div>';
-                        }
+                        if (body) body.style.display = '';
                     } catch (_) {}
-                    try {
-                        adFrameworks.showInOfferBuilder();
-                    } catch (e) {
-                        try { console.error('[offerBuilder.setSubTab] adFrameworks failed', e); } catch (_) {}
-                        try { showToast('Ad Frameworks failed to load. Check console.', 'error'); } catch (_) {}
-                    }
-
-                    try { this.renderOfferFrameworksPanel(); } catch (_) {}
-                    try { this._renderActiveOfferLabel(); } catch (_) {}
                 }
             },
 
@@ -23332,6 +26096,15 @@ async function loadRecommendationsForFilter() {
                     const parsed = JSON.parse(raw);
                     const o = parsed && parsed.offer;
                     if (!o || typeof o !== 'object') return;
+
+                    // Safety: only restore drafts for the currently active offer (prevents random cross-offer overwrites on refresh).
+                    try {
+                        const keys = this._activeOfferStorageKeys();
+                        const activeId = this._safeTrim(localStorage.getItem(keys.id) || '');
+                        const draftOfferId = this._safeTrim(o.offer_id || o.offerId || '');
+                        if (!draftOfferId) return;
+                        if (!activeId || activeId !== draftOfferId) return;
+                    } catch (_) {}
 
                     if (!this._offerDefaults) {
                         try { this._offerDefaults = JSON.parse(JSON.stringify(this.offer || {})); } catch (_) { this._offerDefaults = this.offer || {}; }
@@ -23480,7 +26253,7 @@ async function loadRecommendationsForFilter() {
                 const sig = this._computeDraftSig();
                 if (!sig) return;
 
-                // Don’t spam saves when nothing changed.
+                // Don spam saves when nothing changed.
                 if (sig === this._autosave.lastSig && (Date.now() - (this._autosave.lastSavedAt || 0)) < 1500) {
                     return;
                 }
@@ -23497,7 +26270,7 @@ async function loadRecommendationsForFilter() {
                 // Subtle UX: indicate pending save for typing bursts.
                 if (!this._autosave.inFlight) {
                     try {
-                        this._setAutosaveStatus('Saving…', { tone: 'neutral' });
+                        this._setAutosaveStatus('Saving...', { tone: 'neutral' });
                     } catch (_) {}
                 }
             },
@@ -23516,7 +26289,7 @@ async function loadRecommendationsForFilter() {
                 }
 
                 try {
-                    this._setAutosaveStatus('Saving…', { tone: 'neutral' });
+                    this._setAutosaveStatus('Saving...', { tone: 'neutral' });
                 } catch (_) {}
 
                 try {
@@ -23606,10 +26379,10 @@ async function loadRecommendationsForFilter() {
                     const mm = String(t.getMinutes()).padStart(2, '0');
                     this._setAutosaveStatus(`Saved ${hh}:${mm}`, { tone: 'ok' });
 
-                    // Silent AI: refresh frameworks if the “meaningful” context changed.
+                    // Silent AI: refresh frameworks if the ..."meaningful... context changed.
                     try { this._queueSilentFrameworksRefresh(); } catch (_) {}
                 } catch (e) {
-                    // Keep it quiet; don’t toast on autosave failures.
+                    // Keep it quiet; don toast on autosave failures.
                     try {
                         this._setAutosaveStatus('Offline (draft only)', { tone: 'warn' });
                     } catch (_) {}
@@ -23636,7 +26409,7 @@ async function loadRecommendationsForFilter() {
                 if (this._autosave.fwInFlight) return;
                 if (fwSig === this._autosave.lastFwSig && (now - (this._autosave.lastFwAt || 0)) < throttleMs) return;
                 if ((now - (this._autosave.lastFwAt || 0)) < throttleMs) {
-                    // Recently ran; don’t run again.
+                    // Recently ran; don run again.
                     return;
                 }
 
@@ -23669,10 +26442,6 @@ async function loadRecommendationsForFilter() {
                     if (!this._offerLibraryCreativesByOffer) this._offerLibraryCreativesByOffer = new Map();
 
                     try { this.setSubTab('library'); } catch (_) {}
-                    try {
-                        const bulk = document.getElementById('obOfferLibraryBulkAutoTitleBtn');
-                        if (bulk) bulk.style.display = ((typeof isAdminRole === 'function' && isAdminRole()) ? '' : 'none');
-                    } catch (_) {}
                     await this.refreshOfferLibrary(false, { forceFetch: true });
 
                     try {
@@ -23702,12 +26471,14 @@ async function loadRecommendationsForFilter() {
 
             async generateFrameworksForVisibleOffersMissing() {
                 try {
+                    const silent = !!(arguments[0] && typeof arguments[0] === 'object' && arguments[0].silent);
+                    const maxOverride = (arguments[0] && typeof arguments[0] === 'object' && isFinite(Number(arguments[0].max))) ? Number(arguments[0].max) : null;
                     if (!Array.isArray(this._offerLibraryRows)) {
                         await this.refreshOfferLibrary(false, { forceFetch: true });
                     }
                     const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
                     if (!rows.length) {
-                        showToast('No offers loaded', 'warning');
+                        if (!silent) showToast('No offers loaded', 'warning');
                         return;
                     }
 
@@ -23721,7 +26492,7 @@ async function loadRecommendationsForFilter() {
 
                         const ob = this._extractOfferBuilderData(r);
                         const fw = this._extractFrameworks(r);
-                        const hasFw = !!(fw && Array.isArray(fw.pillars) && fw.pillars.length);
+                        const hasFw = this._hasFrameworksSnapshot(fw);
 
                         const offerName = String((ob && ob.name) || r.Offer_Name || r.offerName || r.name || 'Untitled Offer').trim();
                         const status = safe(r.Status || r.status || '').trim();
@@ -23740,7 +26511,7 @@ async function loadRecommendationsForFilter() {
                             if (cat) subtitleBits.push(cat);
                             if (mkt) subtitleBits.push(mkt);
                         } catch (_) {}
-                        const subtitle = subtitleBits.join(' • ');
+                        const subtitle = subtitleBits.join('  | ');
 
                         const hasName = (offerName && offerName !== 'Untitled Offer');
                         const hasSub = !!subtitle;
@@ -23756,13 +26527,13 @@ async function loadRecommendationsForFilter() {
                     }).filter(Boolean);
 
                     if (!visibleMissing.length) {
-                        showToast('No visible offers missing frameworks', 'success');
+                        if (!silent) showToast('No visible offers missing frameworks', 'success');
                         return;
                     }
 
-                    const max = 25;
+                    const max = (maxOverride && maxOverride > 0) ? Math.floor(maxOverride) : 25;
                     const batch = visibleMissing.slice(0, max);
-                    showToast(`Generating frameworks for ${batch.length}${visibleMissing.length > max ? ` (first ${max})` : ''}…`, 'info');
+                    if (!silent) showToast(`Generating frameworks for ${batch.length}${visibleMissing.length > max ? ` (first ${max})` : ''}...`, 'info');
 
                     let okCount = 0;
                     let failCount = 0;
@@ -23782,9 +26553,12 @@ async function loadRecommendationsForFilter() {
                     }
 
                     try { await this.refreshOfferLibrary(false, { forceFetch: true }); } catch (_) {}
-                    showToast(`Frameworks generated: ${okCount} ok${failCount ? `, ${failCount} failed` : ''}`, failCount ? 'warning' : 'success');
+                    if (!silent) showToast(`Frameworks generated: ${okCount} ok${failCount ? `, ${failCount} failed` : ''}`, failCount ? 'warning' : 'success');
                 } catch (e) {
-                    showToast(`Bulk generate failed: ${e && e.message ? e.message : 'Unknown error'}`, 'error');
+                    // Silent mode is best-effort; only surface errors if user explicitly ran it.
+                    if (!(arguments[0] && typeof arguments[0] === 'object' && arguments[0].silent)) {
+                        showToast(`Bulk generate failed: ${e && e.message ? e.message : 'Unknown error'}`, 'error');
+                    }
                 }
             },
 
@@ -23802,7 +26576,13 @@ async function loadRecommendationsForFilter() {
                 const metaMount = document.getElementById('obOfferLibraryMeta');
                 const isFactoryView = !!listMount && !!detailMount;
 
-                // Backwards-compatible fallback if modal HTML hasn’t been updated.
+                // Ensure the active offer is hydrated so the list can show an ACTIVE stamp.
+                try { this._hydrateActiveOfferFromStorageIfNeeded(); } catch (_) {}
+                const activeId = (() => {
+                    try { return this._safeTrim(this.activeOfferId); } catch (_) { return ''; }
+                })();
+
+                // Backwards-compatible fallback if modal HTML hasn been updated.
                 const mount = isFactoryView ? listMount : legacyMount;
                 if (!mount) return;
 
@@ -23852,7 +26632,7 @@ async function loadRecommendationsForFilter() {
                             const mkt = pick(ob.market, r.Market, r.market);
                             if (cat) bits.push(cat);
                             if (mkt) bits.push(mkt);
-                            return bits.join(' • ');
+                            return bits.join('  | ');
                         } catch (_) {
                             return '';
                         }
@@ -23861,7 +26641,7 @@ async function loadRecommendationsForFilter() {
                     const updatedAt = safe(r.Updated_At || r.updated_at || r.Created_At || r.created_at);
                     const days = this._daysAgo(updatedAt);
                     const isOld = (typeof days === 'number') ? (days >= 60) : false;
-                    const hasFw = !!(fw && Array.isArray(fw.pillars) && fw.pillars.length); 
+                    const hasFw = this._hasFrameworksSnapshot(fw);
                     const status = safe(r.Status || r.status || '');
                     const who = safe(r.Created_By || r.created_by || '');
 
@@ -23897,10 +26677,18 @@ async function loadRecommendationsForFilter() {
                     const hasInferred = (Number.isFinite(inferredPrice) && inferredPrice > 0) || (Number.isFinite(inferredServices) && inferredServices > 0);
 
                     const hasPayload = (hasBrief || hasDesc || hasPricing || !!x.briefExists || hasInferred);
-                    
-                    // If it has no meaningful payload, hide it (prevents name-only ghosts).
-                    if (!hasPayload) return false;
-                    
+
+                    // If it has no meaningful payload, still allow it through if it looks like a real offer
+                    // (keeps the library usable as the primary selection surface while avoiding true ghosts).
+                    if (!hasPayload) {
+                        try {
+                            if (hasName && !this._isWeakOfferTitle(x.offerName)) return true;
+                        } catch (_) {
+                            if (hasName) return true;
+                        }
+                        return false;
+                    }
+
                     return true;
                 });
 
@@ -23931,6 +26719,10 @@ async function loadRecommendationsForFilter() {
 
                     mount.innerHTML = validOffers.map(({ id, offerName, subtitle, updatedAt, days, isOld, hasFw, briefExists, status, who, dq }) => {
                         const selected = selectedId && String(id) === String(selectedId);
+                        const isActive = activeId && String(id) === String(activeId);
+                        const isGen = (() => {
+                            try { return String(this.offerLibraryState.frameworkGenInFlightId || '') === String(id); } catch (_) { return false; }
+                        })();
                         const needsTitle = (() => {
                             try { return this._isWeakOfferTitle(offerName); } catch (_) { return false; }
                         })();
@@ -23939,17 +26731,24 @@ async function loadRecommendationsForFilter() {
                             briefExists ? chip('BRIEF', 'ok') : chip('No Brief', 'warn'),
                             status ? chip(esc(status), 'neutral') : '',
                             needsTitle ? chip('Needs title', 'warn') : '',
-                            hasFw ? chip('Frameworks', 'ok') : chip('No FWs', 'warn'),
+                            isGen ? chip('Generating...', 'neutral') : (hasFw ? chip('Frameworks', 'ok') : chip('No FWs', 'warn')),
                             (dq && dq.ok === false) ? chip('Incomplete', 'warn') : '',
                             (typeof days === 'number') && isOld ? chip(`${days}d old`, 'warn') : ''
                         ].filter(Boolean).join('');
 
+                        const activeBadge = isActive
+                            ? `<span style="display:inline-flex; align-items:center; padding: 2px 8px; border-radius: 999px; background: var(--pp-status-success-bg); border: 1px solid var(--pp-status-success-text); color: var(--pp-status-success-text); font-size: 11px; font-weight: 1000; white-space:nowrap;">ACTIVE</span>`
+                            : '';
+
                         return `
                             <button onclick="offerBuilder.selectOfferLibraryOffer('${String(id).replace(/'/g, "\\'")}')" style="width:100%; text-align:left; padding: 12px 14px; border:none; border-bottom: 1px solid #f1f5f9; cursor:pointer; background:${selected ? '#eff6ff' : '#fff'}; transition: background 0.1s;">
-                                <div style="font-weight: 1000; color:#0f172a; font-size: 13px; line-height: 1.35;">${esc(offerName)}</div>
+                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 10px;">
+                                    <div style="font-weight: 1000; color:#0f172a; font-size: 13px; line-height: 1.35;">${esc(offerName)}</div>
+                                    ${activeBadge}
+                                </div>
                                 ${subtitle ? `<div style="margin-top: 4px; font-size: 12px; color:#475569; font-weight: 750; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;">${esc(subtitle)}</div>` : ''}
                                 <div style="margin-top: 8px; display:flex; gap: 6px; flex-wrap:wrap;">${chips}</div>
-                                <div style="margin-top: 7px; font-size: 11px; color:#64748b;">${who ? `By: ${esc(who)} • ` : ''}Ref: ${esc(this._shortRef(id))}</div>
+                                <div style="margin-top: 7px; font-size: 11px; color:#64748b;">${who ? `By: ${esc(who)}  | ` : ''}Ref: ${esc(this._shortRef(id))}</div>
                             </button>
                         `;
                     }).join('');
@@ -23973,8 +26772,6 @@ async function loadRecommendationsForFilter() {
                     })();
                     if (needsTitle) meta.unshift(chip('Needs title', 'warn'));
 
-                    const generateLabel = hasFw ? 'Regenerate' : 'Generate';
-
                     return `
                         <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px; margin-bottom: 10px; box-shadow: 0 10px 30px rgba(15,23,42,0.04);">
                             <div style="display:flex; align-items:flex-start; justify-content: space-between; gap: 12px; flex-wrap:wrap;">
@@ -23993,7 +26790,6 @@ async function loadRecommendationsForFilter() {
                                     <button class="ob-btn ob-btn--primary" onclick="offerBuilder.loadOfferFromDb('${id.replace(/'/g, "\\'")}')">Load</button>
                                     <button class="ob-btn ob-btn--tertiary" onclick="offerBuilder.previewBriefForOfferId('${id.replace(/'/g, "\\'")}')">Preview Brief</button>
                                     <button class="ob-btn ob-btn--secondary" onclick="offerBuilder.cloneOfferFromDb('${id.replace(/'/g, "\\'")}')">Clone</button>
-                                    <button class="ob-btn ob-btn--secondary" onclick="offerBuilder.generateFrameworksForOfferId('${id.replace(/'/g, "\\'")}')">${generateLabel} Frameworks</button>
                                 </div>
                             </div>
                         </div>
@@ -24006,15 +26802,363 @@ async function loadRecommendationsForFilter() {
             selectOfferLibraryOffer(offerId) {
                 const id = this._safeTrim(offerId);
                 if (!id) return;
-                this.offerLibraryState.selectedId = id;
+
+                // Canonical active offer update (single source of truth)
+                try {
+                    let offerName = '';
+                    const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                    const row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '').trim() === id) || null;
+                    if (row) {
+                        const fw = this._extractFrameworks(row);
+                        offerName = this._deriveOfferDisplayName(row, row, fw);
+                        if (!offerName) {
+                            const ob = this._extractOfferBuilderData(row);
+                            offerName = this._safeTrim((ob && ob.name) || (row.Offer_Name || row.offerName || row.name) || '');
+                        }
+                    }
+                    this.setActiveOffer(id, offerName);
+                } catch (_) {
+                    // Fall back to selection-only
+                    this.offerLibraryState.selectedId = id;
+                }
+
                 try { this._renderOfferLibraryFromCache(); } catch (_) {}
+                try {
+                    const detail = document.getElementById('obOfferLibraryDetail');
+                    if (detail) detail.scrollTop = 0;
+                } catch (_) {}
+                try {
+                    // Auto-generate frameworks (one-time per offer per session) when missing.
+                    this._autoEnsureFrameworksForOffer(id);
+                } catch (_) {}
+            },
+
+            _autoEnsureFrameworksForOffer(offerId) {
+                const id = this._safeTrim(offerId);
+                if (!id) return;
+                if (!Array.isArray(this._offerLibraryRows)) return;
+
+                if (!this._autoFwEnsuredOfferIds) this._autoFwEnsuredOfferIds = new Set();
+                if (this._autoFwEnsuredOfferIds.has(id)) return;
+
+                const row = this._offerLibraryRows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '').trim() === id) || null;
+                const fw = this._extractFrameworks(row || {});
+                const hasFw = this._hasFrameworksSnapshot(fw);
+                if (hasFw) {
+                    this._autoFwEnsuredOfferIds.add(id);
+                    return;
+                }
+
+                // Mark before kicking off to avoid duplicate bursts.
+                this._autoFwEnsuredOfferIds.add(id);
+
+                setTimeout(() => {
+                    try { this.generateFrameworksForOfferId(id, { silent: true }); } catch (_) {}
+                }, 350);
             },
 
             openOfferInFactory(offerId) {
                 const id = this._safeTrim(offerId);
                 if (!id) return;
-                try { this.setSubTab('builder'); } catch (_) {}
-                try { this.selectWorkspaceOffer(id); } catch (_) {}
+                // NOTE: The Offer Library must load into the Offer Builder form (this.offer),
+                // not the Offer Workspace panel. This keeps the create/edit/save loop connected.
+                try { this.openOfferInBuilder(id); } catch (_) {}
+            },
+
+            async openOfferInBuilder(offerId, opts = {}) {
+                const id = this._safeTrim(offerId);
+                if (!id) return;
+
+                const silentToast = !!(opts && opts.silentToast);
+
+                try {
+                    // Placeholder-first: switch to Builder immediately, then hydrate.
+                    try { this.setSubTab('builder'); } catch (_) {}
+
+                    // Show a lightweight skeleton state in the name field.
+                    try {
+                        const nameEl = document.getElementById('offerBuilderName');
+                        if (nameEl && (!nameEl.value || String(nameEl.value).trim() === '')) {
+                            nameEl.value = '';
+                            // Avoid a blank-looking field while the offer loads.
+                            try {
+                                if (nameEl.dataset && nameEl.dataset.origPlaceholder == null) {
+                                    nameEl.dataset.origPlaceholder = String(nameEl.placeholder || '');
+                                }
+                                nameEl.placeholder = 'Loading offer...';
+                            } catch (_) {}
+                        }
+                    } catch (_) {}
+
+                    const row = await this._fetchOfferRow(id);
+                    const ob = this._extractOfferBuilderData(row);
+                    const fw = this._extractFrameworks(row);
+                    if (!ob || typeof ob !== 'object') throw new Error('Offer snapshot missing');
+
+                    // Ensure stable IDs so Save updates (not duplicates).
+                    try { ob.offer_id = id; } catch (_) {}
+
+                    // Critical UX: avoid blank/weak names causing "can't save" and stale headers.
+                    try {
+                        let derivedName = '';
+                        try { derivedName = this._deriveOfferDisplayName(row, ob, fw); } catch (_) { derivedName = ''; }
+                        if (!derivedName) derivedName = this._safeTrim((row && (row.Offer_Name || row.offerName || row.name)) || '');
+                        const currentName = this._safeTrim(ob.name || '');
+                        const needs = (!currentName) || (typeof this._isWeakOfferTitle === 'function' && this._isWeakOfferTitle(currentName));
+                        if (derivedName && needs) ob.name = derivedName;
+                    } catch (_) {}
+
+                    this.loadOfferData(ob, fw);
+                    if (!silentToast) {
+                        showToast('Offer loaded into Builder', 'success');
+                    }
+                } catch (e) {
+                    console.error('openOfferInBuilder failed', e);
+                    if (!silentToast) {
+                        showToast('Failed to load offer into Builder', 'error');
+                    }
+                }
+            },
+
+            _isBuilderFormEffectivelyEmpty() {
+                try {
+                    const offer = (this.offer && typeof this.offer === 'object') ? this.offer : null;
+                    if (!offer) return true;
+
+                    const hasName = !!this._safeTrim(offer.name || '');
+                    const hasHeadline = !!this._safeTrim(offer.headline || offer.oneSentencePromise || '');
+                    const hasIncluded = !!this._safeTrim(offer.whatsIncluded || offer.offerDescription || offer.offer_description || '');
+                    const hasLines = Array.isArray(offer.lineItems) && offer.lineItems.length > 0;
+
+                    return !(hasName || hasHeadline || hasIncluded || hasLines);
+                } catch (_) {
+                    return true;
+                }
+            },
+
+            _autoEnsureActiveOfferHydratedInBuilder(opts = {}) {
+                try {
+                    const active = (typeof this.getActiveOffer === 'function') ? this.getActiveOffer() : { id: '', name: '' };
+                    const activeId = this._safeTrim(active && active.id);
+                    if (!activeId) return;
+
+                    const bypassThrottle = !!(opts && (opts.force || opts.bypassThrottle));
+                    const clobberDirty = !!(opts && opts.clobberDirty);
+
+                    const now = Date.now();
+                    if (!this._autoActiveOfferLoad) this._autoActiveOfferLoad = { inFlight: false, offerId: '', at: 0, lastHydratedByOffer: {} };
+                    if (!this._autoActiveOfferLoad.lastHydratedByOffer || typeof this._autoActiveOfferLoad.lastHydratedByOffer !== 'object') {
+                        this._autoActiveOfferLoad.lastHydratedByOffer = {};
+                    }
+
+                    const currentId = this._safeTrim(this.offer && this.offer.offer_id);
+                    const isSameOffer = !!currentId && (String(currentId) === String(activeId));
+
+                    const isWeakOrMissingName = (() => {
+                        try {
+                            const nm = this._safeTrim(this.offer && this.offer.name);
+                            if (!nm) return true;
+                            if (typeof this._isWeakOfferTitle === 'function' && this._isWeakOfferTitle(nm)) return true;
+                            return false;
+                        } catch (_) {
+                            return true;
+                        }
+                    })();
+
+                    // Throttle auto-hydration bursts.
+                    const lastHydratedAt = Number(this._autoActiveOfferLoad.lastHydratedByOffer[String(activeId)] || 0) || 0;
+                    const tooSoon = (now - lastHydratedAt) < 8000;
+                    if (tooSoon && !bypassThrottle) return;
+
+                    // If Builder is already on the active offer, only fetch/repair if key fields are missing.
+                    if (isSameOffer) {
+                        if (!isWeakOrMissingName && !bypassThrottle) return;
+                        if (this._autoActiveOfferLoad.inFlight && String(this._autoActiveOfferLoad.offerId || '') === String(activeId)) return;
+
+                        this._autoActiveOfferLoad = Object.assign({}, this._autoActiveOfferLoad, { inFlight: true, offerId: activeId, at: now, reason: String(opts && opts.reason || '') });
+                        this._autoActiveOfferLoad.lastHydratedByOffer[String(activeId)] = now;
+
+                        Promise.resolve()
+                            .then(async () => {
+                                const row = await this._fetchOfferRow(activeId);
+                                const ob = this._extractOfferBuilderData(row);
+                                const fw = this._extractFrameworks(row);
+                                if (!ob || typeof ob !== 'object') return;
+
+                                // Fill missing bits without overwriting a user's in-progress draft.
+                                const next = Object.assign({}, this.offer || {});
+                                try { next.offer_id = activeId; } catch (_) {}
+
+                                try {
+                                    if (!this._safeTrim(next.name)) {
+                                        let derivedName = '';
+                                        try { derivedName = this._deriveOfferDisplayName(row, ob, fw); } catch (_) { derivedName = ''; }
+                                        if (!derivedName) derivedName = this._safeTrim((ob && ob.name) || (row && (row.Offer_Name || row.offerName || row.name)) || '');
+                                        if (derivedName) next.name = derivedName;
+                                    }
+                                    if (!this._safeTrim(next.category) && this._safeTrim(ob.category)) next.category = ob.category;
+                                    if (!this._safeTrim(next.market) && this._safeTrim(ob.market)) next.market = ob.market;
+                                    if ((!Array.isArray(next.lineItems) || !next.lineItems.length) && Array.isArray(ob.lineItems) && ob.lineItems.length) {
+                                        next.lineItems = ob.lineItems;
+                                    }
+                                    if (!this._safeTrim(next.pricingStrategy) && this._safeTrim(ob.pricingStrategy)) next.pricingStrategy = ob.pricingStrategy;
+                                    const bpNext = Number(next.bundlePrice);
+                                    const bpOb = Number(ob.bundlePrice);
+                                    if ((!isFinite(bpNext) || bpNext <= 0) && isFinite(bpOb) && bpOb > 0) next.bundlePrice = bpOb;
+                                } catch (_) {}
+
+                                // Use loadOfferData to re-hydrate UI (idempotent for a mostly-identical payload).
+                                try { this.loadOfferData(next, fw); } catch (_) {}
+                            })
+                            .catch(() => null)
+                            .finally(() => {
+                                try {
+                                    if (this._autoActiveOfferLoad && String(this._autoActiveOfferLoad.offerId || '') === String(activeId)) {
+                                        this._autoActiveOfferLoad.inFlight = false;
+                                    }
+                                } catch (_) {}
+                            });
+                        return;
+                    }
+
+                    // If Builder is on a different offer, avoid clobbering if it looks dirty.
+                    const isDirty = (() => {
+                        try {
+                            if (this._isBuilderFormEffectivelyEmpty()) return false;
+                            const baseline = (this._builderHydration && typeof this._builderHydration === 'object') ? this._builderHydration : null;
+                            if (baseline && String(baseline.offerId || '') === String(currentId || '') && baseline.sig) {
+                                const sig = this._computeDraftSig();
+                                return !!sig && String(sig) !== String(baseline.sig);
+                            }
+                            // Unknown baseline but non-empty form => treat as dirty.
+                            return true;
+                        } catch (_) {
+                            return true;
+                        }
+                    })();
+                    if (isDirty && !clobberDirty) return;
+
+                    if (this._autoActiveOfferLoad.inFlight && String(this._autoActiveOfferLoad.offerId || '') === String(activeId)) return;
+                    this._autoActiveOfferLoad = Object.assign({}, this._autoActiveOfferLoad, { inFlight: true, offerId: activeId, at: now, reason: String(opts && opts.reason || '') });
+                    this._autoActiveOfferLoad.lastHydratedByOffer[String(activeId)] = now;
+
+                    Promise.resolve()
+                        .then(() => this.openOfferInBuilder(activeId, { silentToast: true, fromAuto: true }))
+                        .catch(() => null)
+                        .finally(() => {
+                            try {
+                                if (this._autoActiveOfferLoad && String(this._autoActiveOfferLoad.offerId || '') === String(activeId)) {
+                                    this._autoActiveOfferLoad.inFlight = false;
+                                }
+                            } catch (_) {}
+                        });
+                } catch (_) {}
+            },
+
+            createNewOfferFromLibrary() {
+                try {
+                    const id = this._uuidv4();
+
+                    // Start with a clean offer payload but keep schema-compatible arrays.
+                    const seed = {
+                        offer_id: id,
+                        name: '',
+                        lineItems: [],
+                        whatToSayInHome: [],
+                        hooks: [],
+                        objectionsRebuttals: [],
+                        proofIdeas: [],
+                        isSample: false
+                    };
+
+                    this.loadOfferData(seed, null);
+                    this._afterNextSaveReturnToLibrary = true;
+                    this._afterNextSaveSelectOfferId = id;
+                    try { this.setSubTab('builder'); } catch (_) {}
+                    try { if (typeof this.goToStep === 'function') this.goToStep(1); } catch (_) {}
+                    showToast('New offer created. Add services then Save', 'info');
+                } catch (e) {
+                    console.error('createNewOfferFromLibrary failed', e);
+                    showToast('Failed to create new offer', 'error');
+                }
+            },
+
+            _renderOfferLibraryLoadingShell() {
+                const listShell = (() => {
+                    const row = () => `
+                        <div style="padding: 10px 12px; border-bottom: 1px solid rgba(148,163,184,0.16);">
+                            <div class="ob-skel ob-skel--line" style="height: 12px; width: 70%;"></div>
+                            <div class="ob-skel ob-skel--line" style="height: 10px; width: 48%; margin-top: 8px;"></div>
+                        </div>
+                    `;
+                    return `<div style="padding: 0;">${Array.from({ length: 8 }).map(row).join('')}</div>`;
+                })();
+
+                const detailShell = (() => {
+                    const bar = (h, w, mt = 0, rounded = true) => `
+                        <div class="ob-skel ${rounded ? 'ob-skel--line' : ''}" style="height:${h}px; width:${w}; margin-top:${mt}px;"></div>
+                    `;
+
+                    const block = () => `
+                        <div style="margin-top: 12px; padding: 12px; border: 1px solid rgba(148,163,184,0.20); border-radius: 14px; background:#fff;">
+                            ${bar(10, '28%', 0)}
+                            ${bar(12, '88%', 10)}
+                            ${bar(12, '76%', 8)}
+                            ${bar(12, '64%', 8)}
+                        </div>
+                    `;
+
+                    return `
+                        <div style="padding: 14px;">
+                            <div class="ob-lib-header">
+                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap;">
+                                    <div style="min-width: 320px; flex: 1;">
+                                        ${bar(16, '62%', 0)}
+                                        ${bar(12, '38%', 10)}
+                                        ${bar(10, '78%', 10)}
+                                    </div>
+                                    <div style="display:flex; gap: 8px; flex-wrap:wrap; justify-content:flex-end;">
+                                        <div class="ob-skel" style="height: 30px; width: 72px; border-radius: 10px;"></div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    ${bar(10, '74%', 0)}
+                                </div>
+                            </div>
+                            ${block()}
+                            ${block()}
+                            ${block()}
+                        </div>
+                    `;
+                })();
+
+                return { listShell, detailShell };
+            },
+
+            _renderOfferLibraryEmptyState(kind) {
+                const title = (kind === 'no-matches') ? 'No matching offers' : 'No offers yet';
+                const msg = (kind === 'no-matches')
+                    ? 'Try a different search or create a new offer.'
+                    : 'Get started by creating your first offer. You can edit it, save it, and it will appear here.';
+
+                return `
+                    <div style="min-height: 320px; background:#fff; border: 1px solid rgba(148,163,184,0.28); border-radius: 16px; display:flex; align-items:center; justify-content:center; padding: 24px;">
+                        <div style="text-align:center; max-width: 420px;">
+                            <div style="margin: 0 auto 16px; width: 76px; height: 76px; border-radius: 18px; background: rgba(248,250,252,0.9); border: 2px dashed rgba(148,163,184,0.45); display:flex; align-items:center; justify-content:center;">
+                                <div style="width: 30px; height: 38px; border: 2px solid rgba(100,116,139,0.55); border-radius: 8px; background:#fff; position:relative;">
+                                    <div style="position:absolute; top: 10px; left: 7px; width: 16px; height: 3px; background: rgba(148,163,184,0.55); border-radius: 999px;"></div>
+                                    <div style="position:absolute; top: 17px; left: 7px; width: 10px; height: 3px; background: rgba(148,163,184,0.55); border-radius: 999px;"></div>
+                                    <div style="position:absolute; right: -8px; bottom: -8px; width: 22px; height: 22px; border-radius: 999px; background: var(--azure); color:#fff; display:flex; align-items:center; justify-content:center; font-weight: 1000; font-size: 14px;">+</div>
+                                </div>
+                            </div>
+                            <div style="font-size: 18px; font-weight: 1000; color: #0f172a;">${escapeHtml(title)}</div>
+                            <div style="margin-top: 8px; font-size: 13px; color:#64748b; line-height: 1.5;">${escapeHtml(msg)}</div>
+                            <div style="margin-top: 16px; display:flex; align-items:center; justify-content:center; gap: 10px; flex-wrap:wrap;">
+                                <button type="button" class="ob-btn ob-btn--primary" onclick="offerBuilder.createNewOfferFromLibrary()">Create offer</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
             },
 
             _renderOfferLibraryDetail(selected) {
@@ -24039,6 +27183,19 @@ async function loadRecommendationsForFilter() {
                 const genMsg = (() => {
                     try { return String(this.offerLibraryState.frameworkGenMsg || '').trim(); } catch (_) { return ''; }
                 })();
+
+                const isActive = (() => {
+                    try {
+                        this._hydrateActiveOfferFromStorageIfNeeded();
+                        return String(this.activeOfferId || '').trim() === String(id || '').trim();
+                    } catch (_) {
+                        return false;
+                    }
+                })();
+
+                const activeBadge = isActive
+                    ? `<span style="display:inline-flex; align-items:center; padding: 2px 8px; border-radius: 999px; background: var(--pp-status-success-bg); border: 1px solid var(--pp-status-success-text); color: var(--pp-status-success-text); font-size: 11px; font-weight: 1000; white-space:nowrap;">ACTIVE</span>`
+                    : '';
                 
                 // Use centralized hydration logic reused from the list view (or recall it)
                 const fw = this._extractFrameworks(selected.r || {});
@@ -24109,7 +27266,7 @@ async function loadRecommendationsForFilter() {
                         ].filter(Boolean);
 
                         const inferredHtml = inferredBits.length
-                            ? `<div style="margin-top:6px; font-size:12px; color:${fg};"><b>Inferred from brief text:</b> ${escapeHtml(inferredBits.join(' • '))}</div>`
+                            ? `<div style="margin-top:6px; font-size:12px; color:${fg};"><b>Inferred from brief text:</b> ${escapeHtml(inferredBits.join('  | '))}</div>`
                             : '';
 
                         const notesHtml = notes.length
@@ -24143,14 +27300,14 @@ async function loadRecommendationsForFilter() {
                             if (summary) bits.push(summary);
                             if (tofGuide) bits.push(`TOF: ${tofGuide}`);
                             if (bofGuide) bits.push(`BOF: ${bofGuide}`);
-                            return bits.join(' • ');
+                            return bits.join('  | ');
                         }
 
                         const pillars = Array.isArray(fw.pillars) ? fw.pillars : [];
                         const tof = Array.isArray(fw.tof_ad_types) ? fw.tof_ad_types : [];
                         const bof = Array.isArray(fw.bof_ad_types) ? fw.bof_ad_types : [];
                         const top = pillars.slice(0, 3).map(p => String(p && (p.title || p.key) || '').trim()).filter(Boolean);
-                        return `${pillars.length} pillars • TOF ${tof.length} • BOF ${bof.length}${top.length ? ` • ${top.join(' • ')}` : ''}`;
+                        return `${pillars.length} pillars  | TOF ${tof.length}  | BOF ${bof.length}${top.length ? `  | ${top.join('  | ')}` : ''}`;
                     } catch (_) {
                         return hasFw ? 'Frameworks saved.' : 'No frameworks yet.';
                     }
@@ -24190,9 +27347,21 @@ async function loadRecommendationsForFilter() {
                         const modules = (fw && fw.modules && typeof fw.modules === 'object') ? fw.modules : {};
                         const bucket = (modules && modules[stage] && typeof modules[stage] === 'object') ? modules[stage] : {};
                         const m = (bucket && bucket[moduleKey] && typeof bucket[moduleKey] === 'object') ? bucket[moduleKey] : null;
-                        const hook = String(m && m.hook || '').trim();
-                        const primary = String(m && m.primary_text || m.primaryText || '').trim();
-                        return (hook || primary) ? (hook ? `${hook}${primary ? ` — ${primary}` : ''}` : primary) : '';
+                        let hook = String(m && m.hook || '').trim();
+                        let primary = String(m && (m.primary_text || m.primaryText) || '').trim();
+
+                        // If there's no saved module yet, still show something useful from frameworks/snapshot.
+                        if (!hook && !primary) {
+                            try {
+                                const seed = (typeof this._getOfferLibraryModuleSeed === 'function') ? this._getOfferLibraryModuleSeed(id, stage, moduleKey) : null;
+                                if (seed && typeof seed === 'object') {
+                                    hook = String(seed.hook || '').trim();
+                                    primary = String(seed.primary_text || seed.primaryText || '').trim();
+                                }
+                            } catch (_) {}
+                        }
+
+                        return (hook || primary) ? (hook ? `${hook}${primary ? ` - ${primary}` : ''}` : primary) : '';
                     } catch (_) {
                         return '';
                     }
@@ -24206,7 +27375,7 @@ async function loadRecommendationsForFilter() {
                         const preview = getModulePreview(stage, m.key);
                         const metaBits = [
                             `Resources: ${n}`,
-                            (links === null ? 'Resources: loading…' : '')
+                            (links === null ? 'Resources: loading...' : '')
                         ].filter(Boolean);
                         return `
                             <div class="ob-mod-card" onclick="offerBuilder.openOfferLibraryModuleDrawer('${id.replace(/'/g, "\\'")}', '${stage}', '${String(m.key).replace(/'/g, "\\'")}')" role="button" tabindex="0">
@@ -24232,7 +27401,7 @@ async function loadRecommendationsForFilter() {
                                 <div style="font-weight: 1000; color:#0f172a; font-size: 13px;">Ad Modules</div>
                                 <div style="margin-top: 6px; font-size: 12px; color:#64748b; line-height: 1.45;">5 TOF modules + 5 BOF modules. Click a card to open the right-side drawer for full copy + creative direction + module-scoped resources.</div>
                             </div>
-                            <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.openOfferInFactory('${id.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-weight: 950;">Open in Builder</button>
+                            <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.openOfferInFactory('${id.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-weight: 950;">Edit in Builder</button>
                         </div>
                         ${renderStage('TOF')}
                         ${renderStage('BOF')}
@@ -24290,7 +27459,7 @@ async function loadRecommendationsForFilter() {
                                     <div style=\"font-weight: 950; color:#0f172a; font-size: 12px; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;\">${escapeHtml(title)}</div>
                                     ${statusPill}
                                 </div>
-                                <div style=\"font-size: 11px; color:#64748b; margin-top: 2px;\">${escapeHtml(by || 'Unknown')} • ${escapeHtml(created || '')}</div>
+                                <div style=\"font-size: 11px; color:#64748b; margin-top: 2px;\">${escapeHtml(by || 'Unknown')}  | ${escapeHtml(created || '')}</div>
                             </div>
                             <div style=\"display:flex; gap: 8px; align-items:center;\">${right}</div>
                         </div>`;
@@ -24300,7 +27469,7 @@ async function loadRecommendationsForFilter() {
                 };
 
                 const offerBriefBlock = (() => {
-                    if (deliverables === null) return '<div style="color:#64748b; font-size:12px;">Loading…</div>';
+                    if (deliverables === null) return '<div style="color:#64748b; font-size:12px;">Loading...</div>';
                     if (!splitDeliverables.brief) {
                         return `<div style="color:#64748b; font-size:12px; line-height:1.45;">No Offer Brief deliverable found.</div>`;
                     }
@@ -24308,7 +27477,7 @@ async function loadRecommendationsForFilter() {
                 })();
 
                 const creativesBlock = (() => {
-                    if (creatives === null) return '<div style="color:#64748b; font-size:12px;">Loading…</div>';
+                    if (creatives === null) return '<div style="color:#64748b; font-size:12px;">Loading...</div>';
                     if (!Array.isArray(creatives) || !creatives.length) return '<div style="color:#64748b; font-size:12px;">No linked creatives yet.</div>';
                     const list = creatives.slice(0, 6).map(c => {
                         const title = String(c && c.title || '').trim() || '(Untitled)';
@@ -24316,7 +27485,7 @@ async function loadRecommendationsForFilter() {
                         const status = String(c && c.status || '').trim();
                         return `<div style="padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 12px; background:#fff;">
                             <div style="font-weight: 950; color:#0f172a; font-size: 12px;">${escapeHtml(title)}</div>
-                            <div style="font-size: 11px; color:#64748b; margin-top: 2px;">${escapeHtml(stage ? stage.toUpperCase() : '')}${stage && status ? ' • ' : ''}${escapeHtml(status)}</div>
+                            <div style="font-size: 11px; color:#64748b; margin-top: 2px;">${escapeHtml(stage ? stage.toUpperCase() : '')}${stage && status ? '  | ' : ''}${escapeHtml(status)}</div>
                         </div>`;
                     }).join('');
                     return `<div style="display:flex; flex-direction:column; gap: 8px;">${list}</div>`;
@@ -24334,19 +27503,20 @@ async function loadRecommendationsForFilter() {
                 } catch (_) {}
 
                 detail.innerHTML = `
-                    ${isGen ? `<div style="margin-top: 2px;"><span class="ob-status-chip is-progress"><span class="ob-spinner"></span>${escapeHtml(genMsg || 'Generating frameworks…')}</span></div>` : ''}
+                    ${isGen ? `<div style="margin-top: 2px;"><span class="ob-status-chip is-progress"><span class="ob-spinner"></span>${escapeHtml(genMsg || 'Generating frameworks...')}</span></div>` : ''}
 
                     <div class="ob-lib-header">
                         <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap;">
                             <div style="min-width: 320px; flex: 1;">
-                                <div style="font-weight: 1100; font-size: 18px; color:#0f172a; line-height: 1.2;">${escapeHtml(name)}</div>
+                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 10px;">
+                                    <div style="font-weight: 1100; font-size: 18px; color:#0f172a; line-height: 1.2;">${escapeHtml(name)}</div>
+                                    ${activeBadge}
+                                </div>
                                 ${subtitle ? `<div style="margin-top: 4px; font-size: 12px; color:#475569; font-weight: 750;">${escapeHtml(subtitle)}</div>` : ''}
-                                <div style="margin-top: 8px; font-size: 12px; color:#64748b;">${status ? `Status: ${escapeHtml(status)} • ` : ''}${who ? `Creator: ${escapeHtml(who)} • ` : ''}Updated: ${escapeHtml(updated ? (new Date(updated).toLocaleString()) : '—')} • <span style="cursor:pointer; text-decoration:underline; text-decoration-style:dashed;" onclick="offerBuilder.copyOfferId('${id.replace(/'/g, "\\'")}')" title="Click to copy ID">Ref: ${escapeHtml(this._shortRef(id))}</span></div>
+                                <div style="margin-top: 8px; font-size: 12px; color:#64748b;">${status ? `Status: ${escapeHtml(status)}  | ` : ''}${who ? `Creator: ${escapeHtml(who)}  | ` : ''}Updated: ${escapeHtml(updated ? (new Date(updated).toLocaleString()) : 'N/A')}  | <span style="cursor:pointer; text-decoration:underline; text-decoration-style:dashed;" onclick="offerBuilder.copyOfferId('${id.replace(/'/g, "\\'")}')" title="Click to copy ID">Ref: ${escapeHtml(this._shortRef(id))}</span></div>
                             </div>
                             <div style="display:flex; gap: 8px; flex-wrap:wrap; justify-content:flex-end;">
-                                <button class="ob-btn ob-btn--secondary ob-btn--compact" onclick="offerBuilder.previewBriefForOfferId('${id.replace(/'/g, "\\'")}')">Open Brief</button>
-                                <button class="ob-btn ob-btn--secondary ob-btn--compact ${isGen ? 'is-loading' : ''}" ${isGen ? 'disabled' : ''} onclick="offerBuilder.generateFrameworksForOfferId('${id.replace(/'/g, "\\'")}')">${isGen ? `<span class=\"ob-spinner\"></span> Generating…` : `${hasFw ? 'Regenerate' : 'Generate'} Frameworks`}</button>
-                                <button class="ob-btn ob-btn--secondary ob-btn--compact" onclick="adResources.open({ offerId: '${id.replace(/'/g, "\\'")}', offerName: '${String(name).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', linkedOnly: true, frameworks: '${fwAttr}' })">Ad Resources</button>
+                                <button class="ob-btn ob-btn--primary ob-btn--compact" onclick="offerBuilder.openOfferInFactory('${id.replace(/'/g, "\\'")}')">Edit in Builder</button>
                             </div>
                         </div>
                         <div style="margin-top: 10px; font-size: 12px; color:#64748b;">${escapeHtml(fwSummary || '')}</div>
@@ -24383,6 +27553,14 @@ async function loadRecommendationsForFilter() {
             },
 
             openOfferLibraryModuleDrawer(offerId, stage, moduleKey) {
+                // Prefer the module popup (modal) when available.
+                try {
+                    if (typeof this.openOfferLibraryModuleModal === 'function') {
+                        this.openOfferLibraryModuleModal(offerId, stage, moduleKey);
+                        return;
+                    }
+                } catch (_) {}
+
                 const id = this._safeTrim(offerId);
                 const st = String(stage || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
                 const key = this._safeTrim(moduleKey);
@@ -24390,6 +27568,605 @@ async function loadRecommendationsForFilter() {
                 if (!this.offerLibraryState) this.offerLibraryState = {};
                 this.offerLibraryState.drawer = { offerId: id, stage: st, moduleKey: key, resourceIndex: 0 };
                 this._renderOfferLibraryDrawer();
+            },
+
+            openOfferLibraryModuleModal(offerId, stage, moduleKey) {
+                const id = this._safeTrim(offerId);
+                const st = String(stage || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                const key = this._safeTrim(moduleKey);
+                if (!id || !key) return;
+
+                // Ensure module resource truth is based on real link data.
+                // (This is intentionally fire-and-forget; the fetch path will re-render the modal when data arrives.)
+                try {
+                    if (typeof this._queueOfferLibraryContextFetch === 'function') {
+                        Promise.resolve(this._queueOfferLibraryContextFetch(id, { force: false })).catch(() => null);
+                    }
+                } catch (_) {}
+
+                const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                let row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === id) || null;
+                if (!row) {
+                    try {
+                        row = (this._offerRowCacheById && typeof this._offerRowCacheById.get === 'function') ? (this._offerRowCacheById.get(id) || null) : null;
+                    } catch (_) {
+                        row = null;
+                    }
+                }
+
+                const active = (() => {
+                    try { return this.getActiveOffer(); } catch (_) { return { id: '', name: '' }; }
+                })();
+
+                const offerName = row
+                    ? (String(row.offerName || row.Offer_Name || row.offerName || row.name || '').trim() || 'Offer')
+                    : ((active && String(active.id) === String(id) && String(active.name || '').trim()) ? String(active.name).trim() : 'Offer');
+
+                let fw = row ? this._extractFrameworks(row || {}) : null;
+                if (!fw) {
+                    try {
+                        if (this.offer && String(this.offer.offer_id || '').trim() === String(id)) {
+                            fw = this._getFrameworksFromOffer();
+                        }
+                    } catch (_) {}
+                }
+                
+                // If frameworks are missing but we expect them, trigger a background fetch of the full offer record.
+                if (!fw && id) {
+                    Promise.resolve().then(async () => {
+                         try {
+                             await this._fetchOfferRow(id);
+                             this._rerenderOfferLibraryModuleModalIfOpen(id);
+                         } catch(_){}
+                    });
+                }
+
+                if (!fw) fw = null;
+
+                const moduleTemplates = {
+                    tof: {
+                        problem_awareness: 'Problem Awareness',
+                        myth_bust: 'Myth Bust',
+                        how_it_works: 'How It Works',
+                        proof_story: 'Proof Story',
+                        authority: 'Authority / Credibility'
+                    },
+                    bof: {
+                        offer_stack: 'Offer Stack',
+                        price_anchor: 'Price Anchor',
+                        objection_killer: 'Objection Killer',
+                        urgency_scarcity: 'Urgency / Scarcity',
+                        cta_booking: 'CTA / Booking'
+                    }
+                };
+
+                const label = (moduleTemplates[st] && moduleTemplates[st][key]) ? moduleTemplates[st][key] : key;
+
+                const sanitizeNoEmDashes = (v) => {
+                    const s = String(v == null ? '' : v);
+                    return s
+                        .replace(/[\u2013\u2014\u2212]/g, '-')
+                        .replace(/[\u2018\u2019]/g, "'")
+                        .replace(/[\u201C\u201D]/g, '"');
+                };
+
+                const existing = (() => {
+                    try {
+                        const modules = (fw && fw.modules && typeof fw.modules === 'object') ? fw.modules : {};
+                        const bucket = (modules && modules[st] && typeof modules[st] === 'object') ? modules[st] : {};
+                        const m = (bucket && bucket[key] && typeof bucket[key] === 'object') ? bucket[key] : null;
+                        return m;
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+
+                // Seed from frameworks + offer snapshot even if the module hasn't been saved yet.
+                const seedBase = (() => {
+                    try {
+                        const s = (typeof this._getOfferLibraryModuleSeed === 'function') ? this._getOfferLibraryModuleSeed(id, st, key) : null;
+                        return (s && typeof s === 'object') ? Object.assign({}, s) : {};
+                    } catch (_) {
+                        return {};
+                    }
+                })();
+
+                const seedRaw = (existing && typeof existing === 'object')
+                    ? Object.assign({}, seedBase, existing || {})
+                    : Object.assign({}, seedBase);
+                let seed = {
+                    idea_title: sanitizeNoEmDashes(seedRaw.idea_title || seedRaw.ideaTitle || ''),
+                    hook: sanitizeNoEmDashes(seedRaw.hook || ''),
+                    primary_text: sanitizeNoEmDashes(seedRaw.primary_text || seedRaw.primaryText || ''),
+                    creative_direction: sanitizeNoEmDashes(seedRaw.creative_direction || seedRaw.creativeDirection || ''),
+                    cta: sanitizeNoEmDashes(seedRaw.cta || '')
+                };
+
+                // Restore any unsaved local draft for this module (prevents data loss when user jumps into Ad Resources).
+                try {
+                    const drafts = this.offerLibraryState && this.offerLibraryState.moduleDrafts ? this.offerLibraryState.moduleDrafts : null;
+                    const dk = `${id}::${st}::${key}`;
+                    const d = drafts && drafts[dk] ? drafts[dk] : null;
+                    if (d && typeof d === 'object') {
+                        seed = {
+                            idea_title: sanitizeNoEmDashes(d.idea_title != null ? d.idea_title : seed.idea_title),
+                            hook: sanitizeNoEmDashes(d.hook != null ? d.hook : seed.hook),
+                            primary_text: sanitizeNoEmDashes(d.primary_text != null ? d.primary_text : seed.primary_text),
+                            creative_direction: sanitizeNoEmDashes(d.creative_direction != null ? d.creative_direction : seed.creative_direction),
+                            cta: sanitizeNoEmDashes(d.cta != null ? d.cta : seed.cta)
+                        };
+                    }
+                } catch (_) {}
+
+                const safe = (v) => String(v == null ? '' : v);
+                const esc = (v) => {
+                    try { return (typeof escapeHtml === 'function') ? escapeHtml(safe(v)) : safe(v); } catch (_) { return safe(v); }
+                };
+
+                if (!this.offerLibraryState) this.offerLibraryState = {};
+                this.offerLibraryState.moduleModal = { offerId: id, stage: st, moduleKey: key };
+
+                const resourcesHtml = (typeof this._buildOfferLibraryModuleResourcesHtml === 'function')
+                    ? this._buildOfferLibraryModuleResourcesHtml(id, st, key)
+                    : '';
+
+                const html = `
+                    <div class="ob-mod-modal">
+                        <div class="ob-mod-modal__top">
+                            <div style="min-width: 260px;">
+                                <div class="ob-mod-modal__title">${esc(String(st).toUpperCase())}: ${esc(label)}</div>
+                                <div class="ob-mod-modal__kicker">${esc(offerName)}  | Module key: ${esc(key)}</div>
+                            </div>
+                            <div class="ob-mod-modal__actions">
+                                <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="closeModal(false)" style="padding: 6px 10px; font-weight: 900;">Close</button>
+                            </div>
+                        </div>
+
+                        <div class="ob-mod-modal__grid">
+                            <div class="ob-mod-cardbox">
+                                <div class="ob-mod-cardbox__header">
+                                    <div class="ob-mod-cardbox__header-title">Module copy</div>
+                                    <div class="ob-mod-cardbox__header-sub">Edit the copy for this module.</div>
+                                </div>
+                                <div class="ob-mod-cardbox__body">
+                                    <div class="ob-mod-field">
+                                        <div class="ob-mod-label"><span>Idea title</span></div>
+                                        <input id="obModIdeaTitle" class="ob-input" style="font-weight: 850;" value="${esc(seed.idea_title || '')}" placeholder="Short internal label" />
+                                    </div>
+                                    <div class="ob-mod-field">
+                                        <div class="ob-mod-label"><span>Hook</span></div>
+                                        <input id="obModHook" class="ob-input" style="font-weight: 850;" value="${esc(seed.hook || '')}" placeholder="First line / scroll-stopper" />
+                                    </div>
+                                    <div class="ob-mod-field">
+                                        <div class="ob-mod-label"><span>Primary text</span></div>
+                                        <textarea id="obModPrimaryText" class="ob-textarea" style="min-height: 170px;" placeholder="Editable module copy">${esc(seed.primary_text || '')}</textarea>
+                                    </div>
+                                    <div class="ob-mod-field" style="margin-bottom: 10px;">
+                                        <div class="ob-mod-label"><span>Creative direction</span></div>
+                                        <textarea id="obModCreativeDirection" class="ob-textarea" style="min-height: 130px;" placeholder="Shots / structure / what to show">${esc(seed.creative_direction || '')}</textarea>
+                                    </div>
+                                    <div class="ob-mod-footer">
+                                        <button class="ob-btn ob-btn--primary" onclick="offerBuilder.saveOfferLibraryModuleFromModal()" style="font-weight: 1000;">Save module</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="ob-mod-cardbox ob-mod-sleeve" role="button" tabindex="0" style="cursor:pointer;" onclick="if(event && event.target && event.target.closest && event.target.closest('button,a,input,textarea,select')){ return; } offerBuilder.attachResourceToModule('${id.replace(/'/g, "\\'")}', '${st}', '${key.replace(/'/g, "\\'")}');" onkeydown="if(event && (event.key==='Enter' || event.key===' ')){ event.preventDefault(); offerBuilder.attachResourceToModule('${id.replace(/'/g, "\\'")}', '${st}', '${key.replace(/'/g, "\\'")}'); }">
+                                <div class="ob-mod-cardbox__header">
+                                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 10px;">
+                                        <div>
+                                            <div class="ob-mod-cardbox__header-title">Resources</div>
+                                            <div class="ob-mod-cardbox__header-sub">Attached to this specific module only.</div>
+                                        </div>
+                                        <div style="font-size: 11px; font-weight: 950; color:#64748b;">Click to add</div>
+                                    </div>
+                                </div>
+                                <div class="ob-mod-cardbox__body"><div id="obModResourcesBody">${resourcesHtml}</div></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                showModal('Ad Module', html, { hideActions: true, width: '980px', maxHeight: '86vh' });
+            },
+
+            _buildOfferLibraryModuleResourcesHtml(offerId, stage, moduleKey) {
+                const id = this._safeTrim(offerId);
+                const st = String(stage || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                const key = this._safeTrim(moduleKey);
+                if (!id || !key) return '';
+
+                const safe = (v) => String(v == null ? '' : v);
+                const esc = (v) => {
+                    try { return (typeof escapeHtml === 'function') ? escapeHtml(safe(v)) : safe(v); } catch (_) { return safe(v); }
+                };
+
+                const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                let row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === id) || null;
+                if (!row) {
+                    try {
+                        row = (this._offerRowCacheById && typeof this._offerRowCacheById.get === 'function') ? (this._offerRowCacheById.get(id) || null) : null;
+                    } catch (_) {
+                        row = null;
+                    }
+                }
+
+                const active = (() => {
+                    try { return this.getActiveOffer(); } catch (_) { return { id: '', name: '' }; }
+                })();
+
+                const offerName = row
+                    ? (String(row.offerName || row.Offer_Name || row.offerName || row.name || '').trim() || 'Offer')
+                    : ((active && String(active.id) === String(id) && String(active.name || '').trim()) ? String(active.name).trim() : 'Offer');
+
+                const links = (() => {
+                    try { return (this._offerLibraryCreativeLinksByOffer && this._offerLibraryCreativeLinksByOffer.get(id)) || null; } catch (_) { return null; }
+                })();
+
+                const creatives = (() => {
+                    try { return (this._offerLibraryCreativesByOffer && this._offerLibraryCreativesByOffer.get(id)) || null; } catch (_) { return null; }
+                })();
+
+                const creativeById = (() => {
+                    const m = new Map();
+                    try {
+                        if (Array.isArray(creatives)) {
+                            creatives.forEach((cr) => {
+                                const cid = String(cr && (cr.creative_id || cr.id) || '').trim();
+                                if (cid) m.set(cid, cr);
+                            });
+                        }
+                    } catch (_) {}
+                    return m;
+                })();
+
+                const attached = Array.isArray(links)
+                    ? links.filter(l => String(l && l.framework_stage || '').toLowerCase() === st && String(l && l.framework_ad_type_key || '').trim() === key)
+                    : null;
+
+                const hasAuth = (() => {
+                    try {
+                        if (typeof this._hasOfferLibraryAuth === 'function') return !!this._hasOfferLibraryAuth();
+                    } catch (_) {}
+                    return true;
+                })();
+
+                if (!hasAuth) {
+                    return `<div class="ob-mod-res-empty">Resources require an admin session. Sign in, then reopen this module.</div>`;
+                }
+                if (attached === null) {
+                    return `<div class="ob-mod-res-empty">Resources: loading...</div>`;
+                }
+                if (!attached.length) {
+                    return `<div class="ob-mod-res-empty">No resources attached to this module yet.</div>`;
+                }
+
+                const list = attached.slice(0, 12).map((a) => {
+                    const linkId = String(a && a.link_id || '').trim();
+                    const cid = String(a && a.creative_id || '').trim();
+                    const c = (a && a.creative)
+                        ? a.creative
+                        : (cid && creativeById.has(cid) ? creativeById.get(cid) : null);
+
+                    const title = (c && c.title) ? String(c.title).trim() : String(a && a.creative_title || '').trim() || '(Creative)';
+                    const previewUrl = (c && (c.preview_url || c.previewUrl || c.thumb_url || c.thumbnail_url))
+                        ? String((c.preview_url || c.previewUrl || c.thumb_url || c.thumbnail_url) || '').trim()
+                        : '';
+
+                    const stageLabel = (c && c.stage) ? String(c.stage).toUpperCase() : '';
+                    const serviceLabel = (c && c.service) ? String(c.service).trim() : '';
+                    const formatLabel = (c && c.format) ? String(c.format).trim() : '';
+                    const statusLabel = (c && c.status) ? String(c.status).trim() : '';
+                    const metaBits = [stageLabel, serviceLabel, formatLabel, statusLabel].filter(Boolean).slice(0, 4).join('  | ');
+
+                    const openBtn = cid
+                        ? `onclick="event && event.stopPropagation(); try{ offerBuilder && offerBuilder._captureOfferLibraryModuleModalDraft && offerBuilder._captureOfferLibraryModuleModalDraft(); }catch(_){ } adResources.open({ offerId: '${id.replace(/'/g, "\\'")}', offerName: '${String(offerName).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}', linkedOnly: false, moduleAttach: { offerId: '${id.replace(/'/g, "\\'")}', stage: '${st}', moduleKey: '${key.replace(/'/g, "\\'")}', notes: 'Opened from module resources' }, returnTo: { type: 'module', offerId: '${id.replace(/'/g, "\\'")}', stage: '${st}', moduleKey: '${key.replace(/'/g, "\\'")}' } }); setTimeout(()=>{ try{ adResources.select('${cid.replace(/'/g, "\\'")}'); }catch(_){ } }, 60);"`
+                        : '';
+
+                    const removeBtn = linkId
+                        ? `<button class="ob-btn ob-btn--secondary ob-btn--small" onclick="event && event.stopPropagation(); offerBuilder.unlinkCreativeLink('${linkId.replace(/'/g, "\\'")}', '${id.replace(/'/g, "\\'")}');" style="padding: 6px 10px; font-weight: 900;">Remove</button>`
+                        : '';
+
+                    return `
+                        <div class="ob-mod-res-row" onclick="event && event.stopPropagation();">
+                            <div class="ob-mod-res-left">
+                                <div class="ob-mod-res-thumb">
+                                    ${previewUrl ? `<img src="${esc(previewUrl)}" alt="" loading="lazy" />` : `<div class="ob-mod-res-thumb__fallback">RES</div>`}
+                                </div>
+                                <div class="ob-mod-res-main">
+                                    <div class="ob-mod-res-title">${esc(title)}</div>
+                                    <div class="ob-mod-res-sub">${esc(metaBits || (cid ? this._shortRef(cid) : ''))}</div>
+                                </div>
+                            </div>
+                            <div class="ob-mod-res-actions">
+                                ${cid ? `<button class="ob-btn ob-btn--tertiary ob-btn--small" ${openBtn} style="padding: 6px 10px; font-weight: 900;">Open</button>` : ''}
+                                ${removeBtn}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                return `<div class="ob-mod-res-list">${list}</div>`;
+            },
+
+            _getOfferLibraryFrameworksForOfferId(offerId) {
+                const id = this._safeTrim(offerId);
+                if (!id) return null;
+
+                const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                let row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === id) || null;
+                if (!row) {
+                    try {
+                        row = (this._offerRowCacheById && typeof this._offerRowCacheById.get === 'function') ? (this._offerRowCacheById.get(id) || null) : null;
+                    } catch (_) {
+                        row = null;
+                    }
+                }
+
+                let fw = row ? this._extractFrameworks(row || {}) : null;
+                if (!fw) {
+                    try {
+                        if (this.offer && String(this.offer.offer_id || '').trim() === String(id)) {
+                            fw = this._getFrameworksFromOffer();
+                        }
+                    } catch (_) {}
+                }
+
+                return fw || null;
+            },
+
+            _getOfferLibraryModuleSeed(offerId, stage, moduleKey) {
+                const id = this._safeTrim(offerId);
+                const st = String(stage || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                const key = this._safeTrim(moduleKey);
+                if (!id || !key) return null;
+
+                const sanitizeNoEmDashes = (v) => {
+                    const s = String(v == null ? '' : v);
+                    return s
+                        .replace(/[\u2013\u2014\u2212]/g, '-')
+                        .replace(/[\u2018\u2019]/g, "'")
+                        .replace(/[\u201C\u201D]/g, '"');
+                };
+
+                const fw = this._getOfferLibraryFrameworksForOfferId(id);
+                if (!fw) return null;
+
+                const existing = (() => {
+                    try {
+                        const modules = (fw && fw.modules && typeof fw.modules === 'object') ? fw.modules : {};
+                        const bucket = (modules && modules[st] && typeof modules[st] === 'object') ? modules[st] : {};
+                        const m = (bucket && bucket[key] && typeof bucket[key] === 'object') ? bucket[key] : null;
+                        return m;
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+
+                // If a module already exists, return it.
+                if (existing) {
+                    return {
+                        idea_title: sanitizeNoEmDashes(existing.idea_title || existing.ideaTitle || ''),
+                        hook: sanitizeNoEmDashes(existing.hook || ''),
+                        primary_text: sanitizeNoEmDashes(existing.primary_text || existing.primaryText || ''),
+                        creative_direction: sanitizeNoEmDashes(existing.creative_direction || existing.creativeDirection || ''),
+                        cta: sanitizeNoEmDashes(existing.cta || '')
+                    };
+                }
+
+                // Otherwise: seed from the offer snapshot + frameworks so modules are usable on first open.
+                const snap = (fw && fw.offer_snapshot && typeof fw.offer_snapshot === 'object') ? fw.offer_snapshot : {};
+                const snapName = String(snap.offer_name || snap.offerName || '').trim();
+                const snapHooks = Array.isArray(snap.hooks) ? snap.hooks.map(x => String(x || '').trim()).filter(Boolean) : [];
+                const snapPlatform = (snap.platformCopy && typeof snap.platformCopy === 'object') ? snap.platformCopy : ((snap.platform_copy && typeof snap.platform_copy === 'object') ? snap.platform_copy : {});
+
+                const liveOffer = (() => {
+                    try {
+                        if (this.offer && String(this.offer.offer_id || '').trim() === String(id)) return this.offer;
+                    } catch (_) {}
+                    return null;
+                })();
+                const liveName = String(liveOffer && liveOffer.name || '').trim();
+                const liveHooks = Array.isArray(liveOffer && liveOffer.hooks) ? liveOffer.hooks.map(x => String(x || '').trim()).filter(Boolean) : [];
+                const livePlatform = (liveOffer && liveOffer.platformCopy && typeof liveOffer.platformCopy === 'object') ? liveOffer.platformCopy : {};
+
+                const offerName = liveName || snapName || '';
+
+                const moduleLabels = {
+                    tof: {
+                        problem_awareness: 'Problem Awareness',
+                        myth_bust: 'Myth Bust',
+                        how_it_works: 'How It Works',
+                        proof_story: 'Proof Story',
+                        authority: 'Authority / Credibility'
+                    },
+                    bof: {
+                        offer_stack: 'Offer Stack',
+                        price_anchor: 'Price Anchor',
+                        objection_killer: 'Objection Killer',
+                        urgency_scarcity: 'Urgency / Scarcity',
+                        cta_booking: 'CTA / Booking'
+                    }
+                };
+                const label = (moduleLabels[st] && moduleLabels[st][key]) ? moduleLabels[st][key] : key;
+
+                const list = st === 'bof'
+                    ? (Array.isArray(fw.bof_ad_types) ? fw.bof_ad_types : [])
+                    : (Array.isArray(fw.tof_ad_types) ? fw.tof_ad_types : []);
+                const premise = (() => {
+                    try {
+                        const it = list.find(x => String(x && x.key || '').trim() === key)
+                            || list.find(x => this._slugKey(String(x && x.title || '')) === key)
+                            || null;
+                        return String(it && it.premise || '').trim();
+                    } catch (_) {
+                        return '';
+                    }
+                })();
+
+                const takeFirst = (arr) => {
+                    const a = Array.isArray(arr) ? arr : [];
+                    for (const v of a) {
+                        const s = String(v == null ? '' : v).trim();
+                        if (s) return s;
+                    }
+                    return '';
+                };
+
+                const hook = takeFirst([
+                    takeFirst(liveHooks),
+                    takeFirst(snapHooks),
+                    String(livePlatform.headline || '').trim(),
+                    String(snapPlatform.headline || '').trim(),
+                    String(liveOffer && liveOffer.headline || '').trim(),
+                    String(liveOffer && liveOffer.oneSentencePromise || '').trim()
+                ]);
+
+                const primary = takeFirst([
+                    String(livePlatform.primaryTextA || livePlatform.primary_text_a || '').trim(),
+                    String(livePlatform.primaryTextB || livePlatform.primary_text_b || '').trim(),
+                    String(snapPlatform.primaryTextA || snapPlatform.primary_text_a || '').trim(),
+                    String(snapPlatform.primaryTextB || snapPlatform.primary_text_b || '').trim(),
+                    String(liveOffer && liveOffer.oneSentencePromise || '').trim(),
+                    premise
+                ]);
+
+                const ideaTitle = (() => {
+                    const base = offerName || '';
+                    if (base) return `${label}: ${base}`;
+                    return String(label || '').trim() || key;
+                })();
+
+                return {
+                    idea_title: sanitizeNoEmDashes(ideaTitle),
+                    hook: sanitizeNoEmDashes(hook),
+                    primary_text: sanitizeNoEmDashes(primary),
+                    creative_direction: sanitizeNoEmDashes(premise),
+                    cta: ''
+                };
+            },
+
+            _rerenderOfferLibraryModuleModalIfOpen(offerId) {
+                const id = this._safeTrim(offerId);
+                if (!id) return;
+                try {
+                    const ctx = this.offerLibraryState && this.offerLibraryState.moduleModal ? this.offerLibraryState.moduleModal : null;
+                    if (!ctx || String(ctx.offerId || '') !== String(id)) return;
+                    const st = String(ctx.stage || 'tof');
+                    const key = String(ctx.moduleKey || '').trim();
+                    if (!key) return;
+                    const body = document.getElementById('obModResourcesBody');
+                    if (body) {
+                        // Refresh only the Resources pane to avoid a full modal teardown/rebuild flicker.
+                        body.innerHTML = (typeof this._buildOfferLibraryModuleResourcesHtml === 'function')
+                            ? this._buildOfferLibraryModuleResourcesHtml(id, st, key)
+                            : '';
+
+                        // Also hydrate empty copy fields if framework data just arrived.
+                        try {
+                            const seed = (typeof this._getOfferLibraryModuleSeed === 'function') ? this._getOfferLibraryModuleSeed(id, st, key) : null;
+                            if (seed) {
+                                const maybeSet = (elId, nextVal) => {
+                                    const el = document.getElementById(elId);
+                                    if (!el) return;
+                                    const cur = String(el.value == null ? '' : el.value).trim();
+                                    const nxt = String(nextVal == null ? '' : nextVal).trim();
+                                    if (!cur && nxt) el.value = nxt;
+                                };
+                                maybeSet('obModIdeaTitle', seed.idea_title);
+                                maybeSet('obModHook', seed.hook);
+                                maybeSet('obModPrimaryText', seed.primary_text);
+                                maybeSet('obModCreativeDirection', seed.creative_direction);
+                            }
+                        } catch (_) {}
+
+                        return;
+                    }
+                    this.openOfferLibraryModuleModal(id, st, key);
+                } catch (_) {}
+            },
+
+            async saveOfferLibraryModuleFromModal() {
+                const sanitizeNoEmDashes = (v) => {
+                    const s = String(v == null ? '' : v);
+                    return s
+                        .replace(/[\u2013\u2014\u2212]/g, '-')
+                        .replace(/[\u2018\u2019]/g, "'")
+                        .replace(/[\u201C\u201D]/g, '"');
+                };
+
+                try {
+                    const ctx = this.offerLibraryState && this.offerLibraryState.moduleModal ? this.offerLibraryState.moduleModal : null;
+                    if (!ctx || !ctx.offerId || !ctx.moduleKey) return;
+                    const offerId = String(ctx.offerId);
+                    const stage = String(ctx.stage || 'tof');
+                    const moduleKey = String(ctx.moduleKey);
+
+                    const readVal = (id) => {
+                        const el = document.getElementById(id);
+                        return el ? String(el.value || '').trim() : '';
+                    };
+
+                    const patch = {
+                        idea_title: sanitizeNoEmDashes(readVal('obModIdeaTitle')),
+                        hook: sanitizeNoEmDashes(readVal('obModHook')),
+                        primary_text: sanitizeNoEmDashes(readVal('obModPrimaryText')),
+                        creative_direction: sanitizeNoEmDashes(readVal('obModCreativeDirection'))
+                    };
+
+                    if (!patch.hook && !patch.primary_text && !patch.creative_direction) {
+                        showToast('Add at least hook/primary text/direction', 'warning');
+                        return;
+                    }
+
+                    const resp = await fetch(`${API_URL}?action=saveOfferFrameworkModule`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ offerId, stage, moduleKey, patch })
+                    });
+                    const data = await resp.json().catch(() => null);
+                    if (!resp.ok || !data || data.ok !== true) {
+                        throw new Error((data && data.error) ? data.error : `HTTP ${resp.status}`);
+                    }
+
+                    // Patch into cache so cards update immediately.
+                    try {
+                        const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
+                        const row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === String(offerId)) || null;
+                        if (row) {
+                            let ai = row.AI_Analysis || row.ai_analysis || {};
+                            try {
+                                if (typeof ai === 'string') {
+                                    if (typeof safeParseJSONLenient === 'function') {
+                                        ai = safeParseJSONLenient(ai || '{}', {});
+                                    } else {
+                                        ai = JSON.parse(ai || '{}');
+                                    }
+                                }
+                            } catch (_) { ai = {}; }
+                            if (!ai || typeof ai !== 'object') ai = {};
+                            let fw = ai.offer_frameworks || {};
+                            if (!fw || typeof fw !== 'object') fw = {};
+                            if (!fw.modules || typeof fw.modules !== 'object') fw.modules = {};
+                            if (!fw.modules[stage] || typeof fw.modules[stage] !== 'object') fw.modules[stage] = {};
+                            fw.modules[stage][moduleKey] = data.module || patch;
+                            ai.offer_frameworks = fw;
+                            row.AI_Analysis = ai;
+                        }
+                    } catch (_) {}
+
+                    showToast('Module saved', 'success');
+                    try {
+                        const drafts = this.offerLibraryState && this.offerLibraryState.moduleDrafts ? this.offerLibraryState.moduleDrafts : null;
+                        if (drafts) {
+                            const dk = `${String(offerId)}::${String(stage || 'tof')}::${String(moduleKey)}`;
+                            try { delete drafts[dk]; } catch (_) {}
+                        }
+                    } catch (_) {}
+                    try { this._renderOfferLibraryFromCache(); } catch (_) {}
+                } catch (e) {
+                    showToast(e && e.message ? e.message : 'Save failed', 'error');
+                }
             },
 
             closeOfferLibraryModuleDrawer() {
@@ -24467,9 +28244,20 @@ async function loadRecommendationsForFilter() {
                 const row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === offerId) || null;
                 const offerName = row ? (String(row.offerName || row.name || '').trim() || 'Offer') : 'Offer';
 
-                const links = (() => {
-                    try { return (this._offerLibraryCreativeLinksByOffer && this._offerLibraryCreativeLinksByOffer.get(offerId)) || []; } catch (_) { return []; }
+                const hasAuth = (() => {
+                    try { return !!this._hasOfferLibraryAuth(); } catch (_) { return false; }
                 })();
+
+                const linksVal = (() => {
+                    try {
+                        return (this._offerLibraryCreativeLinksByOffer && this._offerLibraryCreativeLinksByOffer.get(offerId));
+                    } catch (_) {
+                        return undefined;
+                    }
+                })();
+
+                const linksState = Array.isArray(linksVal) ? 'known' : (hasAuth ? 'loading' : 'auth');
+                const links = Array.isArray(linksVal) ? linksVal : [];
 
                 const attached = (Array.isArray(links) ? links : []).filter(l => {
                     const st = String(l && l.framework_stage || '').toLowerCase();
@@ -24514,6 +28302,14 @@ async function loadRecommendationsForFilter() {
                 };
 
                 const viewerHtml = (() => {
+                    if (linksState === 'auth') {
+                        return `<div style="padding: 12px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b; font-size: 12px;">Resources require an admin session. Sign in, then reopen this module.</div>`;
+                    }
+
+                    if (linksState === 'loading') {
+                        return `<div style="padding: 12px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b; font-size: 12px;">Resources: loading...</div>`;
+                    }
+
                     if (!attached.length) {
                         return `<div style="padding: 12px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b; font-size: 12px;">No resources attached to this module yet.</div>`;
                     }
@@ -24563,18 +28359,20 @@ async function loadRecommendationsForFilter() {
                             <div class="ob-drawer-header">
                                 <div style="min-width:0;">
                                     <div style="font-weight: 1000; color:#0f172a; font-size: 14px;">${escapeHtml(String(stage).toUpperCase())}: ${escapeHtml(label)}</div>
-                                    <div style="margin-top: 4px; font-size: 11px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow: ellipsis;">${escapeHtml(offerName)} • Module key: ${escapeHtml(moduleKey)}</div>
+                                    <div style="margin-top: 4px; font-size: 11px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow: ellipsis;">${escapeHtml(offerName)}  | Module key: ${escapeHtml(moduleKey)}</div>
                                 </div>
                                 <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
                                     <button class="ob-btn ob-btn--tertiary ob-btn--small" ${prevModuleDisabled ? 'disabled' : ''} onclick="offerBuilder._moveOfferLibraryDrawerModule(-1)" style="padding: 6px 10px; font-weight: 900;">Prev module</button>
                                     <button class="ob-btn ob-btn--tertiary ob-btn--small" ${nextModuleDisabled ? 'disabled' : ''} onclick="offerBuilder._moveOfferLibraryDrawerModule(1)" style="padding: 6px 10px; font-weight: 900;">Next module</button>
-                                    <button class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.attachResourceToModule('${offerId.replace(/'/g, "\\'")}', '${stage}', '${moduleKey.replace(/'/g, "\\'")}')" style="padding: 6px 10px; font-weight: 900;">Attach resource</button>
                                     <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.closeOfferLibraryModuleDrawer()" style="padding: 6px 10px; font-weight: 900;">Close</button>
                                 </div>
                             </div>
 
-                            <div class="ob-drawer-body">
-                                <div style="font-weight: 1000; color:#0f172a; font-size: 12px; margin-bottom: 8px;">Resources</div>
+                            <div class="ob-drawer-body" role="button" tabindex="0" style="cursor:pointer;" onclick="if(event && event.target && event.target.closest && event.target.closest('button,a,input,textarea,select')){ return; } offerBuilder.attachResourceToModule('${offerId.replace(/'/g, "\\'")}', '${stage}', '${moduleKey.replace(/'/g, "\\'")}');" onkeydown="if(event && (event.key==='Enter' || event.key===' ')){ event.preventDefault(); offerBuilder.attachResourceToModule('${offerId.replace(/'/g, "\\'")}', '${stage}', '${moduleKey.replace(/'/g, "\\'")}'); }">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap: 10px; margin-bottom: 8px; flex-wrap:wrap;">
+                                    <div style="font-weight: 1000; color:#0f172a; font-size: 12px;">Resources</div>
+                                    <div style="font-size: 11px; font-weight: 950; color:#64748b;">Click to add</div>
+                                </div>
                                 <div style="display:flex; flex-direction:column; gap: 10px;">${viewerHtml}</div>
                             </div>
                         </div>
@@ -24588,6 +28386,7 @@ async function loadRecommendationsForFilter() {
                 const k = this._safeTrim(moduleKey);
                 if (!id || !k) return;
                 try {
+                    try { this._captureOfferLibraryModuleModalDraft(); } catch (_) {}
                     const rows = Array.isArray(this._offerLibraryRows) ? this._offerLibraryRows : [];
                     const row = rows.find(r => String(r && (r.Offer_ID || r.offer_id || r.id) || '') === id) || null;
                     const offerName = row ? (String(row.offerName || row.name || '').trim() || 'Offer') : 'Offer';
@@ -24595,10 +28394,43 @@ async function loadRecommendationsForFilter() {
                         offerId: id,
                         offerName,
                         linkedOnly: false,
-                        moduleAttach: { offerId: id, stage: st, moduleKey: k, notes: `Attached to module ${st}:${k}` }
+                        moduleAttach: { offerId: id, stage: st, moduleKey: k, notes: `Attached to module ${st}:${k}` },
+                        returnTo: { type: 'module', offerId: id, stage: st, moduleKey: k }
                     });
                 } catch (_) {
                     showToast('Failed to open Ad Resources', 'error');
+                }
+            },
+
+            _captureOfferLibraryModuleModalDraft() {
+                try {
+                    const ctx = this.offerLibraryState && this.offerLibraryState.moduleModal ? this.offerLibraryState.moduleModal : null;
+                    if (!ctx || !ctx.offerId || !ctx.moduleKey) return;
+                    const offerId = String(ctx.offerId);
+                    const stage = String(ctx.stage || 'tof');
+                    const moduleKey = String(ctx.moduleKey);
+                    const dk = `${offerId}::${stage}::${moduleKey}`;
+
+                    if (!this.offerLibraryState) this.offerLibraryState = {};
+                    if (!this.offerLibraryState.moduleDrafts || typeof this.offerLibraryState.moduleDrafts !== 'object') {
+                        this.offerLibraryState.moduleDrafts = {};
+                    }
+
+                    const read = (id) => {
+                        const el = document.getElementById(id);
+                        return el ? String(el.value == null ? '' : el.value) : '';
+                    };
+
+                    this.offerLibraryState.moduleDrafts[dk] = {
+                        idea_title: read('obModIdeaTitle'),
+                        hook: read('obModHook'),
+                        primary_text: read('obModPrimaryText'),
+                        creative_direction: read('obModCreativeDirection'),
+                        cta: read('obModCta'),
+                        savedAt: Date.now()
+                    };
+                } catch (_) {
+                    // ignore
                 }
             },
 
@@ -24711,8 +28543,8 @@ async function loadRecommendationsForFilter() {
                 const panel = document.getElementById('obOfferDebugPanel');
 
                 try {
-                    if (status) status.textContent = 'Fetching full DB row…';
-                    if (pre) pre.textContent = 'Fetching…';
+                    if (status) status.textContent = 'Fetching full DB row...';
+                    if (pre) pre.textContent = 'Fetching...';
                     if (panel) panel.style.display = 'block';
 
                     const row = await this._fetchOfferRow(id);
@@ -24737,7 +28569,7 @@ async function loadRecommendationsForFilter() {
                     } catch (_) {}
 
                     if (pre) pre.textContent = JSON.stringify(debug, null, 2);
-                    if (status) status.textContent = `Fetched ${new Date().toLocaleString()} • lineItems ${(normalized.lineItems || []).length} • customerPrice $${(totals.customerPrice || 0).toFixed(2)}`;
+                    if (status) status.textContent = `Fetched ${new Date().toLocaleString()}  | lineItems ${(normalized.lineItems || []).length}  | customerPrice $${(totals.customerPrice || 0).toFixed(2)}`;
                     showToast('Raw payload fetched', 'success');
                 } catch (e) {
                     const msg = e && e.message ? e.message : 'Unknown error';
@@ -24750,8 +28582,8 @@ async function loadRecommendationsForFilter() {
             async _copyOfferDebugPayload() {
                 const pre = document.getElementById('obOfferDebugPre');
                 const text = pre ? String(pre.textContent || '').trim() : '';
-                if (!text || text === 'Click Fetch.' || text === 'Fetching…') {
-                    showToast('Nothing to copy yet — click Fetch', 'warning');
+                if (!text || text === 'Click Fetch.' || text === 'Fetching...') {
+                    showToast('Nothing to copy yet. Click Fetch', 'warning');
                     return;
                 }
 
@@ -24779,6 +28611,7 @@ async function loadRecommendationsForFilter() {
                     if (this._offerLibraryCreativeLinksByOffer) this._offerLibraryCreativeLinksByOffer.set(id, null);
                 } catch (_) {}
                 try { this._renderOfferLibraryFromCache(); } catch (_) {}
+                try { this._rerenderOfferLibraryModuleModalIfOpen(id); } catch (_) {}
                 try { await this._queueOfferLibraryContextFetch(id, { force: true }); } catch (_) {}
             },
 
@@ -24787,17 +28620,12 @@ async function loadRecommendationsForFilter() {
                 if (!id) return;
                 const force = !!(opts && opts.force);
 
-                // Avoid noisy 401s in the console when the dashboard session
-                // hasn't been established yet.
-                let _hasAuth = false;
-                try {
-                    const token = (typeof getDashboardSessionToken === 'function') ? getDashboardSessionToken() : '';
-                    let legacy = '';
-                    try { legacy = String(localStorage.getItem('h2s_proof_admin_key') || '').trim(); } catch { legacy = ''; }
-                    _hasAuth = !!(String(token || '').trim() || legacy);
-                } catch (_) {
-                    _hasAuth = false;
-                }
+                const _hasAuth = (() => {
+                    try {
+                        if (typeof this._hasOfferLibraryAuth === 'function') return !!this._hasOfferLibraryAuth();
+                    } catch (_) {}
+                    return false;
+                })();
 
                 try {
                     if (!this._offerLibraryDeliverablesByOffer) this._offerLibraryDeliverablesByOffer = new Map();
@@ -24826,7 +28654,8 @@ async function loadRecommendationsForFilter() {
                     (async () => {
                         try {
                             const resp = await fetch(`${API_URL}?action=deliverables&status=all&offer_id=${encodeURIComponent(id)}&_ts=${Date.now()}`, { cache: 'no-store' });
-                            const data = await resp.json().catch(() => null);
+                            const text = await resp.text().catch(() => '');
+                            const data = (typeof safeParseJSONLenient === 'function') ? safeParseJSONLenient(text, null) : (JSON.parse(text || 'null'));
                             if (!resp.ok || !data || data.ok !== true) return [];
                             return Array.isArray(data.deliverables) ? data.deliverables : [];
                         } catch (_) {
@@ -24835,9 +28664,10 @@ async function loadRecommendationsForFilter() {
                     })(),
                     (async () => {
                         try {
-                            if (!_hasAuth) return [];
+                            if (!_hasAuth) return null;
                             const resp = await fetch(`${API_URL}?action=adCreatives&offer_id=${encodeURIComponent(id)}&limit=200&_ts=${Date.now()}`, { cache: 'no-store' });
-                            const data = await resp.json().catch(() => null);
+                            const text = await resp.text().catch(() => '');
+                            const data = (typeof safeParseJSONLenient === 'function') ? safeParseJSONLenient(text, null) : (JSON.parse(text || 'null'));
                             if (!resp.ok || !data || data.ok !== true) return [];
                             return Array.isArray(data.creatives) ? data.creatives : [];
                         } catch (_) {
@@ -24846,9 +28676,10 @@ async function loadRecommendationsForFilter() {
                     })(),
                     (async () => {
                         try {
-                            if (!_hasAuth) return [];
+                            if (!_hasAuth) return null;
                             const resp = await fetch(`${API_URL}?action=adCreativeLinks&offer_id=${encodeURIComponent(id)}&limit=500&_ts=${Date.now()}`, { cache: 'no-store' });
-                            const data = await resp.json().catch(() => null);
+                            const text = await resp.text().catch(() => '');
+                            const data = (typeof safeParseJSONLenient === 'function') ? safeParseJSONLenient(text, null) : (JSON.parse(text || 'null'));
                             if (!resp.ok || !data || data.ok !== true) return [];
                             return Array.isArray(data.links) ? data.links : [];
                         } catch (_) {
@@ -24861,6 +28692,24 @@ async function loadRecommendationsForFilter() {
                 try { this._offerLibraryCreativesByOffer.set(id, creatives); } catch (_) {}
                 try { this._offerLibraryCreativeLinksByOffer.set(id, links); } catch (_) {}
                 try { this._renderOfferLibraryFromCache(); } catch (_) {}
+                try { this._rerenderOfferLibraryModuleModalIfOpen(id); } catch (_) {}
+                try {
+                    // If the user is on Campaign Readiness, re-render so resource counts can update.
+                    if (String(this.subTab || '').toLowerCase() === 'adframeworks') {
+                        this.renderOfferFrameworksPanel();
+                    }
+                } catch (_) {}
+            },
+
+            _hasOfferLibraryAuth() {
+                try {
+                    const token = (typeof getDashboardSessionToken === 'function') ? getDashboardSessionToken() : '';
+                    let legacy = '';
+                    try { legacy = String(localStorage.getItem('h2s_proof_admin_key') || '').trim(); } catch { legacy = ''; }
+                    return !!(String(token || '').trim() || legacy);
+                } catch (_) {
+                    return false;
+                }
             },
 
             _openDeliverablesWithOfferFilter(offerId) {
@@ -24886,10 +28735,18 @@ async function loadRecommendationsForFilter() {
                 const detailMount = document.getElementById('obOfferLibraryDetail');
                 const metaMount = document.getElementById('obOfferLibraryMeta');
                 const legacyMount = document.getElementById('obOfferLibraryBody');
-                if (metaMount) metaMount.textContent = 'Loading…';
-                if (listMount) listMount.innerHTML = '<div style="padding: 14px; color:#6b7280; font-size: 12px;">Loading offers…</div>';
-                if (detailMount) detailMount.innerHTML = '<div style="padding: 18px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b;">Select an offer to view details.</div>';
-                if (legacyMount) legacyMount.innerHTML = '<div style="color:#6b7280;">Loading offers…</div>';
+                try {
+                    const shells = this._renderOfferLibraryLoadingShell();
+                    if (metaMount) metaMount.innerHTML = '<span class="ob-skel ob-skel--line" style="display:inline-block; height: 10px; width: 120px;"></span>';
+                    if (listMount) listMount.innerHTML = shells.listShell;
+                    if (detailMount) detailMount.innerHTML = shells.detailShell;
+                    if (legacyMount) legacyMount.innerHTML = '<div style="padding: 14px;">' + shells.listShell + '</div>';
+                } catch (_) {
+                    if (metaMount) metaMount.textContent = 'Loading...';
+                    if (listMount) listMount.innerHTML = '<div style="padding: 14px; color:#6b7280; font-size: 12px;">Loading offers...</div>';
+                    if (detailMount) detailMount.innerHTML = '<div style="padding: 18px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b;">Select an offer to view details.</div>';
+                    if (legacyMount) legacyMount.innerHTML = '<div style="color:#6b7280;">Loading offers...</div>';
+                }
 
                 const forceFetch = !!(opts && opts.forceFetch);
 
@@ -24915,7 +28772,8 @@ async function loadRecommendationsForFilter() {
                             if (me) params.set('createdBy', me);
                         }
                         const resp = await fetch(`${base}/api/offers?${params.toString()}`, { cache: 'no-store' });
-                        const data = await resp.json().catch(() => null);
+                        const raw = await resp.text().catch(() => '');
+                        const data = safeParseJSONLenient(raw, null);
                         if (resp.ok && data && data.ok === true && Array.isArray(data.offers)) {
                             rows = data.offers;
                         }
@@ -24931,7 +28789,8 @@ async function loadRecommendationsForFilter() {
                             if (me) params.set('createdBy', me);
                         }
                         const resp = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
-                        const data = await resp.json().catch(() => null);
+                        const raw = await resp.text().catch(() => '');
+                        const data = safeParseJSONLenient(raw, null);
                         if (!resp.ok || !data || data.ok !== true) {
                             throw new Error((data && data.error) ? data.error : 'Failed to load offers');
                         }
@@ -24942,14 +28801,30 @@ async function loadRecommendationsForFilter() {
                     this._offerLibraryRows = rows;
                     try { this.offerLibraryState.lastFetchedAt = Date.now(); } catch (_) {}
 
+                    // Hydrate + keep selection aligned with canonical active offer.
+                    try { this._hydrateActiveOfferFromStorageIfNeeded(); } catch (_) {}
+                    try {
+                        const active = this.getActiveOffer();
+                        if (active && active.id) {
+                            if (!this.offerLibraryState) this.offerLibraryState = {};
+                            if (!String(this.offerLibraryState.selectedId || '').trim()) {
+                                this.offerLibraryState.selectedId = active.id;
+                            }
+                        }
+                    } catch (_) {}
+                    try { this._renderActiveOfferLabel(); } catch (_) {}
+
                     if (!rows.length) {
                         if (metaMount) metaMount.textContent = 'Ready offers: 0';
-                        if (legacyMount) legacyMount.innerHTML = '<div style="padding: 18px; text-align:center; border: 1px dashed #e5e7eb; border-radius: 14px; background: #fff;">No offers found yet.</div>';
-                        if (listMount) listMount.innerHTML = '<div style="padding: 18px; text-align:center; border: 1px dashed #e5e7eb; border-radius: 14px; background: #fff;">No offers found yet.</div>';
+                        const empty = this._renderOfferLibraryEmptyState('first-run');
+                        if (legacyMount) legacyMount.innerHTML = empty;
+                        if (listMount) listMount.innerHTML = empty;
+                        if (detailMount) detailMount.innerHTML = '';
                         return;
                     }
 
                     this._renderOfferLibrary(rows);
+                    try { this._runOfferLibraryAutoMaintenance('refresh'); } catch (_) {}
                     if (showToastOnSuccess) showToast('Offer library refreshed', 'success');
                 } catch (e) {
                     if (legacyMount) legacyMount.innerHTML = `<div style="color:#ef4444;">Failed to load offers: ${e && e.message ? e.message : 'Unknown error'}</div>`;
@@ -24963,14 +28838,20 @@ async function loadRecommendationsForFilter() {
                 const id = String(offerId || '').trim();
                 if (!id) throw new Error('Missing offer id');
                 const resp = await fetch(`${API_URL}?action=offer&id=${encodeURIComponent(id)}`);
-                const data = await resp.json().catch(() => null);
+                const raw = await resp.text().catch(() => '');
+                const data = safeParseJSONLenient(raw, null);
                 if (!resp.ok || !data || data.ok !== true) throw new Error((data && data.error) ? data.error : 'Failed to fetch offer');
-                return data.offer || data.offerRow || data.offerData || data.action || data;
+                const row = data.offer || data.offerRow || data.offerData || data.action || data;
+                try {
+                    if (!this._offerRowCacheById) this._offerRowCacheById = new Map();
+                    this._offerRowCacheById.set(id, row);
+                } catch (_) {}
+                return row;
             },
 
             _extractOfferBuilderData(offerRow) {
                 let ctx = offerRow ? (offerRow.Message_Context || offerRow.message_context || offerRow.messageContext) : null;
-                try { if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}'); } catch (_) {}
+                try { if (typeof ctx === 'string') ctx = safeParseJSONLenient(ctx || '{}', {}); } catch (_) {}
                 if (!ctx || typeof ctx !== 'object') ctx = {};
                 
                 let ob = ctx.offer_builder || ctx.offerBuilder;
@@ -25062,26 +28943,109 @@ async function loadRecommendationsForFilter() {
                     }
                 } catch (_) {}
 
+                // If backend provided inferred economics (dataQuality), hydrate a bundle price when missing.
+                // This prevents "blank price" even when services were detected but not priced.
+                try {
+                    let dq = offerRow ? (offerRow.dataQuality || offerRow.data_quality) : null;
+                    try { if (typeof dq === 'string') dq = safeParseJSONLenient(dq || '{}', {}); } catch (_) {}
+                    if (dq && typeof dq === 'object' && dq.inferred && typeof dq.inferred === 'object') {
+                        const inferredPrice = Number(dq.inferred.customerPrice);
+                        if (isFinite(inferredPrice) && inferredPrice > 0) {
+                            const items = Array.isArray(ob.lineItems) ? ob.lineItems : [];
+                            const hasPackagePrice = items.some(it => {
+                                const nm = String(it && it.name || '').trim().toLowerCase();
+                                if (nm !== 'package price') return false;
+                                const unit = Number(it && (it.baseUnitPrice != null ? it.baseUnitPrice : it.unitPrice));
+                                return isFinite(unit) && unit > 0;
+                            });
+                            const hasPriced = items.some(it => {
+                                const qty = Number(it && it.qty);
+                                const unit = Number(it && (it.baseUnitPrice != null ? it.baseUnitPrice : it.unitPrice));
+                                return isFinite(qty) && qty > 0 && isFinite(unit) && unit > 0;
+                            });
+                            const hasOverride = String(ob.pricingStrategy || '') === 'bundlePrice' && isFinite(Number(ob.bundlePrice)) && Number(ob.bundlePrice) > 0;
+
+                            if (!hasOverride && !hasPackagePrice && !hasPriced) {
+                                ob.pricingStrategy = 'bundlePrice';
+                                ob.bundlePrice = inferredPrice;
+                            }
+                        }
+                    }
+                } catch (_) {}
+
                 return ob;
             },
 
             _extractFrameworks(offerRow) {
                 // Primary source: AI_Analysis column
                 let ai = offerRow ? (offerRow.AI_Analysis || offerRow.ai_analysis) : null;
-                try { if (typeof ai === 'string') ai = JSON.parse(ai || '{}'); } catch (_) {}
+                try { if (typeof ai === 'string') ai = safeParseJSONLenient(ai || '{}', {}); } catch (_) {}
                 if (!ai || typeof ai !== 'object') ai = {};
                 if (ai.offer_frameworks) return ai.offer_frameworks;
+                if (ai.offerFrameworks) return ai.offerFrameworks;
+                if (ai.frameworks) return ai.frameworks;
 
                 // Secondary source: Message_Context column (sometimes saved here by legacy flows)
                 let ctx = offerRow ? (offerRow.Message_Context || offerRow.message_context || offerRow.messageContext) : null;
-                try { if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}'); } catch (_) {}
+                try { if (typeof ctx === 'string') ctx = safeParseJSONLenient(ctx || '{}', {}); } catch (_) {}
                 if (ctx && typeof ctx === 'object') {
                     if (ctx.offer_frameworks) return ctx.offer_frameworks;
+                    if (ctx.offerFrameworks) return ctx.offerFrameworks;
+                    if (ctx.frameworks) return ctx.frameworks;
                     // Deep fallback: sometimes nested recursively?
                     if (ctx.AI_Analysis && ctx.AI_Analysis.offer_frameworks) return ctx.AI_Analysis.offer_frameworks;
+                    if (ctx.AI_Analysis && ctx.AI_Analysis.offerFrameworks) return ctx.AI_Analysis.offerFrameworks;
                 }
 
+                // Tertiary source: explicit framework columns (rare/legacy)
+                try {
+                    const raw = offerRow ? (offerRow.Offer_Frameworks || offerRow.offer_frameworks || offerRow.offerFrameworks) : null;
+                    if (raw && typeof raw === 'string') {
+                        const parsed = safeParseJSONLenient(raw || '{}', null);
+                        if (parsed && typeof parsed === 'object') return parsed;
+                    }
+                    if (raw && typeof raw === 'object') return raw;
+                } catch (_) {}
+
                 return null;
+            },
+
+            _hasFrameworksSnapshot(frameworks) {
+                try {
+                    const fw = frameworks;
+                    if (!fw || typeof fw !== 'object') return false;
+
+                    if (Array.isArray(fw.pillars) && fw.pillars.length) return true;
+                    if (Array.isArray(fw.tof_ad_types) && fw.tof_ad_types.length) return true;
+                    if (Array.isArray(fw.bof_ad_types) && fw.bof_ad_types.length) return true;
+
+                    if (fw.modules && typeof fw.modules === 'object') {
+                        const tof = (fw.modules.tof && typeof fw.modules.tof === 'object') ? fw.modules.tof : null;
+                        const bof = (fw.modules.bof && typeof fw.modules.bof === 'object') ? fw.modules.bof : null;
+                        if (tof && Object.keys(tof).length) return true;
+                        if (bof && Object.keys(bof).length) return true;
+                    }
+
+                    // Some payloads store meaningful output in guidance/summary fields.
+                    const guidance = String(
+                        fw.summary || fw.framework_summary ||
+                        fw.tof_guidance || fw.tofGuidance ||
+                        fw.bof_guidance || fw.bofGuidance ||
+                        ''
+                    ).trim();
+                    if (guidance) return true;
+
+                    // Chart presence can also indicate frameworks exist.
+                    if (fw.chart && typeof fw.chart === 'object') {
+                        const nodes = Array.isArray(fw.chart.nodes) ? fw.chart.nodes : null;
+                        const edges = Array.isArray(fw.chart.edges) ? fw.chart.edges : null;
+                        if ((nodes && nodes.length) || (edges && edges.length)) return true;
+                    }
+
+                    return false;
+                } catch (_) {
+                    return false;
+                }
             },
 
             loadOfferData(offerData, frameworks) {
@@ -25128,7 +29092,52 @@ async function loadRecommendationsForFilter() {
                 if (!next.offer_id) next.offer_id = this._uuidv4();
                 next.offerFrameworks = frameworks || next.offerFrameworks || next.offer_frameworks || null;
 
+                // Name + messaging hydration for legacy offers
+                try {
+                    const safeTrim = (v) => {
+                        try { return String(v == null ? '' : v).trim(); } catch (_) { return ''; }
+                    };
+
+                    // If name is missing, try frameworks snapshot.
+                    if (!safeTrim(next.name)) {
+                        const fw = next.offerFrameworks;
+                        const snap = (fw && fw.offer_snapshot && typeof fw.offer_snapshot === 'object') ? fw.offer_snapshot : null;
+                        const snapName = safeTrim(snap && (snap.offer_name || snap.offerName));
+                        if (snapName) next.name = snapName;
+                    }
+
+                    // Messaging: only fill if empty (never overwrite).
+                    const inferCategory = () => {
+                        const c = safeTrim(next.category);
+                        if (c) return c;
+                        const ids = (Array.isArray(next.lineItems) ? next.lineItems : []).map(it => String(it && it.serviceId || '').trim());
+                        if (ids.includes('tv-install')) return 'TV Mount';
+                        if (ids.includes('security-system')) return 'Cameras';
+                        if (ids.includes('doorbell-camera')) return 'Doorbell';
+                        if (ids.includes('wifi-setup')) return 'WiFi';
+                        if (ids.length > 1) return 'Bundle';
+                        return '';
+                    };
+
+                    const cat = inferCategory();
+                    const catLower = String(cat || '').toLowerCase();
+
+                    if (cat && !safeTrim(next.smsConfirmation)) {
+                        next.smsConfirmation = `Your ${catLower} installation is confirmed! We'll text you 24h before with arrival time.`;
+                    }
+                    if (!safeTrim(next.smsReminder24h)) {
+                        next.smsReminder24h = "Reminder: Your installation is tomorrow. We'll arrive between 9am-12pm. Reply STOP to opt out.";
+                    }
+                    if ((!Array.isArray(next.whatToSayInHome) || next.whatToSayInHome.length === 0) && cat && typeof this.generateWhatToSay === 'function') {
+                        const lines = this.generateWhatToSay(cat);
+                        if (Array.isArray(lines) && lines.length) next.whatToSayInHome = lines;
+                    }
+                } catch (_) {}
+
                 this.offer = next;
+
+                // Canonical active offer update (single source of truth)
+                try { this.setActiveOffer(next.offer_id, next.name); } catch (_) {}
 
                 try { this._renderActiveOfferLabel(); } catch (_) {}
 
@@ -25145,6 +29154,9 @@ async function loadRecommendationsForFilter() {
                 };
 
                 setVal('offerBuilderName', next.name);
+
+                // If the name is blank, show a computed placeholder immediately.
+                try { this._updateOfferNameInputUI(); } catch (_) {}
                 setVal('offerBuilderCategory', next.category);
                 setVal('offerBuilderMarket', next.market);
                 setVal('offerBuilderPrimaryAvatar', next.primaryAvatar);
@@ -25186,6 +29198,22 @@ async function loadRecommendationsForFilter() {
 
                 // Pricing strategy controls
                 try {
+                    // Smart Sync: If "Package Price" item exists, ensure consistency.
+                    const packageItem = next.lineItems.find(it => String(it.name || '').trim().toLowerCase() === 'package price');
+                    if (packageItem) {
+                        const pkgPrice = Number(packageItem.baseUnitPrice);
+                        if (pkgPrice > 0) {
+                            // Only enforce bundle pricing when the offer doesn't have an explicit strategy
+                            // (prevents surprising mode flips on refresh).
+                            const stratRaw = String(next.pricingStrategy || '').trim();
+                            const hasExplicitStrategy = !!stratRaw;
+                            if (!hasExplicitStrategy || stratRaw === 'bundlePrice') {
+                                next.pricingStrategy = 'bundlePrice';
+                                next.bundlePrice = pkgPrice;
+                            }
+                        }
+                    }
+
                     const s = String(next.pricingStrategy || 'sum');
                     const radio = document.querySelector(`input[name="offerBuilderPricingStrategy"][value="${s}"]`);
                     if (radio) radio.checked = true;
@@ -25193,11 +29221,62 @@ async function loadRecommendationsForFilter() {
                     setVal('offerBuilderPercentOff', next.percentOff);
                     setVal('offerBuilderDollarOff', next.dollarOff);
                     setVal('offerBuilderBundlePrice', next.bundlePrice);
+
+                    // Display the current bundle price (do not auto-fill the direct entry box)
+                    if (next.pricingStrategy === 'bundlePrice') {
+                        try {
+                            const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                            if (currentPriceValue) currentPriceValue.textContent = `$${Number(next.bundlePrice).toFixed(2)}`;
+                            const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                            if (currentPriceEl) currentPriceEl.style.display = 'block';
+                        } catch (_) {}
+                    }
+                } catch (_) {}
+
+                // Offer Price UI hydration: mirror the DB/computed price into the main Offer Price input.
+                // (Many existing offers store price as an implicit Package Price line item while pricingStrategy stays 'sum'.)
+                try {
+                    const direct = document.getElementById('offerBuilderDirectPrice');
+                    if (direct) {
+                        let priceToShow = 0;
+                        const strat = String(next.pricingStrategy || '').trim();
+                        const bp = Number(next.bundlePrice);
+                        if (strat === 'bundlePrice' && isFinite(bp) && bp > 0) {
+                            priceToShow = bp;
+                        } else if (typeof this.calculateTotals === 'function') {
+                            const totals = this.calculateTotals();
+                            const cp = Number(totals && totals.customerPrice);
+                            if (isFinite(cp) && cp > 0) priceToShow = cp;
+                        }
+
+                        direct.value = priceToShow > 0 ? Number(priceToShow).toFixed(2) : '';
+                        try { this.handleDirectPriceInput(direct.value); } catch (_) {}
+                    }
                 } catch (_) {}
 
                 try { this.renderLineItems(); } catch (_) {}
+                
+                // Smart Extrapolation: Auto-fill services if missing
+                try {
+                    // Silent auto-fill to handle legacy offers without explicit services
+                    // context: "you're going to be able to do this for the ones we already have so far"
+                    this.autoFillServices(true);
+                } catch (_) {}
+
+                // Also sync quantities on existing services (e.g., "Mount 3 TVs" => qty=3).
+                try { this.syncDetectedQuantitiesFromContext({ silent: true }); } catch (_) {}
+
+                // Auto-apply inferred package price (if present) so the Offer Price window populates.
+                try { this._autoApplyInferredPrice({ silent: true }); } catch (_) {}
+
                 try { this.recalculateOffer(); } catch (_) {}
                 try { this.renderOfferFrameworksPanel(); } catch (_) {}
+
+                // Baseline for "dirty" detection (used by active-offer auto-hydration).
+                try {
+                    const sigNow = this._computeDraftSig();
+                    this._builderHydration = { offerId: this._safeTrim(this.offer && this.offer.offer_id), sig: sigNow || '', at: Date.now() };
+                } catch (_) {}
             },
 
             async loadOfferFromDb(offerId) {
@@ -25251,19 +29330,28 @@ async function loadRecommendationsForFilter() {
                 }
             },
 
-            async generateFrameworksForOfferId(offerId) {
+            async generateFrameworksForOfferId(offerId, opts = {}) {
                 try {
                     const row = await this._fetchOfferRow(offerId);
                     const ob = this._extractOfferBuilderData(row);
+                    const existingFw = this._extractFrameworks(row);
+                    try {
+                        if (opts && opts.silent) {
+                            if (this._hasFrameworksSnapshot(existingFw)) {
+                                // Silent/auto mode: never regenerate if frameworks already exist.
+                                return;
+                            }
+                        }
+                    } catch (_) {}
                     if (!ob) {
-                        showToast('No Offer Builder snapshot found; load + Save first', 'warning');
+                        if (!(opts && opts.silent)) showToast('No Offer Builder snapshot found; load + Save first', 'warning');
                         return;
                     }
                     const id = String(offerId || '').trim();
                     try {
                         this.offerLibraryState.frameworkGenInFlightId = id;
                         this.offerLibraryState.frameworkGenStartedAt = Date.now();
-                        this.offerLibraryState.frameworkGenMsg = 'Generating frameworks…';
+                        this.offerLibraryState.frameworkGenMsg = 'Generating frameworks...';
                         this._renderOfferLibraryFromCache();
                     } catch (_) {}
                     const resp = await fetch(`${API_URL}?action=generateOfferFrameworks`, {
@@ -25273,10 +29361,10 @@ async function loadRecommendationsForFilter() {
                     });
                     const data = await resp.json().catch(() => null);
                     if (!resp.ok || !data || data.ok !== true) throw new Error((data && data.error) ? data.error : 'Gen failed');
-                    showToast('Frameworks generated for offer', 'success');
+                    if (!(opts && opts.silent)) showToast('Frameworks generated for offer', 'success');
                     await this.refreshOfferLibrary(false, { forceFetch: true });
                 } catch (e) {
-                    showToast(`Generate failed: ${e && e.message ? e.message : 'Unknown error'}`, 'error');
+                    if (!(opts && opts.silent)) showToast(`Generate failed: ${e && e.message ? e.message : 'Unknown error'}`, 'error');
                 } finally {
                     try {
                         this.offerLibraryState.frameworkGenInFlightId = '';
@@ -25293,7 +29381,7 @@ async function loadRecommendationsForFilter() {
                     try {
                         this.offerLibraryState.frameworkGenInFlightId = id;
                         this.offerLibraryState.frameworkGenStartedAt = Date.now();
-                        this.offerLibraryState.frameworkGenMsg = 'Generating frameworks… saving to the offer record';
+                        this.offerLibraryState.frameworkGenMsg = 'Generating frameworks... saving to the offer record';
                         this._renderOfferLibraryFromCache();
                     } catch (_) {}
 
@@ -25319,7 +29407,7 @@ async function loadRecommendationsForFilter() {
                     try { this.setSubTab('builder'); } catch (_) {}
 
                     try {
-                        this._setFrameworksUiStatus('Frameworks generated (saved to offer) — loading…', { tone: 'progress' });
+                        this._setFrameworksUiStatus('Frameworks generated (saved to offer). Loading...', { tone: 'progress' });
                     } catch (_) {}
 
                     try { this._flashFrameworksPanel(); } catch (_) {}
@@ -25359,7 +29447,7 @@ async function loadRecommendationsForFilter() {
                     try {
                         if (!this._frameworksUiStatus) return;
                         if ((Date.now() - startedAt) < (ms - 50)) return;
-                        // Only clear if it hasn’t been updated since.
+                        // Only clear if it hasn been updated since.
                         if (this._frameworksUiStatus && (Date.now() - (this._frameworksUiStatus.ts || 0)) >= (ms - 50)) {
                             this._frameworksUiStatus = null;
                             try { this.renderOfferFrameworksPanel(); } catch (_) {}
@@ -25406,7 +29494,7 @@ async function loadRecommendationsForFilter() {
             async copyOfferFrameworksJson() {
                 try {
                     const fw = this._getFrameworksFromOffer();
-                    if (!fw) return showToast('No frameworks yet (generate first)', 'warning');
+                    if (!fw) return showToast('Frameworks are still generating. Try again in a moment.', 'warning');
                     const text = JSON.stringify(fw, null, 2);
                     if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
                         await navigator.clipboard.writeText(text);
@@ -25421,16 +29509,16 @@ async function loadRecommendationsForFilter() {
             async copyOfferFrameworksText() {
                 try {
                     const fw = this._getFrameworksFromOffer();
-                    if (!fw) return showToast('No frameworks yet (generate first)', 'warning');
+                    if (!fw) return showToast('Frameworks are still generating. Try again in a moment.', 'warning');
 
                     const lines = [];
-                    lines.push(`Offer Frameworks (${fw.offer_snapshot && fw.offer_snapshot.offer_name ? fw.offer_snapshot.offer_name : (this.offer.name || 'Offer')})`);
+                    lines.push(`Frameworks (${fw.offer_snapshot && fw.offer_snapshot.offer_name ? fw.offer_snapshot.offer_name : (this.offer.name || 'Offer')})`);
                     if (fw.generated_at) lines.push(`Generated: ${fw.generated_at}`);
                     lines.push('');
                     lines.push('PILLARS:');
                     for (const p of (Array.isArray(fw.pillars) ? fw.pillars : [])) {
                         lines.push(`- ${p.title || p.key}`);
-                        for (const s of (Array.isArray(p.softly_filled) ? p.softly_filled : []).slice(0, 5)) lines.push(`  • ${s}`);
+                        for (const s of (Array.isArray(p.softly_filled) ? p.softly_filled : []).slice(0, 5)) lines.push(`   | ${s}`);
                     }
                     lines.push('');
                     lines.push('TOF AD TYPES:');
@@ -25479,12 +29567,12 @@ async function loadRecommendationsForFilter() {
                     if (btn) {
                         btn.disabled = true;
                         btn.classList.add('is-loading');
-                        btn.innerHTML = `<span class="ob-spinner ob-spinner--light"></span> Generating…`;
+                        btn.innerHTML = `<span class="ob-spinner ob-spinner--light"></span> Generating...`;
                     }
 
                     try {
                         const silent = !!(opts && opts.silent);
-                        const msg = silent ? 'Updating frameworks in background…' : 'Generating frameworks… (saved on the offer)';
+                        const msg = silent ? 'Updating frameworks in background...' : 'Generating frameworks... (saved on the offer)';
                         this._setFrameworksUiStatus(msg, { tone: 'progress' });
                     } catch (_) {}
 
@@ -25768,7 +29856,7 @@ async function loadRecommendationsForFilter() {
                             </div>
                             <div>
                                 <div style="font-size: 12px; font-weight: 900; color:#0f172a;">URL</div>
-                                <input id="fcResUrl" placeholder="https://…" style="width:100%; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
+                                <input id="fcResUrl" placeholder="https://..." style="width:100%; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
                             </div>
                         </div>
                     `;
@@ -25900,7 +29988,7 @@ async function loadRecommendationsForFilter() {
                 const guidanceCard = `
                     <div class="fc-card">
                         <div class="fc-card-title">Guidance</div>
-                        <div class="fc-body">${escapeHtml(String(guidance || '—'))}</div>
+                        <div class="fc-body">${escapeHtml(String(guidance || 'N/A'))}</div>
                     </div>
                 `;
 
@@ -25949,7 +30037,7 @@ async function loadRecommendationsForFilter() {
             openFrameworkStageModal(stage) {
                 try {
                     const fw = this._getFrameworksFromOffer();
-                    if (!fw) return showToast('Generate frameworks first', 'warning');
+                    if (!fw) return showToast('Frameworks are still generating. Try again in a moment.', 'warning');
                     const st = String(stage || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
                     try { ensureFrameworkChartCleanUiStyles(); } catch (_) {}
 
@@ -25995,7 +30083,7 @@ async function loadRecommendationsForFilter() {
                             <div class="fc-grid" style="padding: 0; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr));">
                                 <div class="fc-card">
                                     <div class="fc-card-title">Guidance</div>
-                                    <div class="fc-body">${escapeHtml(guide || '—')}</div>
+                                    <div class="fc-body">${escapeHtml(guide || 'N/A')}</div>
                                 </div>
                                 <div class="fc-card" style="grid-column: span 2;">
                                     <div class="fc-card-title" style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
@@ -26048,14 +30136,14 @@ async function loadRecommendationsForFilter() {
                 const key = String(it.key || '').trim() || this._slugKey(title);
                 const checked = !!(chart && chart[st] && chart[st].checklist && key && chart[st].checklist[key]);
 
-                const dot = `<div class="fc-dot ${checked ? 'is-done' : ''}">${checked ? '✓' : ''}</div>`;
+                const dot = `<div class="fc-dot ${checked ? 'is-done' : ''}">${checked ? '..."“' : ''}</div>`;
                 const action = readonly
                     ? ''
                     : `<button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder._attachFromLibrary('${st}', { itemKey: '${String(key).replace(/'/g, "\\'")}' })" style="padding: 6px 10px; font-weight: 950;">Attach</button>`;
 
                 const payload = encodeURIComponent(JSON.stringify({ key, title, premise }));
                 const click = `onclick=\"offerBuilder._openChecklistItemModalFromPayload('${st}','${String(payload).replace(/'/g, "\\'")}')\"`;
-                const desc = premise ? escapeHtml(premise) : '—';
+                const desc = premise ? escapeHtml(premise) : 'N/A';
 
                 return `
                     <div class="fc-item" ${click}>
@@ -26143,10 +30231,10 @@ async function loadRecommendationsForFilter() {
                 try {
                     this.ensureOfferId();
                     const fw = this._getFrameworksFromOffer();
-                    if (!fw) return showToast('Generate frameworks first', 'warning');
+                    if (!fw) return showToast('Frameworks are still generating. Try again in a moment.', 'warning');
                     const chart = this._normalizeFrameworkChart(fw.chart);
 
-                    try { this._setFrameworksUiStatus('Saving chart…', { tone: 'progress' }); } catch (_) {}
+                    try { this._setFrameworksUiStatus('Saving chart...', { tone: 'progress' }); } catch (_) {}
 
                     const resp = await fetch(`${API_URL}?action=saveOfferFrameworkChart`, {
                         method: 'POST',
@@ -26173,137 +30261,477 @@ async function loadRecommendationsForFilter() {
             },
 
             renderOfferFrameworksPanel() {
-                const mount = document.getElementById('offerBuilderOfferFrameworksAi');
+                const mount = document.getElementById('obCampaignReadinessMount');
                 if (!mount) return;
 
-                const fw = this._getFrameworksFromOffer();
-                const offerName = String((this.offer && this.offer.name) || '').trim();
+                const esc = (v) => {
+                    try { return (typeof escapeHtml === 'function') ? escapeHtml(String(v == null ? '' : v)) : String(v == null ? '' : v); } catch (_) { return String(v == null ? '' : v); }
+                };
 
-                const metaLine = fw && fw.generated_at ? `Generated: ${fw.generated_at}` : (fw ? 'Generated: (unknown)' : '');
-                const offerLine = offerName ? offerName : (fw && fw.offer_snapshot && fw.offer_snapshot.offer_name ? fw.offer_snapshot.offer_name : '');
-                const offerIdLine = this.offer.offer_id ? `Offer ID: ${this.offer.offer_id}` : '';
+                // Active offer is the single source of truth.
+                let active = { id: '', name: '' };
+                try { active = this.getActiveOffer(); } catch (_) { active = { id: '', name: '' }; }
+                const offerId = String(active && active.id || '').trim();
+                let offerName = String(active && active.name || '').trim();
 
-                const status = (() => {
+                if (!offerId) {
+                    mount.innerHTML = `
+                        <div style="padding: 18px; border: 1px solid rgba(226,232,240,0.95); border-radius: 14px; background:#fff; color:#64748b;">
+                            <div style="font-weight: 1000; color:#0f172a; font-size: 13px;">Select an offer</div>
+                            <div style="margin-top: 6px; font-size: 12px; line-height: 1.5;">Choose an offer in Offer Library. This tab will automatically generate frameworks (silently) and show what ready.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Prefer the in-memory Builder offer name when it matches active offer.
+                try {
+                    if (!offerName && this.offer && String(this.offer.offer_id || '').trim() === offerId) {
+                        offerName = String(this.offer.name || '').trim();
+                    }
+                } catch (_) {}
+
+                const hasAuth = (() => {
+                    try { return !!this._hasOfferLibraryAuth(); } catch (_) { return false; }
+                })();
+
+                // Warm resource context (deliverables/creatives/links) so asset counts resolve.
+                try { this._queueOfferLibraryContextFetch(offerId); } catch (_) {}
+
+                // Fetch the active offer row (frameworks may not be in the library list).
+                if (!this._fwRealActiveOffer) this._fwRealActiveOffer = { offerId: '', fetchedAt: 0, inFlight: false, row: null, error: '' };
+                if (String(this._fwRealActiveOffer.offerId || '') !== String(offerId)) {
+                    this._fwRealActiveOffer = { offerId, fetchedAt: 0, inFlight: false, row: null, error: '' };
+                }
+
+                const cache = this._fwRealActiveOffer;
+                const now = Date.now();
+                const isFresh = !!(cache.row && (now - Number(cache.fetchedAt || 0)) < 15000);
+
+                if (!isFresh && !cache.inFlight) {
+                    cache.inFlight = true;
+                    cache.error = '';
+                    this._fetchOfferRow(offerId)
+                        .then((r) => {
+                            cache.row = r || null;
+                            cache.fetchedAt = Date.now();
+                            cache.inFlight = false;
+                            try { this.renderOfferFrameworksPanel(); } catch (_) {}
+                        })
+                        .catch((e) => {
+                            cache.row = null;
+                            cache.fetchedAt = Date.now();
+                            cache.inFlight = false;
+                            cache.error = (e && e.message) ? String(e.message) : 'Failed to load offer';
+                            try { this.renderOfferFrameworksPanel(); } catch (_) {}
+                        });
+                }
+
+                const row = isFresh ? cache.row : null;
+
+                // Resolve frameworks snapshot for the active offer.
+                let fw = null;
+                try {
+                    if (this.offer && String(this.offer.offer_id || '').trim() === offerId) {
+                        fw = this._getFrameworksFromOffer();
+                    }
+                } catch (_) {}
+                if (!fw && row) {
+                    try { fw = this._extractFrameworks(row); } catch (_) { fw = null; }
+                }
+                if (!fw) fw = null;
+
+                // Resolve attached resources
+                let links = null;
+                try {
+                    const map = this._offerLibraryCreativeLinksByOffer;
+                    links = (map && typeof map.get === 'function') ? map.get(String(offerId)) : null;
+                } catch (_) {
+                    links = null;
+                }
+                const linksState = Array.isArray(links) ? 'known' : (hasAuth ? 'loading' : 'auth');
+                const linkRows = Array.isArray(links) ? links : [];
+
+                const hasFrameworks = (() => {
+                    try { return this._hasFrameworksSnapshot(fw); } catch (_) { return false; }
+                })();
+
+                // Silently generate frameworks if missing (once per offer per session)
+                if (!hasFrameworks) {
                     try {
-                        const s = this._frameworksUiStatus;
-                        if (!s || !s.text) return '';
-                        const t = String(s.tone || 'neutral');
-                        const cls = t === 'ok' ? 'is-ok' : (t === 'warn' ? 'is-warn' : (t === 'progress' ? 'is-progress' : ''));
-                        const spin = (t === 'progress') ? '<span class="ob-spinner"></span>' : '';
-                        return `<span class="ob-status-chip ${cls}">${spin}${escapeHtml(String(s.text))}</span>`;
+                        if (!this._fwRealAutoGenOnce) this._fwRealAutoGenOnce = new Set();
+                        if (!this._fwRealAutoGenOnce.has(String(offerId))) {
+                            this._fwRealAutoGenOnce.add(String(offerId));
+                            setTimeout(() => {
+                                try { this.generateFrameworksForOfferId(offerId, { silent: true }); } catch (_) {}
+                            }, 250);
+                        }
+                    } catch (_) {}
+                }
+
+                const hasModuleCopy = (stageLower, moduleKey) => {
+                    try {
+                        const s = String(stageLower || '').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                        const k = String(moduleKey || '').trim();
+                        if (!k || !fw || typeof fw !== 'object') return false;
+                        const modules = (fw.modules && typeof fw.modules === 'object') ? fw.modules : {};
+                        const bucket = (modules[s] && typeof modules[s] === 'object') ? modules[s] : {};
+                        const m = (bucket[k] && typeof bucket[k] === 'object') ? bucket[k] : null;
+                        if (!m) return false;
+                        const hook = String(m.hook || '').trim();
+                        const primary = String(m.primary_text || m.primaryText || '').trim();
+                        const headline = String(m.headline || '').trim();
+                        const body = String(m.body || '').trim();
+                        const direction = String(m.creative_direction || m.creativeDirection || '').trim();
+                        return !!(hook || primary || headline || body || direction);
+                    } catch (_) {
+                        return false;
+                    }
+                };
+
+                const countAssetsForModules = (modules) => {
+                    if (linksState !== 'known') return { state: linksState, n: 0 };
+                    try {
+                        const refs = Array.isArray(modules) ? modules : [];
+                        if (!refs.length) return { state: 'known', n: 0 };
+                        const want = new Set(refs.map(r => `${String(r.stage).toLowerCase()}::${String(r.key)}`));
+                        const n = linkRows.filter(l => {
+                            const st = String(l && l.framework_stage || '').toLowerCase();
+                            const k = String(l && l.framework_ad_type_key || '').trim();
+                            return want.has(`${st}::${k}`);
+                        }).length;
+                        return { state: 'known', n };
+                    } catch (_) {
+                        return { state: 'known', n: 0 };
+                    }
+                };
+
+                const NO_EM_DASH = (s) => {
+                    try {
+                        return String(s || '')
+                            .replace(/[\u2014\u2013]/g, '-')
+                            .replace(/\s{2,}/g, ' ')
+                            .trim();
+                    } catch (_) {
+                        return String(s || '').trim();
+                    }
+                };
+
+                const _getOfferLabel = () => {
+                    try {
+                        const o = this.offer || {};
+                        const local = String(o.name || '').trim();
+                        if (local) return local;
+                    } catch (_) {}
+                    try {
+                        const nm = String(row && (row.offerName || row.name || row.Offer_Name) || '').trim();
+                        if (nm) return nm;
+                    } catch (_) {}
+                    return 'Offer';
+                };
+
+                const _getOfferAngle = () => {
+                    try {
+                        const o = this.offer || {};
+                        const angle = o.oneSentencePromise || o.headline || o.intendedGoal || o.howWereDifferent || '';
+                        return String(angle || '').trim();
                     } catch (_) {
                         return '';
                     }
+                };
+
+                const _loadAutoCopyState = () => {
+                    try {
+                        const raw = localStorage.getItem('h2s_ob_frameworks_autocopy_v1');
+                        const parsed = raw ? JSON.parse(raw) : null;
+                        return (parsed && typeof parsed === 'object') ? parsed : {};
+                    } catch (_) {
+                        return {};
+                    }
+                };
+
+                const _saveAutoCopyState = (st) => {
+                    try { localStorage.setItem('h2s_ob_frameworks_autocopy_v1', JSON.stringify(st || {})); } catch (_) {}
+                };
+
+                const _autoCopyKey = (stageLower, moduleKey) => `${String(stageLower || '').toLowerCase()}::${String(moduleKey || '').trim()}`;
+
+                const _buildAutoCopyPatch = (pillarKey) => {
+                    const offerLabel = _getOfferLabel();
+                    const angle = _getOfferAngle();
+                    const shortAngle = angle ? angle : 'clean, safe, pro install';
+                    const base = {
+                        idea_title: '',
+                        hook: '',
+                        primary_text: '',
+                        creative_direction: ''
+                    };
+
+                    const k = String(pillarKey || '').trim();
+
+                    if (k === 'offer_clarity') {
+                        base.idea_title = `Offer clarity: ${offerLabel}`;
+                        base.hook = `${offerLabel}: ${shortAngle}.`;
+                        base.primary_text = `Upfront quote, clean finish, and a safe result. Book a time that works for you.`;
+                        base.creative_direction = `Show the outcome first. Use a simple 3-bullet list of what's included and a clear booking CTA.`;
+                    } else if (k === 'objection_killer') {
+                        base.idea_title = `Objection killer: ${offerLabel}`;
+                        base.hook = `Worried about damage, mess, or surprises?`;
+                        base.primary_text = `We protect your walls and floors, confirm fit and placement, and leave a clean finish. Clear process, clear quote.`;
+                        base.creative_direction = `Show the tools and protection steps (stud finder, level, drop cloth) and the final clean setup.`;
+                    } else if (k === 'price_anchor') {
+                        base.idea_title = `Price anchor: ${offerLabel}`;
+                        base.hook = `Know the price before we start.`;
+                        base.primary_text = `Choose a straightforward option that fits your setup. Upfront pricing and no surprises.`;
+                        base.creative_direction = `Use a simple price card with what's included. Keep it readable and direct.`;
+                    } else if (k === 'proof_reviews') {
+                        base.idea_title = `Proof: ${offerLabel}`;
+                        base.hook = `Real installs. Real results.`;
+                        base.primary_text = `Homeowners choose us for clean work, safe installs, and a smooth experience from start to finish.`;
+                        base.creative_direction = `Overlay 2 to 3 short review snippets and show before/after shots or quick clips of finished installs.`;
+                    } else if (k === 'scarcity') {
+                        base.idea_title = `Scarcity: ${offerLabel}`;
+                        base.hook = `Limited slots this week.`;
+                        base.primary_text = `Grab a spot before the schedule fills. Booking takes a minute and locks in your time.`;
+                        base.creative_direction = `Show a simple calendar view or ..."slots left... style visual with a clear deadline and CTA.`;
+                    } else {
+                        base.idea_title = `Framework copy: ${offerLabel}`;
+                        base.hook = `${offerLabel}`;
+                        base.primary_text = `Clear offer. Clear next step. Book now.`;
+                        base.creative_direction = `Keep it simple and show the outcome.`;
+                    }
+
+                    // Enforce "no em dashes" in generated text.
+                    base.idea_title = NO_EM_DASH(base.idea_title);
+                    base.hook = NO_EM_DASH(base.hook);
+                    base.primary_text = NO_EM_DASH(base.primary_text);
+                    base.creative_direction = NO_EM_DASH(base.creative_direction);
+                    return base;
+                };
+
+                const PILLARS = [
+                    {
+                        key: 'offer_clarity',
+                        label: 'Offer clarity',
+                        modules: [{ stage: 'bof', key: 'offer_stack' }, { stage: 'tof', key: 'how_it_works' }],
+                        primary: { stage: 'bof', key: 'offer_stack' }
+                    },
+                    {
+                        key: 'objection_killer',
+                        label: 'Objection killer',
+                        modules: [{ stage: 'bof', key: 'objection_killer' }, { stage: 'tof', key: 'myth_bust' }],
+                        primary: { stage: 'bof', key: 'objection_killer' }
+                    },
+                    {
+                        key: 'price_anchor',
+                        label: 'Price anchor',
+                        modules: [{ stage: 'bof', key: 'price_anchor' }],
+                        primary: { stage: 'bof', key: 'price_anchor' }
+                    },
+                    {
+                        key: 'proof_reviews',
+                        label: 'Proof / reviews',
+                        modules: [{ stage: 'tof', key: 'proof_story' }, { stage: 'tof', key: 'authority' }],
+                        primary: { stage: 'tof', key: 'proof_story' }
+                    },
+                    {
+                        key: 'scarcity',
+                        label: 'Scarcity',
+                        modules: [{ stage: 'bof', key: 'urgency_scarcity' }],
+                        primary: { stage: 'bof', key: 'urgency_scarcity' }
+                    }
+                ];
+
+                const computePillar = (p) => {
+                    const refs = Array.isArray(p.modules) ? p.modules : [];
+                    const copyOk = refs.some(r => hasModuleCopy(r.stage, r.key));
+                    const assets = countAssetsForModules(refs);
+                    const assetsOk = assets.state === 'known' ? (assets.n > 0) : false;
+
+                    const score = (copyOk ? 50 : 0) + (assetsOk ? 50 : 0);
+
+                    let status = 'missing';
+                    if (copyOk && assetsOk) status = 'ready';
+                    else if (copyOk || assetsOk) status = 'waiting';
+                    else if (assets.state !== 'known') status = 'waiting';
+                    else status = 'missing';
+
+                    let note = '';
+                    if (!hasFrameworks) note = 'Generating frameworks...';
+                    else if (assets.state === 'loading') note = 'Assets loading...';
+                    else if (assets.state === 'auth') note = 'Sign in for assets';
+                    else if (status === 'ready') note = 'Ready';
+                    else if (status === 'waiting') note = (copyOk && !assetsOk) ? 'Waiting on assets' : (!copyOk && assetsOk) ? 'Waiting on copy' : 'In progress';
+                    else note = 'Missing';
+
+                    const meta = [
+                        `Score: ${score}/100`,
+                        `Copy: ${copyOk ? 'present' : 'missing'}`,
+                        (assets.state === 'known') ? `Assets: ${assets.n}` : (assets.state === 'auth') ? 'Assets: sign in' : 'Assets: loading...'
+                    ].join('  | ');
+
+                    return { status, note, meta, score, copyOk, assetsOk };
+                };
+
+                const statusChip = (status) => {
+                    const kind = String(status || 'missing');
+                    const fg = kind === 'ready' ? '#065f46' : (kind === 'waiting' ? '#9a3412' : '#0f172a');
+                    const label = kind === 'ready' ? 'Ready' : (kind === 'waiting' ? 'Waiting' : 'Missing');
+                    return `<span style="display:inline-flex; align-items:center; color:${fg}; font-size: 12px; font-weight: 1100;">${esc(label)}</span>`;
+                };
+
+                const banner = (() => {
+                    const bits = [];
+                    if (cache && cache.error) {
+                        bits.push(`<div style="padding: 10px 12px; border: 1px solid #fecaca; background:#fef2f2; border-radius: 12px; color:#991b1b; font-size: 12px; font-weight: 900;">Couldn load offer snapshot: ${esc(cache.error)}</div>`);
+                    }
+                    if (!hasFrameworks) {
+                        bits.push(`<div style="padding: 10px 12px; border: 1px solid #fed7aa; background:#fff7ed; border-radius: 12px; color:#9a3412; font-size: 12px; font-weight: 900;">Frameworks are generating in the background. This view will update automatically.</div>`);
+                    }
+                    if (!hasAuth) {
+                        bits.push(`<div style="padding: 10px 12px; border: 1px solid rgba(148,163,184,0.35); background: rgba(248,250,252,0.9); border-radius: 12px; color:#475569; font-size: 12px; font-weight: 900;">Asset readiness requires an admin session. Sign in to load Ad Resources links and compute asset counts.</div>`);
+                    }
+                    return bits.join('');
                 })();
 
-                try { ensureFrameworkChartCleanUiStyles(); } catch (_) {}
+                // Auto-fill missing pillar copy once (per offer/module) when authorized.
+                let autoCopyPlanned = false;
+                try {
+                    if (!this._fwAutoCopyInFlight) this._fwAutoCopyInFlight = new Set();
+                    const stAll = _loadAutoCopyState();
+                    const stOffer = (stAll && typeof stAll === 'object' && stAll[offerId] && typeof stAll[offerId] === 'object') ? stAll[offerId] : {};
 
-                mount.innerHTML = `
-                    <div class="af-card" style="border-left: 4px solid var(--cobalt);">
-                        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap;">
-                            <div style="min-width: 240px;">
-                                <div class="af-card-title" style="margin-bottom: 4px;">Offer Frameworks (AI)</div>
-                                <div class="af-help">TOF / BOF guidance + checklist + resources. Designed layout (no inner scrollbars). Persists in the offer record.</div>
-                                ${(offerLine || metaLine || offerIdLine) ? `<div style="margin-top: 8px; font-size: 12px; color:#64748b; line-height: 1.5;">${offerLine ? `<div><strong>Offer:</strong> ${offerLine}</div>` : ''}${offerIdLine ? `<div>${offerIdLine}</div>` : ''}${metaLine ? `<div>${metaLine}</div>` : ''}</div>` : ''}
-                            </div>
-                            <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                                ${status}
-                                <button type="button" class="ob-btn ob-btn--secondary" onclick="offerBuilder.copyOfferFrameworksText()">Copy summary</button>
-                                <button type="button" class="ob-btn ob-btn--secondary" onclick="offerBuilder.copyOfferFrameworksJson()">Copy JSON</button>
-                                <button type="button" class="ob-btn ob-btn--primary" onclick="offerBuilder.generateOfferFrameworks()" id="obOfferFrameworksGenerateBtn">Generate / Refresh</button>
-                                <button type="button" class="ob-btn ob-btn--secondary" onclick="offerBuilder.saveOfferFrameworkChart()">Save Chart</button>
+                    if (hasFrameworks && fw && fw.modules && typeof fw.modules === 'object') {
+                        for (const p of PILLARS) {
+                            const primary = p && p.primary ? p.primary : null;
+                            const stageLower = String(primary && primary.stage || '').toLowerCase() === 'tof' ? 'tof' : 'bof';
+                            const moduleKey = String(primary && primary.key || '').trim();
+                            if (!moduleKey) continue;
+
+                            const doneKey = _autoCopyKey(stageLower, moduleKey);
+                            if (stOffer && stOffer[doneKey]) continue;
+                            if (hasModuleCopy(stageLower, moduleKey)) continue;
+
+                            // Only auto-write when we have an admin session (avoids silent failures).
+                            if (!hasAuth) continue;
+
+                            const inFlightKey = `${offerId}::${doneKey}`;
+                            if (this._fwAutoCopyInFlight.has(inFlightKey)) continue;
+                            this._fwAutoCopyInFlight.add(inFlightKey);
+                            autoCopyPlanned = true;
+
+                            const patch = _buildAutoCopyPatch(p.key);
+                            setTimeout(() => {
+                                fetch(`${API_URL}?action=saveOfferFrameworkModule`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ offerId, stage: stageLower, moduleKey, patch })
+                                })
+                                    .then(r => r.json().catch(() => null).then(j => ({ ok: r.ok, j, status: r.status })))
+                                    .then(({ ok, j, status }) => {
+                                        if (!ok || !j || j.ok !== true) {
+                                            const msg = (j && j.error) ? String(j.error) : `HTTP ${status}`;
+                                            throw new Error(msg);
+                                        }
+
+                                        // Mark done (persisted) so we only do this once.
+                                        try {
+                                            const all = _loadAutoCopyState();
+                                            if (!all[offerId] || typeof all[offerId] !== 'object') all[offerId] = {};
+                                            all[offerId][doneKey] = true;
+                                            _saveAutoCopyState(all);
+                                        } catch (_) {}
+
+                                        // Patch local offer object when this is the active offer.
+                                        try {
+                                            if (this.offer && String(this.offer.offer_id || '').trim() === String(offerId)) {
+                                                let fwLocal = this._getFrameworksFromOffer() || {};
+                                                if (!fwLocal.modules || typeof fwLocal.modules !== 'object') fwLocal.modules = {};
+                                                if (!fwLocal.modules[stageLower] || typeof fwLocal.modules[stageLower] !== 'object') fwLocal.modules[stageLower] = {};
+                                                fwLocal.modules[stageLower][moduleKey] = Object.assign({}, fwLocal.modules[stageLower][moduleKey] || {}, j.module || patch);
+                                                this._setFrameworksOnOffer(fwLocal);
+                                            }
+                                        } catch (_) {}
+
+                                        try { this.renderOfferFrameworksPanel(); } catch (_) {}
+                                    })
+                                    .catch(() => {
+                                        // If it fails, don't loop forever.
+                                        try {
+                                            const all = _loadAutoCopyState();
+                                            if (!all[offerId] || typeof all[offerId] !== 'object') all[offerId] = {};
+                                            all[offerId][doneKey] = true;
+                                            _saveAutoCopyState(all);
+                                        } catch (_) {}
+                                        try { this.renderOfferFrameworksPanel(); } catch (_) {}
+                                    })
+                                    .finally(() => {
+                                        try { this._fwAutoCopyInFlight && this._fwAutoCopyInFlight.delete(inFlightKey); } catch (_) {}
+                                    });
+                            }, 40);
+                        }
+                    }
+                } catch (_) {}
+
+                const cards = PILLARS.map((p) => {
+                    const st = computePillar(p);
+                    const stage = String(p.primary && p.primary.stage || 'bof').toLowerCase() === 'bof' ? 'bof' : 'tof';
+                    const key = String(p.primary && p.primary.key || '').trim();
+                    const idJs = String(offerId).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    const keyJs = String(key).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                    return `
+                        <div style="padding: 12px 14px; border: 1px solid rgba(226,232,240,0.95); border-radius: 16px; background:#fff; cursor:pointer; box-shadow: 0 10px 30px rgba(15,23,42,0.04);"
+                            onclick="offerBuilder.openOfferLibraryModuleModal('${idJs}', '${stage}', '${keyJs}')">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 10px;">
+                                <div>
+                                    <div style="font-weight: 1000; font-size: 14px; color:#0f172a;">${esc(p.label)}</div>
+                                    <div style="margin-top: 6px; font-size: 12px; color:#64748b; font-weight: 900;">${esc(st.meta)}</div>
+                                </div>
+                                <div style="display:flex; flex-direction:column; align-items:flex-end; gap: 6px; min-width: 92px;">
+                                    ${statusChip(st.status)}
+                                    <div style="font-size: 11px; color:#64748b; font-weight: 900;">${esc(st.note)}</div>
+                                </div>
                             </div>
                         </div>
+                    `;
+                }).join('');
 
-                        ${(() => {
-                            if (!fw) {
-                                return `<div style="margin-top: 16px;" class="fc-empty">No frameworks yet. Click <b>Generate / Refresh</b> first.</div>`;
-                            }
-
-                            const chart = this._ensureFrameworkChartOnOffer();
-                            const tofGuide = String(fw.tof_guidance || fw.tofGuidance || '').trim();
-                            const bofGuide = String(fw.bof_guidance || fw.bofGuidance || '').trim();
-                            const tofTypes = Array.isArray(fw.tof_ad_types) ? fw.tof_ad_types : [];
-                            const bofTypes = Array.isArray(fw.bof_ad_types) ? fw.bof_ad_types : [];
-
-                            const countChecked = (stage, items) => {
-                                const safe = Array.isArray(items) ? items : [];
-                                let total = 0;
-                                let done = 0;
-                                for (const it of safe) {
-                                    const key = String(it && (it.key || '')).trim() || this._slugKey(it && (it.title || '')) || '';
-                                    if (!key) continue;
-                                    total++;
-                                    if (chart && chart[stage] && chart[stage].checklist && chart[stage].checklist[key]) done++;
-                                }
-                                return { total, done };
-                            };
-
-                            const tofCnt = countChecked('tof', tofTypes);
-                            const bofCnt = countChecked('bof', bofTypes);
-                            const tofRes = this._getOfferResourceList('tof');
-                            const bofRes = this._getOfferResourceList('bof');
-
-                            const resPreview = (stage, list) => {
-                                const safe = Array.isArray(list) ? list : [];
-                                if (!safe.length) return '<span style="color:#94a3b8; font-size: 12px;">—</span>';
-                                const top = safe.slice(0, 2).map(r => {
-                                    const nm = escapeHtml(String(r && r.name || 'Resource'));
-                                    const t = escapeHtml(String(r && r.type || 'LINK').toUpperCase());
-                                    return `<span class="fc-chip">${t}: ${nm}</span>`;
-                                }).join(' ');
-                                const more = safe.length > 2 ? `<span style="color:#64748b; font-size: 12px; font-weight: 900;">+${safe.length - 2}</span>` : '';
-                                return `<div style="display:flex; gap: 6px; flex-wrap:wrap; justify-content:flex-start;">${top}${more}</div>`;
-                            };
-
-                            const row = (st, label, guide, cnt, resList) => {
-                                return `
-                                    <tr class="border-b border-neutral-100" style="border-bottom: 1px solid rgba(226,232,240,0.7);">
-                                        <td class="p-3" style="padding: 12px; text-align:center;"><input type="checkbox" /></td>
-                                        <td class="p-3" style="padding: 12px; font-weight: 1000; color: var(--cobalt);">${escapeHtml(label)}</td>
-                                        <td class="p-3" style="padding: 12px; color:#475569; font-size: 12px; line-height: 1.45;">${escapeHtml((guide || '—').slice(0, 160))}${(guide && guide.length > 160) ? '…' : ''}</td>
-                                        <td class="p-3" style="padding: 12px;">
-                                            <div style="display:flex; gap: 10px; align-items:center; flex-wrap:wrap;">
-                                                <span style="font-size: 12px; color:#64748b;"><b>${cnt.done}</b>/${cnt.total}</span>
-                                                <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.openFrameworkStageModal('${st}')" style="padding: 6px 10px; font-weight: 950;">View</button>
-                                            </div>
-                                        </td>
-                                        <td class="p-3" style="padding: 12px;">${resPreview(st, resList)}</td>
-                                        <td class="p-3" style="padding: 12px; text-align:center; color:#94a3b8; font-weight: 1100; cursor:pointer;" onclick="offerBuilder.openFrameworkStageModal('${st}')">⋯</td>
-                                    </tr>
-                                `;
-                            };
-
-                            return `
-                                <div style="margin-top: 16px; border: 1px solid #e5e7eb; border-radius: 14px; background:#fff; overflow:hidden;">
-                                    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                                        <thead>
-                                            <tr style="border-bottom: 1px solid rgba(226,232,240,0.9); background: #f8fafc;">
-                                                <th style="width: 44px; padding: 12px; text-align:center;"><input type="checkbox" /></th>
-                                                <th style="text-align:left; padding: 12px; font-weight: 900; color:#64748b;">Stage</th>
-                                                <th style="text-align:left; padding: 12px; font-weight: 900; color:#64748b;">Guidance</th>
-                                                <th style="text-align:left; padding: 12px; font-weight: 900; color:#64748b;">Checklist</th>
-                                                <th style="text-align:left; padding: 12px; font-weight: 900; color:#64748b;">Resources</th>
-                                                <th style="width: 44px; padding: 12px;"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${row('tof','TOF', tofGuide, tofCnt, tofRes)}
-                                            ${row('bof','BOF', bofGuide, bofCnt, bofRes)}
-                                        </tbody>
-                                    </table>
-                                    <div style="padding: 10px 12px; border-top: 1px solid rgba(226,232,240,0.9); display:flex; align-items:center; justify-content:space-between; gap: 10px; flex-wrap:wrap; color:#64748b; font-size: 12px;">
-                                        <span>Two-stage framework view (TOF/BOF). Dense edits live in View.</span>
-                                        <div style="display:flex; gap: 8px; flex-wrap:wrap; justify-content:flex-end;">
-                                            <button class="ob-btn ob-btn--secondary" onclick="offerBuilder.openFrameworkStageModal('tof')">Open TOF</button>
-                                            <button class="ob-btn ob-btn--secondary" onclick="offerBuilder.openFrameworkStageModal('bof')">Open BOF</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                        })()}
+                mount.innerHTML = `
+                    <div style="display:flex; flex-direction:column; gap: 12px;">
+                        ${banner}
+                        ${autoCopyPlanned ? `<div style="padding: 10px 12px; border: 1px solid rgba(148,163,184,0.35); background: rgba(248,250,252,0.9); border-radius: 12px; color:#475569; font-size: 12px; font-weight: 900;">Auto-filled missing copy once. Review each pillar and tweak as needed.</div>` : ''}
+                        <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+                            ${cards}
+                        </div>
+                        <div style="font-size: 12px; color:#64748b; line-height: 1.5; padding: 0 2px;">
+                            Click a pillar to edit the module copy and attach assets to that module.
+                        </div>
                     </div>
                 `;
+            },
+
+            openOfferFromReadinessDash(offerId) {
+                const id = this._safeTrim(offerId);
+                if (!id) return;
+
+                try { this.setSubTab('library'); } catch (_) {}
+
+                const go = () => {
+                    try { this.selectOfferLibraryOffer(id); } catch (_) {}
+                    try {
+                        const detail = document.getElementById('obOfferLibraryDetail');
+                        if (detail) detail.scrollTop = 0;
+                    } catch (_) {}
+                };
+
+                try {
+                    if (!Array.isArray(this._offerLibraryRows)) {
+                        this.refreshOfferLibrary(false, { forceFetch: true }).then(go).catch(go);
+                        return;
+                    }
+                } catch (_) {}
+
+                go();
             },
 
             offer: {
@@ -26566,7 +30994,7 @@ async function loadRecommendationsForFilter() {
                         <button type="button" data-offer-id="${id}" onclick="offerBuilder.selectWorkspaceOffer('${id}')" style="width: 100%; text-align:left; background:${bg}; border: 1px solid ${border}; border-radius: 12px; padding: 10px; margin: 6px 0; cursor: pointer;">
                             <div style="font-size: 12px; font-weight: 900; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
                             <div style="margin-top: 4px; display:flex; gap: 8px; align-items:center; justify-content:space-between;">
-                                <div style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${String(it.offerId).slice(0, 8)}…</div>
+                                <div style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${String(it.offerId).slice(0, 8)}...</div>
                                 <div style="font-size: 11px; color: #6b7280;">${updated}</div>
                             </div>
                         </button>
@@ -26576,7 +31004,7 @@ async function loadRecommendationsForFilter() {
 
             async refreshOfferWorkspaceList() {
                 try {
-                    this.setWorkspaceStatus('Loading offer index…', 'info');
+                    this.setWorkspaceStatus('Loading offer index...', 'info');
                     const items = await this._fetchOfferIndex(200);
                     const buckets = this._bucketOfferIndex(items);
                     this.workspace.offerIndex = buckets;
@@ -26589,7 +31017,7 @@ async function loadRecommendationsForFilter() {
                     if (lastId) {
                         this.setWorkspaceOfferId(lastId);
                     }
-                    this.setWorkspaceStatus(`Index loaded • ${items.length} offers`, 'success');
+                    this.setWorkspaceStatus(`Index loaded  | ${items.length} offers`, 'success');
                 } catch (e) {
                     console.error('[Offer Factory] Failed to load index:', e);
                     this.setWorkspaceStatus('Failed to load index', 'error');
@@ -26656,18 +31084,18 @@ async function loadRecommendationsForFilter() {
             async loadWorkspace(offerId) {
                 const content = document.getElementById('obWorkspaceContent');
                 if (content) content.innerHTML = '';
-                this.setWorkspaceStatus('Loading workspace…', 'info');
+                this.setWorkspaceStatus('Loading workspace...', 'info');
 
                 try {
                     const nameEl = document.getElementById('obWsOfferName');
                     const idEl = document.getElementById('obWsOfferId');
                     const pillEl = document.getElementById('obWsLifecyclePill');
-                    if (nameEl) nameEl.textContent = 'Loading…';
-                    if (idEl) idEl.textContent = String(offerId || '—');
+                    if (nameEl) nameEl.textContent = 'Loading...';
+                    if (idEl) idEl.textContent = String(offerId || 'N/A');
                     if (pillEl) pillEl.textContent = 'LOADING';
                     const cta = document.getElementById('obWsPrimaryCta');
                     if (cta) {
-                        cta.textContent = 'Loading…';
+                        cta.textContent = 'Loading...';
                         cta.disabled = true;
                     }
                 } catch (_) {}
@@ -26686,7 +31114,7 @@ async function loadRecommendationsForFilter() {
 
                     this.workspace.last = data;
                     this.renderWorkspace(data);
-                    this.setWorkspaceStatus(`Loaded • ${data.requestId || ''}`.trim(), 'success');
+                    this.setWorkspaceStatus(`Loaded  | ${data.requestId || ''}`.trim(), 'success');
                 } catch (e) {
                     console.error('[Offer Workspace] Load failed:', e);
                     this.setWorkspaceStatus(`Load failed: ${e.message || e}`, 'error');
@@ -26718,7 +31146,7 @@ async function loadRecommendationsForFilter() {
                 this.workspace.primaryAction = action || null;
                 const btn = document.getElementById('obWsPrimaryCta');
                 if (!btn) return;
-                const label = action?.label || '—';
+                const label = action?.label || 'N/A';
                 btn.textContent = label;
                 btn.disabled = !action;
             },
@@ -26781,7 +31209,7 @@ async function loadRecommendationsForFilter() {
                 const idEl = document.getElementById('obWsOfferId');
                 const pillEl = document.getElementById('obWsLifecyclePill');
                 if (nameEl) nameEl.textContent = String(offerName || 'Offer');
-                if (idEl) idEl.textContent = String(offerId || '—');
+                if (idEl) idEl.textContent = String(offerId || 'N/A');
                 if (pillEl) {
                     pillEl.textContent = lifecycle;
                     const styles = {
@@ -26837,7 +31265,7 @@ async function loadRecommendationsForFilter() {
                         const id = String(fw?.Framework_ID || fw?.framework_id || '').slice(0, 8);
                         return `<div style="padding: 10px; border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; margin-bottom: 8px;">
                             <div style="font-size: 12px; font-weight: 900; color: #0f172a;">${title}</div>
-                            <div style="margin-top: 4px; font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${id ? id + '…' : ''}</div>
+                            <div style="margin-top: 4px; font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${id ? id + '...' : ''}</div>
                         </div>`;
                     }).join('');
                     content.innerHTML = `
@@ -26849,8 +31277,8 @@ async function loadRecommendationsForFilter() {
 
                 if (tab === 'brief') {
                     const briefLink = brief?.File_Link || brief?.fileLink || '';
-                    const briefTitle = brief?.Title || brief?.title || '—';
-                    const briefStatus = brief?.Status || brief?.status || '—';
+                    const briefTitle = brief?.Title || brief?.title || 'N/A';
+                    const briefStatus = brief?.Status || brief?.status || 'N/A';
                     content.innerHTML = `
                         <div style="padding: 12px; border: 1px solid rgba(148,163,184,0.18); border-radius: 14px; background: #ffffff;">
                             <div style="font-size: 12px; font-weight: 1000; color: #0f172a; margin-bottom: 6px;">Offer Brief</div>
@@ -26873,9 +31301,9 @@ async function loadRecommendationsForFilter() {
                         return `<div style="display:flex; justify-content:space-between; gap: 10px; padding: 10px; border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; margin-bottom: 8px;">
                             <div style="min-width:0;">
                                 <div style="font-size: 12px; font-weight: 900; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t}</div>
-                                <div style="margin-top: 4px; font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${id ? id + '…' : ''}</div>
+                                <div style="margin-top: 4px; font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${id ? id + '...' : ''}</div>
                             </div>
-                            <div style="font-size: 11px; color: #6b7280; font-weight: 1000;">${s || '—'}</div>
+                            <div style="font-size: 11px; color: #6b7280; font-weight: 1000;">${s || 'N/A'}</div>
                         </div>`;
                     }).join('');
                     content.innerHTML = `
@@ -26916,14 +31344,14 @@ async function loadRecommendationsForFilter() {
                 // Overview (default)
                 const lifecycle = this._deriveLifecycleFromWorkspace(payload);
                 const issuesHtml = issues.length
-                    ? `<div style="margin-top: 8px; padding: 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; font-size: 12px; color: #92400e;">${issues.map(i => `• ${String(i).replace(/</g,'&lt;')}`).join('<br>')}</div>`
+                    ? `<div style="margin-top: 8px; padding: 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 12px; font-size: 12px; color: #92400e;">${issues.map(i => ` | ${String(i).replace(/</g,'&lt;')}`).join('<br>')}</div>`
                     : '<div style="margin-top: 8px; font-size: 12px; color: #6b7280;">No integrity issues reported.</div>';
 
                 content.innerHTML = `
                     <div style="padding: 12px; border: 1px solid rgba(148,163,184,0.18); border-radius: 14px; background: #ffffff;">
                         <div style="font-size: 12px; font-weight: 1000; color: #0f172a; margin-bottom: 6px;">Workspace Overview</div>
                         <div style="font-size: 12px; color: #475569; line-height: 1.55;">${String(offerName).replace(/</g,'&lt;')} is <strong>${lifecycle}</strong>.</div>
-                        <div style="margin-top: 8px; font-size: 11px; color: #6b7280;">Frameworks: <strong>${frameworksArr.length}</strong> • Deliverables: <strong>${deliverables.length}</strong> • Resources: <strong>${creatives.length}</strong></div>
+                        <div style="margin-top: 8px; font-size: 11px; color: #6b7280;">Frameworks: <strong>${frameworksArr.length}</strong>  | Deliverables: <strong>${deliverables.length}</strong>  | Resources: <strong>${creatives.length}</strong></div>
                     </div>
 
                     <div style="margin-top: 10px; padding: 12px; border: 1px solid rgba(148,163,184,0.18); border-radius: 14px; background: #ffffff;">
@@ -26944,7 +31372,7 @@ async function loadRecommendationsForFilter() {
                             </select>
                             <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.relinkDeliverableFromUi()">Relink</button>
                         </div>
-                        <div style="font-size: 11px; color: #6b7280;">Relink is the "make it real" fix when brief exists but isn’t linked.</div>
+                        <div style="font-size: 11px; color: #6b7280;">Relink is the "make it real" fix when brief exists but isn linked.</div>
                     </div>
                 `;
             },
@@ -26980,7 +31408,7 @@ async function loadRecommendationsForFilter() {
                 const drawer = document.getElementById('obNamingDrawer');
                 const body = document.getElementById('obNamingDrawerBody');
                 if (drawer) drawer.style.display = 'block';
-                if (body) body.innerHTML = '<div style="padding: 10px; font-size: 12px; color: #6b7280;">Running…</div>';
+                if (body) body.innerHTML = '<div style="padding: 10px; font-size: 12px; color: #6b7280;">Running...</div>';
                 this.runAutoFixNaming();
             },
 
@@ -27045,12 +31473,12 @@ async function loadRecommendationsForFilter() {
                     const changed = !!r?.changed;
                     return `
                         <div style="padding: 10px; border: 1px solid rgba(148,163,184,0.18); border-radius: 12px; margin-bottom: 8px;">
-                            <div style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${String(r?.offerId || offerId).slice(0, 8)}…</div>
+                            <div style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">${String(r?.offerId || offerId).slice(0, 8)}...</div>
                             <div style="margin-top: 6px; font-size: 12px; font-weight: 1000; color: #0f172a;">Before</div>
-                            <div style="font-size: 12px; color: #0f172a;">${b || '—'}</div>
+                            <div style="font-size: 12px; color: #0f172a;">${b || 'N/A'}</div>
                             <div style="margin-top: 6px; font-size: 12px; font-weight: 1000; color: #0f172a;">After</div>
-                            <div style="font-size: 12px; color: #0f172a;">${a || '—'}</div>
-                            <div style="margin-top: 6px; font-size: 11px; color: #6b7280;">${changed ? 'Changed' : 'No change'}${reason ? ` • ${reason}` : ''}</div>
+                            <div style="font-size: 12px; color: #0f172a;">${a || 'N/A'}</div>
+                            <div style="margin-top: 6px; font-size: 11px; color: #6b7280;">${changed ? 'Changed' : 'No change'}${reason ? `  | ${reason}` : ''}</div>
                         </div>
                     `;
                 }).join('');
@@ -27213,6 +31641,9 @@ async function loadRecommendationsForFilter() {
                         tAf.dataset.bound = 'true';
                     }
                 } catch (_) {}
+
+                // Honor the configured default view (Offer Library by default).
+                try { this.setSubTab(this.subTab || 'library'); } catch (_) {}
                 
                 // Update sticky positioning on init (if not already set up)
                 const self = this;
@@ -27360,6 +31791,36 @@ async function loadRecommendationsForFilter() {
                     item.equipCostPerUnit = parseFloat(value) || 0;
                 } else if (field === 'baseUnitPrice') {
                     item.baseUnitPrice = parseFloat(value) || 0;
+                    
+                    // SMART SYNC: If updating Package Price item, sync to bundle price
+                    if (String(item.name || '').trim().toLowerCase() === 'package price') {
+                        const newPrice = item.baseUnitPrice;
+                        this.offer.bundlePrice = newPrice;
+                        this.offer.pricingStrategy = 'bundlePrice';
+                        
+                        // Update UI inputs if they exist
+                        const bpInput = document.getElementById('offerBuilderBundlePrice');
+                        if (bpInput) bpInput.value = newPrice;
+
+                        // IMPORTANT: Do not auto-fill the direct price entry box.
+                        // That input is for typing a new price, not displaying the current one.
+                        
+                        // Show current price indicator updates
+                        const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                        if (currentPriceValue) currentPriceValue.textContent = `$${Number(newPrice).toFixed(2)}`;
+                        const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                        if (currentPriceEl) currentPriceEl.style.display = 'block';
+                        
+                        // Force radio selection
+                        const stratRadio = document.querySelector('input[name="offerBuilderPricingStrategy"][value="bundlePrice"]');
+                        if (stratRadio) stratRadio.checked = true;
+                        
+                        // Force refresh of the top-level inputs too by updating state
+                        const percentOff = document.getElementById('offerBuilderPercentOff');
+                        if (percentOff) percentOff.value = '';
+                        const dollarOff = document.getElementById('offerBuilderDollarOff');
+                        if (dollarOff) dollarOff.value = '';
+                    }
                 } else if (field === 'name') {
                     item.name = value;
                 } else if (field === 'notes') {
@@ -27446,11 +31907,55 @@ async function loadRecommendationsForFilter() {
                     guidance.style.display = (!name || name.trim() === '') ? 'block' : 'none';
                 }
 
+                // Keep placeholder meaningful if the user clears the name.
+                try { this._updateOfferNameInputUI(); } catch (_) {}
+
+                // Keep active-offer headers in sync.
+                try { this.ensureOfferId(); } catch (_) {}
+                try { this.setActiveOffer(this.offer.offer_id, name); } catch (_) {}
                 try { this._renderActiveOfferLabel(); } catch (_) {}
+
+                // If the title changes (e.g., "Mount 3 TVs"), re-sync inferred quantities.
+                // Debounced to avoid re-running on every keystroke.
+                try { clearTimeout(this._qtySyncDebounceTimer); } catch (_) {}
+                try {
+                    this._qtySyncDebounceTimer = setTimeout(() => {
+                        try { this.syncDetectedQuantitiesFromContext({ silent: true }); } catch (_) {}
+                    }, 350);
+                } catch (_) {}
+
+                // Price inference: if the user typed a price into the name (common),
+                // auto-apply it to the Offer Price window (without overwriting explicit pricing).
+                try { clearTimeout(this._priceInferDebounceTimer); } catch (_) {}
+                try {
+                    this._priceInferDebounceTimer = setTimeout(() => {
+                        try { this._autoApplyInferredPrice({ silent: true }); } catch (_) {}
+                    }, 260);
+                } catch (_) {}
             },
             
             updateField(field, value) {
                 this.offer[field] = value;
+
+                // Price inference: run when price-bearing text changes, even on brand-new offers
+                // that have no line items yet.
+                try {
+                    const f = String(field || '').trim();
+                    const watched = new Set([
+                        'headline',
+                        'oneSentencePromise',
+                        'offerDescription',
+                        'whatsIncluded',
+                        'priceQuestionLine',
+                        'competitorPriceRange'
+                    ]);
+                    if (watched.has(f)) {
+                        try { clearTimeout(this._priceInferDebounceTimer); } catch (_) {}
+                        this._priceInferDebounceTimer = setTimeout(() => {
+                            try { this._autoApplyInferredPrice({ silent: true }); } catch (_) {}
+                        }, 260);
+                    }
+                } catch (_) {}
             },
             
             toggleSection(sectionId) {
@@ -27562,6 +32067,20 @@ async function loadRecommendationsForFilter() {
                 if (strategy === 'percentOff') setVal('offerBuilderPercentOff', offer.percentOff);
                 if (strategy === 'dollarOff') setVal('offerBuilderDollarOff', offer.dollarOff);
                 if (strategy === 'bundlePrice') setVal('offerBuilderBundlePrice', offer.bundlePrice);
+
+                // Display-only: keep the current price indicator consistent.
+                // Do NOT populate the direct price entry input from state.
+                try {
+                    const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                    const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                    const bp = Number(offer.bundlePrice);
+                    if (strategy === 'bundlePrice' && isFinite(bp) && bp > 0) {
+                        if (currentPriceValue) currentPriceValue.textContent = `$${bp.toFixed(2)}`;
+                        if (currentPriceEl) currentPriceEl.style.display = 'block';
+                    } else {
+                        if (currentPriceEl) currentPriceEl.style.display = 'none';
+                    }
+                } catch (_) {}
             },
             
             handleDirectPriceInput(value) {
@@ -27588,45 +32107,62 @@ async function loadRecommendationsForFilter() {
                     helpEl.style.display = 'none';
                 }
             },
+
+            applyDirectPriceIfPresent(opts = {}) {
+                const silent = !!(opts && opts.silent);
+                try {
+                    const priceInput = document.getElementById('offerBuilderDirectPrice');
+                    if (!priceInput) return false;
+                    const raw = String(priceInput.value || '').trim();
+                    if (!raw) return false;
+
+                    const price = parseFloat(raw);
+                    if (!isFinite(price) || price <= 0) return false;
+
+                    // Set to fixed bundle price mode
+                    this.offer.pricingStrategy = 'bundlePrice';
+                    this.offer.bundlePrice = price;
+
+                    // Update radio + bundle price input
+                    try {
+                        const bundleRadio = document.querySelector('input[name="offerBuilderPricingStrategy"][value="bundlePrice"]');
+                        if (bundleRadio) bundleRadio.checked = true;
+
+                        const container = document.getElementById('offerBuilderBundlePriceContainer');
+                        if (container) container.style.display = 'block';
+
+                        const bundlePriceInput = document.getElementById('offerBuilderBundlePrice');
+                        if (bundlePriceInput) bundlePriceInput.value = String(price);
+                    } catch (_) {}
+
+                    // Show current price indicator immediately
+                    try {
+                        const currentPriceDisplay = document.getElementById('offerBuilderCurrentPrice');
+                        const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                        if (currentPriceDisplay && currentPriceValue) {
+                            currentPriceValue.textContent = `$${Number(price).toFixed(2)}`;
+                            currentPriceDisplay.style.display = 'block';
+                        }
+                    } catch (_) {}
+
+                    try { this.recalculateOffer(); } catch (_) {}
+                    if (!silent) {
+                        try { showToast(`Offer price set to $${Number(price).toFixed(2)}`, 'success'); } catch (_) {}
+                    }
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            },
             
             applyDirectPrice() {
-                const priceInput = document.getElementById('offerBuilderDirectPrice');
-                const price = parseFloat(priceInput.value) || 0;
-                
-                if (price <= 0) {
+                const ok = this.applyDirectPriceIfPresent({ silent: false });
+                if (!ok) {
                     showToast('Please enter a price greater than $0', 'error');
                     return;
                 }
-                
-                // Set to fixed bundle price mode
-                this.offer.pricingStrategy = 'bundlePrice';
-                this.offer.bundlePrice = price;
-                
-                // Update radio button
-                const bundleRadio = document.querySelector('input[name="offerBuilderPricingStrategy"][value="bundlePrice"]');
-                if (bundleRadio) bundleRadio.checked = true;
-                
-                // Show the bundle price input and set its value
-                document.getElementById('offerBuilderBundlePriceContainer').style.display = 'block';
-                const bundlePriceInput = document.getElementById('offerBuilderBundlePrice');
-                if (bundlePriceInput) bundlePriceInput.value = price;
-                
-                // Show current price indicator
-                const currentPriceDisplay = document.getElementById('offerBuilderCurrentPrice');
-                const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
-                if (currentPriceDisplay && currentPriceValue) {
-                    currentPriceValue.textContent = `$${price.toFixed(2)}`;
-                    currentPriceDisplay.style.display = 'block';
-                }
-                
-                // Recalculate
-                this.recalculateOffer();
-                
-                showToast(`Offer price set to $${price.toFixed(2)}`, 'success');
-                
-                // Clear the direct price input
-                priceInput.value = '';
-                document.getElementById('offerBuilderPriceHelp').style.display = 'none';
+
+                try { document.getElementById('offerBuilderPriceHelp').style.display = 'none'; } catch (_) {}
             },
             
             clearOfferPrice() {
@@ -27648,25 +32184,510 @@ async function loadRecommendationsForFilter() {
                 showToast('Offer price cleared - now calculating from services', 'info');
             },
             
+            
+            detectServicesFromContext(opts = {}) {
+                // Gather all text context
+                const packageItem = this.offer.lineItems.find(it => String(it.name || '').trim().toLowerCase() === 'package price');
+
+                // Active offer name can be set even when the builder form name isn't populated yet.
+                let activeName = '';
+                try {
+                    activeName = this._safeTrim(this.activeOfferName);
+                    if (!activeName) {
+                        const a = (typeof this.getActiveOffer === 'function') ? this.getActiveOffer() : null;
+                        activeName = this._safeTrim(a && a.name);
+                    }
+                } catch (_) {
+                    activeName = '';
+                }
+                
+                // Combine text sources for analysis
+                const safeArrText = (v) => {
+                    try {
+                        if (Array.isArray(v)) return v.map(x => String(x || '')).join(' ');
+                    } catch (_) {}
+                    return '';
+                };
+
+                const sources = [
+                    this.offer.headline || '',
+                    this.offer.oneSentencePromise || '',
+                    this.offer.name || '',
+                    activeName || '',
+                    this.offer.whatsIncluded || '',
+                    this.offer.offerDescription || this.offer.offer_description || '',
+                    this.offer.specialInstructions || '',
+                    this.offer.bookingPageMicrocopy || '',
+                    this.offer.techBroadcastMessage || '',
+                    safeArrText(this.offer.whatToSayInHome),
+                    (packageItem ? packageItem.notes : '') || ''
+                ];
+                
+                const text = sources.join(' ').toLowerCase();
+                const foundServices = [];
+
+                const parseQty = (re) => {
+                    try {
+                        const m = text.match(re);
+                        const n = m ? Number(m[1]) : NaN;
+                        if (!isFinite(n) || n <= 0) return 1;
+                        return Math.min(25, Math.max(1, Math.floor(n)));
+                    } catch (_) {
+                        return 1;
+                    }
+                };
+
+                const parseWordQty = (re) => {
+                    try {
+                        const m = text.match(re);
+                        const w = m ? String(m[1] || '').toLowerCase() : '';
+                        const map = {
+                            one: 1,
+                            two: 2,
+                            three: 3,
+                            four: 4,
+                            five: 5,
+                            six: 6,
+                            seven: 7,
+                            eight: 8,
+                            nine: 9,
+                            ten: 10
+                        };
+                        const n = map[w];
+                        if (!isFinite(n) || n <= 0) return 1;
+                        return Math.min(25, Math.max(1, Math.floor(n)));
+                    } catch (_) {
+                        return 1;
+                    }
+                };
+
+                const parseQtyFirst = (regexes) => {
+                    for (const re of (Array.isArray(regexes) ? regexes : [])) {
+                        const n = parseQty(re);
+                        if (n > 1) return n;
+                    }
+                    return 1;
+                };
+
+                const qtyForRule = (id) => {
+                    // NOTE: Prefer numbers tied to the service noun (e.g., "3 TVs") and ignore unrelated counts (e.g., "1 visit").
+                    if (id === 'tv-install') {
+                        const tvRegexes = [
+                            // "mount 3 tvs" / "install 3 televisions"
+                            /(?:mount|install|hang)\s*(\d+)\s*(?:x\s*)?(?:tv|tvs|television|televisions|screen|screens|monitor|monitors|display|displays)\b/i,
+                            // "3 tvs"
+                            /(\d+)\s*(?:x\s*)?(?:tv|tvs|television|televisions|screen|screens|monitor|monitors|display|displays)\b/i,
+                            // "tv x3" / "tvs 3"
+                            /(?:tv|tvs|television|televisions|screen|screens|monitor|monitors|display|displays)\s*(?:x\s*)?(\d+)\b/i,
+                            // "(3) tvs"
+                            /\(\s*(\d+)\s*\)\s*(?:tv|tvs|television|televisions|screen|screens|monitor|monitors|display|displays)\b/i
+                        ];
+                        const n = parseQtyFirst(tvRegexes);
+                        if (n > 1) return n;
+                        // Word numbers: "three TVs"
+                        const wn = parseWordQty(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*(?:tv|tvs|television|televisions|screen|screens|monitor|monitors|display|displays)\b/i);
+                        return wn;
+                    }
+                    if (id === 'tv-mount-wall') {
+                        const n = parseQtyFirst([
+                            /(?:mount|hang|install)\s*(\d+)\s*(?:x\s*)?(?:tv|tvs|television|televisions)\b/i,
+                            /(\d+)\s*(?:x\s*)?(?:tv|tvs|television|televisions)\s*(?:wall\s*)?mount\b/i
+                        ]);
+                        if (n > 1) return n;
+                        return parseWordQty(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*(?:tv|tvs|television|televisions)\b/i);
+                    }
+                    if (id === 'security-system') {
+                        const n = parseQty(/(\d+)\s*(?:x\s*)?(?:camera|cameras)\b/i);
+                        if (n > 1) return n;
+                        const wn = parseWordQty(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*(?:camera|cameras)\b/i);
+                        return wn;
+                    }
+                    if (id === 'security-camera-single') {
+                        // Treat explicit "one" wording as a strong hint.
+                        const wn = parseWordQty(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*(?:front\s*door\s*)?(?:security\s*)?camera\b/i);
+                        if (wn > 1) return wn;
+                        return 1;
+                    }
+                    if (id === 'doorbell-camera') {
+                        const n = parseQty(/(\d+)\s*(?:x\s*)?(?:doorbell|doorbells)\b/i);
+                        if (n > 1) return n;
+                        const wn = parseWordQty(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b\s*(?:doorbell|doorbells)\b/i);
+                        return wn;
+                    }
+                    if (id === 'smart-lock-install') return parseQty(/(\d+)\s*(?:x\s*)?(?:lock|locks|deadbolt|deadbolts|keypad|keypads)\b/i);
+                    if (id === 'thermostat-install') return parseQty(/(\d+)\s*(?:x\s*)?(?:thermostat|thermostats)\b/i);
+                    if (id === 'wifi-setup') return parseQty(/(\d+)\s*(?:x\s*)?(?:router|routers|mesh|nodes)\b/i);
+                    return 1;
+                };
+                
+                // Detection Rules
+                const rules = [
+                    { id: 'tv-mount-wall', name: 'TV Wall Mount (Basic)', keywords: ['tv wall mount', 'wall mount', 'tv mount'], exclude: [] },
+                    { id: 'tv-install', name: 'TV Installation', keywords: ['tv', 'television', 'mount', 'screen', 'monitor', 'display'], exclude: [] },
+                    { id: 'soundbar-mount', name: 'Soundbar Mount', keywords: ['soundbar', 'audio bar', 'speaker bar'], exclude: [] },
+                    { id: 'security-system', name: 'Security System Install', keywords: ['security system', 'cctv', 'surveillance system', 'camera system', 'cameras'], exclude: ['doorbell'], excludeIfPresent: ['security-system'] },
+                    { id: 'security-camera-single', name: 'Single Security Camera', keywords: ['front door camera', 'security camera', 'camera'], exclude: ['doorbell'], excludeIfPresent: ['security-camera-single'] },
+                    { id: 'doorbell-camera', name: 'Video Doorbell', keywords: ['doorbell', 'ring', 'nest hello', 'video door'], exclude: [], excludeIfPresent: ['doorbell-camera'] },
+                    { id: 'smart-lock-install', name: 'Smart Lock', keywords: ['lock', 'deadbolt', 'keypad', 'entry'], exclude: ['doorbell'], excludeIfPresent: ['smart-lock-install'] },
+                    { id: 'thermostat-install', name: 'Smart Thermostat', keywords: ['thermostat', 'ecobee', 'nest learning', 'hvac control', 'temperature'], exclude: [], excludeIfPresent: ['thermostat-install'] },
+                    { id: 'wifi-setup', name: 'WiFi / Mesh Setup', keywords: ['wifi', 'wi-fi', 'mesh', 'router', 'network', 'internet', 'streaming setup', 'streaming'], exclude: [], excludeIfPresent: ['wifi-setup'] }
+                ];
+                
+                const includeExisting = !!(opts && opts.includeExisting);
+                // existing IDs to avoid dupes
+                const existingIds = this.offer.lineItems.map(i => i.serviceId);
+                
+                rules.forEach(rule => {
+                    // Skip if already present (by ID)
+                    if (!includeExisting && existingIds.includes(rule.id)) return;
+                    
+                    // Check exclusion
+                    if (rule.exclude.some(ex => text.includes(ex))) return;
+                    
+                    // Check inclusion
+                    if (rule.keywords.some(kw => text.includes(kw))) {
+                        // Heuristic: if it's a generic "camera" match and we also have plural/system language, prefer the system install.
+                        try {
+                            if (rule.id === 'security-camera-single') {
+                                const hasPlural = text.includes('cameras') || /\b(\d+)\s*(?:x\s*)?(?:camera|cameras)\b/i.test(text);
+                                const hasSystem = text.includes('system');
+                                if (hasPlural || hasSystem) return;
+                            }
+                        } catch (_) {}
+                        foundServices.push({
+                            ...rule,
+                            qty: qtyForRule(rule.id)
+                        });
+                    }
+                });
+                
+                return foundServices;
+            },
+
+            _inferOfferPriceFromContext(opts = {}) {
+                try {
+                    const offer = (this.offer && typeof this.offer === 'object') ? this.offer : {};
+                    const items = Array.isArray(offer.lineItems) ? offer.lineItems : [];
+                    const packageItem = items.find(it => String(it && it.name || '').trim().toLowerCase() === 'package price');
+
+                    let activeName = '';
+                    try {
+                        activeName = this._safeTrim(this.activeOfferName);
+                        if (!activeName) {
+                            const a = (typeof this.getActiveOffer === 'function') ? this.getActiveOffer() : null;
+                            activeName = this._safeTrim(a && a.name);
+                        }
+                    } catch (_) {
+                        activeName = '';
+                    }
+
+                    const sources = [
+                        offer.headline || '',
+                        offer.oneSentencePromise || '',
+                        offer.name || '',
+                        activeName || '',
+                        offer.offerDescription || '',
+                        offer.whatsIncluded || '',
+                        offer.priceQuestionLine || '',
+                        offer.competitorPriceRange || '',
+                        (packageItem ? packageItem.notes : '') || ''
+                    ].map(x => String(x || '')).filter(Boolean);
+
+                    const textRaw = sources.join('\n');
+                    const text = textRaw.toLowerCase();
+                    if (!text.trim()) return { price: NaN, reason: 'no_text' };
+
+                    const clampPrice = (n) => {
+                        const v = Number(n);
+                        if (!isFinite(v)) return NaN;
+                        if (v < 20 || v > 20000) return NaN;
+                        return v;
+                    };
+
+                    const scoreCandidate = (idx, hasDollar) => {
+                        const windowSize = 46;
+                        const left = Math.max(0, idx - windowSize);
+                        const right = Math.min(text.length, idx + windowSize);
+                        const around = text.slice(left, right);
+
+                        let score = 0;
+                        if (hasDollar) score += 4;
+
+                        if (/\b(only|just|for|bundle|package|price|special|deal|today|now|flat|starting|from)\b/.test(around)) score += 6;
+                        if (/\b(tech|payout|profit|margin|equip|equipment|cost)\b/.test(around)) score -= 8;
+                        if (/\b35\s*%\b/.test(around)) score -= 8;
+
+                        if (/\b(price|only|just)\b\s*[:=-]?\s*\$/.test(around)) score += 3;
+                        return score;
+                    };
+
+                    const candidates = [];
+                    const pushCandidate = (rawNum, idx, hasDollar, pattern) => {
+                        const cleaned = String(rawNum || '').replace(/,/g, '');
+                        const n = clampPrice(parseFloat(cleaned));
+                        if (!isFinite(n) || n <= 0) return;
+                        const score = scoreCandidate(idx, hasDollar);
+                        candidates.push({ n, score, idx, hasDollar: !!hasDollar, pattern: String(pattern || '') });
+                    };
+
+                    // $199 / $1,299.00
+                    {
+                        const re = /\$\s*([0-9]{2,5}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/g;
+                        let m;
+                        while ((m = re.exec(textRaw)) !== null) {
+                            pushCandidate(m[1], m.index, true, '$');
+                        }
+                    }
+
+                    // "price: 199" / "only 199" when $ isn't used.
+                    {
+                        const re = /\b(price|only|just|for|bundle|package|special|deal|now|starting|from)\b[^0-9$]{0,18}\$?\s*([0-9]{2,5}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?)/ig;
+                        let m;
+                        while ((m = re.exec(textRaw)) !== null) {
+                            pushCandidate(m[2], m.index, false, 'kw');
+                        }
+                    }
+
+                    if (!candidates.length) return { price: NaN, reason: 'no_price_found' };
+                    candidates.sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+                    const best = candidates[0];
+                    return { price: best ? best.n : NaN, reason: best ? (best.pattern || 'match') : 'none' };
+                } catch (_) {
+                    return { price: NaN, reason: 'error' };
+                }
+            },
+
+            _autoApplyInferredPrice(opts = {}) {
+                try {
+                    const silent = !!(opts && opts.silent);
+                    const force = !!(opts && opts.force);
+                    const offer = (this.offer && typeof this.offer === 'object') ? this.offer : {};
+                    if (!Array.isArray(offer.lineItems)) offer.lineItems = [];
+
+                    // If line items already compute a real price, don't override.
+                    if (!force) {
+                        try {
+                            const hasPriced = offer.lineItems.some(it => {
+                                const qty = Number(it && it.qty);
+                                const unit = Number(it && (it.baseUnitPrice != null ? it.baseUnitPrice : it.unitPrice));
+                                return isFinite(qty) && qty > 0 && isFinite(unit) && unit > 0;
+                            });
+                            if (hasPriced && typeof this.calculateTotals === 'function') {
+                                const totals = this.calculateTotals();
+                                const cp = Number(totals && totals.customerPrice);
+                                if (isFinite(cp) && cp > 0) return false;
+                            }
+                        } catch (_) {}
+                    }
+
+                    const packageItem = offer.lineItems.find(it => String(it && it.name || '').trim().toLowerCase() === 'package price');
+                    const hasPackagePrice = packageItem && isFinite(Number(packageItem.baseUnitPrice)) && Number(packageItem.baseUnitPrice) > 0;
+                    const hasExplicitOverride = String(offer.pricingStrategy || '') === 'bundlePrice' && isFinite(Number(offer.bundlePrice)) && Number(offer.bundlePrice) > 0;
+
+                    if (!force && (hasExplicitOverride || hasPackagePrice)) return false;
+
+                    const inferred = this._inferOfferPriceFromContext();
+                    const price = Number(inferred && inferred.price);
+                    if (!isFinite(price) || price <= 0) return false;
+
+                    offer.pricingStrategy = 'bundlePrice';
+                    offer.bundlePrice = price;
+
+                    try {
+                        const bundleRadio = document.querySelector('input[name="offerBuilderPricingStrategy"][value="bundlePrice"]');
+                        if (bundleRadio) bundleRadio.checked = true;
+                        const container = document.getElementById('offerBuilderBundlePriceContainer');
+                        if (container) container.style.display = 'block';
+                        const bundlePriceInput = document.getElementById('offerBuilderBundlePrice');
+                        if (bundlePriceInput) bundlePriceInput.value = String(price);
+                    } catch (_) {}
+
+                    try {
+                        const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                        const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                        if (currentPriceValue) currentPriceValue.textContent = `$${Number(price).toFixed(2)}`;
+                        if (currentPriceEl) currentPriceEl.style.display = 'block';
+                    } catch (_) {}
+
+                    try { this.recalculateOffer(); } catch (_) {}
+                    if (!silent) {
+                        try { showToast(`Price auto-detected: $${Number(price).toFixed(0)}`, 'success'); } catch (_) {}
+                    }
+                    return true;
+                } catch (_) {
+                    return false;
+                }
+            },
+
+            syncDetectedQuantitiesFromContext(opts = {}) {
+                const silent = !!(opts && opts.silent);
+                const skipRender = !!(opts && opts.skipRender);
+                const skipRecalculate = !!(opts && opts.skipRecalculate);
+                try {
+                    if (!this.offer || !Array.isArray(this.offer.lineItems) || this.offer.lineItems.length === 0) return false;
+
+                    const detected = this.detectServicesFromContext({ includeExisting: true });
+                    let updated = 0;
+
+                    detected.forEach((svc) => {
+                        const id = String(svc && svc.id || '').trim();
+                        if (!id) return;
+                        const nextQty = Math.max(1, parseInt(svc.qty) || 1);
+                        if (nextQty <= 1) return;
+
+                        // Prefer matching by serviceId, but fall back to matching by name (older/manual line items).
+                        const ruleName = String(svc && svc.name || '').trim().toLowerCase();
+                        const item = this.offer.lineItems.find(it => String(it && it.serviceId || '') === id)
+                            || this.offer.lineItems.find(it => {
+                                const nm = String(it && it.name || '').trim().toLowerCase();
+                                if (!nm) return false;
+                                if (ruleName && nm === ruleName) return true;
+                                // Small, targeted fallback for TV installs.
+                                if (id === 'tv-install' && (nm.includes('tv') || nm.includes('television'))) return true;
+                                return false;
+                            });
+                        if (!item) return;
+
+                        const curQty = Math.max(1, parseInt(item.qty) || 1);
+                        const notes = String(item.notes || '');
+                        const notesLower = notes.toLowerCase();
+                        const isAutoNotes = (!notes.trim()) || notesLower.includes('auto-detected');
+                        const allowAutoBump = (curQty === 1) || isAutoNotes;
+                        if (!allowAutoBump) return;
+
+                        if (nextQty > curQty) {
+                            item.qty = nextQty;
+                            updated++;
+                        }
+
+                        // Ensure TV has pricing + a clear note that includes qty.
+                        if (id === 'tv-install') {
+                            if (!item.baseUnitPrice || Number(item.baseUnitPrice) <= 0) item.baseUnitPrice = 150;
+                            // Don't clobber user-entered notes.
+                            if (isAutoNotes) {
+                                item.notes = `Auto-detected from description: TV Installation - $150 each${item.qty > 1 ? ` (Qty: ${item.qty})` : ''}`;
+                            }
+                        }
+                    });
+
+                    if (updated > 0) {
+                        if (!skipRender) {
+                            try { this.renderLineItems(); } catch (_) {}
+                        }
+                        if (!skipRecalculate) {
+                            try { this.recalculateOffer(); } catch (_) {}
+                        }
+                        if (!silent) showToast(`Updated quantities from description (${updated}).`, 'success');
+                        return true;
+                    }
+
+                    return false;
+                } catch (_) {
+                    return false;
+                }
+            },
+
+            autoFillServices(silent = false) {
+                const services = this.detectServicesFromContext({ includeExisting: false });
+                
+                if (services.length === 0) {
+                    if (!silent) showToast('No obvious services found in description.', 'info');
+                    return false;
+                }
+                
+                let addedCount = 0;
+                services.forEach(svc => {
+                    // Default values for new services
+                    const newItem = {
+                        id: String(Date.now() + Math.random()),
+                        serviceId: svc.id,
+                        name: svc.name,
+                        qty: Math.max(1, parseInt(svc.qty) || 1),
+                        baseUnitPrice: 0, // In a bundle, these are usually covered by package price
+                        equipCostPerUnit: 0,
+                        equipMode: 'BYO', // Safest default
+                        isIncludedInOffer: true,
+                        notes: 'Auto-detected from description'
+                    };
+                    
+                    // Special defaults per type
+                    if (svc.id === 'tv-install') {
+                        newItem.baseUnitPrice = 150;
+                        newItem.notes = `Auto-detected from description: TV Installation - $150 each${newItem.qty > 1 ? ` (Qty: ${newItem.qty})` : ''}`;
+                    } else {
+                        if (newItem.qty > 1) newItem.notes = `Auto-detected from description (Qty: ${newItem.qty})`;
+                    }
+                    if (svc.id === 'security-system') { newItem.equipMode = 'included'; newItem.equipCostPerUnit = 50; }
+                    
+                    this.offer.lineItems.push(newItem);
+                    addedCount++;
+                });
+                
+                if (addedCount > 0) {
+                    this.renderLineItems();
+                    // If the offer text contains a clear package price, apply it automatically.
+                    try { this._autoApplyInferredPrice({ silent: true }); } catch (_) {}
+                    this.recalculateOffer();
+                    if (!silent) showToast(`Auto-added ${addedCount} services based on description.`, 'success');
+                    return true;
+                }
+                
+                return false;
+            },
+
             calculateTotals() {
                 const { lineItems, pricingStrategy, percentOff, dollarOff, bundlePrice } = this.offer;
                 
-                const subtotalBase = lineItems.reduce((sum, item) => {
-                    return sum + (item.baseUnitPrice * item.qty);
-                }, 0);
+                // Check if this offer is implicitly a bundle (has "Package Price" item)
+                const packageItem = lineItems.find(it => String(it.name || '').trim().toLowerCase() === 'package price');
+                const isImplicitBundle = !!packageItem;
                 
-                // Equipment cost (only for items where equipMode != "BYO")
-                const equipCostTotal = lineItems.reduce((sum, item) => {
-                    if (item.equipMode !== 'BYO') {
-                        return sum + (item.equipCostPerUnit * item.qty);
-                    }
-                    return sum;
-                }, 0);
+                // If it IS a bundle (explicit or implicit), the base calculation changes.
+                // In bundle mode, the "Package Price" item IS the price. 
+                // Other items are effectively $0 for the customer (included).
                 
-                // Customer price based on pricing strategy
+                let subtotalBase = 0;
+                let equipCostTotal = 0;
+
+                if (isImplicitBundle) {
+                    // Bundle Mode: Price is determined by the Package Price item (or bundlePrice override)
+                    // The subtotal is JUST the package price item's price.
+                    // (Unless we want to sum up other items if they have prices? 
+                    //  No, "Congruence" means the Package Price card is the truth.)
+                    
+                    subtotalBase = packageItem.baseUnitPrice * packageItem.qty;
+
+                    // Equip cost is still sum of all items
+                    equipCostTotal = lineItems.reduce((sum, item) => {
+                        if (item.equipMode !== 'BYO') {
+                            return sum + (item.equipCostPerUnit * item.qty);
+                        }
+                        return sum;
+                    }, 0);
+                    
+                } else {
+                    // Standard Sum Mode
+                    subtotalBase = lineItems.reduce((sum, item) => {
+                        return sum + (item.baseUnitPrice * item.qty);
+                    }, 0);
+                    
+                    equipCostTotal = lineItems.reduce((sum, item) => {
+                        if (item.equipMode !== 'BYO') {
+                            return sum + (item.equipCostPerUnit * item.qty);
+                        }
+                        return sum;
+                    }, 0);
+                }
+                
+                // Customer price based on pricing strategy OR implicit bundle
                 let customerPrice = subtotalBase;
+                
                 if (pricingStrategy === 'bundlePrice' && bundlePrice > 0) {
+                    // Explicit override takes precedence
                     customerPrice = bundlePrice;
+                } else if (isImplicitBundle) {
+                    // Implicit bundle: customer price IS the package item price (already in subtotalBase)
+                    customerPrice = subtotalBase;
                 } else if (pricingStrategy === 'percentOff' && percentOff > 0) {
                     customerPrice = subtotalBase * (1 - percentOff / 100);
                 } else if (pricingStrategy === 'dollarOff' && dollarOff > 0) {
@@ -27691,12 +32712,36 @@ async function loadRecommendationsForFilter() {
             
             recalculateOffer() {
                 if (this.offer.lineItems.length === 0) {
+                    // Even with zero services, still try to infer a package price from the offer text
+                    // so the Offer Price window auto-populates for new offers.
+                    try { this._autoApplyInferredPrice({ silent: true }); } catch (_) {}
+
+                    // Keep Offer Details "Current Offer Price" window synced.
+                    try {
+                        const totals = this.calculateTotals();
+                        const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                        const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                        const clearBtn = document.getElementById('offerBuilderClearPriceBtn');
+
+                        if (currentPriceValue) currentPriceValue.textContent = `$${Number(totals.customerPrice || 0).toFixed(2)}`;
+                        if (currentPriceEl) currentPriceEl.style.display = 'block';
+
+                        const explicitOverride = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice' && Number(this.offer && this.offer.bundlePrice || 0) > 0;
+                        if (clearBtn) clearBtn.style.display = explicitOverride ? '' : 'none';
+                    } catch (_) {}
+
                     document.getElementById('offerBuilderResults').innerHTML = `
                         <div style="text-align: center; padding: 40px; color: #6b7280; font-size: 14px;">
                             Add services to see calculations
                         </div>
                     `;
                     document.getElementById('offerBuilderWarnings').innerHTML = '';
+                    try {
+                        const totals = this.calculateTotals();
+                        this._refreshMessagingSuggestionsCache({ totals });
+                        this._refreshMessagingSuggestionsUi();
+                    } catch (_) {}
+
                     this.renderStandards();
                     try { this.queueDraftAutosave({ reason: 'recalc_empty' }); } catch (_) {}
                     return;
@@ -27731,8 +32776,26 @@ async function loadRecommendationsForFilter() {
                 }
                 
                 const totals = this.calculateTotals();
+                try {
+                    this._refreshMessagingSuggestionsCache({ totals });
+                    this._refreshMessagingSuggestionsUi();
+                } catch (_) {}
                 const warnings = this.validateOffer();
                 const standards = this.evaluateStandards(totals);
+
+                // Keep Offer Details "Current Offer Price" window synced to the computed total.
+                try {
+                    const currentPriceValue = document.getElementById('offerBuilderCurrentPriceDisplay');
+                    const currentPriceEl = document.getElementById('offerBuilderCurrentPrice');
+                    const clearBtn = document.getElementById('offerBuilderClearPriceBtn');
+
+                    if (currentPriceValue) currentPriceValue.textContent = `$${Number(totals.customerPrice || 0).toFixed(2)}`;
+                    if (currentPriceEl) currentPriceEl.style.display = 'block';
+
+                    // Only show "Clear" when user explicitly set a fixed bundle price.
+                    const explicitOverride = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice' && Number(this.offer && this.offer.bundlePrice || 0) > 0;
+                    if (clearBtn) clearBtn.style.display = explicitOverride ? '' : 'none';
+                } catch (_) {}
 
                 // Keep last standards snapshot for stepper updates triggered by navigation.
                 try { this._lastStandards = standards; } catch (_) {}
@@ -27814,11 +32877,14 @@ async function loadRecommendationsForFilter() {
             validateOffer() {
                 const warnings = [];
                 const totals = this.calculateTotals();
+                const isBundle = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice';
                 
                 this.offer.lineItems.forEach((item, index) => {
                     // Check if service price is not entered
-                    if (!item.baseUnitPrice || item.baseUnitPrice <= 0) {
-                        warnings.push(`Service "${item.name}" needs a price entered.`);
+                    if (!isBundle) {
+                        if (!item.baseUnitPrice || item.baseUnitPrice <= 0) {
+                            warnings.push(`Service "${item.name}" needs a price entered.`);
+                        }
                     }
                     
                     // Check if equipment mode requires cost but none is set
@@ -27847,6 +32913,16 @@ async function loadRecommendationsForFilter() {
                 const hardFails = [];
                 const softWarnings = [];
                 let score = 100;
+
+                const suggestionFor = (field) => {
+                    try {
+                        return String(this._messagingSuggestionCache && this._messagingSuggestionCache.byField && this._messagingSuggestionCache.byField[field] || '').trim();
+                    } catch (_) {
+                        return '';
+                    }
+                };
+
+                const isBundle = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice';
                 
                 // Hard-fail triggers (block export/mark ready)
                 if (!this.offer.name || this.offer.name.trim() === '') {
@@ -27861,12 +32937,12 @@ async function loadRecommendationsForFilter() {
                 
                 // New required fields for deployable offer
                 if (!this.offer.headline || this.offer.headline.trim() === '') {
-                    hardFails.push({ type: 'hard', message: 'Headline is required', fix: 'Enter ad-ready headline' });
+                    hardFails.push({ type: 'hard', message: 'Headline is required', fix: 'Enter ad-ready headline', suggestion: suggestionFor('headline') });
                     score -= 15;
                 }
                 
                 if (!this.offer.oneSentencePromise || this.offer.oneSentencePromise.trim() === '') {
-                    hardFails.push({ type: 'hard', message: '1-Sentence Promise is required', fix: 'Enter 1-sentence promise' });
+                    hardFails.push({ type: 'hard', message: '1-Sentence Promise is required', fix: 'Enter 1-sentence promise', suggestion: suggestionFor('oneSentencePromise') });
                     score -= 15;
                 }
                 
@@ -27907,9 +32983,11 @@ async function loadRecommendationsForFilter() {
                 // Missing equipment costs
                 this.offer.lineItems.forEach((item, idx) => {
                     // Check if service price is missing (new requirement)
-                    if (!item.baseUnitPrice || item.baseUnitPrice <= 0) {
-                        hardFails.push({ type: 'hard', message: `"${item.name}" needs a price`, fix: `Enter your price for ${item.name}` });
-                        score -= 10;
+                    if (!isBundle) {
+                        if (!item.baseUnitPrice || item.baseUnitPrice <= 0) {
+                            hardFails.push({ type: 'hard', message: `"${item.name}" needs a price`, fix: `Enter your price for ${item.name}` });
+                            score -= 10;
+                        }
                     }
                     
                     // Check equipment cost
@@ -27952,15 +33030,15 @@ async function loadRecommendationsForFilter() {
                 
                 // Copy + deployability (20 points)
                 if (!this.offer.bookingPageMicrocopy || this.offer.bookingPageMicrocopy.trim() === '') {
-                    softWarnings.push({ type: 'soft', message: 'Missing booking page microcopy', fix: 'Add booking page copy', impact: 5 });
+                    softWarnings.push({ type: 'soft', message: 'Missing booking page microcopy', fix: 'Add booking page copy', impact: 5, suggestion: suggestionFor('bookingPageMicrocopy') });
                     score -= 5;
                 }
                 if (!this.offer.smsConfirmation || this.offer.smsConfirmation.trim() === '') {
-                    softWarnings.push({ type: 'soft', message: 'Missing SMS confirmation', fix: 'Add SMS confirmation copy', impact: 3 });
+                    softWarnings.push({ type: 'soft', message: 'Missing SMS confirmation', fix: 'Add SMS confirmation copy', impact: 3, suggestion: suggestionFor('smsConfirmation') });
                     score -= 3;
                 }
                 if (!this.offer.priceQuestionLine || this.offer.priceQuestionLine.trim() === '') {
-                    softWarnings.push({ type: 'soft', message: 'Missing price question response', fix: 'Add price question line', impact: 3 });
+                    softWarnings.push({ type: 'soft', message: 'Missing price question response', fix: 'Add price question line', impact: 3, suggestion: suggestionFor('priceQuestionLine') });
                     score -= 3;
                 }
                 
@@ -28071,7 +33149,19 @@ async function loadRecommendationsForFilter() {
                     'Market is required': 'offerBuilderMarket',
                     'Percentage off value missing': 'offerBuilderPercentOff',
                     'Dollar off value missing': 'offerBuilderDollarOff',
-                    'Bundle price missing': 'offerBuilderBundlePrice'
+                    'Bundle price missing': 'offerBuilderBundlePrice',
+
+                    'Missing "What\'s Included"': 'offerBuilderWhatsIncluded',
+                    'Missing eligibility rules': 'offerBuilderEligibilityRules',
+                    'Missing redemption rules': 'offerBuilderRedemptionRules',
+                    'Missing booking page microcopy': 'offerBuilderBookingPageMicrocopy',
+                    'Missing SMS confirmation': 'offerBuilderSmsConfirmation',
+                    'Missing price question response': 'offerBuilderPriceQuestionLine',
+                    'Missing scarcity mechanism': 'offerBuilderScarcityMechanism',
+                    'Missing risk reversal': 'offerBuilderRiskReversal',
+                    'Missing margin break points': 'offerBuilderMarginBreakPoints',
+                    'Missing creative hooks': 'offerBuilderHooks',
+                    'Missing objections + rebuttals': 'offerBuilderObjectionsRebuttals'
                 };
                 
                 container.innerHTML = `
@@ -28721,6 +33811,9 @@ async function loadRecommendationsForFilter() {
                 const tipBanner = document.getElementById('offerBuilderTipBanner');
                 
                 if (!container) return;
+
+                // Keep the Offer Name placeholder synced to the current services.
+                try { this._updateOfferNameInputUI(); } catch (_) {}
                 
                 if (this.offer.lineItems.length === 0) {
                     container.innerHTML = '';
@@ -28731,8 +33824,198 @@ async function loadRecommendationsForFilter() {
                 
                 if (emptyState) emptyState.style.display = 'none';
                 if (tipBanner) tipBanner.style.display = 'block';
+
+                // Apply inferred quantities before rendering (prevents stale "1x" in bundle view).
+                // Guarded so it runs once per offer/context.
+                try {
+                    const offerIdForSync = this._safeTrim(this.offer && this.offer.offer_id) || this._safeTrim(this.activeOfferId);
+                    const nameForSync = this._safeTrim(this.offer && this.offer.name) || this._safeTrim(this.activeOfferName);
+                    const key = `${offerIdForSync || 'noid'}::${nameForSync || ''}::${this._safeTrim(this.offer && this.offer.headline) || ''}`;
+                    if (this._lastQtySyncKey !== key) {
+                        this._lastQtySyncKey = key;
+                        this.syncDetectedQuantitiesFromContext({ silent: true, skipRender: true });
+                    }
+                } catch (_) {}
+
+                let isBundle = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice';
+                // Robust Fallback: if ANY item is named "Package Price", force bundle mode.
+                if (!isBundle && Array.isArray(this.offer.lineItems)) {
+                    isBundle = this.offer.lineItems.some(it => String(it.name || '').trim().toLowerCase() === 'package price');
+                }
+
+                // If bundle, render specialized view
+                if (isBundle) {
+                    // Find Package Price item
+                    let packageItem = this.offer.lineItems.find(it => String(it.name || '').trim().toLowerCase() === 'package price');
+                    
+                    if (!packageItem) {
+                        // Fallback
+                        this.renderStandardLineItems(); 
+                        return;
+                    }
+
+                    // Get constituent services
+                    const includedServices = this.offer.lineItems.filter(it => it.id !== packageItem.id);
+                    const priceWarning = (Number(packageItem.baseUnitPrice) === 0);
+
+                    container.innerHTML = `
+                    <div style="background: var(--pp-card-bg); border: 1px solid var(--pp-border); border-radius: 14px; padding: 20px; box-shadow: var(--pp-shadow-md); position: relative; overflow: hidden;">
+                        <!-- Global 'Package' Label decoration -->
+                        <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--cobalt) 0%, #60a5fa 100%);"></div>
+
+                        <!-- Header -->
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 20px; margin-top: 8px;">
+                            <div>
+                                <div style="display:flex; align-items:center; gap: 10px;">
+                                    <h3 style="font-size: 18px; font-weight: 800; color: var(--cobalt); margin: 0;">Package Price</h3>
+                                    <span style="padding: 2px 8px; background: var(--cobalt); color: white; border-radius: 99px; font-size: 11px; font-weight: 700;">BUNDLE</span>
+                                </div>
+                                <div style="font-size: 13px; color: var(--pp-text-muted); margin-top: 4px;">Define the total price for this entire bundle.</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <label style="display: block; font-size: 11px; font-weight: 700; color: var(--u-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">TOTAL PRICE</label>
+                                <div style="position: relative; display: inline-block; width: 140px;">
+                                    <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 16px; color: var(--cobalt); font-weight: 700;">$</span>
+                                    <input type="number" value="${packageItem.baseUnitPrice}" min="0" step="0.01" 
+                                        onchange="offerBuilder.updateLineItem('${packageItem.id}', 'baseUnitPrice', this.value)" 
+                                        style="width: 100%; padding: 10px 10px 10px 28px; border: 2px solid ${priceWarning ? 'var(--pp-status-warn-text)' : '#e5e7eb'}; border-radius: 8px; font-size: 18px; font-weight: 800; color: var(--cobalt); text-align: right; background: #fff;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Package Description -->
+                        <div style="margin-bottom: 24px;">
+                            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 8px;">
+                                Package Description (Customer Facing)
+                            </label>
+                            <textarea 
+                                placeholder="Describe the value of this package (e.g. 'Complete living room setup including mounting and wire concealment')..." 
+                                onchange="offerBuilder.updateLineItem('${packageItem.id}', 'notes', this.value)"
+                                style="width: 100%; min-height: 80px; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; font-family: inherit; resize: vertical;">${packageItem.notes || ''}</textarea>
+                        </div>
+
+                        <!-- Divider -->
+                        <div style="height: 1px; background: #e5e7eb; margin: 0 -20px 20px -20px;"></div>
+
+                        <!-- Included Services Section -->
+                        <div style="margin-bottom: 10px;">
+                            ${(function(){
+                                try {
+                                    // Use 'this' from closure if possible, or global offerBuilder
+                                    // We're inside renderLineItems (method of offerBuilder)
+                                    // But this template literal function creates a new scope.
+                                    // We can just rely on the global 'offerBuilder' reference used in onclicks.
+                                    
+                                    if (includedServices.length === 0 && offerBuilder && !offerBuilder._hasAttemptedAutoFill) {
+                                        offerBuilder._hasAttemptedAutoFill = true;
+                                        setTimeout(() => {
+                                            if (offerBuilder && typeof offerBuilder.autoFillServices === 'function') {
+                                                const found = offerBuilder.autoFillServices(true);
+                                                if (found) {
+                                                    // Only toast if we actually did something
+                                                    showToast('Services auto-populated from description', 'info');
+                                                }
+                                            }
+                                        }, 800);
+                                    }
+                                } catch (e) { console.error('Auto-fill error', e); }
+                                return '';
+                            })()}
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                <h4 style="font-size: 15px; font-weight: 700; color: var(--cobalt); margin: 0;">Included Services</h4>
+                                <div style="display:flex; gap: 8px; align-items:center;">
+                                    ${includedServices.length === 0 ? `
+                                        <button onclick="offerBuilder.autoFillServices(false)" style="padding: 4px 10px; font-size: 11px; background: #eff6ff; color: var(--cobalt); border: 1px solid #bfdbfe; border-radius: 6px; cursor: pointer; font-weight: 600;">Auto-Detect from Text</button>
+                                    ` : ''}
+                                    <span style="font-size: 12px; color: var(--pp-text-muted);">${includedServices.length} items</span>
+                                </div>
+                            </div>
+
+                            ${includedServices.length === 0 ? `
+                                <div style="text-align: center; padding: 30px; background: #f9fafb; border-radius: 12px; border: 2px dashed #e5e7eb;">
+                                    <div style="color: #9ca3af; font-size: 14px; font-weight: 500;">No services added to this package yet.</div>
+                                    <div style="color: #d1d5db; font-size: 12px; margin-top: 4px; margin-bottom: 12px;">Add services from the catalog on the left.</div>
+                                    <button onclick="offerBuilder.autoFillServices(false)" style="padding: 6px 14px; font-size: 12px; background: #fff; color: var(--cobalt); border: 1px solid #e5e7eb; border-radius: 6px; cursor: pointer; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">Run Smart Extraction</button>
+                                </div>
+                            ` : `
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    ${includedServices.map(item => {
+                                        const safeQty = Math.max(1, parseInt(item.qty) || 1);
+                                        return `
+                                        <div style="display: flex; flex-direction: column; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;">
+                                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px;">
+                                                <div style="display: flex; align-items: center; gap: 12px; flex: 1;">
+                                                    <div style="width: 32px; height: 32px; background: #eff6ff; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--cobalt); font-weight: 700; font-size: 14px;">
+                                                        ${safeQty}x
+                                                    </div>
+                                                    <div>
+                                                        <div style="font-weight: 700; font-size: 14px; color: var(--pp-text);">${item.name}</div>
+                                                        <div style="font-size: 11px; color: #9ca3af;">Included in package</div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style="display: flex; align-items: center; gap: 16px;">
+                                                    <!-- Qty Control (Mini) -->
+                                                    <div style="display: flex; align-items: center; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb; overflow: hidden;">
+                                                        <button onclick="offerBuilder.updateLineItem('${item.id}', 'qty', Math.max(1, ${safeQty} - 1))" style="padding: 4px 8px; border: none; background: transparent; cursor: pointer; color: var(--u-muted); font-weight: 700;">-</button>
+                                                        <div style="padding: 0 4px; font-size: 12px; font-weight: 600;">${safeQty}</div>
+                                                        <button onclick="offerBuilder.updateLineItem('${item.id}', 'qty', ${safeQty} + 1)" style="padding: 4px 8px; border: none; background: transparent; cursor: pointer; color: var(--cobalt); font-weight: 700;">+</button>
+                                                    </div>
+
+                                                    <!-- Delete -->
+                                                    <button onclick="offerBuilder.removeLineItem('${item.id}')" style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border: 1px solid #fee2e2; background: #fef2f2; color: #ef4444; border-radius: 6px; cursor: pointer; transition: all 0.2s;" title="Remove service from package">
+                                                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <!-- Internal Description Field (Optional per item) -->
+                                            <div style="padding: 0 12px 12px 12px;">
+                                                <textarea 
+                                                    placeholder="Add details for this service (e.g. 'Mounted above fireplace')..." 
+                                                    onchange="offerBuilder.updateLineItem('${item.id}', 'notes', this.value)"
+                                                    style="width: 100%; min-height: 40px; padding: 8px; border: 1px solid #f3f4f6; background: #f9fafb; border-radius: 6px; font-size: 12px; font-family: inherit; resize: vertical;">${item.notes || ''}</textarea>
+                                            </div>
+                                        </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                    `;
+                    return;
+                }
+
+                // Default Logic
+                this.renderStandardLineItems(); 
+            },
+
+            renderStandardLineItems() {
+                const container = document.getElementById('offerBuilderLineItems');
+                const emptyState = document.getElementById('offerBuilderEmptyState');
+                const tipBanner = document.getElementById('offerBuilderTipBanner');
+                
+                if (!container) return;
+                
+                if (this.offer.lineItems.length === 0) {
+                    container.innerHTML = '';
+                    if (emptyState) emptyState.style.display = 'block';
+                    if (tipBanner) tipBanner.style.display = 'none';
+                    return;
+                }
+                
+                if (emptyState) emptyState.style.display = 'none';
+                if (tipBanner) tipBanner.style.display = 'block';
+
+                let isBundle = String(this.offer && this.offer.pricingStrategy || '') === 'bundlePrice';
+                // Robust Fallback: if ANY item is named "Package Price", force bundle mode.
+                // This handles legacy/imported offers where the flag wasn't set.
+                if (!isBundle && Array.isArray(this.offer.lineItems)) {
+                    isBundle = this.offer.lineItems.some(it => String(it.name || '').trim().toLowerCase() === 'package price');
+                }
                 
                 container.innerHTML = this.offer.lineItems.map((item, index) => {
+                    const isPackagePriceItem = String(item.name || '').trim().toLowerCase() === 'package price';
                     // Ensure BYO mode has 0 cost
                     if (item.equipMode === 'BYO') {
                         item.equipCostPerUnit = 0;
@@ -28742,39 +34025,80 @@ async function loadRecommendationsForFilter() {
                     const service = allServices.find(s => s.id === item.serviceId);
                     const lineTotal = item.baseUnitPrice * item.qty;
                     const equipTotal = item.equipCostPerUnit * item.qty;
+
+                    const showPriceWarning = (!isBundle && item.baseUnitPrice === 0);
+                    const chipHtml = (text, tone) => {
+                        const bg = tone === 'success' ? '#fff' // Clean white bg
+                            : (tone === 'warn' ? 'var(--pp-status-warn-bg)' : 'var(--pp-bg)');
+                        const fg = tone === 'success' ? 'var(--cobalt)' // Use brand color
+                            : (tone === 'warn' ? 'var(--pp-status-warn-text)' : 'var(--pp-text)');
+                        const bd = tone === 'success' ? 'var(--cobalt)' 
+                            : (tone === 'warn' ? 'var(--pp-status-warn-text)' : 'var(--pp-border)');
+                        // Simplify appearance for Included packages
+                        if (text === 'Included') {
+                             return `<span style="display:inline-flex; align-items:center;  color: var(--u-muted); font-size: 11px; font-weight: 600; font-style: italic;">Included in Module</span>`;
+                        }
+                        return `<span style="display:inline-flex; align-items:center; padding: 2px 8px; border-radius: 999px; background:${bg}; border: 1px solid ${bd}; color:${fg}; font-size: 11px; font-weight: 1000;">${text}</span>`;
+                    };
+
+                    let priceChip = '';
+                    if (isBundle) {
+                        if (isPackagePriceItem) {
+                            priceChip = chipHtml(`$${Number(item.baseUnitPrice).toFixed(0)}`, 'neutral');
+                        } else {
+                            priceChip = chipHtml('Included', 'success');
+                        }
+                    } else {
+                         priceChip = (item.baseUnitPrice > 0 ? chipHtml(`$${Number(item.baseUnitPrice).toFixed(0)}`, 'neutral') : chipHtml('Set labor', 'warn'));
+                    }
+
+                    const benchmarkLine = (service && service.benchmarkPrice)
+                        ? `<div style="margin-top: 6px; font-size: 11px; color: var(--pp-text-muted);">Industry reference: ${service.benchmarkPrice}</div>`
+                        : '';
                     
                     return `
-                    <div style="background: white; border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--cobalt)'; this.style.boxShadow='0 2px 8px rgba(10,42,90,0.1)'" onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 16px;">
-                            <div style="flex: 1;">
-                                <div style="font-size: 17px; font-weight: 700; color: var(--cobalt); margin-bottom: 6px;">${item.name}</div>
-                                ${item.baseUnitPrice === 0 ? `
-                                    <div style="background: #fef3c7; border-left: 3px solid #f59e0b; padding: 8px 10px; margin-bottom: 6px; border-radius: 4px;">
-                                        <div style="font-size: 12px; color: #92400e; font-weight: 600;">Enter your price below</div>
-                                        ${service && service.benchmarkPrice ? `<div style="font-size: 11px; color: #78350f; margin-top: 2px;">Industry Reference: ${service.benchmarkPrice}</div>` : ''}
-                                    </div>
-                                ` : `
-                                    <div style="font-size: 13px; color: #6b7280; margin-bottom: 4px;">
-                                        Your Price: <strong style="color: #374151;">$${item.baseUnitPrice.toFixed(2)}</strong>
-                                        ${service && service.benchmarkPrice ? ` <span style="color: #9ca3af;">(Industry: ${service.benchmarkPrice})</span>` : ''}
-                                    </div>
-                                `}
-                                ${item.notes ? `<div style="font-size: 12px; color: #6b7280; font-style: italic; margin-top: 4px;">${item.notes}</div>` : ''}
+                    <div style="background: var(--pp-card-bg); border: 1px solid var(--pp-border); border-radius: 14px; padding: 16px; box-shadow: var(--pp-shadow-sm);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 14px;">
+                            <div style="min-width:0; flex: 1;">
+                                <div style="display:flex; align-items:center; gap: 8px; flex-wrap:wrap;">
+                                    <div style="font-size: 15px; font-weight: 950; color: var(--cobalt); line-height: 1.25;">${item.name}</div>
+                                    ${priceChip}
+                                </div>
+                                ${benchmarkLine}
+                                ${item.notes ? `<div style="margin-top: 6px; font-size: 12px; color: var(--pp-text-muted); font-style: italic;">${item.notes}</div>` : ''}
                             </div>
-                            <button onclick="offerBuilder.removeLineItem('${item.id}')" style="padding: 8px 14px; background: #ef4444; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='#dc2626'; this.style.transform='scale(1.05)'" onmouseout="this.style.background='#ef4444'; this.style.transform='scale(1)'">
+                            <button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.removeLineItem('${item.id}')" style="padding: 6px 10px; font-weight: 950; border-color: var(--danger); color: var(--danger);">
                                 Remove
                             </button>
                         </div>
                         
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                            ${(isBundle && String(item.name || '').trim().toLowerCase() !== 'package price') ? `
                             <div>
-                                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">What's Your Price? <span style="color: #ef4444;">*</span></label>
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">
+                                    Package Details / Description
+                                </label>
+                                <textarea 
+                                    placeholder="Describe what is included for this service in the package..." 
+                                    onchange="offerBuilder.updateLineItem('${item.id}', 'notes', this.value)"
+                                    style="width: 100%; min-height: 80px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; resize: vertical; font-family: inherit;">${item.notes || ''}</textarea>
+                                <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Displayed to customer as part of the package breakdown.</div>
+                            </div>
+                            ` : `
+                            <div>
+                                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">
+                                    ${(isBundle && String(item.name || '').trim().toLowerCase() === 'package price') ? 'Total Package Price' : "What's Your Labor?"} 
+                                    <span style="color: #ef4444;">*</span>
+                                </label>
                                 <div style="position: relative;">
                                     <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 16px; color: #6b7280; font-weight: 600;">$</span>
-                                    <input type="number" value="${item.baseUnitPrice}" min="0" step="0.01" placeholder="0.00" onchange="offerBuilder.updateLineItem('${item.id}', 'baseUnitPrice', this.value)" style="width: 100%; padding: 10px 10px 10px 28px; border: 2px solid ${item.baseUnitPrice === 0 ? '#f59e0b' : '#e5e7eb'}; border-radius: 8px; font-size: 15px; font-weight: 600; color: var(--cobalt);">
+                                    <input type="number" value="${item.baseUnitPrice}" min="0" step="0.01" placeholder="0.00" onchange="offerBuilder.updateLineItem('${item.id}', 'baseUnitPrice', this.value)" style="width: 100%; padding: 10px 10px 10px 28px; border: 2px solid ${(showPriceWarning && !isBundle ? 'var(--pp-status-warn-text)' : '#e5e7eb')}; border-radius: 8px; font-size: 15px; font-weight: 600; color: var(--cobalt);">
                                 </div>
-                                <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">Your labor charge to the customer</div>
+                                <div style="font-size: 11px; color: #6b7280; margin-top: 4px;">
+                                    ${(isBundle && String(item.name || '').trim().toLowerCase() === 'package price') ? 'The total price for the entire bundle.' : 'Your labor charge to the customer'}
+                                </div>
                             </div>
+                            `}
                             <div>
                                 <label style="display: block; font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">Quantity</label>
                                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -28844,7 +34168,9 @@ async function loadRecommendationsForFilter() {
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 12px;">
                                 <div>
                                     <div style="color: #6b7280; margin-bottom: 2px;">Service Total</div>
-                                    <div style="font-weight: 700; font-size: 14px; color: var(--cobalt);">$${lineTotal.toFixed(2)}</div>
+                                    <div style="font-weight: 700; font-size: 14px; color: var(--cobalt);">
+                                        ${(isBundle ? (isPackagePriceItem ? `$${lineTotal.toFixed(2)}` : 'Included') : `$${lineTotal.toFixed(2)}`)}
+                                    </div>
                                 </div>
                                 <div>
                                     <div style="color: #6b7280; margin-bottom: 2px;">Equipment Total</div>
@@ -28856,9 +34182,12 @@ async function loadRecommendationsForFilter() {
                             </div>
                         </div>
                         
-                        <div>
-                            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">Notes (optional)</label>
-                            <input type="text" value="${item.notes || ''}" placeholder="Add notes about this service..." onchange="offerBuilder.updateLineItem('${item.id}', 'notes', this.value)" style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px;">
+                            ${(isBundle && String(item.name || '').trim().toLowerCase() !== 'package price') ? '' : `
+                            <div>
+                                <label style="display: block; font-size: 12px; font-weight: 600; color: var(--cobalt); margin-bottom: 6px;">Notes (optional)</label>
+                                <input type="text" value="${item.notes || ''}" placeholder="Add notes about this service..." onchange="offerBuilder.updateLineItem('${item.id}', 'notes', this.value)" style="width: 100%; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 12px;">
+                            </div>
+                            `}
                         </div>
                     </div>
                 `;
@@ -29184,11 +34513,27 @@ async function loadRecommendationsForFilter() {
                 const silent = !!(opts && opts.silent);
                 const skipWarningsConfirm = !!(opts && (opts.skipWarningsConfirm || opts.skipConfirm));
                 const skipFrameworks = !!(opts && opts.skipFrameworks);
+                const startedFromLibraryCreate = !!this._afterNextSaveReturnToLibrary;
                 const warnings = this.validateOffer();
                 if (warnings.length > 0 && !skipWarningsConfirm && !silent) {
                     const confirmed = await showConfirm('Save Offer with Warnings?', `This offer has warnings:\n\n${warnings.join('\n')}\n\nSave anyway?`);
                     if (!confirmed) return;
                 }
+
+                // If the user left the name blank, auto-fill a computed name so Save works.
+                try {
+                    if (!this._safeTrim(this.offer && this.offer.name)) {
+                        const computed = this._computeOfferNameFallback(this.offer);
+                        if (computed) {
+                            this.offer.name = computed;
+                            const nameEl = document.getElementById('offerBuilderName');
+                            if (nameEl && !String(nameEl.value || '').trim()) nameEl.value = computed;
+                            try { this.setActiveOffer(this.offer.offer_id, computed); } catch (_) {}
+                            try { this._renderActiveOfferLabel(); } catch (_) {}
+                            try { this._updateOfferNameInputUI(); } catch (_) {}
+                        }
+                    }
+                } catch (_) {}
                 
                 // Validate required fields
                 if (!this.offer.name || this.offer.name.trim() === '') {
@@ -29214,6 +34559,9 @@ async function loadRecommendationsForFilter() {
                     if (!silent) showToast('Please add at least one service', 'error');
                     return;
                 }
+
+                // Capture direct Offer Price edits even if Enter wasn't pressed.
+                try { this.applyDirectPriceIfPresent({ silent: true }); } catch (_) {}
                 
                 const totals = this.calculateTotals();
                 const standards = this.evaluateStandards(totals);
@@ -29295,13 +34643,13 @@ async function loadRecommendationsForFilter() {
                                 try {
                                     const rowForFw = { AI_Analysis: savedOffer ? savedOffer.AI_Analysis : null };
                                     const fw = this._extractFrameworks(rowForFw);
-                                    hasFw = !!(fw && Array.isArray(fw.pillars) && fw.pillars.length);
+                                    hasFw = this._hasFrameworksSnapshot(fw);
                                 } catch (_) {
                                     hasFw = false;
                                 }
                                 try {
-                                    if (!hasFw && this.offer && this.offer.offerFrameworks && Array.isArray(this.offer.offerFrameworks.pillars) && this.offer.offerFrameworks.pillars.length) {
-                                        hasFw = true;
+                                    if (!hasFw && this.offer && this.offer.offerFrameworks) {
+                                        hasFw = this._hasFrameworksSnapshot(this.offer.offerFrameworks);
                                     }
                                 } catch (_) {}
 
@@ -29314,6 +34662,26 @@ async function loadRecommendationsForFilter() {
                                     }
                                 }
                             }
+
+                            // Keep Offer Library in sync with saves (edit-save loop must be connected).
+                            try {
+                                const offerIdForLibrary = String(this.offer && this.offer.offer_id || offerData.offer_id || '').trim();
+                                if (offerIdForLibrary) {
+                                    if (!this.offerLibraryState) this.offerLibraryState = {};
+                                    this.offerLibraryState.selectedId = offerIdForLibrary;
+                                }
+                                this.refreshOfferLibrary(false, { forceFetch: true }).catch(() => {});
+                            } catch (_) {}
+
+                            // If the user started from the library empty-state "Create offer" CTA,
+                            // return them to the library and focus the newly saved offer.
+                            try {
+                                if (!silent && startedFromLibraryCreate) {
+                                    this._afterNextSaveReturnToLibrary = false;
+                                    this._afterNextSaveSelectOfferId = '';
+                                    this.setSubTab('library');
+                                }
+                            } catch (_) {}
                         } else {
                             console.warn('Backend save failed:', result);
                             if (!silent) showToast('Offer saved locally (backend save failed)', 'warning');
@@ -29662,7 +35030,7 @@ async function loadRecommendationsForFilter() {
                         const pillars = fw && Array.isArray(fw.pillars) ? fw.pillars : [];
                         if (!pillars.length) return 'N/A';
                         const top = pillars.slice(0, 3).map(p => String(p && (p.title || p.key) || '').trim()).filter(Boolean);
-                        return `${pillars.length} pillars${top.length ? ` • ${top.join(' • ')}` : ''}`;
+                        return `${pillars.length} pillars${top.length ? `  | ${top.join('  | ')}` : ''}`;
                     } catch (_) {
                         return 'N/A';
                     }
@@ -30573,10 +35941,28 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 
                 if (!contentDiv || !loadingDiv || !emptyDiv || !container) return;
                 
-                // Show loading
-                contentDiv.style.display = 'none';
+                // Always show local copy suggestions immediately (no backend call needed)
+                try {
+                    const totals = (typeof this.calculateTotals === 'function') ? this.calculateTotals() : null;
+                    this._refreshMessagingSuggestionsCache({ totals });
+                    this._refreshMessagingSuggestionsUi();
+                } catch (_) {}
+
+                contentDiv.style.display = 'block';
                 emptyDiv.style.display = 'none';
-                loadingDiv.style.display = 'block';
+                loadingDiv.style.display = 'none';
+                contentDiv.innerHTML = `
+                    ${this._renderMessagingSuggestionsHtml()}
+                    <div id="obPerfInsightsMount" style="margin-top: 14px;">
+                        <div style="padding: 14px; border-radius: 12px; border:1px solid rgba(148,163,184,0.22); background:#fff;">
+                            <div style="font-size:12px; font-weight:1000; color:#0f172a;">Tracking insights (optional)</div>
+                            <div style="margin-top:10px; display:flex; align-items:center; gap:10px;">
+                                <div style="width:18px; height:18px; border:3px solid #e5e7eb; border-top-color: var(--cobalt); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                                <div style="font-size:12px; color:#64748b;">Loading performance insights...</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
                 
                 try {
                     // Get overall performance data to analyze service performance
@@ -30590,26 +35976,38 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     const pixelResponse = await fetch(`${API_URL}?action=meta_pixel_events`);
                     const pixelResult = await pixelResponse.ok ? await pixelResponse.json() : null;
                     const pixelData = pixelResult?.meta_pixel_events || pixelResult;
-                    
-                    loadingDiv.style.display = 'none';
-                    
+
                     // Analyze which services/categories are performing well
                     const insights = this.analyzeServicePerformance(allData, pixelData);
-                    
-                    if (insights.hasData) {
-                        emptyDiv.style.display = 'none';
-                        contentDiv.style.display = 'block';
-                        contentDiv.innerHTML = this.renderInsights(insights);
-                    } else {
-                        contentDiv.style.display = 'none';
-                        emptyDiv.style.display = 'block';
-                    }
+
+                    try {
+                        const mount = document.getElementById('obPerfInsightsMount');
+                        if (!mount) return;
+                        if (insights.hasData) {
+                            mount.innerHTML = this.renderInsights(insights);
+                        } else {
+                            mount.innerHTML = `
+                                <div style="padding: 14px; border-radius: 12px; border:1px dashed rgba(148,163,184,0.35); background:#f9fafb;">
+                                    <div style="font-size:12px; font-weight:1000; color:#0f172a;">Tracking insights</div>
+                                    <div style="font-size:12px; color:#64748b; margin-top:6px; line-height:1.5;">No tracking insights yet. Once offers are deployed and campaigns are running, this section will populate.</div>
+                                </div>
+                            `;
+                        }
+                    } catch (_) {}
                     
                 } catch (error) {
                     console.error('Error loading insights:', error);
-                    loadingDiv.style.display = 'none';
-                    contentDiv.style.display = 'none';
-                    emptyDiv.style.display = 'block';
+                    try {
+                        const mount = document.getElementById('obPerfInsightsMount');
+                        if (mount) {
+                            mount.innerHTML = `
+                                <div style="padding: 14px; border-radius: 12px; border:1px dashed rgba(148,163,184,0.35); background:#f9fafb;">
+                                    <div style="font-size:12px; font-weight:1000; color:#0f172a;">Tracking insights</div>
+                                    <div style="font-size:12px; color:#64748b; margin-top:6px; line-height:1.5;">Unable to load tracking data right now. Suggestions still work without it.</div>
+                                </div>
+                            `;
+                        }
+                    } catch (_) {}
                 }
             },
             
@@ -30923,7 +36321,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (!list.length) return;
 
                 if (this.state.uploadBusy) {
-                    showToast('Upload in progress—please wait', 'info');
+                    showToast('Upload in progress...”please wait', 'info');
                     return;
                 }
 
@@ -30938,7 +36336,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         const contentType = String(file?.type || '').trim() || 'application/octet-stream';
                         const mediaKind = this._inferMediaKind(file);
 
-                        this._setUploadStatus(`Signing upload for ${name}…`, 'neutral');
+                        this._setUploadStatus(`Signing upload for ${name}...`, 'neutral');
                         const initResp = await fetch(`${API_URL}?action=adAssetUploadInit`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -30949,7 +36347,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             throw new Error((init && init.error) ? init.error : `Upload signing failed (HTTP ${initResp.status})`);
                         }
 
-                        this._setUploadStatus(`Uploading ${name}…`, 'neutral');
+                        this._setUploadStatus(`Uploading ${name}...`, 'neutral');
                         const putRes = await fetch(String(init.signed_url), {
                             method: 'PUT',
                             headers: { 'Content-Type': contentType },
@@ -30963,7 +36361,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         const path = this._trim(init.path);
                         const url = this._publicAssetUrl(bucket, path);
 
-                        this._setUploadStatus(`Attaching ${name}…`, 'neutral');
+                        this._setUploadStatus(`Attaching ${name}...`, 'neutral');
                         const attachResp = await fetch(`${API_URL}?action=adCreativeAttachAsset`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -31078,7 +36476,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const attachNote = this.state.chartAttach
                     ? `<div style="margin-top: 6px; font-size: 12px; color:#0f172a; font-weight: 900;">Attach target: ${this._esc(String(this.state.chartAttach.stage || '').toUpperCase())}${this.state.chartAttach.itemKey ? ' item' : ''}</div>`
                     : (this.state.moduleAttach
-                        ? `<div style="margin-top: 6px; font-size: 12px; color:#0f172a; font-weight: 900;">Attach target: ${this._esc(String(this.state.moduleAttach.stage || '').toUpperCase())} module • ${this._esc(this.state.moduleAttach.moduleKey)}</div>`
+                        ? `<div style="margin-top: 6px; font-size: 12px; color:#0f172a; font-weight: 900;">Attach target: ${this._esc(String(this.state.moduleAttach.stage || '').toUpperCase())} module  | ${this._esc(this.state.moduleAttach.moduleKey)}</div>`
                         : '');
 
                 const linkedToggle = this.state.offerId ? `
@@ -31105,7 +36503,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         </div>
 
                         <div style="display:flex; gap: 10px; align-items:center; flex-wrap:wrap;">
-                            <input id="adResSearch" placeholder="Search creatives…" oninput="adResources.setQuery(this.value)" style="flex: 1; min-width: 240px; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800; color: #0f172a; background: #fff;" />
+                            <input id="adResSearch" placeholder="Search creatives..." oninput="adResources.setQuery(this.value)" style="flex: 1; min-width: 240px; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800; color: #0f172a; background: #fff;" />
                             <select id="adResSort" onchange="adResources.setSort(this.value)" style="height: 40px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 900; color: #0f172a; background: #fff;">
                                 <option value="recent" selected>Sort: Recent</option>
                                 <option value="perf">Sort: Performance</option>
@@ -31134,7 +36532,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             </div>
                             ` : ''}
                             <div style="width: 380px; border-right: 1px solid #e5e7eb; display:flex; flex-direction:column; min-height: 0;">
-                                <div id="adResMeta" style="padding: 12px 14px; font-size: 12px; color:#64748b; border-bottom: 1px solid #f1f5f9;">Loading…</div>
+                                <div id="adResMeta" style="padding: 12px 14px; font-size: 12px; color:#64748b; border-bottom: 1px solid #f1f5f9;">Loading...</div>
                                 <div id="adResList" style="flex: 1; min-height: 0; overflow:auto;"></div>
                             </div>
                             <div id="adResDetail" style="flex: 1; min-height: 0; overflow:auto; padding: 14px; background: #fafafa;">
@@ -31258,7 +36656,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 let html = `
                     <div onclick="adResources.setFramework(null)" 
                         style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${active === null ? '800' : '500'}; color: ${active === null ? '#0f172a' : '#475569'}; background: ${active === null ? '#e2e8f0' : 'transparent'}; margin-bottom: 4px; display:flex; align-items:center; gap: 8px;">
-                        <span style="font-size: 16px;">📂</span> All Creatives
+                        <span style="font-size: 16px;">ðŸ“‚</span> All Creatives
                     </div>
                 `;
                 
@@ -31271,7 +36669,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     html += `
                         <div onclick="adResources.setFramework('${this._esc(id)}')" 
                             style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${isActive ? '800' : '500'}; color: ${isActive ? '#0f172a' : '#475569'}; background: ${isActive ? '#e2e8f0' : 'transparent'}; margin-bottom: 2px; display:flex; align-items:center; gap: 8px;">
-                             <span style="font-size: 16px;">📁</span> ${this._esc(title)}
+                             <span style="font-size: 16px;">ðŸ“</span> ${this._esc(title)}
                         </div>
                     `;
                 });
@@ -31281,7 +36679,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 html += `
                     <div onclick="adResources.setFramework('__uncat__')" 
                         style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${isUncat ? '800' : '500'}; color: ${isUncat ? '#0f172a' : '#475569'}; background: ${isUncat ? '#e2e8f0' : 'transparent'}; margin-top: 4px; display:flex; align-items:center; gap: 8px;">
-                        <span style="font-size: 16px;">📁</span> Uncategorized
+                        <span style="font-size: 16px;">ðŸ“</span> Uncategorized
                     </div>
                 `;
                 
@@ -31319,8 +36717,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             async refresh(showToastOnSuccess = false) {
                 const meta = document.getElementById('adResMeta');
                 const listMount = document.getElementById('adResList');
-                if (meta) meta.textContent = 'Loading…';
-                if (listMount) listMount.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading…</div>';
+                if (meta) meta.textContent = 'Loading...';
+                if (listMount) listMount.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading...</div>';
 
                 try {
                     const params = new URLSearchParams();
@@ -31395,7 +36793,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     const selected = this.state.selectedId && id === this.state.selectedId;
                     const perf = r && r.perf ? r.perf : null;
                     const perfLine = perf
-                        ? `<div style="font-size: 11px; color:#64748b; margin-top: 6px;">Perf: leads ${Number(perf.leads || 0)} • spend $${Number(perf.spend || 0).toFixed(0)}${(perf.cpl != null) ? ` • cpl $${Number(perf.cpl).toFixed(0)}` : ''}</div>`
+                        ? `<div style="font-size: 11px; color:#64748b; margin-top: 6px;">Perf: leads ${Number(perf.leads || 0)}  | spend $${Number(perf.spend || 0).toFixed(0)}${(perf.cpl != null) ? `  | cpl $${Number(perf.cpl).toFixed(0)}` : ''}</div>`
                         : '';
 
                     return `
@@ -31420,7 +36818,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this._renderList();
 
                 const detail = document.getElementById('adResDetail');
-                if (detail) detail.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading…</div>';
+                if (detail) detail.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading...</div>';
 
                 try {
                     const resp = await fetch(`${API_URL}?action=adCreativeDetail&creative_id=${encodeURIComponent(id)}`);
@@ -31497,7 +36895,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     if (l.offer_id) bits.push(`Offer: ${this._esc(l.offer_id)}`);
                     if (l.deliverable_id) bits.push(`Deliverable: ${this._esc(l.deliverable_id)}`);
                     if (l.framework_ad_type_key) bits.push(`Framework: ${this._esc(l.framework_stage || '')} ${this._esc(l.framework_ad_type_key)}`);
-                    return `<div style="font-size: 12px; color:#475569;">${bits.join(' • ')}</div>`;
+                    return `<div style="font-size: 12px; color:#475569;">${bits.join('  | ')}</div>`;
                 }).join('');
 
                 const linkBtn = this.state.offerId
@@ -31568,7 +36966,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     <div style="padding: 14px 0; display:flex; flex-direction:column; gap: 10px;">
                         <div style="display:flex; flex-direction:column; gap: 6px;">
                             <div style="font-size: 12px; font-weight: 900; color:#0f172a;">Title</div>
-                            <input id="adNewCreativeTitle" placeholder="e.g. TV Mount Myth-bust — No studs?" style="height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
+                            <input id="adNewCreativeTitle" placeholder="e.g. TV Mount Myth-bust ...” No studs?" style="height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
                         </div>
                         <div style="display:flex; gap: 10px; flex-wrap:wrap;">
                             <div style="flex:1; min-width: 160px;">
@@ -32306,3 +37704,79 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             }
         });
     
+// --- AI Voice Dictation ---
+window.smsToggleDictation = function smsToggleDictation() {
+    var btn = document.getElementById('smsMicBtn');
+    var input = document.getElementById('smsSendInput');
+    if (!input) return;
+
+    if (window.__smsDictationActive) {
+        if (window.__smsRecognition) window.__smsRecognition.stop();
+        window.__smsDictationActive = false;
+        if (btn) {
+            btn.style.color = '#64748b';
+            btn.title = 'Dictate (AI Voice)';
+        }
+        return;
+    }
+
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        alert('Voice dictation not supported.');
+        return;
+    }
+
+    if (!window.__smsRecognition) {
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        window.__smsRecognition = new SR();
+        window.__smsRecognition.continuous = false;
+        window.__smsRecognition.interimResults = true;
+        window.__smsRecognition.lang = 'en-US';
+
+        window.__smsRecognition.onstart = function() {
+            window.__smsDictationActive = true;
+            if (btn) {
+                btn.style.color = '#dc2626';
+                btn.title = 'Listening...';
+            }
+        };
+
+        window.__smsRecognition.onend = function() {
+            window.__smsDictationActive = false;
+            if (btn) {
+                btn.style.color = '#64748b';
+                btn.title = 'Dictate (AI Voice)';
+            }
+        };
+
+        window.__smsRecognition.onresult = function(event) {
+            var finalCtx = '';
+            for (var i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalCtx += event.results[i][0].transcript;
+                }
+            }
+            if (finalCtx) {
+                var current = input.value;
+                var text = finalCtx.trim();
+                if (text) {
+                    var spacer = (current && !current.endsWith(' ')) ? ' ' : '';
+                    if (!current) text = text.charAt(0).toUpperCase() + text.slice(1);
+                    input.value = current + spacer + text;
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+        };
+        
+        window.__smsRecognition.onerror = function(event) {
+            console.warn('Dictation error', event.error);
+            window.__smsDictationActive = false;
+            if (btn) btn.style.color = '#64748b';
+        };
+    }
+
+    try {
+        window.__smsRecognition.start();
+    } catch (e) {
+        console.error(e);
+    }
+};

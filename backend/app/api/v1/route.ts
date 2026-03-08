@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabaseDb1, getSupabaseDispatch, getSupabaseMgmt } from '@/lib/supabase';
+import twilio from 'twilio';
 import OpenAI from 'openai';
 import taskCreator from '@/lib/task_creator';
 import { sendMail } from '@/lib/mail';
+import { normalizePhone } from '../_lib/phone';
+import crypto from 'node:crypto';
 
 const {
   canGenerateTaskDetails,
@@ -54,6 +57,521 @@ function tryParseJsonObject(raw: unknown): { ok: true; value: any } | { ok: fals
 
 function safeTrim(raw: unknown): string {
   return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+}
+
+function normalizeHttpUrl(raw: unknown): string | null {
+  try {
+    const s = String(raw == null ? '' : raw).trim();
+    if (!s) return null;
+
+    const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+    const u = new URL(withProto);
+    const protocol = String(u.protocol || '').toLowerCase();
+    if (protocol !== 'http:' && protocol !== 'https:') return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAssets(raw: unknown): string[] {
+  try {
+    const collect: string[] = [];
+
+    const pushToken = (token: unknown) => {
+      const maybe = normalizeHttpUrl(token);
+      if (!maybe) return;
+      collect.push(maybe);
+    };
+
+    if (Array.isArray(raw)) {
+      for (const item of raw) pushToken(item);
+    } else {
+      const text = String(raw == null ? '' : raw);
+      const tokens = text.split(/[\s\n\r\t]+/g).filter(Boolean);
+      for (const t of tokens) pushToken(t);
+    }
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const u of collect) {
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+      if (out.length >= 50) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function normalizeAssetsMeta(raw: unknown, assets: string[]): Record<string, any> | null {
+  try {
+    const allowed = new Set<string>();
+    for (const u of Array.isArray(assets) ? assets : []) {
+      const norm = normalizeHttpUrl(u);
+      if (norm) allowed.add(norm);
+    }
+
+    const out: Record<string, any> = {};
+    let count = 0;
+
+    // Accept array form: [{ url, title, provider }]
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (count >= 50) break;
+        if (!item || typeof item !== 'object') continue;
+
+        const url = normalizeHttpUrl((item as any).url ?? (item as any).URL ?? '');
+        if (!url) continue;
+        if (allowed.size && !allowed.has(url)) continue;
+
+        const title = safeTrim((item as any).title ?? (item as any).Title ?? '');
+        const provider = safeTrim((item as any).provider ?? (item as any).provider_name ?? (item as any).Provider ?? '');
+
+        const thumb = safeTrim(
+          (item as any).thumbnailUrl ?? (item as any).thumbnail_url ?? (item as any).thumbnail ?? (item as any).thumb ?? ''
+        );
+        const durRaw = (item as any).durationSeconds ?? (item as any).duration_seconds ?? (item as any).duration;
+        const dur = Number.isFinite(Number(durRaw)) ? Math.max(0, Math.floor(Number(durRaw))) : null;
+
+        const row: any = {};
+        if (title) row.title = title.slice(0, 200);
+        if (provider) row.provider = provider.slice(0, 80);
+        if (thumb) row.thumbnailUrl = thumb.slice(0, 500);
+        if (dur !== null) row.durationSeconds = dur;
+        if (Object.keys(row).length === 0) continue;
+
+        out[url] = row;
+        count++;
+      }
+
+      return Object.keys(out).length ? out : null;
+    }
+
+    // Map form: { [url]: { title, provider } }
+    const meta = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? (raw as any) : null;
+    if (!meta) return null;
+
+    for (const [k, v] of Object.entries(meta)) {
+      if (count >= 50) break;
+      const key = normalizeHttpUrl(k);
+      if (!key) continue;
+      if (allowed.size && !allowed.has(key)) continue;
+      if (!v || typeof v !== 'object') continue;
+
+      const title = safeTrim((v as any).title ?? (v as any).Title ?? '');
+      const provider = safeTrim((v as any).provider ?? (v as any).provider_name ?? (v as any).Provider ?? '');
+
+      const thumb = safeTrim(
+        (v as any).thumbnailUrl ?? (v as any).thumbnail_url ?? (v as any).thumbnail ?? (v as any).thumb ?? ''
+      );
+      const durRaw = (v as any).durationSeconds ?? (v as any).duration_seconds ?? (v as any).duration;
+      const dur = Number.isFinite(Number(durRaw)) ? Math.max(0, Math.floor(Number(durRaw))) : null;
+
+      const row: any = {};
+      if (title) row.title = title.slice(0, 200);
+      if (provider) row.provider = provider.slice(0, 80);
+      if (thumb) row.thumbnailUrl = thumb.slice(0, 500);
+      if (dur !== null) row.durationSeconds = dur;
+
+      if (Object.keys(row).length === 0) continue;
+      out[key] = row;
+      count++;
+    }
+
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchJsonWithTimeout(url: string, timeoutMs: number): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs | 0));
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { accept: 'application/json,text/json' },
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function inferLinkProvider(assetUrl: string): 'youtube' | 'loom' | 'unknown' {
+  try {
+    const u = new URL(assetUrl);
+    const host = String(u.hostname || '').toLowerCase();
+    if (host.includes('youtube.com') || host.includes('youtu.be')) return 'youtube';
+    if (host.includes('loom.com')) return 'loom';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+async function getLinkTitleFromOEmbed(
+  assetUrl: string
+): Promise<{ title?: string; provider?: string; thumbnailUrl?: string; durationSeconds?: number } | null> {
+  const provider = inferLinkProvider(assetUrl);
+  const encoded = encodeURIComponent(assetUrl);
+
+  try {
+    if (provider === 'youtube') {
+      const oembedUrl = `https://www.youtube.com/oembed?format=json&url=${encoded}`;
+      const data = await fetchJsonWithTimeout(oembedUrl, 6500);
+      const title = safeTrim(data?.title);
+      const providerName = safeTrim(data?.provider_name || 'YouTube');
+      const thumbnailUrl = safeTrim(data?.thumbnail_url);
+      if (!title) return null;
+      return {
+        title,
+        provider: providerName,
+        thumbnailUrl: thumbnailUrl || undefined
+      };
+    }
+
+    if (provider === 'loom') {
+      const oembedUrl = `https://www.loom.com/v1/oembed?format=json&url=${encoded}`;
+      const data = await fetchJsonWithTimeout(oembedUrl, 6500);
+      const title = safeTrim(data?.title);
+      const providerName = safeTrim(data?.provider_name || 'Loom');
+      const thumbnailUrl = safeTrim(data?.thumbnail_url);
+      const durationSeconds = Number.isFinite(Number(data?.duration)) ? Math.max(0, Math.floor(Number(data?.duration))) : undefined;
+      if (!title) return null;
+      return {
+        title,
+        provider: providerName,
+        thumbnailUrl: thumbnailUrl || undefined,
+        durationSeconds
+      };
+    }
+  } catch {
+    // best-effort
+  }
+
+  return null;
+}
+
+function missingActionResponse(request: Request, method: 'GET' | 'POST') {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'action is required',
+      received: { method }
+    },
+    { status: 400, headers: corsHeaders(request) }
+  );
+}
+
+function extractYoutubeId(assetUrl: string): string {
+  try {
+    const u = new URL(assetUrl);
+    const host = String(u.hostname || '').toLowerCase();
+    if (host.includes('youtu.be')) {
+      const id = String(u.pathname || '').replace(/^\//, '').trim();
+      return id || '';
+    }
+    if (host.includes('youtube.com')) {
+      const v = u.searchParams.get('v');
+      if (v) return v;
+      const parts = String(u.pathname || '').split('/').filter(Boolean);
+      const embedIdx = parts.indexOf('embed');
+      if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+      const shortsIdx = parts.indexOf('shorts');
+      if (shortsIdx >= 0 && parts[shortsIdx + 1]) return parts[shortsIdx + 1];
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+function extractLoomId(assetUrl: string): string {
+  try {
+    const u = new URL(assetUrl);
+    const host = String(u.hostname || '').toLowerCase();
+    if (!host.includes('loom.com')) return '';
+    const parts = String(u.pathname || '').split('/').filter(Boolean);
+    const shareIdx = parts.indexOf('share');
+    if (shareIdx >= 0 && parts[shareIdx + 1]) return parts[shareIdx + 1];
+    const embedIdx = parts.indexOf('embed');
+    if (embedIdx >= 0 && parts[embedIdx + 1]) return parts[embedIdx + 1];
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+function isPlaceholderTrainingUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = String(u.hostname || '').toLowerCase();
+    const path = String(u.pathname || '');
+    const search = String(u.search || '');
+
+    // Explicit junk patterns observed in prod.
+    if ((host === 'in' || host === 'this') && path === '/' && !search) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function canonicalTrainingVideoUrl(raw: unknown): { url: string; provider: 'youtube' | 'loom' } | null {
+  try {
+    const norm = normalizeHttpUrl(raw);
+    if (!norm) return null;
+    if (isPlaceholderTrainingUrl(norm)) return null;
+
+    const yt = extractYoutubeId(norm);
+    if (yt) {
+      return { url: `https://www.youtube.com/watch?v=${yt}`, provider: 'youtube' };
+    }
+
+    const loom = extractLoomId(norm);
+    if (loom) {
+      return { url: `https://www.loom.com/share/${loom}`, provider: 'loom' };
+    }
+
+    // Unsupported provider (we drop these to keep videos[] embeddable/trustworthy).
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeTrainingAssets(raw: unknown): string[] {
+  try {
+    const tokens: unknown[] = [];
+    if (Array.isArray(raw)) {
+      tokens.push(...raw);
+    } else {
+      const s = safeTrim(raw);
+      if (s) {
+        // legacy: allow whitespace/newline separated URLs (but will only keep supported providers)
+        for (const t of s.split(/[\s\n\r\t]+/g).filter(Boolean)) tokens.push(t);
+      }
+    }
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const tok of tokens) {
+      const canon = canonicalTrainingVideoUrl(tok);
+      if (!canon) continue;
+      if (seen.has(canon.url)) continue;
+      seen.add(canon.url);
+      out.push(canon.url);
+      if (out.length >= 50) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+type TrainingAssetMeta = {
+  title?: string;
+  provider?: string;
+  thumbnailUrl?: string;
+  durationSeconds?: number;
+  titleCleared?: boolean;
+};
+
+function normalizeTrainingAssetsMeta(raw: unknown, assets: string[]): Record<string, TrainingAssetMeta> | null {
+  try {
+    const allowed = new Set<string>();
+    for (const u of Array.isArray(assets) ? assets : []) {
+      const canon = canonicalTrainingVideoUrl(u);
+      if (canon) allowed.add(canon.url);
+    }
+    if (!allowed.size) return null;
+
+    const out: Record<string, TrainingAssetMeta> = {};
+    let count = 0;
+
+    const push = (maybeUrl: unknown, v: any) => {
+      if (count >= 50) return;
+      const canon = canonicalTrainingVideoUrl(maybeUrl);
+      if (!canon) return;
+      const key = canon.url;
+      if (!allowed.has(key)) return;
+
+      const title = safeTrim(v?.title ?? v?.Title ?? '');
+      const provider = safeTrim(v?.provider ?? v?.provider_name ?? v?.Provider ?? canon.provider);
+      const thumb = safeTrim(v?.thumbnailUrl ?? v?.thumbnail_url ?? v?.thumbnail ?? v?.thumb ?? '');
+      const durRaw = v?.durationSeconds ?? v?.duration_seconds ?? v?.duration;
+      const dur = Number.isFinite(Number(durRaw)) ? Math.max(0, Math.floor(Number(durRaw))) : null;
+      const titleCleared = v?.titleCleared === true || v?.title_cleared === true;
+
+      const row: TrainingAssetMeta = {};
+      if (title) row.title = title.slice(0, 200);
+      if (provider) row.provider = provider.slice(0, 80);
+      if (thumb) row.thumbnailUrl = thumb.slice(0, 500);
+      if (dur !== null) row.durationSeconds = dur;
+      if (titleCleared) row.titleCleared = true;
+
+      if (Object.keys(row).length === 0) return;
+
+      // Merge: prefer non-empty title, otherwise keep existing.
+      const existing = out[key] || {};
+      out[key] = {
+        ...existing,
+        ...row,
+        title: row.title ? row.title : existing.title,
+        titleCleared: row.titleCleared ? true : existing.titleCleared
+      };
+      count++;
+    };
+
+    // Accept array form: [{ url, title, provider, ... }]
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        push((item as any).url ?? (item as any).URL, item);
+      }
+      return Object.keys(out).length ? out : null;
+    }
+
+    // Map form: { [url]: { title, provider, ... } }
+    const meta = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? (raw as any) : null;
+    if (!meta) return null;
+    for (const [k, v] of Object.entries(meta)) {
+      if (!v || typeof v !== 'object') continue;
+      push(k, v);
+    }
+
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeTrainingAssetsMeta(opts: {
+  existing: Record<string, TrainingAssetMeta> | null;
+  incoming: Record<string, TrainingAssetMeta> | null;
+  assets: string[];
+}): Record<string, TrainingAssetMeta> | null {
+  try {
+    const assets = Array.isArray(opts.assets) ? opts.assets : [];
+    if (!assets.length) return null;
+
+    const existing = (opts.existing && typeof opts.existing === 'object') ? opts.existing : null;
+    const incoming = (opts.incoming && typeof opts.incoming === 'object') ? opts.incoming : null;
+
+    const out: Record<string, TrainingAssetMeta> = {};
+    for (const url of assets) {
+      const key = String(url || '').trim();
+      if (!key) continue;
+
+      const prev = existing && existing[key] ? existing[key] : {};
+      const next = incoming && incoming[key] ? incoming[key] : {};
+
+      const cleared = next.titleCleared === true;
+      const nextTitleRaw = safeTrim(next.title ?? '');
+      const prevTitleRaw = safeTrim(prev.title ?? '');
+
+      const title = cleared
+        ? ''
+        : (nextTitleRaw ? nextTitleRaw : prevTitleRaw);
+
+      const merged: TrainingAssetMeta = {
+        ...prev,
+        ...next,
+      };
+
+      // Enforce title-clearing semantics.
+      if (cleared) {
+        delete merged.title;
+      } else if (title) {
+        merged.title = title.slice(0, 200);
+      } else {
+        // no title
+        delete merged.title;
+      }
+
+      delete merged.titleCleared;
+
+      if (Object.keys(merged).length) out[key] = merged;
+    }
+
+    return Object.keys(out).length ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+function stableVideoIdFromUrl(assetUrl: string): string {
+  try {
+    // Keep this aligned with DB migration 022_training_asset_progress_add_video_id.sql
+    // which backfills Video_ID using md5(Asset_URL).
+    return crypto.createHash('md5').update(String(assetUrl || '')).digest('hex');
+  } catch {
+    return String(assetUrl || '').slice(0, 64);
+  }
+}
+
+function buildTrainingVideos(resource: any): Array<{
+  id: string;
+  title: string | null;
+  url: string;
+  durationSeconds: number | null;
+  source: string;
+  thumbnail: string | null;
+}> {
+  try {
+    // Source of truth: persisted Assets (+ legacy URL for single-video modules).
+    // Never tokenize Description into URLs.
+    const rawAssets = resource && (resource.Assets !== undefined ? resource.Assets : resource.assets);
+    const assets = sanitizeTrainingAssets(Array.isArray(rawAssets) ? rawAssets : (rawAssets != null ? rawAssets : []));
+    const urlFallback = (!assets.length) ? sanitizeTrainingAssets(resource && (resource.URL || resource.url)) : [];
+    const finalAssets = assets.length ? assets : urlFallback;
+
+    const meta = normalizeTrainingAssetsMeta(
+      resource && (resource.Assets_Meta ?? resource.assets_meta ?? resource.AssetsMeta ?? resource.assetsMeta),
+      finalAssets
+    );
+
+    return (finalAssets || []).map((u) => {
+      const norm = String(u || '').trim();
+      const m = meta && norm ? (meta as any)[norm] : null;
+      const title = safeTrim(m && (m.title || m.Title) || '') || null;
+      const thumb = safeTrim(m && (m.thumbnailUrl || m.thumbnail_url || m.thumbnail) || '') || null;
+      const durRaw = m && (m.durationSeconds ?? m.duration_seconds ?? m.duration);
+      const dur = Number.isFinite(Number(durRaw)) ? Math.max(0, Math.floor(Number(durRaw))) : null;
+      const source = inferLinkProvider(norm);
+      return {
+        id: stableVideoIdFromUrl(norm),
+        title,
+        url: norm,
+        durationSeconds: dur,
+        source,
+        thumbnail: thumb
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function invalidActionResponse(request: Request, method: 'GET' | 'POST', action: unknown) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: 'Invalid action',
+      received: {
+        method,
+        action: action == null ? null : String(action)
+      },
+      hint: 'Backend may be out of date. Deploy backend and retry.'
+    },
+    { status: 400, headers: corsHeaders(request) }
+  );
 }
 
 function isWeakOfferTitle(title: string): boolean {
@@ -294,6 +812,99 @@ ${JSON.stringify(slimOfferDataForTitle(offerData))}`;
   }
 }
 
+function slimOfferDataForDescription(offerData: any): any {
+  const o: any = (offerData && typeof offerData === 'object') ? offerData : {};
+
+  const out: any = {
+    name: clipString(o.name || o.offerName || o.offer_name, 140),
+    category: clipString(o.category, 80),
+    market: clipString(o.market, 80),
+    primaryAvatar: clipString(o.primaryAvatar, 140),
+    intendedGoal: clipString(o.intendedGoal, 260),
+    headline: clipString(o.headline, 260),
+    oneSentencePromise: clipString(o.oneSentencePromise, 260),
+    priceText: clipString(o.priceText || o.price_text, 60),
+    bundlePrice: Number.isFinite(Number(o.bundlePrice)) ? Number(o.bundlePrice) : undefined,
+    percentOff: Number.isFinite(Number(o.percentOff)) ? Number(o.percentOff) : undefined,
+    dollarOff: Number.isFinite(Number(o.dollarOff)) ? Number(o.dollarOff) : undefined,
+    scarcityMechanism: clipString(o.scarcityMechanism, 160),
+    riskReversal: clipString(o.riskReversal, 220),
+    whatsIncluded: clipString(o.whatsIncluded, 700),
+    eligibilityRules: clipString(o.eligibilityRules, 420),
+  };
+
+  if (Array.isArray(o.lineItems)) {
+    out.lineItems = o.lineItems.slice(0, 14).map((li: any) => ({
+      name: clipString(li?.name || li?.serviceName || li?.service, 120),
+      qty: Number(li?.qty || 1) || 1,
+      unitPrice: Number.isFinite(Number(li?.baseUnitPrice)) ? Number(li?.baseUnitPrice)
+        : (Number.isFinite(Number(li?.unitPrice)) ? Number(li?.unitPrice) : undefined),
+      notes: clipString(li?.notes, 180)
+    })).filter((x: any) => x.name);
+  }
+
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (v == null) delete out[k];
+    else if (typeof v === 'string' && !v.trim()) delete out[k];
+    else if (Array.isArray(v) && v.length === 0) delete out[k];
+    else if (typeof v === 'number' && !Number.isFinite(v)) delete out[k];
+  }
+
+  return out;
+}
+
+async function aiOfferDescription(openaiClient: OpenAI | null, offerData: any): Promise<string | null> {
+  if (!openaiClient) return null;
+
+  const service = guessServiceLabel(offerData);
+  const occasion = guessOccasionLabel(offerData);
+
+  const prompt = `You are a senior direct-response marketer for Home2Smart (TV mounts, doorbells, cameras, smart home installs).
+
+Goal: Write a clear offer description for an internal Offer Library record.
+
+Constraints:
+- 1 to 3 short paragraphs total (no markdown)
+- 80 to 320 words
+- Plain language, specific, not hypey
+- Mention what the customer gets (services) and any key constraints (eligibility/scarcity) if available
+- No emojis, no profanity, no ALL CAPS
+
+Return VALID JSON ONLY in this exact shape:
+{ "description": "string" }
+
+Helpful seed:
+- Occasion: ${occasion}
+- Service: ${service}
+
+OFFER_DATA_JSON:
+${JSON.stringify(slimOfferDataForDescription(offerData))}`;
+
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: 'Return JSON only. No markdown.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.6,
+      max_tokens: 420,
+      response_format: { type: 'json_object' }
+    });
+
+    const parsed = tryParseJsonObject(completion.choices?.[0]?.message?.content || '');
+    if (!parsed.ok) return null;
+    const raw = parsed.value;
+    const desc = safeTrim(raw?.description);
+    if (!desc) return null;
+    // Keep storage sane.
+    return desc.length > 1600 ? (desc.slice(0, 1599) + '…') : desc;
+  } catch {
+    return null;
+  }
+}
+
 // Helper to handle CORS
 function corsHeaders(request?: Request): Record<string, string> {
   // Allow specific origins or use wildcard for non-credential requests
@@ -320,8 +931,6 @@ function corsHeaders(request?: Request): Record<string, string> {
   const baseAllowed = [
     'Content-Type',
     'Authorization',
-    'X-H2S-Admin-Token',
-    'x-h2s-admin-token',
     'X-H2S-Admin-Key',
     'x-h2s-admin-key',
     'X-H2S-Bootstrap-Secret',
@@ -528,7 +1137,6 @@ async function requireAdminToken(request: Request): Promise<{ ok: true } | { ok:
   if (configured) {
     const provided = String(
       request.headers.get('x-h2s-admin-key') ||
-        request.headers.get('x-h2s-admin-token') ||
         request.headers.get('x-h2s-bootstrap-secret') ||
         ''
     ).trim();
@@ -816,6 +1424,33 @@ function toInt(value: unknown, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function smsPhoneQueryVariants(rawPhone: string): string[] {
+  try {
+    const out = new Set<string>();
+    const raw = String(rawPhone || '').trim();
+    if (raw) out.add(raw);
+    const norm = normalizePhone(raw);
+    if (norm) out.add(norm);
+
+    const digits = raw.replace(/\D+/g, '');
+    if (digits) out.add(digits);
+
+    let ten = '';
+    if (digits.length === 10) ten = digits;
+    if (digits.length === 11 && digits.startsWith('1')) ten = digits.slice(1);
+
+    if (ten) {
+      out.add(ten);
+      out.add(`1${ten}`);
+      out.add(`+1${ten}`);
+    }
+
+    return Array.from(out).filter(Boolean).slice(0, 6);
+  } catch {
+    return [String(rawPhone || '').trim()].filter(Boolean);
+  }
+}
+
 function toEventType(event: TrackingEventRow): string {
   return String(event.event_type || event.event_name || '').trim() || 'unknown';
 }
@@ -984,6 +1619,7 @@ async function fetchAllRows<T>(
 }
 
 const TEST_KEYWORDS = ['test', 'demo', 'sample', 'fake', 'example', 'asdf', 'qwer', 'zzz', 'xxx'];
+const MAX_JSON_PARSE_CHARS = 250000;
 
 function normalizeMaybeString(value: unknown): string {
   if (value == null) return '';
@@ -994,6 +1630,7 @@ function parseMaybeJson(value: unknown): any {
   if (!value) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
+  if (value.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(value);
   } catch {
@@ -1233,7 +1870,11 @@ async function buildAiReport(params: {
   const trackingDb = getTrackingDb();
   let query = trackingDb
     .from('h2s_tracking_events')
-    .select('*')
+    // Memory guardrail: avoid selecting wide rows (metadata blobs, raw payloads, etc).
+    // Keep only fields used by reporting + test/internal filters.
+    .select(
+      'visitor_id,session_id,occurred_at,event_type,event_name,page_path,page_url,utm_source,utm_medium,utm_campaign,revenue_amount,customer_email,customer_phone,order_id'
+    )
     .order('occurred_at', { ascending: false });
   
   // Apply date filters
@@ -1242,8 +1883,9 @@ async function buildAiReport(params: {
   }
   query = query.gte('occurred_at', queryStart).lte('occurred_at', queryEnd);
   
-  // Prefetch more rows so in-memory filters (test/internal) don't starve the AI input.
-  const prefilterLimit = Math.min(Math.max(limit * 4, limit), 20000);
+  // Prefetch more rows so in-memory filters (test/internal) don't starve the AI input,
+  // but cap the fetch size to prevent OOM in constrained runtimes (e.g. Vercel lambdas).
+  const prefilterLimit = Math.min(Math.max(limit * 3, limit), 10000);
   const { data: reportEvents, error } = await query.limit(prefilterLimit);
 
   if (error) {
@@ -1424,6 +2066,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
+  if (!action) {
+    return missingActionResponse(request, 'GET');
+  }
+
   const excludeTest = ['1', 'true', 'yes', 'on'].includes(
     String(searchParams.get('exclude_test') || searchParams.get('excludeTest') || '').toLowerCase()
   );
@@ -1506,6 +2152,1263 @@ export async function GET(request: Request) {
           result = users || [];
         }
         break;
+      case 'smsThreads':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 500), 1), 500);
+          const db = getDeliverablesDb();
+          const { data, error } = await db
+            .from('sms_threads')
+            .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(limit);
+
+          if (error) {
+            const msg = isMissingTableError(error, 'sms_threads')
+              ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+              : `Failed to load threads: ${error.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          // Filter out hidden conversations for this user (soft delete / archive)
+          let hiddenThreadIds = new Set<string>();
+          try {
+            const { data: hidden, error: hErr } = await db
+              .from('sms_hidden_conversations')
+              .select('conversation_id')
+              .eq('owner_user_id', me.userId)
+              .eq('conversation_type', 'thread')
+              .limit(5000);
+
+            if (!hErr && Array.isArray(hidden)) {
+              hiddenThreadIds = new Set(hidden.map((r: any) => String(r.conversation_id || '').trim()).filter(Boolean));
+            }
+          } catch {
+            // ignore
+          }
+
+          const hiddenThreads = Array.from(hiddenThreadIds.values()).filter(Boolean);
+
+          const withHiddenFlag = (data || []).map((t: any) => {
+            const tid = String(t?.thread_id || '').trim();
+            return { ...(t || {}), hidden: !!(tid && hiddenThreadIds.has(tid)) };
+          });
+
+          // Portal bundle expects: { ok, threads, hidden_threads }
+          // Legacy dashboards expect: { ok, smsThreads }
+          const visible = withHiddenFlag.filter((t: any) => !t?.hidden);
+          return NextResponse.json(
+            {
+              ok: true,
+              threads: visible,
+              smsThreads: visible,
+              hidden_threads: hiddenThreads
+            },
+            { headers: corsHeaders(request) }
+          );
+        }
+        // break; (unreachable)
+      case 'smsContacts':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 2000), 1), 5000);
+          const db = getDeliverablesDb();
+
+          const { data: rows, error } = await db
+            .from('sms_threads')
+            .select('thread_id, contact_phone, contact_name, last_message_at')
+            .order('last_message_at', { ascending: false, nullsFirst: false })
+            .limit(limit);
+
+          if (error) {
+            const msg = isMissingTableError(error, 'sms_threads')
+              ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+              : `Failed to load contacts: ${error.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const contacts = (rows || [])
+            .map((r: any) => {
+              const phone = normalizePhone(String(r?.contact_phone || '').trim()) || String(r?.contact_phone || '').trim();
+              return {
+                phone,
+                contact_phone: phone,
+                contact_name: r?.contact_name != null ? String(r.contact_name) : null,
+                thread_id: r?.thread_id != null ? String(r.thread_id) : null
+              };
+            })
+            .filter((c: any) => c && c.phone);
+
+          return NextResponse.json({ ok: true, contacts }, { headers: corsHeaders(request) });
+        }
+        // break; (unreachable)
+      case 'smsGroups':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 120), 1), 250);
+          const db = getDeliverablesDb();
+
+          // Best-effort: some upstream systems (or legacy dashboard flows) perform a "group send"
+          // as multiple 1:1 OUTBOUND SMS messages (fan-out), without calling smsGroupUpsert/smsGroupSend.
+          // If we don't persist an sms_groups row, the inbox cannot "detect" that a group exists.
+          //
+          // Heuristic: within a short time bucket, if the same sender sends the same body to 2+
+          // different recipients, auto-create (or reuse) a group by member_key and tag those
+          // messages with sms_messages.group_id.
+          try {
+            // Throttle: this endpoint is polled by the dashboard; keep the heuristic work bounded.
+            // (Best-effort only; safe to skip occasionally.)
+            const nowMs = Date.now();
+            const lastRunMs = (globalThis as any).__smsFanoutAutoTagLastRunMs || 0;
+            const tooSoon = lastRunMs && (nowMs - Number(lastRunMs || 0)) < 60_000;
+            if (tooSoon) {
+              throw new Error('skip: fanout auto-tag throttled');
+            }
+            (globalThis as any).__smsFanoutAutoTagLastRunMs = nowMs;
+
+            // Run for all roles. This endpoint is polled by the dashboard, and admins
+            // also need group auto-detection for legacy fan-out sends.
+            {
+              // Skip if schema is missing group_id.
+              const { error: probeErr } = await db.from('sms_messages').select('group_id').limit(1);
+              const supportsGroupId = !(probeErr && isMissingColumnError(probeErr, 'group_id'));
+
+              if (supportsGroupId) {
+                const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // last 7 days
+                const { data: recentOut, error: outErr } = await db
+                  .from('sms_messages')
+                  .select(
+                    'message_id, thread_id, direction, body, to_phone, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id'
+                  )
+                  .eq('direction', 'OUTBOUND')
+                  .gte('created_at', sinceIso)
+                  .order('created_at', { ascending: false })
+                  .limit(800);
+
+                if (!outErr && Array.isArray(recentOut) && recentOut.length) {
+                  const normKey = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+                  const normalizeLegacyBody = (rawBody: any, senderHint: any) => {
+                    const s = safeTrim(rawBody);
+                    if (!s) return '';
+                    const hint = safeTrim(senderHint);
+                    if (hint && s.startsWith('[')) {
+                      const end = s.indexOf(']');
+                      if (end > 1 && end < 80) {
+                        const tag = s.slice(1, end).trim();
+                        if (normKey(tag) === normKey(hint)) {
+                          const after = s.slice(end + 1).trimStart();
+                          if (after) return after;
+                        }
+                      }
+                    }
+                    return s;
+                  };
+
+                  const sigFor = (m: any) => {
+                    try {
+                      const senderId = safeTrim(m?.sent_by_user_id || m?.sent_by_username || m?.sent_by_display_name || '');
+                      if (!senderId) return '';
+                      const hint = safeTrim(m?.sent_by_display_name || m?.sent_by_username || '');
+                      const bodyKey = normalizeLegacyBody(m?.body, hint).toLowerCase();
+                      if (!bodyKey) return '';
+                      const at = safeTrim(m?.created_at || '');
+                      const t = at ? new Date(at).getTime() : 0;
+                      if (!t || isNaN(t)) return '';
+                      const slot = Math.floor(t / 120000); // 2m slots
+                      return `${senderId}::${slot}::${bodyKey}`;
+                    } catch {
+                      return '';
+                    }
+                  };
+
+                  const clusters = new Map<
+                    string,
+                    { messageIds: string[]; phones: Set<string>; threadIds: Set<string> }
+                  >();
+
+                  for (const m of recentOut) {
+                    const gid = safeTrim((m as any)?.group_id || '');
+                    if (gid) continue;
+                    const sig = sigFor(m);
+                    if (!sig) continue;
+                    const mid = safeTrim((m as any)?.message_id || '');
+                    const tid = safeTrim((m as any)?.thread_id || '');
+                    const toRaw = safeTrim((m as any)?.to_phone || '');
+                    const toPhone = normalizePhone(toRaw) || toRaw;
+                    if (!mid || !tid || !toPhone) continue;
+
+                    if (!clusters.has(sig)) clusters.set(sig, { messageIds: [], phones: new Set(), threadIds: new Set() });
+                    const c = clusters.get(sig)!;
+                    c.messageIds.push(mid);
+                    c.phones.add(toPhone);
+                    c.threadIds.add(tid);
+                  }
+
+                  // Persist at most a few per request to keep this endpoint fast.
+                  let createdOrTagged = 0;
+                  for (const c of Array.from(clusters.values())) {
+                    if (createdOrTagged >= 8) break;
+                    if (!c || c.phones.size < 2 || c.threadIds.size < 2) continue;
+                    const uniquePhones = Array.from(c.phones).filter(Boolean);
+                    uniquePhones.sort();
+                    const memberKey = uniquePhones.join('|');
+                    if (!memberKey) continue;
+
+                    // Reuse existing group across owners when possible (shared inbox behavior).
+                    const { data: existingByKey } = await db
+                      .from('sms_groups')
+                      .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+                      .eq('member_key', memberKey)
+                      .order('updated_at', { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+
+                    let groupId = safeTrim((existingByKey as any)?.group_id || '');
+                    if (!groupId) {
+                      const { data: created, error: createErr } = await db
+                        .from('sms_groups')
+                        .upsert(
+                          {
+                            owner_user_id: me.userId,
+                            member_key: memberKey,
+                            group_name: null
+                          },
+                          { onConflict: 'owner_user_id,member_key' }
+                        )
+                        .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+                        .single();
+
+                      if (createErr || !created) continue;
+                      groupId = safeTrim((created as any)?.group_id || '');
+                    }
+
+                    if (!groupId) continue;
+
+                    try {
+                      const memberRows = uniquePhones.map((p) => ({ group_id: groupId, contact_phone: p }));
+                      await db.from('sms_group_members').upsert(memberRows, { onConflict: 'group_id,contact_phone' });
+                    } catch {
+                      // ignore
+                    }
+
+                    // Tag the fan-out messages so the group timeline + group activity detection works.
+                    try {
+                      await db
+                        .from('sms_messages')
+                        .update({ group_id: groupId })
+                        .in('message_id', c.messageIds.slice(0, 250))
+                        .is('group_id', null);
+                    } catch {
+                      // ignore
+                    }
+
+                    // Touch group updated_at so it sorts near the top.
+                    try {
+                      await db.from('sms_groups').update({ updated_at: new Date().toISOString() }).eq('group_id', groupId);
+                    } catch {
+                      // ignore
+                    }
+
+                    createdOrTagged++;
+                  }
+                }
+              }
+            }
+          } catch {
+            // ignore (diagnostic/backfill only)
+          }
+
+          let groupQuery = db
+            .from('sms_groups')
+            .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+            .order('updated_at', { ascending: false })
+            .limit(limit);
+
+          // Groups behave like a shared inbox concept: any non-admin dashboard user may
+          // view groups created by another employee (e.g. Roselle-created dual-recipient groups).
+
+          const { data: groups, error: gErr } = await groupQuery;
+
+          if (gErr) {
+            const msg = isMissingTableError(gErr, 'sms_groups')
+              ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+              : `Failed to load groups: ${gErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          // Filter out hidden conversations for this user (soft delete / archive)
+          let hiddenGroupIds = new Set<string>();
+          try {
+            const { data: hidden, error: hErr } = await db
+              .from('sms_hidden_conversations')
+              .select('conversation_id')
+              .eq('owner_user_id', me.userId)
+              .eq('conversation_type', 'group')
+              .limit(5000);
+
+            if (!hErr && Array.isArray(hidden)) {
+              hiddenGroupIds = new Set(hidden.map((r: any) => String(r.conversation_id || '').trim()).filter(Boolean));
+            }
+          } catch {
+            // ignore
+          }
+
+          const rows = (groups || []).map((g: any) => {
+            const gid = String(g?.group_id || '').trim();
+            return { ...(g || {}), hidden: !!(gid && hiddenGroupIds.has(gid)) };
+          });
+
+          const groupIds = rows.map((r: any) => String(r.group_id || '').trim()).filter(Boolean);
+          if (!groupIds.length) {
+            result = [];
+            break;
+          }
+
+          const { data: members, error: mErr } = await db
+            .from('sms_group_members')
+            .select('group_id, contact_phone')
+            .in('group_id', groupIds)
+            .limit(5000);
+
+          if (mErr) {
+            const msg = isMissingTableError(mErr, 'sms_group_members')
+              ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+              : `Failed to load group members: ${mErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const membersByGroup: Record<string, string[]> = {};
+          const allPhones: string[] = [];
+          for (const r of (members || [])) {
+            const gid = String((r as any).group_id || '').trim();
+            const phone = normalizePhone(String((r as any).contact_phone || '').trim());
+            if (!gid || !phone) continue;
+            if (!membersByGroup[gid]) membersByGroup[gid] = [];
+            membersByGroup[gid].push(phone);
+            allPhones.push(phone);
+          }
+
+          // Load threads for member phones (for names + unread counts).
+          const uniqPhones = Array.from(new Set(allPhones)).filter(Boolean);
+          const phoneToThread: Record<string, any> = {};
+          if (uniqPhones.length) {
+            const variants = Array.from(new Set(uniqPhones.flatMap(p => smsPhoneQueryVariants(p)))).filter(Boolean);
+            const { data: threads, error: tErr } = await db
+              .from('sms_threads')
+              .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+              .in('contact_phone', variants.length ? variants : uniqPhones)
+              .limit(5000);
+
+            if (tErr) {
+              const msg = isMissingTableError(tErr, 'sms_threads')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load threads for groups: ${tErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+
+            for (const t of (threads || [])) {
+              const phone = normalizePhone(String((t as any).contact_phone || '').trim());
+              if (!phone) continue;
+              phoneToThread[phone] = t;
+            }
+          }
+
+          // Compute group "latest activity" intelligently:
+          // - INBOUND from any member thread is always relevant to the group.
+          // - OUTBOUND is relevant only when it was a group send (sms_messages.group_id == group_id).
+          //   Direct 1:1 outbound sends should NOT make the group look like it has new activity.
+          const groupIdSet = new Set(groupIds);
+          const groupToThreadIds: Record<string, string[]> = {};
+          const allThreadIds: string[] = [];
+          for (const gid of groupIds) {
+            const phones = (membersByGroup[gid] || []).slice(0);
+            const tids: string[] = [];
+            for (const p of phones) {
+              const tid = String(phoneToThread[p]?.thread_id || '').trim();
+              if (!tid) continue;
+              tids.push(tid);
+              allThreadIds.push(tid);
+            }
+            groupToThreadIds[gid] = Array.from(new Set(tids));
+          }
+
+          const uniqThreadIds = Array.from(new Set(allThreadIds)).filter(Boolean);
+          // Safety cap: avoid giant IN() lists and huge message scans.
+          const cappedThreadIds = uniqThreadIds.slice(0, 900);
+          const threadToGroups = new Map<string, string[]>();
+          for (const gid of groupIds) {
+            for (const tid of (groupToThreadIds[gid] || [])) {
+              if (!threadToGroups.has(tid)) threadToGroups.set(tid, []);
+              threadToGroups.get(tid)!.push(gid);
+            }
+          }
+
+          const lastByGroup: Record<string, { at: string; preview: string | null }> = {};
+          if (cappedThreadIds.length) {
+            // Try to use group_id when available; if not, fall back to INBOUND-only.
+            let msgs: any[] = [];
+            let supportsGroupId = true;
+
+            {
+              const { data: probe, error: probeErr } = await db
+                .from('sms_messages')
+                .select('group_id')
+                .limit(1);
+              if (probeErr && isMissingColumnError(probeErr, 'group_id')) {
+                supportsGroupId = false;
+              }
+              void probe;
+            }
+
+            if (supportsGroupId) {
+              const { data: rows, error: msgErr } = await db
+                .from('sms_messages')
+                .select('thread_id, direction, body, created_at, group_id, sent_by_user_id, sent_by_username, sent_by_display_name')
+                .in('thread_id', cappedThreadIds)
+                .order('created_at', { ascending: false })
+                .limit(2000);
+              if (msgErr) {
+                if (isMissingColumnError(msgErr, 'group_id')) supportsGroupId = false;
+                else {
+                  const msg = isMissingTableError(msgErr, 'sms_messages')
+                    ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                    : `Failed to load messages for groups: ${msgErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+              } else {
+                msgs = Array.isArray(rows) ? rows : [];
+              }
+            }
+
+            if (!supportsGroupId) {
+              const { data: rows, error: msgErr } = await db
+                .from('sms_messages')
+                .select('thread_id, direction, body, created_at')
+                .in('thread_id', cappedThreadIds)
+                .eq('direction', 'INBOUND')
+                .order('created_at', { ascending: false })
+                .limit(2000);
+
+              if (msgErr) {
+                const msg = isMissingTableError(msgErr, 'sms_messages')
+                  ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                  : `Failed to load messages for groups: ${msgErr.message}`;
+                return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+              }
+              msgs = Array.isArray(rows) ? rows : [];
+            }
+
+            const totalGroups = groupIds.length;
+            let filled = 0;
+
+            const normKey = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+            const normalizeLegacyBody = (raw: any, senderHint: any) => {
+              const s = safeTrim(raw);
+              if (!s) return '';
+              const hint = safeTrim(senderHint);
+              if (hint && s.startsWith('[')) {
+                const end = s.indexOf(']');
+                if (end > 1 && end < 80) {
+                  const tag = s.slice(1, end).trim();
+                  if (normKey(tag) === normKey(hint)) {
+                    const after = s.slice(end + 1).trimStart();
+                    if (after) return after;
+                  }
+                }
+              }
+              return s;
+            };
+            const signatureFor = (m: any) => {
+              try {
+                const dir = String(m?.direction || '').toUpperCase();
+                if (dir !== 'OUTBOUND') return '';
+                const sender = safeTrim(m?.sent_by_user_id || m?.sent_by_username || m?.sent_by_display_name || '');
+                const hint = safeTrim(m?.sent_by_display_name || m?.sent_by_username || '');
+                const bodyKey = normalizeLegacyBody(m?.body, hint).toLowerCase();
+                const at = safeTrim(m?.created_at || '');
+                const t = at ? new Date(at).getTime() : 0;
+                if (!t || isNaN(t)) return '';
+                // Bucket outbound fan-out sends into a wider window so slow sequential sends
+                // (Twilio throttling / retries / queueing) still get treated as one group event.
+                const slot = Math.floor(t / 120000); // 2m slots
+                return `${sender || 'unknown'}::${slot}::${bodyKey}`;
+              } catch {
+                return '';
+              }
+            };
+
+            // Legacy: if older group sends were written as multiple OUTBOUND 1:1 rows (no group_id),
+            // treat them as a group-send only when we see the same signature in 2+ member threads.
+            const legacySeenByGroup: Record<string, Map<string, Set<string>>> = {};
+            for (const m of msgs) {
+              if (filled >= totalGroups) break;
+              const tid = String((m as any).thread_id || '').trim();
+              if (!tid) continue;
+              const dir = String((m as any).direction || '').trim().toUpperCase();
+              const at = String((m as any).created_at || '').trim();
+              const body = (m as any).body != null ? String((m as any).body) : null;
+
+              if (dir === 'INBOUND') {
+                const gids = threadToGroups.get(tid) || [];
+                for (const gid of gids) {
+                  if (!groupIdSet.has(gid)) continue;
+                  if (lastByGroup[gid]) continue;
+                  lastByGroup[gid] = { at, preview: body };
+                  filled++;
+                }
+                continue;
+              }
+
+              if (dir === 'OUTBOUND') {
+                const gid = String((m as any).group_id || '').trim();
+                // Modern path: group sends are persisted with sms_messages.group_id.
+                if (gid) {
+                  if (!groupIdSet.has(gid)) continue;
+                  if (lastByGroup[gid]) continue;
+                  lastByGroup[gid] = { at, preview: body };
+                  filled++;
+                  continue;
+                }
+                // Legacy path (no group_id): fall through so we can detect fan-out signatures.
+              }
+
+              if (dir === 'OUTBOUND' && supportsGroupId) {
+                // Legacy fan-out (no group_id): only count as group activity if it appears in >=2 member threads.
+                const sig = signatureFor(m);
+                if (!sig) continue;
+                const gids = threadToGroups.get(tid) || [];
+                for (const gid of gids) {
+                  if (!groupIdSet.has(gid)) continue;
+                  if (lastByGroup[gid]) continue;
+                  if (!legacySeenByGroup[gid]) legacySeenByGroup[gid] = new Map();
+                  const map = legacySeenByGroup[gid];
+                  if (!map.has(sig)) map.set(sig, new Set());
+                  map.get(sig)!.add(tid);
+                  if (map.get(sig)!.size >= 2) {
+                    lastByGroup[gid] = { at, preview: body };
+                    filled++;
+                  }
+                }
+              }
+            }
+          }
+
+          const out = rows.map((g: any) => {
+            const gid = String(g.group_id || '').trim();
+            const phones = (membersByGroup[gid] || []).slice(0);
+            phones.sort();
+
+            const lastMeta = lastByGroup[gid] || null;
+            let lastAt: string | null = lastMeta ? String(lastMeta.at || '') : null;
+            let lastPreview: string | null = lastMeta ? (lastMeta.preview != null ? String(lastMeta.preview) : null) : null;
+            let unreadSum = 0;
+            for (const p of phones) {
+              const t = phoneToThread[p];
+              if (t && t.unread_count) unreadSum += Number(t.unread_count || 0) || 0;
+            }
+
+            const memberInfos = phones.map(p => {
+              const t = phoneToThread[p];
+              return {
+                contact_phone: p,
+                contact_name: t && t.contact_name ? String(t.contact_name) : null
+              };
+            });
+
+            return {
+              group_id: gid,
+              group_name: g.group_name || null,
+              hidden: !!(g as any).hidden,
+              member_key: g.member_key,
+              member_count: phones.length,
+              members: memberInfos,
+              last_message_at: lastAt,
+              last_message_preview: lastPreview,
+              unread_count: unreadSum,
+              created_at: g.created_at,
+              updated_at: g.updated_at
+            };
+          });
+
+          out.sort((a: any, b: any) => {
+            const ta = a && a.last_message_at ? new Date(String(a.last_message_at)).getTime() : 0;
+            const tb = b && b.last_message_at ? new Date(String(b.last_message_at)).getTime() : 0;
+            if (tb !== ta) return tb - ta;
+            const ua = a && a.updated_at ? new Date(String(a.updated_at)).getTime() : 0;
+            const ub = b && b.updated_at ? new Date(String(b.updated_at)).getTime() : 0;
+            return ub - ua;
+          });
+
+          // Portal bundle expects: { ok, groups, group_members }
+          // Current backend expects: { ok, smsGroups }
+          const portalGroups = out.map((g: any) => {
+            const phones = Array.isArray(g?.members)
+              ? g.members
+                  .map((m: any) => {
+                    if (typeof m === 'string') return normalizePhone(String(m).trim()) || String(m).trim();
+                    const p = String(m?.contact_phone || '').trim();
+                    return normalizePhone(p) || p;
+                  })
+                  .filter(Boolean)
+              : [];
+
+            return {
+              group_id: String(g?.group_id || '').trim(),
+              title: String(g?.group_name || '').trim() || 'Group',
+              group_name: g?.group_name != null ? String(g.group_name) : null,
+              hidden: !!g?.hidden,
+              member_key: g?.member_key != null ? String(g.member_key) : null,
+              member_count: Number(g?.member_count || phones.length) || phones.length,
+              members: phones,
+              last_message_at: g?.last_message_at != null ? String(g.last_message_at) : null,
+              last_message_preview: g?.last_message_preview != null ? String(g.last_message_preview) : null,
+              unread_count: Number(g?.unread_count || 0) || 0,
+              created_at: g?.created_at || null,
+              updated_at: g?.updated_at || null
+            };
+          });
+
+          const groupMembers = portalGroups.flatMap((g: any) =>
+            (Array.isArray(g?.members) ? g.members : []).map((p: any) => ({
+              group_id: g.group_id,
+              contact_phone: String(p || '').trim()
+            }))
+          );
+
+          return NextResponse.json(
+            {
+              ok: true,
+              groups: portalGroups,
+              group_members: groupMembers,
+              smsGroups: out
+            },
+            { headers: corsHeaders(request) }
+          );
+        }
+        // break; (unreachable)
+      case 'smsGroupMessages':
+      case 'smsGroup':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const sessionIsAdmin = String((me as any)?.role || '').trim().toUpperCase() === 'ADMIN';
+
+          const groupId = String(searchParams.get('group_id') || searchParams.get('groupId') || '').trim();
+          if (!groupId) {
+            return NextResponse.json({ ok: false, error: 'group_id is required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+
+          const { data: group, error: gErr } = await db
+            .from('sms_groups')
+            .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+            .eq('group_id', groupId)
+            .maybeSingle();
+
+          if (gErr) {
+            const msg = isMissingTableError(gErr, 'sms_groups')
+              ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+              : `Failed to load group: ${gErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          // Treat group conversations as shared across dashboard users.
+          if (!group) {
+            return NextResponse.json({ ok: false, error: 'Group not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const { data: members, error: mErr } = await db
+            .from('sms_group_members')
+            .select('contact_phone')
+            .eq('group_id', groupId)
+            .limit(5000);
+
+          if (mErr) {
+            const msg = isMissingTableError(mErr, 'sms_group_members')
+              ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+              : `Failed to load group members: ${mErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const phones = (members || [])
+            .map((r: any) => normalizePhone(String(r.contact_phone || '').trim()))
+            .filter(Boolean);
+          phones.sort();
+
+          const phoneVariants = Array.from(new Set(phones.flatMap(p => smsPhoneQueryVariants(p)))).filter(Boolean);
+
+          const { data: threads, error: tErr } = await db
+            .from('sms_threads')
+            .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+            .in('contact_phone', phoneVariants.length ? phoneVariants : phones)
+            .limit(5000);
+
+          if (tErr) {
+            const msg = isMissingTableError(tErr, 'sms_threads')
+              ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+              : `Failed to load threads: ${tErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const threadIds = (threads || []).map((t: any) => String(t.thread_id || '').trim()).filter(Boolean);
+          let messages: any[] = [];
+          let page = { limit: 120, has_more: false, before: null as string | null, next_before: null as string | null };
+          if (threadIds.length) {
+            const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 120), 20), 1000);
+            const before = safeTrim(searchParams.get('before') || '');
+            const pageSize = Math.min(limit + 1, 1001);
+
+            // For group view: show all INBOUND from members + OUTBOUND group-sends only.
+            // Exclude direct 1:1 outbound sends so they don't appear in the group timeline.
+            // Back-compat: if older group sends were stored as multiple 1:1 OUTBOUND rows (no group_id),
+            // include them ONLY when they appear in >=2 member threads within a ~20s signature window.
+            let msgs: any[] = [];
+            let msgErr: any = null;
+            {
+              const { data: probe, error: probeErr } = await db
+                .from('sms_messages')
+                .select('group_id')
+                .limit(1);
+
+              const supportsGroupId = !(probeErr && isMissingColumnError(probeErr, 'group_id'));
+              void probe;
+
+              if (supportsGroupId) {
+                // Fetch a larger window, then filter server-side.
+                const fetchSize = Math.min(1500, Math.max(pageSize * 6, 250));
+                const resp = await db
+                  .from('sms_messages')
+                  .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id')
+                  .in('thread_id', threadIds)
+                  .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                  .order('created_at', { ascending: false })
+                  .limit(fetchSize);
+                msgs = Array.isArray(resp.data) ? resp.data : [];
+                msgErr = resp.error;
+              } else {
+                // Back-compat: if the DB hasn't been migrated, fall back to the legacy behavior
+                // (group shows all messages across member threads).
+                const resp = await db
+                  .from('sms_messages')
+                  .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name')
+                  .in('thread_id', threadIds)
+                  .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                  .order('created_at', { ascending: false })
+                  .limit(pageSize);
+                msgs = Array.isArray(resp.data) ? resp.data : [];
+                msgErr = resp.error;
+              }
+            }
+
+            if (msgErr) {
+              const msg = isMissingTableError(msgErr, 'sms_messages')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load messages: ${msgErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+            const raw = msgs || [];
+            let filteredDesc: any[] = raw;
+
+            // Server-side filter when group_id exists.
+            try {
+              const supportsGroupId = raw.some((m: any) => Object.prototype.hasOwnProperty.call(m || {}, 'group_id'));
+              if (supportsGroupId) {
+                const normKey = (x: any) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+                const normalizeLegacyBody = (rawBody: any, senderHint: any) => {
+                  const s = safeTrim(rawBody);
+                  if (!s) return '';
+                  const hint = safeTrim(senderHint);
+                  if (hint && s.startsWith('[')) {
+                    const end = s.indexOf(']');
+                    if (end > 1 && end < 80) {
+                      const tag = s.slice(1, end).trim();
+                      if (normKey(tag) === normKey(hint)) {
+                        const after = s.slice(end + 1).trimStart();
+                        if (after) return after;
+                      }
+                    }
+                  }
+                  return s;
+                };
+                const sigFor = (m: any) => {
+                  try {
+                    const dir = String(m?.direction || '').toUpperCase();
+                    if (dir !== 'OUTBOUND') return '';
+                    const sender = safeTrim(m?.sent_by_user_id || m?.sent_by_username || m?.sent_by_display_name || '');
+                    const hint = safeTrim(m?.sent_by_display_name || m?.sent_by_username || '');
+                    const bodyKey = normalizeLegacyBody(m?.body, hint).toLowerCase();
+                    const at = safeTrim(m?.created_at || '');
+                    const t = at ? new Date(at).getTime() : 0;
+                    if (!t || isNaN(t)) return '';
+                    // Wider time bucket to avoid missing slow fan-out sends.
+                    const slot = Math.floor(t / 120000);
+                    return `${sender || 'unknown'}::${slot}::${bodyKey}`;
+                  } catch {
+                    return '';
+                  }
+                };
+
+                const clusters = new Map<string, Set<string>>();
+                for (const m of raw) {
+                  const dir = String(m?.direction || '').toUpperCase();
+                  if (dir !== 'OUTBOUND') continue;
+                  const gid = safeTrim(m?.group_id || '');
+                  if (gid) continue;
+                  const sig = sigFor(m);
+                  if (!sig) continue;
+                  const tid = safeTrim(m?.thread_id || '');
+                  if (!tid) continue;
+                  if (!clusters.has(sig)) clusters.set(sig, new Set());
+                  clusters.get(sig)!.add(tid);
+                }
+
+                const eligible = new Set<string>();
+                for (const [sig, tids] of Array.from(clusters.entries())) {
+                  if (tids && tids.size >= 2) eligible.add(sig);
+                }
+
+                filteredDesc = raw.filter((m: any) => {
+                  const dir = String(m?.direction || '').toUpperCase();
+                  if (dir === 'INBOUND') return true;
+                  if (dir !== 'OUTBOUND') return false;
+                  const gid = safeTrim(m?.group_id || '');
+                  if (gid && gid === groupId) return true;
+                  if (gid) return false;
+                  const sig = sigFor(m);
+                  if (!sig || !eligible.has(sig)) return false;
+                  // Mark for UI labeling.
+                  try { (m as any).group_id = groupId; } catch {}
+                  return true;
+                });
+              }
+            } catch {
+              filteredDesc = raw;
+            }
+
+            const hasMore = filteredDesc.length > limit;
+            const slicedDesc = hasMore ? filteredDesc.slice(0, limit) : filteredDesc;
+            const sliced = slicedDesc.slice(0).reverse();
+            messages = sliced;
+
+            page = {
+              limit,
+              has_more: hasMore,
+              before: before || null,
+              next_before: sliced.length ? String((sliced as any)[0].created_at || '') : null
+            };
+          }
+
+          // Mark member threads read (best-effort)
+          try {
+            // Keep admin sessions view-only: don't mutate unread counters.
+            if (!sessionIsAdmin && phones.length) {
+              const variants = Array.from(new Set(phones.flatMap(p => smsPhoneQueryVariants(p)))).filter(Boolean);
+              await db.from('sms_threads').update({ unread_count: 0 }).in('contact_phone', variants.length ? variants : phones);
+            }
+          } catch {
+            // ignore
+          }
+
+          const membersOut = phones.map(p => {
+            const t = (threads || []).find((x: any) => normalizePhone(String(x.contact_phone || '').trim()) === p);
+            return { contact_phone: p, contact_name: t && t.contact_name ? String(t.contact_name) : null, thread_id: t && t.thread_id ? String(t.thread_id) : null };
+          });
+
+          const payload = {
+            group: {
+              group_id: groupId,
+              group_name: (group as any).group_name || null,
+              member_key: (group as any).member_key,
+              member_count: phones.length,
+              created_at: (group as any).created_at,
+              updated_at: (group as any).updated_at
+            },
+            members: membersOut,
+            messages,
+            page
+          };
+
+          if (action === 'smsGroupMessages') {
+            return NextResponse.json(
+              { ok: true, group: payload.group, members: payload.members, messages: payload.messages, page: payload.page },
+              { headers: corsHeaders(request) }
+            );
+          }
+
+          result = payload;
+        }
+        break;
+      case 'smsMessages':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const threadId = String(searchParams.get('thread_id') || searchParams.get('threadId') || '').trim();
+          const contactPhone = normalizePhone(String(searchParams.get('contact_phone') || searchParams.get('contactPhone') || '').trim());
+
+          if (!threadId && !contactPhone) {
+            return NextResponse.json({ ok: false, error: 'thread_id or contact_phone is required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+
+          let thread: any = null;
+          if (threadId) {
+            const { data: t, error: tErr } = await db
+              .from('sms_threads')
+              .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+              .eq('thread_id', threadId)
+              .maybeSingle();
+            if (tErr) {
+              const msg = isMissingTableError(tErr, 'sms_threads')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load thread: ${tErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+            thread = t || null;
+          } else if (contactPhone) {
+            const { data: t, error: tErr } = await db
+              .from('sms_threads')
+              .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+              .eq('contact_phone', contactPhone)
+              .maybeSingle();
+            if (tErr) {
+              const msg = isMissingTableError(tErr, 'sms_threads')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load thread: ${tErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+            thread = t || null;
+          }
+
+          if (!thread) {
+            return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 120), 20), 500);
+          const before = safeTrim(searchParams.get('before') || '');
+          const pageSize = Math.min(limit + 1, 501);
+
+          let messages: any[] = [];
+          let msgErr: any = null;
+          let supportsGroupId = false;
+          {
+            const { data: probe, error: probeErr } = await db
+              .from('sms_messages')
+              .select('group_id')
+              .limit(1);
+
+            supportsGroupId = !(probeErr && isMissingColumnError(probeErr, 'group_id'));
+            void probe;
+
+            if (supportsGroupId) {
+              const resp = await db
+                .from('sms_messages')
+                .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id')
+                .eq('thread_id', thread.thread_id)
+                .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                .order('created_at', { ascending: false })
+                .limit(pageSize);
+              messages = Array.isArray(resp.data) ? resp.data : [];
+              msgErr = resp.error;
+            } else {
+              const resp = await db
+                .from('sms_messages')
+                .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name')
+                .eq('thread_id', thread.thread_id)
+                .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                .order('created_at', { ascending: false })
+                .limit(pageSize);
+              messages = Array.isArray(resp.data) ? resp.data : [];
+              msgErr = resp.error;
+            }
+          }
+
+          // Same phone-variant fallback as smsThread (read-only here; no mark-read).
+          try {
+            if (!msgErr && (!messages || messages.length === 0)) {
+              const basePhone = normalizePhone(String(thread?.contact_phone || '').trim());
+              if (basePhone) {
+                const variants = Array.from(new Set(smsPhoneQueryVariants(basePhone))).filter(Boolean);
+                if (variants.length) {
+                  const { data: dupThreads, error: dupErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone')
+                    .in('contact_phone', variants)
+                    .limit(25);
+
+                  if (!dupErr && Array.isArray(dupThreads) && dupThreads.length) {
+                    const threadIds = Array.from(
+                      new Set(
+                        dupThreads
+                          .map((t: any) => String(t?.thread_id || '').trim())
+                          .filter(Boolean)
+                      )
+                    ).slice(0, 25);
+
+                    if (threadIds.length >= 2) {
+                      const resp = supportsGroupId
+                        ? await db
+                            .from('sms_messages')
+                            .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id')
+                            .in('thread_id', threadIds)
+                            .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                            .order('created_at', { ascending: false })
+                            .limit(pageSize)
+                        : await db
+                            .from('sms_messages')
+                            .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name')
+                            .in('thread_id', threadIds)
+                            .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                            .order('created_at', { ascending: false })
+                            .limit(pageSize);
+
+                      if (!resp.error && Array.isArray(resp.data) && resp.data.length) {
+                        messages = resp.data;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch {
+            // best-effort only
+          }
+
+          if (msgErr) {
+            const msg = isMissingTableError(msgErr, 'sms_messages')
+              ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+              : `Failed to load messages: ${msgErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const raw = messages || [];
+          const hasMore = raw.length > limit;
+          const sliced = hasMore ? raw.slice(0, limit) : raw;
+          sliced.reverse();
+
+          return NextResponse.json(
+            {
+              ok: true,
+              thread,
+              messages: sliced,
+              page: {
+                limit,
+                has_more: hasMore,
+                before: before || null,
+                next_before: sliced.length ? String((sliced as any)[0].created_at || '') : null
+              }
+            },
+            { headers: corsHeaders(request) }
+          );
+        }
+        // break; (unreachable)
+      case 'smsThread':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const sessionIsAdmin = String(me.role || '').trim().toUpperCase() === 'ADMIN';
+
+          const threadId = String(searchParams.get('thread_id') || searchParams.get('threadId') || '').trim();
+          const contactPhone = normalizePhone(String(searchParams.get('contact_phone') || searchParams.get('contactPhone') || '').trim());
+
+          if (!threadId && !contactPhone) {
+            return NextResponse.json({ ok: false, error: 'thread_id or contact_phone is required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+
+          let thread: any = null;
+          if (threadId) {
+            const { data: t, error: tErr } = await db
+              .from('sms_threads')
+              .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+              .eq('thread_id', threadId)
+              .maybeSingle();
+            if (tErr) {
+              const msg = isMissingTableError(tErr, 'sms_threads')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load thread: ${tErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+            thread = t || null;
+          } else if (contactPhone) {
+            const { data: t, error: tErr } = await db
+              .from('sms_threads')
+              .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+              .eq('contact_phone', contactPhone)
+              .maybeSingle();
+            if (tErr) {
+              const msg = isMissingTableError(tErr, 'sms_threads')
+                ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                : `Failed to load thread: ${tErr.message}`;
+              return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+            }
+            thread = t || null;
+          }
+
+          if (!thread) {
+            return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 120), 20), 500);
+          const before = safeTrim(searchParams.get('before') || '');
+          const pageSize = Math.min(limit + 1, 501);
+
+          let messages: any[] = [];
+          let msgErr: any = null;
+          let supportsGroupId = false;
+          {
+            const { data: probe, error: probeErr } = await db
+              .from('sms_messages')
+              .select('group_id')
+              .limit(1);
+
+            supportsGroupId = !(probeErr && isMissingColumnError(probeErr, 'group_id'));
+            void probe;
+
+            if (supportsGroupId) {
+              const resp = await db
+                .from('sms_messages')
+                .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id')
+                .eq('thread_id', thread.thread_id)
+                .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                .order('created_at', { ascending: false })
+                .limit(pageSize);
+              messages = Array.isArray(resp.data) ? resp.data : [];
+              msgErr = resp.error;
+            } else {
+              const resp = await db
+                .from('sms_messages')
+                .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name')
+                .eq('thread_id', thread.thread_id)
+                .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                .order('created_at', { ascending: false })
+                .limit(pageSize);
+              messages = Array.isArray(resp.data) ? resp.data : [];
+              msgErr = resp.error;
+            }
+          }
+
+          // If the thread exists but has no messages, try a phone-variant fallback.
+          // This protects against duplicate threads created by inconsistent phone formatting.
+          // (The UI dedupes threads by normalized phone; if it opens the "wrong" thread_id,
+          // the user sees a blank conversation.)
+          let threadIdsForRead: string[] = [String(thread.thread_id || '').trim()].filter(Boolean);
+          try {
+            if (!msgErr && (!messages || messages.length === 0)) {
+              const basePhone = normalizePhone(String(thread?.contact_phone || '').trim());
+              if (basePhone) {
+                const variants = Array.from(new Set(smsPhoneQueryVariants(basePhone))).filter(Boolean);
+                if (variants.length) {
+                  const { data: dupThreads, error: dupErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone')
+                    .in('contact_phone', variants)
+                    .limit(25);
+
+                  if (!dupErr && Array.isArray(dupThreads) && dupThreads.length) {
+                    const threadIds = Array.from(
+                      new Set(
+                        dupThreads
+                          .map((t: any) => String(t?.thread_id || '').trim())
+                          .filter(Boolean)
+                      )
+                    ).slice(0, 25);
+
+                    // Only do extra work when there is at least one alternative thread.
+                    if (threadIds.length >= 2) {
+                      threadIdsForRead = threadIds;
+
+                      const resp = supportsGroupId
+                        ? await db
+                            .from('sms_messages')
+                            .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name, group_id')
+                            .in('thread_id', threadIds)
+                            .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                            .order('created_at', { ascending: false })
+                            .limit(pageSize)
+                        : await db
+                            .from('sms_messages')
+                            .select('message_id, thread_id, direction, body, from_phone, to_phone, twilio_sid, status, created_at, sent_by_user_id, sent_by_username, sent_by_display_name')
+                            .in('thread_id', threadIds)
+                            .lt('created_at', before || '9999-12-31T23:59:59.999Z')
+                            .order('created_at', { ascending: false })
+                            .limit(pageSize);
+
+                      // Only override when the fallback actually found messages.
+                      if (!resp.error && Array.isArray(resp.data) && resp.data.length) {
+                        messages = resp.data;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch {
+            // best-effort only
+          }
+
+          if (msgErr) {
+            const msg = isMissingTableError(msgErr, 'sms_messages')
+              ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+              : `Failed to load messages: ${msgErr.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          // Mark read (best-effort)
+          try {
+            // Keep admin sessions view-only: don't mutate unread counters.
+            if (!sessionIsAdmin) {
+              if (threadIdsForRead.length > 1) {
+                await db.from('sms_threads').update({ unread_count: 0 }).in('thread_id', threadIdsForRead);
+              } else {
+                await db.from('sms_threads').update({ unread_count: 0 }).eq('thread_id', thread.thread_id);
+              }
+              thread.unread_count = 0;
+            }
+          } catch {
+            // ignore
+          }
+
+          const raw = messages || [];
+          const hasMore = raw.length > limit;
+          const sliced = hasMore ? raw.slice(0, limit) : raw;
+          sliced.reverse();
+
+          result = {
+            thread,
+            messages: sliced,
+            page: {
+              limit,
+              has_more: hasMore,
+              before: before || null,
+              next_before: sliced.length ? String((sliced as any)[0].created_at || '') : null
+            }
+          };
+        }
+        break;
       case 'ping':
         {
           return NextResponse.json(
@@ -1516,6 +3419,109 @@ export async function GET(request: Request) {
               ts: new Date().toISOString()
             },
             { status: 200, headers: corsHeaders(request) }
+          );
+        }
+      case 'smsDebugInbound':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          const sessionIsAdmin = !!me && me.role === 'ADMIN';
+          if (!sessionIsAdmin) {
+            const auth = await requireAdminToken(request);
+            if (!auth.ok) {
+              return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+            }
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 10), 1), 20);
+
+          const maskPhone = (raw: any) => {
+            const s = safeTrim(raw);
+            if (!s) return null;
+            const digits = s.replace(/\D/g, '');
+            if (digits.length <= 4) return `***${digits}`;
+            return `***${digits.slice(-4)}`;
+          };
+
+          const tryDb = async (label: string, client: any) => {
+            const out: any = { label };
+            try {
+              const { data: inbound, error: inErr } = await client
+                .from('sms_messages')
+                .select('message_id, thread_id, direction, from_phone, to_phone, twilio_sid, status, created_at')
+                .eq('direction', 'INBOUND')
+                .order('created_at', { ascending: false })
+                .limit(limit);
+              out.inbound_error = inErr ? String(inErr.message || inErr) : null;
+              out.inbound = (inbound || []).map((m: any) => ({
+                message_id: m.message_id,
+                thread_id: m.thread_id,
+                direction: m.direction,
+                from_phone: maskPhone(m.from_phone),
+                to_phone: maskPhone(m.to_phone),
+                twilio_sid: m.twilio_sid,
+                status: m.status,
+                created_at: m.created_at
+              }));
+            } catch (e: any) {
+              out.inbound_error = e?.message || String(e);
+              out.inbound = [];
+            }
+            try {
+              const { data: threads, error: tErr } = await client
+                .from('sms_threads')
+                .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+                .order('last_message_at', { ascending: false, nullsFirst: false })
+                .limit(limit);
+              out.threads_error = tErr ? String(tErr.message || tErr) : null;
+              out.threads = (threads || []).map((t: any) => ({
+                thread_id: t.thread_id,
+                contact_phone: maskPhone(t.contact_phone),
+                contact_name: t.contact_name,
+                last_message_preview: t.last_message_preview ? '[redacted]' : null,
+                last_message_at: t.last_message_at,
+                unread_count: t.unread_count
+              }));
+            } catch (e: any) {
+              out.threads_error = e?.message || String(e);
+              out.threads = [];
+            }
+            return out;
+          };
+
+          const mainDb = getSupabase();
+          const mgmtDb = (() => {
+            try {
+              return getSupabaseMgmt();
+            } catch {
+              return null;
+            }
+          })();
+
+          const deliverablesUsesMgmt = (() => {
+            try {
+              void getSupabaseMgmt();
+              return true;
+            } catch {
+              return false;
+            }
+          })();
+
+          const env = {
+            TWILIO_DISABLE_SIGNATURE_VALIDATION: String(process.env.TWILIO_DISABLE_SIGNATURE_VALIDATION || '').trim() || null,
+            TWILIO_INBOUND_SMS_WEBHOOK_URL: String(process.env.TWILIO_INBOUND_SMS_WEBHOOK_URL || '').trim() || null
+          };
+
+          return NextResponse.json(
+            {
+              ok: true,
+              auth: sessionIsAdmin ? 'session-admin' : 'admin-key',
+              me: me ? { user_id: me.userId, username: me.username, role: me.role } : null,
+              env,
+              deliverables_db: { uses_mgmt: deliverablesUsesMgmt },
+              main: await tryDb('main', mainDb),
+              mgmt: mgmtDb ? await tryDb('mgmt', mgmtDb) : { label: 'mgmt', error: 'MGMT client not configured in this deployment' }
+            },
+            { headers: corsHeaders(request) }
           );
         }
       case 'observed_paths':
@@ -1839,21 +3845,127 @@ export async function GET(request: Request) {
         break;
 
       case 'training':
-        const { data: training, error: trainingError } = await supabaseMgmt
-          .from('Training_Resources')
-          .select(`
-            *,
-            completions:Training_Completions(*)
-          `)
-          .order('Order', { ascending: true });
+        {
+          const trainingVaName = safeTrim(searchParams.get('vaName') || '');
 
-        if (trainingError) {
-          return NextResponse.json({
-            ok: false,
-            error: `Failed to load training resources: ${trainingError.message}`
-          }, { status: 500, headers: corsHeaders(request) });
+          // Default ordering should feel intelligent for admins uploading new training:
+          // sort by upload time (Created_At) newest-first, then use the legacy manual `Order`
+          // only as a tie-breaker.
+          let resources: any[] | null = null;
+          let resourcesError: any = null;
+          {
+            const q = supabaseMgmt
+              .from('Training_Resources')
+              .select('*')
+              .order('Created_At', { ascending: false, nullsFirst: false })
+              .order('Order', { ascending: true });
+            const resp = await q;
+            resources = (resp as any).data;
+            resourcesError = (resp as any).error;
+          }
+
+          // Back-compat: older schemas may not have Created_At.
+          if (resourcesError && String(resourcesError.message || '').toLowerCase().includes('created_at')) {
+            const fallback = await supabaseMgmt
+              .from('Training_Resources')
+              .select('*')
+              .order('Order', { ascending: true });
+            resources = (fallback as any).data;
+            resourcesError = (fallback as any).error;
+          }
+
+          if (resourcesError) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error: `Failed to load training resources: ${resourcesError.message}`
+              },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          const completionsByResource: Record<string, any[]> = {};
+          if (trainingVaName) {
+            const { data: completions, error: completionsError } = await supabaseMgmt
+              .from('Training_Completions')
+              .select('*')
+              .eq('Completed_By', trainingVaName)
+              .order('Completed_At', { ascending: false });
+
+            if (completionsError) {
+              return NextResponse.json(
+                {
+                  ok: false,
+                  error: `Failed to load training completions: ${completionsError.message}`
+                },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+
+            for (const c of completions || []) {
+              const rid = safeTrim(c?.Resource_ID || c?.resource_id);
+              if (!rid) continue;
+              if (!completionsByResource[rid]) completionsByResource[rid] = [];
+              completionsByResource[rid].push(c);
+            }
+          }
+
+          // Per-asset progress is best-effort (table may not exist yet in older DBs).
+          const progressByResource: Record<string, any[]> = {};
+          if (trainingVaName) {
+            try {
+              const { data: progressRows, error: progressError } = await supabaseMgmt
+                .from('Training_Asset_Progress')
+                .select('*')
+                .eq('Completed_By', trainingVaName);
+
+              if (!progressError) {
+                for (const row of progressRows || []) {
+                  const rid = safeTrim(row?.Resource_ID || row?.resource_id);
+                  if (!rid) continue;
+                  if (!progressByResource[rid]) progressByResource[rid] = [];
+                  progressByResource[rid].push(row);
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }
+
+          const enriched = (resources || []).map((r: any) => {
+            const rid = safeTrim(r?.Resource_ID || r?.resource_id);
+            return {
+              ...r,
+              videos: buildTrainingVideos(r),
+              completions: rid ? (completionsByResource[rid] || []) : [],
+              assetProgress: rid ? (progressByResource[rid] || []) : []
+            };
+          });
+
+          result = enriched;
         }
-        result = training;
+        break;
+
+      case 'linkPreview':
+        {
+          const rawUrl = searchParams.get('url') || searchParams.get('u') || '';
+          const url = normalizeHttpUrl(rawUrl);
+          if (!url) {
+            return NextResponse.json(
+              { ok: false, error: 'url is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const meta = await getLinkTitleFromOEmbed(url);
+          result = {
+            url,
+            provider: meta?.provider || null,
+            title: meta?.title || null,
+            thumbnailUrl: meta?.thumbnailUrl || null,
+            durationSeconds: meta?.durationSeconds ?? null
+          };
+        }
         break;
       
       case 'trainingCompletions':
@@ -3439,6 +5551,7 @@ Format: JSON only, no markdown.`;
         };
 
         let orders: OrderRow[] = [];
+        const maxOrdersRows = 5000;
         try {
           orders = await fetchAllRows<OrderRow>((from, to) =>
             mainDb
@@ -3446,13 +5559,13 @@ Format: JSON only, no markdown.`;
               .select('id,order_id,session_id,created_at,total,subtotal,order_total,order_subtotal,customer_email,customer_phone,metadata_json,metadata')
               .order('created_at', { ascending: false })
               .range(from, to)
-          );
+          , 1000, maxOrdersRows);
         } catch (e: any) {
           // In case some columns don't exist in the table yet, fall back to selecting *.
           try {
             orders = await fetchAllRows<OrderRow>((from, to) =>
               mainDb.from('h2s_orders').select('*').order('created_at', { ascending: false }).range(from, to)
-            );
+            , 1000, maxOrdersRows);
           } catch (e2: any) {
             result = {
               ok: false,
@@ -3667,7 +5780,11 @@ Format: JSON only, no markdown.`;
           // THEN: Query events with same filters (limited for performance)
           let eventQuery = db1Client
             .from('h2s_tracking_events')
-            .select('*')
+            // Memory guardrail: avoid selecting wide rows (metadata blobs / raw payloads).
+            // Only select columns actually used by this analytics pipeline.
+            .select(
+              'event_id,occurred_at,created_at,event_type,event_name,revenue_amount,order_id,job_id,customer_email,customer_phone,session_id,visitor_id,page_path,referrer,element_id,element_text,metadata,utm_source,utm_medium,utm_campaign'
+            )
             .order('occurred_at', { ascending: false });
           
           if (minDate) eventQuery = eventQuery.gte('occurred_at', minDate);
@@ -4898,7 +7015,7 @@ Be realistic and conservative. If unsure, use medium confidence.`;
         break;
 
       default:
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400, headers: corsHeaders(request) });
+        return invalidActionResponse(request, 'GET', action);
     }
 
     // Special cases for response key naming
@@ -4939,6 +7056,10 @@ export async function POST(request: Request) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get('action');
 
+  if (!action) {
+    return missingActionResponse(request, 'POST');
+  }
+
   try {
     try {
       body = await request.json();
@@ -4970,7 +7091,6 @@ export async function POST(request: Request) {
                 const provided = String(
                   request.headers.get('x-h2s-bootstrap-secret') ||
                     request.headers.get('x-h2s-admin-key') ||
-                    request.headers.get('x-h2s-admin-token') ||
                     body?.bootstrapSecret ||
                     body?.adminKey ||
                     ''
@@ -5137,6 +7257,90 @@ export async function POST(request: Request) {
               }
               break;
 
+            case 'dashboardImpersonate':
+              {
+                // Admin-only: mint a session token for another dashboard user ("login as").
+                // PINs are salted+hashed, so we cannot reveal an existing PIN.
+                const sessionUser = await getDashboardAuthUserFromSession(request);
+                if (!sessionUser || sessionUser.role !== 'ADMIN') {
+                  return NextResponse.json({ ok: false, error: 'Admin only' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                // If a shared admin key is configured, require it (or allow session-admin via requireAdminToken).
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const userId = String(body?.userId || body?.user_id || '').trim();
+                const username = normalizeDashboardUsername(body?.username);
+                const device = typeof body?.device === 'string' ? body.device.trim() : null;
+
+                if (!userId && !username) {
+                  return NextResponse.json({ ok: false, error: 'userId or username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = tasksDb;
+                const userQuery = db
+                  .from('Dashboard_Users')
+                  .select('User_ID, Username, Display_Name, Role, Is_Disabled')
+                  .limit(1);
+
+                const { data: target, error: targetErr } = userId
+                  ? await userQuery.eq('User_ID', userId).maybeSingle()
+                  : await userQuery.eq('Username', username).maybeSingle();
+
+                if (targetErr) {
+                  return NextResponse.json({ ok: false, error: `Failed to load user: ${targetErr.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+                if (!target) {
+                  return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+                if ((target as any).Is_Disabled) {
+                  return NextResponse.json({ ok: false, error: 'Account disabled' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const token = randomTokenBase64Url(32);
+                const tokenHash = await sha256Base64Url(token);
+                const nowIso = new Date().toISOString();
+
+                // Keep impersonation sessions shorter by default.
+                const ttlDays = 1;
+                const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+
+                const { error: sessionError } = await db.from('Dashboard_Sessions').insert({
+                  User_ID: (target as any).User_ID,
+                  Token_Hash: tokenHash,
+                  Device: device || `IMPERSONATE:${sessionUser.username}`,
+                  Created_At: nowIso,
+                  Expires_At: expiresAt,
+                  Last_Seen_At: nowIso
+                });
+
+                if (sessionError) {
+                  return NextResponse.json({ ok: false, error: `Failed to create session: ${sessionError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const role = String((target as any).Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                result = {
+                  token,
+                  expiresAt,
+                  impersonatedBy: {
+                    userId: sessionUser.userId,
+                    username: sessionUser.username
+                  },
+                  user: {
+                    userId: String((target as any).User_ID),
+                    username: String((target as any).Username || '').trim().toUpperCase(),
+                    displayName: String((target as any).Display_Name || (target as any).Username || '').trim(),
+                    role
+                  }
+                };
+
+                extraPayload.dashboardImpersonate = result;
+              }
+              break;
+
             case 'dashboardChangePin':
               {
                 const authed = await getDashboardAuthUserFromSession(request);
@@ -5212,6 +7416,809 @@ export async function POST(request: Request) {
                 }
                 result = { loggedOut: true };
                 extraPayload.dashboardLogout = result;
+              }
+              break;
+
+            case 'smsMarkRead':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const threadId = String(body?.thread_id || body?.threadId || '').trim();
+                const contactPhone = normalizePhone(String(body?.contact_phone || body?.contactPhone || body?.to_phone || body?.toPhone || '').trim());
+
+                if (!threadId && !contactPhone) {
+                  return NextResponse.json({ ok: false, error: 'thread_id or contact_phone is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+
+                let thread: any = null;
+                if (threadId) {
+                  const { data: t, error: tErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone')
+                    .eq('thread_id', threadId)
+                    .maybeSingle();
+                  if (tErr) {
+                    const msg = isMissingTableError(tErr, 'sms_threads')
+                      ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                      : `Failed to load thread: ${tErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  thread = t || null;
+                } else {
+                  const { data: t, error: tErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone')
+                    .eq('contact_phone', contactPhone)
+                    .maybeSingle();
+                  if (tErr) {
+                    const msg = isMissingTableError(tErr, 'sms_threads')
+                      ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                      : `Failed to load thread: ${tErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  thread = t || null;
+                }
+
+                if (!thread) {
+                  return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                const base = normalizePhone(String(thread?.contact_phone || '').trim()) || String(thread?.contact_phone || '').trim();
+                const variants = Array.from(new Set(smsPhoneQueryVariants(base))).filter(Boolean);
+
+                const { data: dupThreads, error: dupErr } = await db
+                  .from('sms_threads')
+                  .select('thread_id')
+                  .in('contact_phone', variants.length ? variants : [base])
+                  .limit(25);
+
+                if (dupErr) {
+                  const msg = isMissingTableError(dupErr, 'sms_threads')
+                    ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                    : `Failed to enumerate threads: ${dupErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const threadIds = Array.from(
+                  new Set(
+                    (dupThreads || [])
+                      .map((t: any) => String(t?.thread_id || '').trim())
+                      .filter(Boolean)
+                      .concat([String(thread?.thread_id || '').trim()])
+                  )
+                ).slice(0, 25);
+
+                const { error: updErr } = await db.from('sms_threads').update({ unread_count: 0 }).in('thread_id', threadIds);
+                if (updErr) {
+                  return NextResponse.json({ ok: false, error: `Failed to mark read: ${updErr.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { thread_ids: threadIds };
+                extraPayload.smsMarkRead = result;
+              }
+              break;
+
+            case 'smsSend':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const rawBody = String(body?.body ?? body?.message ?? '').trim();
+                const messageBody = safeTrim(rawBody);
+                const threadId = String(body?.thread_id || body?.threadId || '').trim();
+                const contactPhone = normalizePhone(String(body?.to_phone || body?.toPhone || body?.to || body?.contact_phone || body?.contactPhone || '').trim());
+
+                if (!messageBody) {
+                  return NextResponse.json({ ok: false, error: 'body is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!threadId && !contactPhone) {
+                  return NextResponse.json({ ok: false, error: 'thread_id or to_phone is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const fromPhone = normalizePhone(String(process.env.TWILIO_PHONE_NUMBER || '').trim());
+                const accountSid = String(process.env.TWILIO_ACCOUNT_SID || '').trim();
+                const authToken = String(process.env.TWILIO_AUTH_TOKEN || '').trim();
+                if (!fromPhone || !accountSid || !authToken) {
+                  return NextResponse.json(
+                    { ok: false, error: 'Twilio not configured (set TWILIO_PHONE_NUMBER, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)' },
+                    { status: 501, headers: corsHeaders(request) }
+                  );
+                }
+
+                const db = getDeliverablesDb();
+
+                // Resolve or create thread
+                let thread: any = null;
+                if (threadId) {
+                  const { data: t, error: tErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone, contact_name, unread_count')
+                    .eq('thread_id', threadId)
+                    .maybeSingle();
+                  if (tErr) {
+                    const msg = isMissingTableError(tErr, 'sms_threads')
+                      ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                      : `Failed to load thread: ${tErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  thread = t || null;
+                  if (!thread) {
+                    return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+                  }
+                } else {
+                  const { data: t, error: tErr } = await db
+                    .from('sms_threads')
+                    .upsert(
+                      {
+                        contact_phone: contactPhone,
+                        last_message_preview: messageBody.slice(0, 200),
+                        last_message_at: new Date().toISOString(),
+                        unread_count: 0
+                      },
+                      { onConflict: 'contact_phone' }
+                    )
+                    .select('thread_id, contact_phone, contact_name, unread_count')
+                    .single();
+
+                  if (tErr) {
+                    const msg = isMissingTableError(tErr, 'sms_threads')
+                      ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                      : `Failed to create thread: ${tErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  thread = t;
+                }
+
+                const toPhone = normalizePhone(String(thread?.contact_phone || contactPhone || '').trim());
+                if (!toPhone) {
+                  return NextResponse.json({ ok: false, error: 'Invalid recipient phone' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const client = twilio(accountSid, authToken);
+                const twilioMsg = await client.messages.create({ from: fromPhone, to: toPhone, body: messageBody });
+
+                const nowIso = new Date().toISOString();
+                const { error: insertErr } = await db.from('sms_messages').insert({
+                  thread_id: thread.thread_id,
+                  direction: 'OUTBOUND',
+                  body: messageBody,
+                  from_phone: fromPhone,
+                  to_phone: toPhone,
+                  twilio_sid: twilioMsg?.sid || null,
+                  status: (twilioMsg as any)?.status || 'sent',
+                  created_at: nowIso,
+                  sent_by_user_id: authed.userId,
+                  sent_by_username: authed.username,
+                  sent_by_display_name: authed.displayName
+                });
+
+                if (insertErr) {
+                  const msg = isMissingTableError(insertErr, 'sms_messages')
+                    ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                    : `Failed to save message: ${insertErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                // Mark thread read (best-effort)
+                try {
+                  await db.from('sms_threads').update({ unread_count: 0 }).eq('thread_id', thread.thread_id);
+                } catch {
+                  // ignore
+                }
+
+                result = {
+                  sent: true,
+                  thread_id: thread.thread_id,
+                  to_phone: toPhone,
+                  from_phone: fromPhone,
+                  tagged: false,
+                  sender: { userId: authed.userId, username: authed.username, displayName: authed.displayName },
+                  twilio: { sid: twilioMsg?.sid || null, status: (twilioMsg as any)?.status || null }
+                };
+                extraPayload.smsSend = result;
+              }
+              break;
+
+            case 'smsAdminInjectInbound':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                if (String(authed.role || '').toUpperCase() !== 'ADMIN') {
+                  return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const rawBody = String(body?.body ?? body?.message ?? '').trim();
+                const messageBody = safeTrim(rawBody);
+                const threadId = String(body?.thread_id || body?.threadId || '').trim();
+                const contactPhone = normalizePhone(String(body?.contact_phone || body?.contactPhone || body?.from_phone || body?.fromPhone || '').trim());
+                const groupId = String(body?.group_id || body?.groupId || '').trim();
+
+                if (!messageBody) {
+                  return NextResponse.json({ ok: false, error: 'body is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!threadId && !contactPhone && !groupId) {
+                  return NextResponse.json({ ok: false, error: 'thread_id, contact_phone, or group_id is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                if (groupId && !isUuid(groupId)) {
+                  return NextResponse.json({ ok: false, error: 'group_id must be a uuid' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                if (groupId && (threadId || contactPhone)) {
+                  return NextResponse.json({ ok: false, error: 'Provide only one of group_id or (thread_id/contact_phone)' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+
+                // Resolve contact phone + preserve unread_count.
+                let resolvedContactPhone = contactPhone;
+                let existingUnread: number | null = null;
+                let existingThreadId: string | null = null;
+
+                // Group mode: choose an anchor member phone.
+                if (groupId) {
+                  // Ensure schema supports group_id before injecting (avoid "saved but not tagged").
+                  {
+                    const { error: probeErr } = await db
+                      .from('sms_messages')
+                      .select('group_id')
+                      .limit(1);
+                    if (probeErr && isMissingColumnError(probeErr, 'group_id')) {
+                      return NextResponse.json(
+                        {
+                          ok: false,
+                          error: 'Backend DB schema is missing sms_messages.group_id. Apply migration 017_add_sms_messages_group_id.sql to the MGMT database.'
+                        },
+                        { status: 500, headers: corsHeaders(request) }
+                      );
+                    }
+                  }
+
+                  const { data: members, error: mErr } = await db
+                    .from('sms_group_members')
+                    .select('contact_phone')
+                    .eq('group_id', groupId)
+                    .order('contact_phone', { ascending: true })
+                    .limit(5000);
+
+                  if (mErr) {
+                    const msg = isMissingTableError(mErr, 'sms_group_members')
+                      ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                      : `Failed to load group members: ${mErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+
+                  const phones = (members || [])
+                    .map((r: any) => normalizePhone(String(r?.contact_phone || '').trim()))
+                    .filter(Boolean);
+
+                  if (phones.length < 2) {
+                    return NextResponse.json({ ok: false, error: 'Group must have at least two recipients' }, { status: 400, headers: corsHeaders(request) });
+                  }
+
+                  // Use the first member as the anchor thread for this synthetic inbound.
+                  resolvedContactPhone = phones[0];
+
+                  // Touch group ordering.
+                  try {
+                    await db.from('sms_groups').update({ updated_at: new Date().toISOString() }).eq('group_id', groupId);
+                  } catch {
+                    // ignore
+                  }
+                }
+
+                if (threadId) {
+                  const { data: t, error: tErr } = await db
+                    .from('sms_threads')
+                    .select('thread_id, contact_phone, unread_count')
+                    .eq('thread_id', threadId)
+                    .maybeSingle();
+
+                  if (tErr) {
+                    const msg = isMissingTableError(tErr, 'sms_threads')
+                      ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                      : `Failed to load thread: ${tErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  if (!t) {
+                    return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+                  }
+
+                  existingThreadId = String((t as any).thread_id || '').trim() || null;
+                  resolvedContactPhone = normalizePhone(String((t as any).contact_phone || '').trim()) || String((t as any).contact_phone || '').trim() || resolvedContactPhone;
+                  existingUnread = typeof (t as any).unread_count === 'number' ? (Number((t as any).unread_count) || 0) : null;
+                } else if (resolvedContactPhone) {
+                  const { data: t } = await db
+                    .from('sms_threads')
+                    .select('thread_id, unread_count')
+                    .eq('contact_phone', resolvedContactPhone)
+                    .maybeSingle();
+                  if (t) {
+                    existingThreadId = String((t as any).thread_id || '').trim() || null;
+                    existingUnread = typeof (t as any).unread_count === 'number' ? (Number((t as any).unread_count) || 0) : null;
+                  }
+                }
+
+                if (!resolvedContactPhone) {
+                  return NextResponse.json({ ok: false, error: 'Invalid contact_phone' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                // Mirror Twilio inbound: increment unread count on the thread.
+                const nextUnread = typeof existingUnread === 'number' ? Math.max(0, existingUnread) + 1 : 1;
+                const nowIso = new Date().toISOString();
+
+                const { data: thread, error: upsertErr } = await db
+                  .from('sms_threads')
+                  .upsert(
+                    {
+                      contact_phone: resolvedContactPhone,
+                      last_message_preview: messageBody.slice(0, 200),
+                      last_message_at: nowIso,
+                      unread_count: nextUnread
+                    },
+                    { onConflict: 'contact_phone' }
+                  )
+                  .select('thread_id, contact_phone, unread_count')
+                  .single();
+
+                if (upsertErr || !thread) {
+                  const msg = upsertErr
+                    ? (isMissingTableError(upsertErr, 'sms_threads')
+                        ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                        : `Failed to upsert thread: ${upsertErr.message}`)
+                    : 'Failed to upsert thread';
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const toPhone = normalizePhone(String(process.env.TWILIO_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER || '').trim()) || 'unknown';
+
+                const { error: insertErr } = await db.from('sms_messages').insert({
+                  thread_id: (thread as any).thread_id,
+                  direction: 'INBOUND',
+                  body: messageBody,
+                  from_phone: resolvedContactPhone,
+                  to_phone: toPhone,
+                  twilio_sid: null,
+                  status: 'received',
+                  created_at: nowIso,
+                  group_id: groupId || null
+                });
+
+                if (insertErr) {
+                  const msg = isMissingTableError(insertErr, 'sms_messages')
+                    ? 'SMS inbox tables not found. Apply migration 013_create_sms_inbox.sql to the MGMT database.'
+                    : `Failed to save message: ${insertErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = {
+                  injected: true,
+                  thread_id: (thread as any).thread_id,
+                  contact_phone: resolvedContactPhone,
+                  unread_count: nextUnread,
+                  prior_thread_id: existingThreadId,
+                  group_id: groupId || null
+                };
+                extraPayload.smsAdminInjectInbound = result;
+              }
+              break;
+
+            case 'smsGroupSend':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const rawBody = String(body?.body ?? body?.message ?? '').trim();
+                const messageBody = safeTrim(rawBody);
+                const groupId = String(body?.group_id || body?.groupId || '').trim();
+                if (!groupId || !isUuid(groupId)) {
+                  return NextResponse.json({ ok: false, error: 'group_id (uuid) is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                if (!messageBody) {
+                  return NextResponse.json({ ok: false, error: 'body is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const fromPhone = normalizePhone(String(process.env.TWILIO_PHONE_NUMBER || '').trim());
+                const accountSid = String(process.env.TWILIO_ACCOUNT_SID || '').trim();
+                const authToken = String(process.env.TWILIO_AUTH_TOKEN || '').trim();
+                if (!fromPhone || !accountSid || !authToken) {
+                  return NextResponse.json(
+                    { ok: false, error: 'Twilio not configured (set TWILIO_PHONE_NUMBER, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)' },
+                    { status: 501, headers: corsHeaders(request) }
+                  );
+                }
+
+                const db = getDeliverablesDb();
+
+                // Ensure schema supports group_id before sending (avoid "sent but not saved").
+                {
+                  const { error: probeErr } = await db
+                    .from('sms_messages')
+                    .select('group_id')
+                    .limit(1);
+                  if (probeErr && isMissingColumnError(probeErr, 'group_id')) {
+                    return NextResponse.json(
+                      {
+                        ok: false,
+                        error: 'Backend DB schema is missing sms_messages.group_id. Apply migration 017_add_sms_messages_group_id.sql to the MGMT database.'
+                      },
+                      { status: 500, headers: corsHeaders(request) }
+                    );
+                  }
+                }
+
+                const { data: group, error: gErr } = await db
+                  .from('sms_groups')
+                  .select('group_id, owner_user_id, member_key, group_name')
+                  .eq('group_id', groupId)
+                  .maybeSingle();
+
+                if (gErr) {
+                  const msg = isMissingTableError(gErr, 'sms_groups')
+                    ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                    : `Failed to load group: ${gErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+                if (!group) {
+                  return NextResponse.json({ ok: false, error: 'Group not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                const { data: members, error: mErr } = await db
+                  .from('sms_group_members')
+                  .select('contact_phone')
+                  .eq('group_id', groupId)
+                  .limit(5000);
+
+                if (mErr) {
+                  const msg = isMissingTableError(mErr, 'sms_group_members')
+                    ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                    : `Failed to load group members: ${mErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const recipients = (members || [])
+                  .map((r: any) => normalizePhone(String(r.contact_phone || '').trim()))
+                  .filter(Boolean);
+
+                const uniquePhones = Array.from(new Set(recipients));
+                if (uniquePhones.length < 2) {
+                  return NextResponse.json({ ok: false, error: 'Group must have at least two recipients' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const client = twilio(accountSid, authToken);
+                const nowIso = new Date().toISOString();
+
+                // Touch group updated_at (keeps groups list ordering stable even if there are no inbound messages).
+                try {
+                  await db.from('sms_groups').update({ updated_at: nowIso }).eq('group_id', groupId);
+                } catch {
+                  // ignore
+                }
+
+                let okCount = 0;
+                let failCount = 0;
+                const failures: any[] = [];
+                const threadIds: string[] = [];
+
+                for (const toPhone of uniquePhones) {
+                  try {
+                    // Ensure thread exists & update preview
+                    const { data: thread, error: tErr } = await db
+                      .from('sms_threads')
+                      .upsert(
+                        {
+                          contact_phone: toPhone,
+                          last_message_preview: messageBody.slice(0, 200),
+                          last_message_at: nowIso,
+                          unread_count: 0
+                        },
+                        { onConflict: 'contact_phone' }
+                      )
+                      .select('thread_id, contact_phone')
+                      .single();
+
+                    if (tErr || !thread) {
+                      failCount++;
+                      failures.push({ to_phone: toPhone, error: tErr ? tErr.message : 'Failed to create thread' });
+                      continue;
+                    }
+
+                    const tid = String((thread as any).thread_id || '').trim();
+                    if (tid) threadIds.push(tid);
+
+                    const twilioMsg = await client.messages.create({ from: fromPhone, to: toPhone, body: messageBody });
+
+                    const { error: insertErr } = await db.from('sms_messages').insert({
+                      thread_id: tid,
+                      direction: 'OUTBOUND',
+                      body: messageBody,
+                      from_phone: fromPhone,
+                      to_phone: toPhone,
+                      twilio_sid: twilioMsg?.sid || null,
+                      status: (twilioMsg as any)?.status || 'sent',
+                      created_at: nowIso,
+                      sent_by_user_id: authed.userId,
+                      sent_by_username: authed.username,
+                      sent_by_display_name: authed.displayName,
+                      group_id: groupId
+                    });
+
+                    if (insertErr) {
+                      failCount++;
+                      failures.push({ to_phone: toPhone, error: insertErr.message });
+                      continue;
+                    }
+
+                    okCount++;
+                  } catch (e: any) {
+                    failCount++;
+                    failures.push({ to_phone: toPhone, error: e?.message || String(e || 'Send failed') });
+                  }
+                }
+
+                result = {
+                  sent: okCount > 0,
+                  group_id: groupId,
+                  from_phone: fromPhone,
+                  recipients: uniquePhones,
+                  ok_count: okCount,
+                  fail_count: failCount,
+                  thread_ids: Array.from(new Set(threadIds)),
+                  failures: failures.slice(0, 25)
+                };
+                extraPayload.smsGroupSend = result;
+              }
+              break;
+
+            case 'smsGroupUpsert':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const raw = (body as any)?.to_phones ?? (body as any)?.toPhones ?? (body as any)?.recipients ?? (body as any)?.members;
+                let list: string[] = [];
+                if (Array.isArray(raw)) {
+                  list = raw.map((x: any) => String(x || '').trim());
+                } else if (typeof raw === 'string') {
+                  list = raw.split(/[\s,;\n\r\t]+/g).map(s => s.trim()).filter(Boolean);
+                }
+
+                const normalized = list.map(p => normalizePhone(String(p || '').trim())).filter(Boolean);
+                const unique = Array.from(new Set(normalized));
+                if (unique.length < 2) {
+                  return NextResponse.json({ ok: false, error: 'At least two recipients are required to create a group' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                unique.sort();
+                const memberKey = unique.join('|');
+                const groupName = safeTrim((body as any)?.group_name ?? (body as any)?.groupName ?? '');
+                if (groupName.length > 80) {
+                  return NextResponse.json({ ok: false, error: 'group_name too long (max 80)' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+                // De-dupe: reuse an existing group with the same member_key even if it was
+                // created by another dashboard user (shared inbox behavior).
+                const { data: existingByKey, error: existingErr } = await db
+                  .from('sms_groups')
+                  .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+                  .eq('member_key', memberKey)
+                  .order('updated_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (existingErr) {
+                  const msg = isMissingTableError(existingErr, 'sms_groups')
+                    ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                    : `Failed to load groups: ${existingErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                let group: any = existingByKey || null;
+                if (!group) {
+                  const { data: created, error: gErr } = await db
+                    .from('sms_groups')
+                    .upsert(
+                      {
+                        owner_user_id: authed.userId,
+                        member_key: memberKey,
+                        group_name: groupName || null
+                      },
+                      { onConflict: 'owner_user_id,member_key' }
+                    )
+                    .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+                    .single();
+
+                  if (gErr) {
+                    const msg = isMissingTableError(gErr, 'sms_groups')
+                      ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                      : `Failed to upsert group: ${gErr.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+
+                  group = created;
+                } else {
+                  // Optional: fill in group_name if caller provided one and the existing group is unnamed.
+                  const existingName = safeTrim((group as any)?.group_name || '');
+                  if (groupName && !existingName) {
+                    try {
+                      const { data: updated } = await db
+                        .from('sms_groups')
+                        .update({ group_name: groupName || null })
+                        .eq('group_id', String((group as any).group_id || '').trim())
+                        .select('group_id, owner_user_id, member_key, group_name, created_at, updated_at')
+                        .maybeSingle();
+                      if (updated) group = updated;
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }
+
+                const memberRows = unique.map(p => ({ group_id: (group as any).group_id, contact_phone: p }));
+                const { error: mErr } = await db
+                  .from('sms_group_members')
+                  .upsert(memberRows, { onConflict: 'group_id,contact_phone' });
+
+                if (mErr) {
+                  const msg = isMissingTableError(mErr, 'sms_group_members')
+                    ? 'SMS group tables not found. Apply migration 015_create_sms_groups.sql to the MGMT database.'
+                    : `Failed to upsert group members: ${mErr.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { upserted: true, group, members: unique };
+                extraPayload.smsGroupUpsert = result;
+              }
+              break;
+
+            case 'smsHideConversation':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                // Soft archive for the current user (owner_user_id). This should be reversible and non-destructive.
+
+                const threadId = safeTrim((body as any)?.thread_id ?? (body as any)?.threadId ?? '');
+                const groupId = safeTrim((body as any)?.group_id ?? (body as any)?.groupId ?? '');
+                const hidden = !['0', 'false', 'no', 'off'].includes(String((body as any)?.hidden ?? 'true').toLowerCase());
+
+                if (!threadId && !groupId) {
+                  return NextResponse.json({ ok: false, error: 'thread_id or group_id is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (threadId && groupId) {
+                  return NextResponse.json({ ok: false, error: 'Provide only one of thread_id or group_id' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const conversationType = threadId ? 'thread' : 'group';
+                const conversationId = threadId || groupId;
+
+                const db = getDeliverablesDb();
+                if (hidden) {
+                  const { error } = await db
+                    .from('sms_hidden_conversations')
+                    .upsert(
+                      {
+                        owner_user_id: authed.userId,
+                        conversation_type: conversationType,
+                        conversation_id: conversationId
+                      },
+                      { onConflict: 'owner_user_id,conversation_type,conversation_id' }
+                    );
+
+                  if (error) {
+                    const msg = isMissingTableError(error, 'sms_hidden_conversations')
+                      ? 'SMS hidden-conversations table not found. Apply migration 016_create_sms_hidden_conversations.sql to the MGMT database.'
+                      : `Failed to hide conversation: ${error.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+
+                  result = { ok: true, hidden: true, conversation_type: conversationType, conversation_id: conversationId };
+                  extraPayload.smsHideConversation = result;
+                  break;
+                }
+
+                const { error } = await db
+                  .from('sms_hidden_conversations')
+                  .delete()
+                  .eq('owner_user_id', authed.userId)
+                  .eq('conversation_type', conversationType)
+                  .eq('conversation_id', conversationId);
+
+                if (error) {
+                  const msg = isMissingTableError(error, 'sms_hidden_conversations')
+                    ? 'SMS hidden-conversations table not found. Apply migration 016_create_sms_hidden_conversations.sql to the MGMT database.'
+                    : `Failed to unhide conversation: ${error.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { ok: true, hidden: false, conversation_type: conversationType, conversation_id: conversationId };
+                extraPayload.smsHideConversation = result;
+              }
+              break;
+
+            case 'smsUpdateThread':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const threadId = String(body?.thread_id || body?.threadId || '').trim();
+                const contactPhone = normalizePhone(String(body?.contact_phone || body?.contactPhone || '').trim());
+                const contactName = safeTrim(body?.contact_name ?? body?.contactName ?? '');
+
+                if (!threadId && !contactPhone) {
+                  return NextResponse.json({ ok: false, error: 'thread_id or contact_phone is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (contactName.length > 80) {
+                  return NextResponse.json({ ok: false, error: 'contact_name too long (max 80)' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+                let q = db.from('sms_threads').update({ contact_name: contactName || null });
+                q = threadId ? q.eq('thread_id', threadId) : q.eq('contact_phone', contactPhone);
+
+                const { data: rows, error } = await q
+                  .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+                  .limit(1);
+
+                if (error) {
+                  const msg = isMissingTableError(error, 'sms_threads')
+                    ? 'SMS inbox tables not found. Apply migrations 013_create_sms_inbox.sql + 014_sms_inbox_sender_and_contacts.sql to the MGMT database.'
+                    : `Failed to update thread: ${error.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const updated = Array.isArray(rows) && rows.length ? rows[0] : null;
+                if (!updated) {
+                  // If caller provided a phone (no thread id), allow creating/upserting the contact record.
+                  if (!threadId && contactPhone) {
+                    const { data: row, error: upsertErr } = await db
+                      .from('sms_threads')
+                      .upsert(
+                        {
+                          contact_phone: contactPhone,
+                          contact_name: contactName || null
+                        },
+                        { onConflict: 'contact_phone' }
+                      )
+                      .select('thread_id, contact_phone, contact_name, last_message_preview, last_message_at, unread_count')
+                      .single();
+
+                    if (upsertErr) {
+                      const msg = isMissingTableError(upsertErr, 'sms_threads')
+                        ? 'SMS inbox tables not found. Apply migrations 013_create_sms_inbox.sql + 014_sms_inbox_sender_and_contacts.sql to the MGMT database.'
+                        : `Failed to upsert contact: ${upsertErr.message}`;
+                      return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                    }
+
+                    result = { updated: true, thread: row, created: true };
+                    extraPayload.smsUpdateThread = result;
+                    break;
+                  }
+                  return NextResponse.json({ ok: false, error: 'Thread not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                result = { updated: true, thread: updated };
+                extraPayload.smsUpdateThread = result;
               }
               break;
 
@@ -5640,6 +8647,7 @@ export async function POST(request: Request) {
                 const upsertPayload: any = {
                   Task_ID: taskId,
                   Title: title,
+                  Assets: normalizeAssets(body?.assets),
                   Priority: body?.priority || 'MEDIUM',
                   Due_Date: dueDateValue,
                   Category: body?.category || null,
@@ -6540,6 +9548,7 @@ CHECKLIST:
           Task_ID: taskId,
           Title: body.title.trim(),
           Description: body.description || null,
+          Assets: normalizeAssets(body.assets),
           Priority: body.priority || 'MEDIUM',
           Due_Date: dueDateValue,
           Status: 'PENDING',
@@ -6602,6 +9611,7 @@ CHECKLIST:
           }
 
           if (body?.description !== undefined) updatePayload.Description = normalizeText(body?.description) || null;
+          if (body?.assets !== undefined) updatePayload.Assets = normalizeAssets(body?.assets);
           if (body?.priority !== undefined) updatePayload.Priority = normalizeText(body?.priority) || null;
           if (body?.category !== undefined) updatePayload.Category = normalizeText(body?.category) || null;
           if (body?.assignedTo !== undefined) updatePayload.Assigned_To = normalizeText(body?.assignedTo) || null;
@@ -6928,32 +9938,155 @@ Format: JSON only, no markdown.
 
       case 'createTraining':
         // body: { title, type, url, description, category, skillsTaught, difficultyLevel, estimatedMinutes, createdBy }
-        const { data: newTraining } = await supabaseMgmt
-          .from('Training_Resources')
-          .insert({
+        {
+          const rawType = safeTrim(body.type || 'Video');
+          const typeUpper = rawType.toUpperCase();
+          const isVideo = typeUpper === 'VIDEO';
+
+          const primaryUrl = normalizeHttpUrl(body.url) || safeTrim(body.url);
+          if (!primaryUrl) {
+            return NextResponse.json(
+              { ok: false, error: 'url is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const assets = isVideo ? sanitizeTrainingAssets(body.assets ?? body.urls ?? body.url) : [];
+          const assetsMetaIncoming = isVideo ? normalizeTrainingAssetsMeta(body.assetsMeta || body.assets_meta, assets) : null;
+          const assetsMeta = isVideo
+            ? (mergeTrainingAssetsMeta({ existing: null, incoming: assetsMetaIncoming, assets }) || {}) as any
+            : null;
+
+          // FETCH METADATA FOR ASSETS IF MISSING
+          // ------------------------------------------------------------------
+          await Promise.all((isVideo ? assets : []).map(async (assetUrl) => {
+            const key = String(assetUrl || '').trim();
+            // logic: if there is no entry, or the entry has no title, try to fetch it.
+            if (!assetsMeta || !assetsMeta[key] || !assetsMeta[key].title) {
+               try {
+                 const meta = await getLinkTitleFromOEmbed(assetUrl);
+                 if (meta) {
+                   (assetsMeta as any)[key] = {
+                     ...(((assetsMeta as any)[key]) || {}),
+                     title: meta.title,
+                     provider: meta.provider,
+                     thumbnail: meta.thumbnailUrl, // note: standardized key 'thumbnail' typically used in frontend, or 'thumbnailUrl'
+                     thumbnailUrl: meta.thumbnailUrl, // keeping both for safety
+                     duration: meta.durationSeconds
+                   };
+                 }
+               } catch (err) {
+                 console.error(`Failed to fetch metadata for ${assetUrl}:`, err);
+               }
+            }
+          }));
+          // ------------------------------------------------------------------
+
+          const generateDescription = (): string | null => {
+            try {
+              const list = Array.isArray(assets) ? assets.filter(Boolean) : [];
+              if (!list.length) return null;
+
+              const lines: string[] = [];
+              if (list.length === 1) {
+                lines.push('Video:');
+              } else {
+                lines.push(`Videos (${list.length}):`);
+              }
+
+              const slice = list.slice(0, 12);
+              for (let i = 0; i < slice.length; i++) {
+                const u = slice[i];
+                const key = normalizeHttpUrl(u) || u;
+                const m = assetsMeta && key ? (assetsMeta as any)[key] : null;
+                const title = safeTrim(m && (m.title || m.Title) || '');
+                const provider = safeTrim(m && (m.provider || m.Provider) || '');
+                const label = [title, provider].filter(Boolean).join(' · ');
+                lines.push(label ? `- ${label}` : `- Video ${i + 1}`);
+              }
+
+              return lines.join('\n');
+            } catch {
+              return null;
+            }
+          };
+
+          const normalizedDescription = safeTrim(body.description || '');
+          const derivedDescription = normalizedDescription
+            ? normalizedDescription
+            : (isVideo ? generateDescription() : null);
+
+          const normalizedTitle = safeTrim(body.title || '');
+          const derivedTitle = (() => {
+            if (normalizedTitle) return normalizedTitle;
+
+            if (!isVideo) {
+              return typeUpper === 'PDF'
+                ? 'Training PDF'
+                : typeUpper === 'SOP'
+                  ? 'Training SOP'
+                  : 'Training Resource';
+            }
+
+            const primary = assets && assets.length ? String(assets[0] || '').trim() : '';
+            const m = assetsMeta && primary ? (assetsMeta as any)[primary] : null;
+            const t = safeTrim(m && (m.title || m.Title) || '');
+            if (t) return t;
+            const count = assets && assets.length ? assets.length : 1;
+            return count > 1 ? `Training (${count} videos)` : 'Training Video';
+          })();
+
+          const insertPayload: any = {
             Resource_ID: crypto.randomUUID(),
-            Title: body.title,
-            Type: body.type || 'Video',
-            URL: body.url,
-            Description: body.description || null,
+            Title: derivedTitle,
+            Type: typeUpper || 'VIDEO',
+            URL: isVideo ? (assets.length ? assets[0] : primaryUrl) : primaryUrl,
+            Description: derivedDescription || null,
             Category: body.category || 'General',
             Skills_Taught: body.skillsTaught || null,
             Difficulty_Level: body.difficultyLevel || 'BEGINNER',
             Estimated_Minutes: body.estimatedMinutes || null,
             Created_By: body.createdBy || 'ADMIN',
             Order: body.order || 0
-          })
-          .select()
-          .single();
-        result = newTraining;
+          };
+
+          if (isVideo && assets.length) {
+            insertPayload.Assets = assets;
+          }
+
+          if (isVideo && assetsMeta && Object.keys(assetsMeta).length) insertPayload.Assets_Meta = assetsMeta;
+
+          let newTraining: any = null;
+          try {
+            const { data } = await supabaseMgmt
+              .from('Training_Resources')
+              .insert(insertPayload)
+              .select()
+              .single();
+            newTraining = data;
+          } catch {
+            // Fallback for older schemas without the Assets column.
+            delete insertPayload.Assets;
+            delete insertPayload.Assets_Meta;
+            const { data } = await supabaseMgmt
+              .from('Training_Resources')
+              .insert(insertPayload)
+              .select()
+              .single();
+            newTraining = data;
+          }
+
+          result = newTraining;
+        }
         break;
 
       case 'updateTraining':
         // body: { resourceId, ...updates }
+        {
         const updateData: any = {};
         if (body.title) updateData.Title = body.title;
         if (body.type) updateData.Type = body.type;
-        if (body.url) updateData.URL = body.url;
+        if (body.url) updateData.URL = normalizeHttpUrl(body.url) || body.url;
         if (body.description !== undefined) updateData.Description = body.description;
         if (body.category) updateData.Category = body.category;
         if (body.skillsTaught !== undefined) updateData.Skills_Taught = body.skillsTaught;
@@ -6961,13 +10094,394 @@ Format: JSON only, no markdown.
         if (body.estimatedMinutes !== undefined) updateData.Estimated_Minutes = body.estimatedMinutes;
         if (body.order !== undefined) updateData.Order = body.order;
 
-        const { data: updatedTraining } = await supabaseMgmt
+        const rid = safeTrim(body?.resourceId);
+        if (!rid) {
+          return NextResponse.json(
+            { ok: false, error: 'resourceId is required' },
+            { status: 400, headers: corsHeaders(request) }
+          );
+        }
+
+        // Fetch existing so we can merge metadata safely (never blank titles unless explicitly cleared).
+        const { data: existingRow } = await supabaseMgmt
           .from('Training_Resources')
-          .update(updateData)
-          .eq('Resource_ID', body.resourceId)
-          .select()
+          .select('*')
+          .eq('Resource_ID', rid)
           .single();
+
+        const effectiveType = safeTrim(body?.type ?? existingRow?.Type ?? 'Video');
+        const isVideo = effectiveType.toUpperCase() === 'VIDEO';
+
+        // Non-video resources (PDF/SOP/etc) should not go through the video-only sanitizer.
+        // Also clear any legacy Assets columns so we don't keep stale video parts.
+        if (!isVideo) {
+          updateData.Assets = null;
+          updateData.Assets_Meta = null;
+        }
+
+        const existingAssets = sanitizeTrainingAssets(existingRow && (existingRow.Assets ?? existingRow.assets ?? existingRow.URL ?? existingRow.url));
+        const existingMeta = normalizeTrainingAssetsMeta(
+          existingRow && (existingRow.Assets_Meta ?? existingRow.assets_meta ?? existingRow.AssetsMeta ?? existingRow.assetsMeta),
+          existingAssets
+        );
+
+        // If assets are being updated, sanitize to canonical supported-provider URLs.
+        if (isVideo && (body.assets !== undefined || body.urls !== undefined || body.url !== undefined)) {
+          const assets = sanitizeTrainingAssets(body.assets ?? body.urls ?? body.url);
+          updateData.Assets = assets.length ? assets : null;
+          if (assets.length) updateData.URL = assets[0];
+        }
+
+        if (isVideo && (body.assets !== undefined || body.urls !== undefined || body.url !== undefined || body.assetsMeta !== undefined || body.assets_meta !== undefined)) {
+          const effectiveAssets = sanitizeTrainingAssets(
+            (body.assets !== undefined || body.urls !== undefined || body.url !== undefined)
+              ? (body.assets ?? body.urls ?? body.url)
+              : existingAssets
+          );
+
+          const incomingMeta = normalizeTrainingAssetsMeta(body.assetsMeta || body.assets_meta, effectiveAssets);
+          const mergedMeta = (mergeTrainingAssetsMeta({ existing: existingMeta, incoming: incomingMeta, assets: effectiveAssets }) || {}) as any;
+
+          // AUTO-FILL METADATA FOR UPDATES (only fills missing titles; explicit titleCleared removes admin title and allows auto-title)
+          if (effectiveAssets.length > 0) {
+            await Promise.all(effectiveAssets.map(async (assetUrl) => {
+              const key = String(assetUrl || '').trim();
+              if (!mergedMeta || !mergedMeta[key] || !mergedMeta[key].title) {
+                try {
+                  const meta = await getLinkTitleFromOEmbed(assetUrl);
+                  if (meta) {
+                    const row: any = {
+                      ...(mergedMeta && mergedMeta[key] ? mergedMeta[key] : {}),
+                      title: meta.title,
+                      provider: meta.provider,
+                      thumbnail: meta.thumbnailUrl,
+                      thumbnailUrl: meta.thumbnailUrl,
+                      duration: meta.durationSeconds
+                    };
+                    mergedMeta[key] = row;
+                  }
+                } catch (err) {
+                  console.error(`Failed to fetch metadata for ${assetUrl} in update:`, err);
+                }
+              }
+            }));
+          }
+
+          updateData.Assets = effectiveAssets.length ? effectiveAssets : (updateData.Assets ?? null);
+          updateData.Assets_Meta = Object.keys(mergedMeta).length ? mergedMeta : null;
+        }
+
+        let updatedTraining: any = null;
+        try {
+          const { data } = await supabaseMgmt
+            .from('Training_Resources')
+            .update(updateData)
+            .eq('Resource_ID', rid)
+            .select()
+            .single();
+          updatedTraining = data;
+        } catch {
+          // Fallback for older schemas without the Assets column.
+          delete updateData.Assets;
+          delete updateData.Assets_Meta;
+          const { data } = await supabaseMgmt
+            .from('Training_Resources')
+            .update(updateData)
+            .eq('Resource_ID', rid)
+            .select()
+            .single();
+          updatedTraining = data;
+        }
+
         result = updatedTraining;
+        break;
+        }
+
+      case 'setTrainingAssetWatched':
+        {
+          const resourceId = safeTrim(body?.resourceId);
+          const completedBy = safeTrim(body?.completedBy);
+          const assetUrl = safeTrim(body?.assetUrl);
+          const watched = body?.watched === false ? false : true;
+
+          if (!resourceId || !completedBy || !assetUrl) {
+            const missing: string[] = [];
+            if (!resourceId) missing.push('resourceId');
+            if (!completedBy) missing.push('completedBy');
+            if (!assetUrl) missing.push('assetUrl');
+            return NextResponse.json(
+              { ok: false, error: `Missing required fields: ${missing.join(', ')}` },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const normalizedUrl = normalizeHttpUrl(assetUrl) || assetUrl;
+          const videoId = stableVideoIdFromUrl(normalizedUrl);
+
+          const row: any = {
+            Progress_ID: crypto.randomUUID(),
+            Resource_ID: resourceId,
+            Completed_By: completedBy,
+            Asset_URL: normalizedUrl,
+            Video_ID: videoId,
+            Watched: watched,
+            Watched_At: new Date().toISOString()
+          };
+
+          // Prefer Video_ID-based upsert (migration 022). Fall back to legacy Asset_URL-based upsert.
+          try {
+            const { data: upserted, error } = await supabaseMgmt
+              .from('Training_Asset_Progress')
+              .upsert(row, { onConflict: 'Resource_ID,Completed_By,Video_ID' })
+              .select('*')
+              .single();
+
+            if (!error) {
+              result = upserted;
+              break;
+            }
+
+            // If the unique constraint doesn't exist, fall back to insert.
+            const msg = String(error.message || '').toLowerCase();
+            const missingConstraint = msg.includes('no unique') && msg.includes('on conflict');
+            if (missingConstraint) {
+              try {
+                const { data: inserted, error: insertError } = await supabaseMgmt
+                  .from('Training_Asset_Progress')
+                  .insert(row)
+                  .select('*')
+                  .single();
+                if (!insertError) {
+                  result = inserted;
+                  break;
+                }
+              } catch {
+                // fall through
+              }
+            }
+          } catch {
+            // fall through
+          }
+
+          try {
+            const legacyRow: any = { ...row };
+            delete legacyRow.Video_ID;
+            const { data: upserted, error } = await supabaseMgmt
+              .from('Training_Asset_Progress')
+              .upsert(legacyRow, { onConflict: 'Resource_ID,Completed_By,Asset_URL' })
+              .select('*')
+              .single();
+
+            if (error) {
+              const msg = String(error.message || '').toLowerCase();
+              const missingConstraint = msg.includes('no unique') && msg.includes('on conflict');
+              if (missingConstraint) {
+                try {
+                  const { data: inserted, error: insertError } = await supabaseMgmt
+                    .from('Training_Asset_Progress')
+                    .insert(legacyRow)
+                    .select('*')
+                    .single();
+                  if (!insertError) {
+                    result = inserted;
+                    break;
+                  }
+                } catch {
+                  // fall through to error
+                }
+              }
+              return NextResponse.json(
+                { ok: false, error: `Failed to update progress: ${error.message}` },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+            result = upserted;
+          } catch (e: any) {
+            const msg = e?.message ? String(e.message) : 'Failed to update progress';
+            // Provide a helpful hint if the migration wasn't applied.
+            const hint = msg.toLowerCase().includes('training_asset_progress') || msg.toLowerCase().includes('does not exist')
+              ? 'DB table missing. Apply backend/migrations/019_training_asset_progress.sql to MGMT.'
+              : undefined;
+            return NextResponse.json(
+              { ok: false, error: msg, hint },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+        }
+        break;
+
+      case 'setTrainingVideoProgress':
+        {
+          const resourceId = safeTrim(body?.resourceId);
+          const completedBy = safeTrim(body?.completedBy);
+          const assetUrl = safeTrim(body?.assetUrl || body?.url);
+
+          const completionPercentRaw = body?.completionPercent ?? body?.completion_percent;
+          const lastPosRaw = body?.lastPositionSeconds ?? body?.last_position_seconds;
+          const markCompleted = body?.markCompleted === true;
+
+          if (!resourceId || !completedBy || !assetUrl) {
+            const missing: string[] = [];
+            if (!resourceId) missing.push('resourceId');
+            if (!completedBy) missing.push('completedBy');
+            if (!assetUrl) missing.push('assetUrl');
+            return NextResponse.json(
+              { ok: false, error: `Missing required fields: ${missing.join(', ')}` },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const normalizedUrl = normalizeHttpUrl(assetUrl) || assetUrl;
+          const videoId = safeTrim(body?.videoId || body?.video_id) || stableVideoIdFromUrl(normalizedUrl);
+          const nowIso = new Date().toISOString();
+
+          const clampPercent = (v: any): number | null => {
+            if (v === null || v === undefined || v === '') return null;
+            const n = Number(v);
+            if (!Number.isFinite(n)) return null;
+            return Math.max(0, Math.min(100, n));
+          };
+
+          const completionPercent = clampPercent(completionPercentRaw);
+          const lastPositionSeconds = Number.isFinite(Number(lastPosRaw)) ? Math.max(0, Math.floor(Number(lastPosRaw))) : null;
+
+          const isCompleted = markCompleted || (completionPercent !== null && completionPercent >= 95);
+          const watched = isCompleted || (completionPercent !== null && completionPercent > 0);
+
+          const baseRow: any = {
+            Progress_ID: crypto.randomUUID(),
+            Resource_ID: resourceId,
+            Completed_By: completedBy,
+            Asset_URL: normalizedUrl,
+            Video_ID: videoId,
+            Watched: watched,
+            Watched_At: nowIso
+          };
+
+          const extendedRow: any = {
+            ...baseRow,
+            Completion_Percent: completionPercent,
+            Last_Position_Seconds: lastPositionSeconds,
+            Completed_At: isCompleted ? nowIso : null,
+            Updated_At: nowIso
+          };
+
+          // Attempt full upsert (new schema). If columns/constraints are missing, retry legacy.
+          try {
+            const { data: upserted, error } = await supabaseMgmt
+              .from('Training_Asset_Progress')
+              .upsert(extendedRow, { onConflict: 'Resource_ID,Completed_By,Video_ID' })
+              .select('*')
+              .single();
+
+            if (error) {
+              const msg = String(error.message || 'Failed to update progress');
+              const lower = msg.toLowerCase();
+              const missingCols = lower.includes('completion_percent') || lower.includes('last_position_seconds') || lower.includes('updated_at') || lower.includes('completed_at') || lower.includes('video_id');
+
+              const missingConstraint = lower.includes('no unique') && lower.includes('on conflict');
+              if (missingConstraint) {
+                try {
+                  const { data: inserted, error: insertError } = await supabaseMgmt
+                    .from('Training_Asset_Progress')
+                    .insert(extendedRow)
+                    .select('*')
+                    .single();
+                  if (!insertError) {
+                    result = inserted;
+                    break;
+                  }
+                } catch {
+                  // fall through
+                }
+              }
+
+              if (!missingCols) {
+                return NextResponse.json(
+                  { ok: false, error: `Failed to update progress: ${msg}` },
+                  { status: 500, headers: corsHeaders(request) }
+                );
+              }
+              // fall through to legacy retry
+            } else {
+              result = upserted;
+              break;
+            }
+          } catch (e: any) {
+            const msg = e?.message ? String(e.message) : 'Failed to update progress';
+            const lower = msg.toLowerCase();
+            const missingCols = lower.includes('completion_percent') || lower.includes('last_position_seconds') || lower.includes('updated_at') || lower.includes('completed_at') || lower.includes('video_id');
+
+            const missingConstraint = lower.includes('no unique') && lower.includes('on conflict');
+            if (missingConstraint) {
+              try {
+                const { data: inserted, error: insertError } = await supabaseMgmt
+                  .from('Training_Asset_Progress')
+                  .insert(extendedRow)
+                  .select('*')
+                  .single();
+                if (!insertError) {
+                  result = inserted;
+                  break;
+                }
+              } catch {
+                // fall through
+              }
+            }
+
+            if (!missingCols) {
+              return NextResponse.json(
+                { ok: false, error: msg },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+            // else legacy retry
+          }
+
+          try {
+            const legacyRow: any = { ...baseRow };
+            delete legacyRow.Video_ID;
+            const { data: upserted, error } = await supabaseMgmt
+              .from('Training_Asset_Progress')
+              .upsert(legacyRow, { onConflict: 'Resource_ID,Completed_By,Asset_URL' })
+              .select('*')
+              .single();
+
+            if (error) {
+              const msg = String(error.message || '').toLowerCase();
+              const missingConstraint = msg.includes('no unique') && msg.includes('on conflict');
+              if (missingConstraint) {
+                try {
+                  const { data: inserted, error: insertError } = await supabaseMgmt
+                    .from('Training_Asset_Progress')
+                    .insert(legacyRow)
+                    .select('*')
+                    .single();
+                  if (!insertError) {
+                    result = inserted;
+                    break;
+                  }
+                } catch {
+                  // fall through
+                }
+              }
+              return NextResponse.json(
+                { ok: false, error: `Failed to update progress: ${error.message}` },
+                { status: 500, headers: corsHeaders(request) }
+              );
+            }
+            result = upserted;
+          } catch (e: any) {
+            const msg = e?.message ? String(e.message) : 'Failed to update progress';
+            const hint = msg.toLowerCase().includes('training_asset_progress') || msg.toLowerCase().includes('does not exist')
+              ? 'DB table missing. Apply backend/migrations/019_training_asset_progress.sql (and 021_training_asset_progress_video_fields.sql for resume/progress).' 
+              : undefined;
+            return NextResponse.json(
+              { ok: false, error: msg, hint },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+        }
         break;
 
       case 'deleteTraining':
@@ -7347,6 +10861,72 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         const nowOffer = new Date().toISOString();
         const createdBy = body.createdBy || offerData.created_by || 'UNKNOWN';
 
+        const { primary: offersPrimaryDb, fallback: offersFallbackDb } = getOffersDbFallback();
+
+        const checkExisting = async (db: any) => {
+          return await db
+            .from('Offers')
+            .select('Offer_ID, Created_At, Created_By')
+            .eq('Offer_ID', offerIdSave)
+            .maybeSingle();
+        };
+
+        // Check if offer exists (with DB fallback)
+        let { data: existingOffer, error: existingErr } = await checkExisting(offersPrimaryDb);
+        if (existingErr && isOffersSchemaMismatchError(existingErr)) {
+          ({ data: existingOffer, error: existingErr } = await checkExisting(offersFallbackDb));
+        }
+        if (existingErr) {
+          return NextResponse.json({ ok: false, error: `Failed to check offer: ${existingErr.message}` }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        // Guardrail: never overwrite a non-empty stored offerDescription with an empty incoming one.
+        try {
+          const incomingDesc = safeTrim((offerData as any)?.offerDescription ?? (offerData as any)?.offer_description ?? '');
+          const needsPreserve = !!existingOffer && !incomingDesc;
+          if (needsPreserve) {
+            const fetchExistingDesc = async (db: any) => {
+              return await db
+                .from('Offers')
+                .select('Offer_ID, Message_Context')
+                .eq('Offer_ID', offerIdSave)
+                .single();
+            };
+
+            let fullRow: any = null;
+            let fullErr: any = null;
+            ({ data: fullRow, error: fullErr } = await fetchExistingDesc(offersPrimaryDb));
+            if (fullErr && isOffersSchemaMismatchError(fullErr)) {
+              ({ data: fullRow, error: fullErr } = await fetchExistingDesc(offersFallbackDb));
+            }
+
+            if (!fullErr && fullRow) {
+              let ctx: any = (fullRow as any).Message_Context;
+              try {
+                if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+              } catch {
+                ctx = {};
+              }
+              if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+
+              let existingOb: any = ctx.offer_builder || ctx.offerBuilder || null;
+              try {
+                if (typeof existingOb === 'string') existingOb = JSON.parse(existingOb || '{}');
+              } catch {
+                // ignore
+              }
+              if (!existingOb || typeof existingOb !== 'object' || Array.isArray(existingOb)) existingOb = {};
+
+              const preserved = safeTrim(existingOb.offerDescription ?? existingOb.offer_description ?? existingOb.description ?? '');
+              if (preserved) {
+                (offerData as any).offerDescription = preserved;
+              }
+            }
+          }
+        } catch {
+          // best-effort only
+        }
+
         // Persist a reusable offer snapshot for the Offer Builder UI.
         const baseMessageContextRaw = offerData.messageContext || offerData.message_context || {};
         const baseMessageContext =
@@ -7394,25 +10974,6 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           ...(aiAnalysisProvided ? { AI_Analysis: (offerData.ai_analysis ?? offerData.AI_Analysis ?? null) } : {}),
           ...(performanceProvided ? { Performance_Data: (offerData.performance_data ?? offerData.Performance_Data ?? null) } : {})
         };
-
-        const { primary: offersPrimaryDb, fallback: offersFallbackDb } = getOffersDbFallback();
-
-        const checkExisting = async (db: any) => {
-          return await db
-            .from('Offers')
-            .select('Offer_ID, Created_At, Created_By')
-            .eq('Offer_ID', offerIdSave)
-            .maybeSingle();
-        };
-
-        // Check if offer exists (with DB fallback)
-        let { data: existingOffer, error: existingErr } = await checkExisting(offersPrimaryDb);
-        if (existingErr && isOffersSchemaMismatchError(existingErr)) {
-          ({ data: existingOffer, error: existingErr } = await checkExisting(offersFallbackDb));
-        }
-        if (existingErr) {
-          return NextResponse.json({ ok: false, error: `Failed to check offer: ${existingErr.message}` }, { status: 500, headers: corsHeaders(request) });
-        }
 
         let savedOffer;
         if (existingOffer) {
@@ -7833,6 +11394,1032 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
             applied,
             errors,
             results
+          }, { headers: corsHeaders(request) });
+        }
+
+      case 'autoDescribeMissingOffers':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const scanLimitRaw = Number(body?.scanLimit ?? body?.limit ?? 250);
+          const maxApplyRaw = Number(body?.maxApply ?? 10);
+          const scanLimit = Math.max(1, Math.min(isFinite(scanLimitRaw) ? scanLimitRaw : 250, 5000));
+          const maxApply = Math.max(1, Math.min(isFinite(maxApplyRaw) ? maxApplyRaw : 10, 200));
+          const order = String(body?.order || 'oldest').toLowerCase();
+          const ascending = order === 'newest' ? false : true;
+          const dryRun = ['1', 'true', 'yes', 'on'].includes(String(body?.dryRun || '').toLowerCase());
+
+          const startedAt = Date.now();
+          const timeBudgetMs = 22_000;
+
+          const { primary, fallback } = getOffersDbFallback();
+          const scanOffers = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select([
+                'Offer_ID',
+                'Created_By',
+                'Updated_At',
+                'ctx_ob:Message_Context->offer_builder',
+                'ctx_ob2:Message_Context->offerBuilder'
+              ].join(','))
+              .order('Updated_At', { ascending })
+              .limit(scanLimit);
+          };
+
+          let { data: offers, error: offersErr } = await scanOffers(primary);
+          if (offersErr && isOffersSchemaMismatchError(offersErr)) {
+            ({ data: offers, error: offersErr } = await scanOffers(fallback));
+          }
+
+          if (offersErr) {
+            return NextResponse.json({ ok: false, error: `Failed to scan offers: ${offersErr.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const rows = Array.isArray(offers) ? offers : [];
+          const results: any[] = [];
+          let scanned = 0;
+          let missingFound = 0;
+          let applied = 0;
+          let errors = 0;
+
+          const meUser = safeTrim((me as any).username).toUpperCase();
+          const isAdmin = safeTrim((me as any).role).toUpperCase() === 'ADMIN';
+
+          const parseMaybeJson = (value: any) => {
+            if (!value) return null;
+            if (typeof value === 'object') return value;
+            if (typeof value !== 'string') return null;
+            try {
+              return JSON.parse(value);
+            } catch {
+              return null;
+            }
+          };
+
+          for (const offerRow of rows) {
+            if (Date.now() - startedAt > timeBudgetMs) {
+              const idForBudget = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId: idForBudget, skipped: true, reason: 'time_budget_exceeded' });
+              break;
+            }
+            if (applied >= maxApply) break;
+
+            try {
+              scanned++;
+              const offerId = safeTrim((offerRow as any)?.Offer_ID);
+              if (!offerId) {
+                errors++;
+                results.push({ offerId: null, applied: false, error: 'missing_offer_id' });
+                continue;
+              }
+
+              const createdBy = safeTrim((offerRow as any)?.Created_By).toUpperCase();
+              if (!isAdmin && createdBy && createdBy !== meUser) {
+                continue;
+              }
+
+              let ob: any = (offerRow as any)?.ctx_ob || (offerRow as any)?.ctx_ob2 || null;
+              ob = parseMaybeJson(ob) || ob;
+              if (!ob || typeof ob !== 'object' || Array.isArray(ob)) ob = {};
+
+              const existingDesc = safeTrim(ob.offerDescription ?? ob.offer_description ?? ob.description ?? '');
+              if (existingDesc) continue;
+
+              missingFound++;
+
+              // Prefer the conceptualized offer description when available; fall back to existing text.
+              let nextDesc = '';
+              let source: string = '';
+
+              const ai = await aiOfferDescription(openai, ob);
+              nextDesc = safeTrim(ai ?? '');
+              if (nextDesc) {
+                source = 'ai';
+              } else {
+                nextDesc = safeTrim(ob.whatsIncluded ?? '');
+                if (nextDesc) source = 'whatsIncluded';
+              }
+
+              if (!nextDesc) {
+                errors++;
+                results.push({ offerId, applied: false, error: openai ? 'no_description_generated' : 'openai_not_configured' });
+                continue;
+              }
+
+              // Fetch full row context so we don't drop unrelated context keys on update.
+              const fetchFullForUpdate = async (db: any) => {
+                return await db
+                  .from('Offers')
+                  .select('Offer_ID, Message_Context')
+                  .eq('Offer_ID', offerId)
+                  .single();
+              };
+
+              let fullRow: any = null;
+              let fullErr: any = null;
+              ({ data: fullRow, error: fullErr } = await fetchFullForUpdate(primary));
+              if (fullErr && isOffersSchemaMismatchError(fullErr)) {
+                ({ data: fullRow, error: fullErr } = await fetchFullForUpdate(fallback));
+              }
+              if (fullErr || !fullRow) {
+                errors++;
+                results.push({ offerId, applied: false, error: `failed_fetch_full_context: ${fullErr?.message || 'unknown'}` });
+                continue;
+              }
+
+              let ctx: any = (fullRow as any).Message_Context;
+              try {
+                if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+              } catch {
+                ctx = {};
+              }
+              if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+
+              let fullOb: any = ctx.offer_builder || ctx.offerBuilder || ob || null;
+              fullOb = parseMaybeJson(fullOb) || fullOb;
+              if (!fullOb || typeof fullOb !== 'object' || Array.isArray(fullOb)) fullOb = {};
+
+              // Never overwrite a non-empty description.
+              const already = safeTrim(fullOb.offerDescription ?? fullOb.offer_description ?? fullOb.description ?? '');
+              if (already) {
+                results.push({ offerId, applied: false, skipped: true, reason: 'description_already_present' });
+                continue;
+              }
+
+              fullOb.offerDescription = nextDesc;
+
+              // Preserve whichever key is canonical in this record; default to offer_builder.
+              const nextCtx: any = { ...ctx };
+              if (nextCtx.offer_builder != null) nextCtx.offer_builder = fullOb;
+              else if (nextCtx.offerBuilder != null) nextCtx.offerBuilder = fullOb;
+              else nextCtx.offer_builder = fullOb;
+
+              // Optional debug breadcrumbs (safe, small).
+              try {
+                nextCtx.offer_description_backfilled_at = new Date().toISOString();
+                nextCtx.offer_description_backfilled_source = source || null;
+              } catch {
+                // ignore
+              }
+
+              if (dryRun) {
+                applied++;
+                results.push({ offerId, applied: true, dryRun: true, source, descriptionPreview: nextDesc.slice(0, 120) });
+                continue;
+              }
+
+              const updatePayload: any = {
+                Message_Context: nextCtx,
+                Updated_At: new Date().toISOString()
+              };
+
+              const doUpdate = async (db: any) => {
+                return await db
+                  .from('Offers')
+                  .update(updatePayload)
+                  .eq('Offer_ID', offerId);
+              };
+
+              let { error: updErr } = await doUpdate(primary);
+              if (updErr && isOffersSchemaMismatchError(updErr)) {
+                ({ error: updErr } = await doUpdate(fallback));
+              }
+
+              if (updErr) {
+                errors++;
+                results.push({ offerId, applied: false, error: updErr.message });
+                continue;
+              }
+
+              applied++;
+              results.push({ offerId, applied: true, source, descriptionPreview: nextDesc.slice(0, 120) });
+            } catch (e: any) {
+              errors++;
+              const offerId = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId, applied: false, error: e?.message || 'offer_row_failed' });
+              continue;
+            }
+          }
+
+          return NextResponse.json({
+            ok: true,
+            dryRun,
+            scanLimit,
+            maxApply,
+            order: ascending ? 'oldest' : 'newest',
+            scanned,
+            missingFound,
+            applied,
+            errors,
+            results
+          }, { headers: corsHeaders(request) });
+        }
+
+      case 'autoGenerateMissingOfferModules':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const onlyOfferId = safeTrim(body?.offerId || body?.offer_id || body?.id || '');
+
+          const scanLimitRaw = Number(body?.scanLimit ?? body?.limit ?? 250);
+          const maxApplyRaw = Number(body?.maxApply ?? 10);
+          const scanLimit = Math.max(1, Math.min(isFinite(scanLimitRaw) ? scanLimitRaw : 250, 5000));
+          const maxApply = Math.max(1, Math.min(isFinite(maxApplyRaw) ? maxApplyRaw : 10, 100));
+          const order = String(body?.order || 'oldest').toLowerCase();
+          const ascending = order === 'newest' ? false : true;
+          const dryRun = ['1', 'true', 'yes', 'on'].includes(String(body?.dryRun || '').toLowerCase());
+
+          const startedAt = Date.now();
+          const timeBudgetMs = 22_000;
+
+          const { primary, fallback } = getOffersDbFallback();
+
+          const loadOne = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select('Offer_ID, Created_By, Updated_At, Message_Context, AI_Analysis')
+              .eq('Offer_ID', onlyOfferId)
+              .maybeSingle();
+          };
+
+          const scanOffers = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select([
+                'Offer_ID',
+                'Created_By',
+                'Updated_At',
+                'AI_Analysis',
+                'ctx_ob:Message_Context->offer_builder',
+                'ctx_ob2:Message_Context->offerBuilder'
+              ].join(','))
+              .order('Updated_At', { ascending })
+              .limit(scanLimit);
+          };
+
+          let rows: any[] = [];
+          if (onlyOfferId) {
+            let { data: one, error: oneErr } = await loadOne(primary);
+            if (oneErr && isOffersSchemaMismatchError(oneErr)) {
+              ({ data: one, error: oneErr } = await loadOne(fallback));
+            }
+            if (oneErr) {
+              return NextResponse.json({ ok: false, error: `Failed to load offer: ${oneErr.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+            if (!one) {
+              return NextResponse.json({ ok: false, error: 'Offer not found' }, { status: 404, headers: corsHeaders(request) });
+            }
+            // Normalize into the scan-shape used below.
+            let ctx: any = (one as any).Message_Context;
+            try {
+              if (typeof ctx === 'string') ctx = JSON.parse(ctx || '{}');
+            } catch {
+              ctx = {};
+            }
+            if (!ctx || typeof ctx !== 'object' || Array.isArray(ctx)) ctx = {};
+            rows = [
+              {
+                Offer_ID: (one as any).Offer_ID,
+                Created_By: (one as any).Created_By,
+                Updated_At: (one as any).Updated_At,
+                AI_Analysis: (one as any).AI_Analysis,
+                ctx_ob: ctx.offer_builder,
+                ctx_ob2: ctx.offerBuilder
+              }
+            ];
+          } else {
+            let { data: offers, error: offersErr } = await scanOffers(primary);
+            if (offersErr && isOffersSchemaMismatchError(offersErr)) {
+              ({ data: offers, error: offersErr } = await scanOffers(fallback));
+            }
+            if (offersErr) {
+              return NextResponse.json({ ok: false, error: `Failed to scan offers: ${offersErr.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+            rows = Array.isArray(offers) ? offers : [];
+          }
+          const results: any[] = [];
+          let scanned = 0;
+          let missingFound = 0;
+          let applied = 0;
+          let errors = 0;
+
+          const meUser = safeTrim((me as any).username).toUpperCase();
+          const isAdmin = safeTrim((me as any).role).toUpperCase() === 'ADMIN';
+
+          const parseMaybeJson = (value: any) => {
+            if (!value) return null;
+            if (typeof value === 'object') return value;
+            if (typeof value !== 'string') return null;
+            try {
+              return JSON.parse(value);
+            } catch {
+              return null;
+            }
+          };
+
+          const safeString = (v: any) => String(v == null ? '' : v).trim();
+
+          const hash32 = (s: string) => {
+            // Simple, deterministic hash (FNV-1a-ish).
+            let h = 2166136261;
+            for (let i = 0; i < s.length; i++) {
+              h ^= s.charCodeAt(i);
+              h = Math.imul(h, 16777619);
+            }
+            return (h >>> 0);
+          };
+
+          const pick = <T,>(arr: T[], seed: string) => {
+            const a = Array.isArray(arr) ? arr : [];
+            if (!a.length) return (null as any);
+            const idx = hash32(seed) % a.length;
+            return a[idx];
+          };
+
+          const inferDomain = (services: string[]) => {
+            const s = services.map(x => x.toLowerCase()).join(' | ');
+            if (/doorbell|ring|nest doorbell/.test(s)) return 'doorbell';
+            if (/camera|cameras|cctv|nvr|dvr/.test(s)) return 'cameras';
+            if (/tv|television|mount/.test(s)) return 'tv_mount';
+            if (/thermostat|hvac/.test(s)) return 'thermostat';
+            if (/wifi|network|router|mesh|ethernet/.test(s)) return 'network';
+            if (/smart|alexa|google home|homekit/.test(s)) return 'smart_home';
+            return 'home_services';
+          };
+
+          const domainPainPoints = (domain: string) => {
+            if (domain === 'tv_mount') return ['crooked TV', 'visible wires', 'wrong height', 'missed studs', 'wall damage'];
+            if (domain === 'cameras') return ['blind spots', 'weak Wi‑Fi signal', 'messy wiring', 'bad angles', 'false alerts'];
+            if (domain === 'doorbell') return ['missed visitors', 'weak chime integration', 'bad positioning', 'wiring confusion'];
+            if (domain === 'network') return ['dead zones', 'buffering', 'dropped calls', 'inconsistent speeds'];
+            if (domain === 'thermostat') return ['wrong wiring', 'short-cycling fears', 'setup confusion'];
+            if (domain === 'smart_home') return ['devices not syncing', 'app overwhelm', 'unreliable automations'];
+            return ['mess', 'surprise costs', 'timing headaches', 'trust concerns'];
+          };
+
+          const computePriceHint = (ob: any) => {
+            try {
+              const p = Number(ob?.totals?.customerPrice);
+              if (Number.isFinite(p) && p > 0) return p;
+            } catch {
+              // ignore
+            }
+            try {
+              const items = Array.isArray(ob?.lineItems) ? ob.lineItems : [];
+              const sum = items.reduce((acc: number, it: any) => {
+                const qty = Number(it?.qty || 1) || 1;
+                const unit = Number(it?.baseUnitPrice ?? it?.unitPrice ?? 0) || 0;
+                return acc + (qty * unit);
+              }, 0);
+              return (Number.isFinite(sum) && sum > 0) ? sum : null;
+            } catch {
+              return null;
+            }
+          };
+
+          const moduleKeys = {
+            tof: ['problem_awareness', 'myth_bust', 'how_it_works', 'proof_story', 'authority'],
+            bof: ['offer_stack', 'price_anchor', 'objection_killer', 'urgency_scarcity', 'cta_booking']
+          };
+
+          const hasMeaningfulModule = (m: any) => {
+            if (!m || typeof m !== 'object' || Array.isArray(m)) return false;
+            const hook = safeTrim(m.hook || '');
+            const primary = safeTrim(m.primary_text || m.primaryText || '');
+            const dir = safeTrim(m.creative_direction || m.creativeDirection || '');
+            return !!(hook || primary || dir);
+          };
+
+          const normalizeText = (v: any) => {
+            try {
+              return String(v == null ? '' : v)
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+            } catch {
+              return '';
+            }
+          };
+
+          const buildSpecificityTokens = (input: any) => {
+            const tokens: string[] = [];
+            const add = (s: any) => {
+              const t = normalizeText(s);
+              if (!t) return;
+              if (t.length < 4) return;
+              tokens.push(t);
+            };
+
+            add(input?.offer_name);
+            add(input?.market);
+            add(input?.headline);
+
+            try {
+              const services = Array.isArray(input?.services) ? input.services : [];
+              for (const s of services.slice(0, 4)) add(s);
+            } catch {
+              // ignore
+            }
+
+            try {
+              const p = Number(input?.price_hint);
+              if (Number.isFinite(p) && p > 0) {
+                const rounded = Math.round(p);
+                add(`$${rounded}`);
+                add(String(rounded));
+              }
+            } catch {
+              // ignore
+            }
+
+            return Array.from(new Set(tokens));
+          };
+
+          const isModuleTooGeneric = (m: any, input: any) => {
+            if (!hasMeaningfulModule(m)) return true;
+            const hook = safeTrim(m?.hook || '');
+            const primary = safeTrim(m?.primary_text || m?.primaryText || '');
+            const dir = safeTrim(m?.creative_direction || m?.creativeDirection || '');
+            const all = normalizeText([hook, primary, dir].filter(Boolean).join('\n'));
+            if (!all) return true;
+
+            const tokens = buildSpecificityTokens(input);
+            const mentionsSpecific = tokens.length ? tokens.some(t => all.includes(t)) : false;
+
+            const genericPhrases = [
+              'no surprises',
+              'clean result',
+              'fast scheduling',
+              'book in minutes',
+              'limited openings',
+              'next slots fill fast',
+              'tap to get a quick quote',
+              'get a quick quote',
+              'how it works (3 steps)',
+              'the simple process',
+              'protect the space'
+            ];
+            const templatey = genericPhrases.some(p => all.includes(p));
+            const primaryLen = normalizeText(primary).length;
+
+            if (tokens.length && !mentionsSpecific) return true;
+            if (!tokens.length && templatey && primaryLen < 110) return true;
+            if (templatey && primaryLen < 90) return true;
+            return false;
+          };
+
+          const shouldGenerateModuleKey = (existing: any, input: any) => {
+            if (!hasMeaningfulModule(existing)) return true;
+            return isModuleTooGeneric(existing, input);
+          };
+
+          const fallbackModules = (input: any, missing: { tof: string[]; bof: string[] }) => {
+            const offerId = safeString(input.offer_id || '');
+            const offerName = safeString(input.offer_name || 'Offer');
+            const market = safeString(input.market || '');
+            const headline = safeString(input.headline || '');
+            const services = Array.isArray(input.services) ? input.services.map((x: any) => safeString(x)).filter(Boolean) : [];
+            const includesShort = services.slice(0, 3).join(', ');
+            const servicePhrase = services[0] || offerName || 'this service';
+
+            const price = Number(input.price_hint || 0) || 0;
+            const priceStr = (Number.isFinite(price) && price > 0) ? `$${Math.round(price)}` : '';
+
+            const domain = safeString(input.domain || 'home_services');
+            const pains = Array.isArray(input.pain_points) ? input.pain_points : domainPainPoints(domain);
+            const pain = safeString(pick(pains, `${offerId}::pain`) || pains[0] || 'the hassle');
+
+            const hookVariants = {
+              problem_awareness: [
+                `${market ? `${market}: ` : ''}Still dealing with ${pain}?`,
+                `${servicePhrase}: ${pain} is usually preventable.`,
+                `${market ? `${market}: ` : ''}If ${pain} keeps happening, do this instead.`
+              ],
+              myth_bust: [
+                `Myth: “${servicePhrase} is easy.”`,
+                `DIY tip that causes expensive rework…`,
+                `The "quick fix" that makes it worse…`
+              ],
+              how_it_works: [
+                offerName ? `How ${offerName} works (3 steps)` : 'How it works (3 steps)',
+                `What happens when we show up (fast + clean)`,
+                `The simple process behind a clean result`
+              ],
+              proof_story: [
+                `Clean result. No stress.`,
+                `“On time, clean work, looks perfect.”`,
+                `Before/after tells the story.`
+              ],
+              authority: [
+                `Pros check this first — before they touch anything.`,
+                `The pro method that prevents rework.`,
+                `Tools + process = a clean finish.`
+              ],
+              offer_stack: [
+                offerName ? `${offerName}: what’s included` : 'What’s included',
+                `Everything included. No surprises.`,
+                `Here’s what you actually get.`
+              ],
+              price_anchor: [
+                priceStr ? `Upfront pricing: ${priceStr}` : 'Upfront pricing (no surprises)',
+                `Bundle beats piece-by-piece.`,
+                `Pay once — avoid rework later.`
+              ],
+              objection_killer: [
+                `Worried about mess or damage?`,
+                `No surprise fees. No sketchy work.`,
+                `Trust + clean work, start to finish.`
+              ],
+              urgency_scarcity: [
+                `Limited openings this week`,
+                `Next slots fill fast`,
+                `If you want it done soon…`
+              ],
+              cta_booking: [
+                `Book in minutes`,
+                `Get a quote, pick a time`,
+                `Fast scheduling. Clean install.`
+              ]
+            };
+
+            const mk = (key: string, stage: 'tof' | 'bof') => {
+              const seed = `${offerId}::${stage}::${key}`;
+              const hook = safeString(pick((hookVariants as any)[key] || [], seed) || '');
+              const idTitle = (stage === 'tof' ? 'TOF' : 'BOF');
+              const ideaTitle = `${idTitle} ${key.replace(/_/g, ' ')}: ${offerName}`.replace(/\s+/g, ' ').trim();
+              const incl = includesShort ? `Included: ${includesShort}.` : '';
+              const marketLine = market ? `${market}: ` : '';
+
+              const basePrimaryBits = {
+                problem_awareness: `${marketLine}If ${pain} keeps popping up, the fix is usually process — not a bigger “upgrade”.\n\n${incl}`,
+                myth_bust: `Reality: the mistakes show up later (crooked, damage, rework).\n\nHere’s what pros do differently — and why it matters.\n${incl}`,
+                how_it_works: `1) Quick quote\n2) Protect the space + confirm plan\n3) Install + test + walkthrough\n\n${incl}`,
+                proof_story: `Show the finished result first, then one real proof beat (review line, before/after, or a quick “process” clip).\n\n${offerName ? `This is what ${offerName} should feel like.` : ''}`.trim(),
+                authority: `A clean, safe result comes from process: measure, level, protect, install, then test + tidy.\n\n${incl}`,
+                offer_stack: `${incl || 'Included: (add services).'}\n\nClean work. Safe install. Simple scheduling.`,
+                price_anchor: `Anchor value by showing what’s included (bundle/package) vs piece-by-piece.\n\n${incl}`,
+                objection_killer: `We protect the space, confirm everything upfront, and clean up when we’re done.\n\nNo surprises. Just a clean result.`,
+                urgency_scarcity: `${marketLine}If you want it done soon, grab a slot while availability is open.\n\n${incl}`,
+                cta_booking: `Tap to get a quick quote, pick a time, and we’ll handle the rest.\n\n${incl}`
+              };
+
+              const primary_text = safeString((basePrimaryBits as any)[key] || '');
+              const creative_direction = safeString(
+                stage === 'tof'
+                  ? 'Open with the “before” moment, then 2 quick proof beats (process + finished result). Keep it specific; avoid generic claims.'
+                  : 'Show checklist-style clarity (what’s included), add one proof beat (review/before-after), then a simple CTA to book.'
+              );
+
+              const cta = stage === 'tof'
+                ? safeString(pick(['See how it works', 'Get a quick quote', 'Check availability'], `${offerId}::${key}::cta`) || 'Get a quote')
+                : safeString(pick(['Book now', 'See pricing', 'Check times'], `${offerId}::${key}::cta`) || 'Book now');
+
+              return { idea_title: ideaTitle, hook, primary_text, creative_direction, cta };
+            };
+
+            const out: any = { modules: { tof: {}, bof: {} } };
+            for (const k of missing.tof) out.modules.tof[k] = mk(k, 'tof');
+            for (const k of missing.bof) out.modules.bof[k] = mk(k, 'bof');
+            return out;
+          };
+
+          const generateModulesWithAi = async (input: any, missing: { tof: string[]; bof: string[] }) => {
+            if (!openai) return null;
+            const want = { tof: missing.tof, bof: missing.bof };
+            const seed = safeString(input.offer_id || '');
+
+            const tokens = buildSpecificityTokens(input);
+            const requiredTokensLine = tokens.length
+              ? `- Where possible, explicitly include at least 1 of these offer-specific tokens (verbatim or close match): ${tokens.slice(0, 8).join(' | ')}\n`
+              : '';
+
+            const bannedPhrases = [
+              'no surprises',
+              'clean result',
+              'fast scheduling',
+              'book in minutes',
+              'limited openings',
+              'next slots fill fast',
+              'tap to get a quick quote'
+            ];
+
+            const prompt = `You are a senior direct-response creative strategist for Home2Smart.\n\nTask: Write offer-specific Ad Module copy for a single offer. This must NOT be generic; it must reflect the offer's services, market, pricing/constraints (if present), and real objections.\n\nReturn VALID JSON ONLY (no markdown) in exactly this shape:\n\n{\n  \"modules\": {\n    \"tof\": {\n      \"problem_awareness\": {\"idea_title\":\"\",\"hook\":\"\",\"primary_text\":\"\",\"creative_direction\":\"\",\"cta\":\"\"},\n      ... only include keys requested ...\n    },\n    \"bof\": { ... only include keys requested ... }\n  }\n}\n\nRules (strict):\n- ONLY include module keys in REQUESTED_KEYS.\n- For every module you return: hook must be <= 95 characters; primary_text must be 2-4 short paragraphs (use newlines); creative_direction must be 2-5 bullet lines OR short sentences separated by newlines.\n- Each module MUST mention at least one of: a specific included service, a concrete outcome, or a concrete constraint that fits the offer.\n- Avoid filler lines that could apply to any home service. No emojis. No hype.\n- Use the SEED as a style-randomizer: vary phrasing and structure across offers while staying consistent for this offer.\n${requiredTokensLine}- Avoid these generic phrases unless you make them clearly offer-specific: ${bannedPhrases.join(', ')}\n\nREQUESTED_KEYS:\n${JSON.stringify(want)}\n\nSEED:\n${seed}\n\nOFFER_INPUT_JSON:\n${JSON.stringify(input)}`;
+
+            const completion = await openai.chat.completions.create({
+              model: process.env.OPENAI_OFFER_MODEL || 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: 'Return valid JSON only.' },
+                { role: 'user', content: prompt }
+              ],
+              temperature: 0.3,
+              max_tokens: 1800,
+              response_format: { type: 'json_object' }
+            });
+
+            try {
+              return JSON.parse(completion.choices?.[0]?.message?.content || '{}');
+            } catch {
+              return null;
+            }
+          };
+
+          for (const offerRow of rows) {
+            if (Date.now() - startedAt > timeBudgetMs) {
+              const idForBudget = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId: idForBudget, skipped: true, reason: 'time_budget_exceeded' });
+              break;
+            }
+            if (applied >= maxApply) break;
+
+            try {
+              scanned++;
+              const offerId = safeTrim((offerRow as any)?.Offer_ID);
+              if (!offerId) {
+                errors++;
+                results.push({ offerId: null, applied: false, error: 'missing_offer_id' });
+                continue;
+              }
+
+              const createdBy = safeTrim((offerRow as any)?.Created_By).toUpperCase();
+              if (!isAdmin && createdBy && createdBy !== meUser) {
+                continue;
+              }
+
+              let ob: any = (offerRow as any)?.ctx_ob || (offerRow as any)?.ctx_ob2 || null;
+              ob = parseMaybeJson(ob) || ob;
+              if (!ob || typeof ob !== 'object' || Array.isArray(ob)) ob = {};
+
+              let ai: any = (offerRow as any)?.AI_Analysis;
+              ai = parseMaybeJson(ai) || ai;
+              if (!ai || typeof ai !== 'object' || Array.isArray(ai)) ai = {};
+
+              let frameworks: any = (ai as any).offer_frameworks;
+              frameworks = parseMaybeJson(frameworks) || frameworks;
+              if (!frameworks || typeof frameworks !== 'object' || Array.isArray(frameworks)) frameworks = {};
+
+              if (!frameworks.modules || typeof frameworks.modules !== 'object' || Array.isArray(frameworks.modules)) frameworks.modules = {};
+              if (!frameworks.modules.tof || typeof frameworks.modules.tof !== 'object' || Array.isArray(frameworks.modules.tof)) frameworks.modules.tof = {};
+              if (!frameworks.modules.bof || typeof frameworks.modules.bof !== 'object' || Array.isArray(frameworks.modules.bof)) frameworks.modules.bof = {};
+
+              const services = Array.isArray(ob?.lineItems)
+                ? (ob.lineItems
+                    .map((li: any) => safeString(li?.name || li?.serviceName || li?.service || ''))
+                    .filter(Boolean))
+                : [];
+              const domain = inferDomain(services);
+              const priceHint = computePriceHint(ob);
+              const offerName = safeString(ob?.name || ob?.offerName || '');
+              const headline = safeString(ob?.headline || ob?.oneSentencePromise || ob?.intendedGoal || '');
+              const market = safeString(ob?.market || ob?.category || '');
+              const desc = safeString(ob?.offerDescription || ob?.offer_description || ob?.description || '');
+
+              const input = {
+                offer_id: offerId,
+                offer_name: offerName,
+                headline,
+                market,
+                services,
+                price_hint: priceHint,
+                offer_description: desc,
+                domain,
+                pain_points: domainPainPoints(domain),
+                frameworks_guidance: {
+                  tof_guidance: safeString(frameworks.tof_guidance || frameworks.tofGuidance || ''),
+                  bof_guidance: safeString(frameworks.bof_guidance || frameworks.bofGuidance || ''),
+                  pillars: frameworks.pillars || null,
+                  tof_ad_types: frameworks.tof_ad_types || null,
+                  bof_ad_types: frameworks.bof_ad_types || null
+                }
+              };
+
+              const missing: { tof: string[]; bof: string[] } = { tof: [], bof: [] };
+              for (const k of moduleKeys.tof) {
+                if (shouldGenerateModuleKey(frameworks.modules.tof[k], input)) missing.tof.push(k);
+              }
+              for (const k of moduleKeys.bof) {
+                if (shouldGenerateModuleKey(frameworks.modules.bof[k], input)) missing.bof.push(k);
+              }
+              if (!missing.tof.length && !missing.bof.length) continue;
+
+              missingFound++;
+
+              let gen: any = await generateModulesWithAi(input, missing);
+              if (!gen || typeof gen !== 'object') {
+                gen = fallbackModules(input, missing);
+                (gen as any).generated_by = openai ? 'openai_parse_failed_fallback' : 'fallback';
+              } else {
+                (gen as any).generated_by = 'openai';
+              }
+
+              if ((gen as any).generated_by === 'openai') {
+                try {
+                  const gmods = (gen as any)?.modules;
+                  const gtof = gmods && typeof gmods === 'object' ? (gmods as any).tof : null;
+                  const gbof = gmods && typeof gmods === 'object' ? (gmods as any).bof : null;
+                  const invalid: { tof: string[]; bof: string[] } = { tof: [], bof: [] };
+
+                  for (const k of missing.tof) {
+                    const m = gtof && typeof gtof === 'object' ? (gtof as any)[k] : null;
+                    if (!m || isModuleTooGeneric(m, input)) invalid.tof.push(k);
+                  }
+                  for (const k of missing.bof) {
+                    const m = gbof && typeof gbof === 'object' ? (gbof as any)[k] : null;
+                    if (!m || isModuleTooGeneric(m, input)) invalid.bof.push(k);
+                  }
+
+                  if (invalid.tof.length || invalid.bof.length) {
+                    const retry: any = await generateModulesWithAi(input, invalid);
+                    const rmods = retry && typeof retry === 'object' ? (retry as any).modules : null;
+                    if (rmods && typeof rmods === 'object') {
+                      if (!(gen as any).modules || typeof (gen as any).modules !== 'object') (gen as any).modules = { tof: {}, bof: {} };
+                      if (!(gen as any).modules.tof || typeof (gen as any).modules.tof !== 'object') (gen as any).modules.tof = {};
+                      if (!(gen as any).modules.bof || typeof (gen as any).modules.bof !== 'object') (gen as any).modules.bof = {};
+
+                      if ((rmods as any).tof && typeof (rmods as any).tof === 'object') {
+                        for (const k of invalid.tof) {
+                          const m = (rmods as any).tof[k];
+                          if (m && !isModuleTooGeneric(m, input)) (gen as any).modules.tof[k] = m;
+                        }
+                      }
+                      if ((rmods as any).bof && typeof (rmods as any).bof === 'object') {
+                        for (const k of invalid.bof) {
+                          const m = (rmods as any).bof[k];
+                          if (m && !isModuleTooGeneric(m, input)) (gen as any).modules.bof[k] = m;
+                        }
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+
+              const genModules = (gen as any)?.modules;
+              const tofGen = genModules && typeof genModules === 'object' ? (genModules as any).tof : null;
+              const bofGen = genModules && typeof genModules === 'object' ? (genModules as any).bof : null;
+
+              const mergeOne = (bucket: any, key: string, value: any) => {
+                if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+                const existing = bucket[key];
+                if (hasMeaningfulModule(existing) && !isModuleTooGeneric(existing, input)) return;
+                if (isModuleTooGeneric(value, input)) return;
+                bucket[key] = value;
+              };
+
+              if (tofGen && typeof tofGen === 'object') {
+                for (const k of missing.tof) mergeOne(frameworks.modules.tof, k, (tofGen as any)[k]);
+              }
+              if (bofGen && typeof bofGen === 'object') {
+                for (const k of missing.bof) mergeOne(frameworks.modules.bof, k, (bofGen as any)[k]);
+              }
+
+              // Breadcrumbs
+              try {
+                (frameworks as any).modules_backfilled_at = new Date().toISOString();
+                (frameworks as any).modules_backfilled_source = (gen as any).generated_by || (openai ? 'openai' : 'fallback');
+              } catch {
+                // ignore
+              }
+
+              (ai as any).offer_frameworks = frameworks;
+
+              if (dryRun) {
+                applied++;
+                results.push({ offerId, applied: true, dryRun: true, missing, source: (gen as any).generated_by || null });
+                continue;
+              }
+
+              const updateOffer = async (db: any) => {
+                return await db
+                  .from('Offers')
+                  .update({ AI_Analysis: ai, Updated_At: new Date().toISOString() })
+                  .eq('Offer_ID', offerId);
+              };
+
+              let { error: updErr } = await updateOffer(primary);
+              if (updErr && isOffersSchemaMismatchError(updErr)) {
+                ({ error: updErr } = await updateOffer(fallback));
+              }
+              if (updErr) {
+                errors++;
+                results.push({ offerId, applied: false, error: updErr.message });
+                continue;
+              }
+
+              applied++;
+              results.push({ offerId, applied: true, missing, source: (gen as any).generated_by || null });
+            } catch (e: any) {
+              errors++;
+              const offerId = safeTrim((offerRow as any)?.Offer_ID) || null;
+              results.push({ offerId, applied: false, error: e?.message || 'offer_row_failed' });
+              continue;
+            }
+          }
+
+          return NextResponse.json({
+            ok: true,
+            dryRun,
+            scanLimit,
+            maxApply,
+            order: ascending ? 'oldest' : 'newest',
+            scanned,
+            missingFound,
+            applied,
+            errors,
+            results
+          }, { headers: corsHeaders(request) });
+        }
+
+      case 'auditOfferModuleDuplicates':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          const { primary, fallback } = getOffersDbFallback();
+
+          const scanLimitRaw = Number(body?.scanLimit ?? body?.limit ?? 800);
+          const scanLimit = Math.max(1, Math.min(isFinite(scanLimitRaw) ? scanLimitRaw : 800, 5000));
+          const minLenRaw = Number(body?.minLen ?? 24);
+          const minLen = Math.max(8, Math.min(isFinite(minLenRaw) ? minLenRaw : 24, 500));
+          const stageFilter = String(body?.stage || 'all').toLowerCase();
+          const includeStages = stageFilter === 'tof' ? ['tof'] : (stageFilter === 'bof' ? ['bof'] : ['tof', 'bof']);
+
+          const order = String(body?.order || 'updated_desc').toLowerCase();
+          const ascending = order === 'updated_asc';
+
+          const parseMaybeJson = (value: any) => {
+            if (!value) return null;
+            if (typeof value === 'object') return value;
+            if (typeof value !== 'string') return null;
+            try {
+              return JSON.parse(value);
+            } catch {
+              return null;
+            }
+          };
+
+          const normalizeText = (v: any) => {
+            try {
+              return String(v == null ? '' : v)
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .replace(/[“”]/g, '"')
+                .replace(/[’]/g, "'")
+                .trim();
+            } catch {
+              return '';
+            }
+          };
+
+          const short = (s: string, n: number) => {
+            const t = String(s || '');
+            return t.length > n ? (t.slice(0, n) + '…') : t;
+          };
+
+          const hash32 = (s: string) => {
+            let h = 2166136261;
+            for (let i = 0; i < s.length; i++) {
+              h ^= s.charCodeAt(i);
+              h = Math.imul(h, 16777619);
+            }
+            return (h >>> 0).toString(16);
+          };
+
+          const scanOffers = async (db: any) => {
+            return await db
+              .from('Offers')
+              .select([
+                'Offer_ID',
+                'Updated_At',
+                'AI_Analysis',
+                'ctx_ob:Message_Context->offer_builder',
+                'ctx_ob2:Message_Context->offerBuilder'
+              ].join(','))
+              .order('Updated_At', { ascending })
+              .limit(scanLimit);
+          };
+
+          let rows: any[] = [];
+          {
+            let { data: offers, error: offersErr } = await scanOffers(primary);
+            if (offersErr && isOffersSchemaMismatchError(offersErr)) {
+              ({ data: offers, error: offersErr } = await scanOffers(fallback));
+            }
+            if (offersErr) {
+              return NextResponse.json({ ok: false, error: `Failed to scan offers: ${offersErr.message}` }, { status: 500, headers: corsHeaders(request) });
+            }
+            rows = Array.isArray(offers) ? offers : [];
+          }
+
+          type DupRow = {
+            offerId: string;
+            offerName: string;
+            updatedAt: string;
+          };
+
+          type DupGroup = {
+            stage: string;
+            moduleKey: string;
+            fingerprint: string;
+            count: number;
+            sample: { hook: string; primary: string };
+            offers: DupRow[];
+          };
+
+          const groups = new Map<string, { stage: string; moduleKey: string; hook: string; primary: string; offers: DupRow[] }>();
+
+          let scanned = 0;
+          for (const r of rows) {
+            scanned++;
+            const offerId = safeTrim((r as any)?.Offer_ID);
+            if (!offerId) continue;
+
+            const updatedAt = safeTrim((r as any)?.Updated_At);
+
+            // Try to get a useful offer name for the report.
+            let offerName = '';
+            try {
+              const ob = parseMaybeJson((r as any)?.ctx_ob) || parseMaybeJson((r as any)?.ctx_ob2) || (r as any)?.ctx_ob || (r as any)?.ctx_ob2 || null;
+              if (ob && typeof ob === 'object') {
+                offerName = safeTrim((ob as any).name);
+              }
+            } catch {
+              offerName = '';
+            }
+            if (!offerName) offerName = offerId;
+
+            // Extract modules from AI_Analysis.offer_frameworks.modules.
+            let ai: any = (r as any)?.AI_Analysis;
+            ai = parseMaybeJson(ai) || ai;
+            if (!ai || typeof ai !== 'object' || Array.isArray(ai)) continue;
+            const fw = (ai as any).offer_frameworks || (ai as any).offerFrameworks || null;
+            const modules = fw && typeof fw === 'object' ? ((fw as any).modules || null) : null;
+            if (!modules || typeof modules !== 'object' || Array.isArray(modules)) continue;
+
+            for (const stage of includeStages) {
+              const bucket = (modules as any)[stage];
+              if (!bucket || typeof bucket !== 'object' || Array.isArray(bucket)) continue;
+              for (const moduleKey of Object.keys(bucket)) {
+                const m = (bucket as any)[moduleKey];
+                if (!m || typeof m !== 'object' || Array.isArray(m)) continue;
+                const hook = safeTrim((m as any).hook);
+                const primary = safeTrim((m as any).primary_text ?? (m as any).primaryText);
+                if (!hook && !primary) continue;
+
+                const nh = normalizeText(hook);
+                const np = normalizeText(primary);
+                const combined = `${stage}|${moduleKey}|${nh}|${np}`;
+                if ((nh.length + np.length) < minLen) continue;
+
+                const fingerprint = hash32(combined);
+                const key = `${stage}|${moduleKey}|${fingerprint}`;
+                const entry = groups.get(key);
+                const offerRef: DupRow = { offerId, offerName, updatedAt };
+                if (!entry) {
+                  groups.set(key, { stage, moduleKey, hook: short(hook, 160), primary: short(primary, 220), offers: [offerRef] });
+                } else {
+                  // Avoid duplicates per offer within the same group.
+                  if (!entry.offers.some(o => o.offerId === offerId)) entry.offers.push(offerRef);
+                }
+              }
+            }
+          }
+
+          const duplicateGroups: DupGroup[] = Array.from(groups.entries())
+            .map(([k, v]) => {
+              const parts = k.split('|');
+              const fingerprint = parts[2] || '';
+              return {
+                stage: v.stage,
+                moduleKey: v.moduleKey,
+                fingerprint,
+                count: v.offers.length,
+                sample: { hook: v.hook, primary: v.primary },
+                offers: v.offers.sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''))
+              };
+            })
+            .filter(g => g.count >= 2)
+            .sort((a, b) => b.count - a.count);
+
+          const maxGroupsRaw = Number(body?.maxGroups ?? 50);
+          const maxGroups = Math.max(1, Math.min(isFinite(maxGroupsRaw) ? maxGroupsRaw : 50, 200));
+
+          return NextResponse.json({
+            ok: true,
+            scanLimit,
+            scanned,
+            stages: includeStages,
+            minLen,
+            duplicateGroups: duplicateGroups.slice(0, maxGroups)
           }, { headers: corsHeaders(request) });
         }
 
@@ -9348,7 +13935,7 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
 
       default:
-        return NextResponse.json({ ok: false, error: 'Invalid action' }, { status: 400, headers: corsHeaders(request) });
+        return invalidActionResponse(request, 'POST', action);
     }
 
     // Back-compat: keep `result`, but also return the named payload Dash.html expects.
@@ -9402,6 +13989,24 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         break;
       case 'sendDashboardLoginInvite':
         payload.sendDashboardLoginInvite = result;
+        break;
+      case 'smsSend':
+        payload.smsSend = result;
+        break;
+      case 'smsGroupSend':
+        payload.smsGroupSend = result;
+        break;
+      case 'smsUpdateThread':
+        payload.smsUpdateThread = result;
+        break;
+      case 'smsGroupUpsert':
+        payload.smsGroupUpsert = result;
+        break;
+      case 'smsAdminInjectInbound':
+        payload.smsAdminInjectInbound = result;
+        break;
+      case 'smsHideConversation':
+        payload.smsHideConversation = result;
         break;
       default:
         break;

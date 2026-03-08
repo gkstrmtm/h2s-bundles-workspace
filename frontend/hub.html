@@ -4,111 +4,238 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="h2s-hub-build" content="2026-02-10T00:00:00Z" />
+  <meta name="theme-color" content="#f8fafc" />
   <title>H2S Hub</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/dashboard-design-system.css" />
+
   <style>
-    :root {
-      --bg: #0b1220;
-      --card: rgba(255,255,255,0.06);
-      --text: #e5e7eb;
-      --muted: rgba(229,231,235,0.72);
-      --border: rgba(148,163,184,0.22);
-    }
+    :root { color-scheme: light; }
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      background:
-        radial-gradient(1200px 800px at 20% 0%, rgba(96,165,250,0.18), transparent 55%),
-        radial-gradient(900px 700px at 100% 40%, rgba(34,197,94,0.12), transparent 55%),
-        var(--bg);
-      color: var(--text);
+      font-family: Archivo, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg-page);
+      color: var(--gray-900);
     }
-    .wrap { max-width: 860px; margin: 0 auto; padding: 28px 18px 48px; }
-    header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 2px 18px; }
-    h1 { margin: 0; font-size: 22px; letter-spacing: 0.2px; }
-    .sub { margin: 0; color: var(--muted); font-size: 13px; }
-    .pill { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: var(--page-pad); padding-top: 18px; padding-bottom: 44px; }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-    .card {
-      border: 1px solid var(--border);
-      background: linear-gradient(180deg, var(--card), rgba(255,255,255,0.03));
-      border-radius: 14px;
-      padding: 14px;
-      box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-card);
+      margin-bottom: 14px;
     }
-    .card h2 { margin: 0 0 6px; font-size: 15px; }
-    .card p { margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .brand { display:flex; align-items:center; gap: 10px; min-width: 0; }
+    .brand img { width: 28px; height: 28px; border-radius: 8px; }
+    h1 { margin: 0; font-size: 16px; font-weight: 900; letter-spacing: -0.2px; color: var(--gray-900); }
+    .sub { margin: 2px 0 0; color: var(--gray-600); font-size: 13px; font-weight: 600; }
+    .pill {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-default);
+      background: var(--gray-100);
+      color: var(--gray-700);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .topbarActions { display:flex; align-items:center; gap: 10px; }
+    .topbarActions .btnSm {
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 900;
+      border: 1px solid var(--gray-300);
+      background: #fff;
+      color: var(--gray-900);
+      cursor: pointer;
+    }
+    .topbarActions .btnSm:hover { background: var(--gray-50); border-color: var(--gray-400); }
+
+    .cardWide { grid-column: 1 / -1; }
+    .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .field { display:flex; flex-direction:column; gap:6px; min-width: 180px; flex: 1 1 220px; }
+    .label { font-size: 11px; color: var(--gray-600); font-weight: 900; letter-spacing: 0.25px; text-transform: uppercase; }
+    input.text, textarea.text {
+      width: 100%;
+      box-sizing: border-box;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--gray-300);
+      background: #fff;
+      color: var(--gray-900);
+      padding: 10px 12px;
+      outline: none;
+      font-size: 13px;
+    }
+    textarea.text { resize: vertical; min-height: 40px; }
+    input.text:focus, textarea.text:focus { border-color: rgba(26,54,93,0.65); box-shadow: 0 0 0 4px rgba(26,54,93,0.10); }
+
+    button.btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--primary);
+      background: var(--primary);
+      color: #fff;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    button.btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+    button.btnGhost {
+      border-color: var(--gray-300);
+      background: #fff;
+      color: var(--gray-900);
+      font-weight: 900;
+    }
+    button.btnGhost:hover { border-color: var(--gray-400); background: var(--gray-50); }
+
+    .mini { margin-top: 8px; color: var(--gray-600); font-size: 12px; line-height: 1.45; }
+    .msg { margin-top: 10px; font-size: 12px; color: var(--gray-600); min-height: 16px; }
+    .msg.bad { color: var(--error); }
+    .msg.ok { color: var(--success); }
+
+    .actions { display:flex; gap:10px; align-items:center; justify-content:flex-end; margin-top: 12px; }
+    .linkActions { display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; }
+    .checkRow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top: 10px; }
+    .checkRow label { display:flex; align-items:center; gap:8px; font-size: 12px; font-weight: 900; color: var(--gray-900); }
+    .checkRow input[type="checkbox"] { width: 16px; height: 16px; }
+    .remove {
+      display:inline-flex;
+      align-items:center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 900;
+      border-radius: var(--radius-md);
+      padding: 7px 10px;
+      border: 1px solid rgba(239, 68, 68, 0.22);
+      background: rgba(239, 68, 68, 0.08);
+      color: var(--error);
+      cursor: pointer;
+    }
+    .remove:hover { border-color: rgba(239, 68, 68, 0.38); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .card {
+      border: 1px solid var(--border-default);
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      box-shadow: var(--shadow-card);
+    }
+    .card h2 { margin: 0 0 6px; font-size: 13px; font-weight: 900; letter-spacing: 0.25px; color: var(--primary); text-transform: uppercase; }
+    .card p { margin: 0 0 12px; color: var(--gray-600); font-size: 13px; line-height: 1.45; }
 
     a.btn {
       display: inline-flex;
       align-items: center;
       padding: 9px 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(96,165,250,0.45);
-      background: rgba(96,165,250,0.14);
-      color: var(--text);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--primary);
+      background: var(--primary);
+      color: #fff;
       text-decoration: none;
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 900;
     }
-    a.btn:hover { border-color: rgba(96,165,250,0.70); }
+    a.btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
 
-    footer { margin-top: 14px; color: var(--muted); font-size: 12px; padding: 0 2px; line-height: 1.8; }
+    footer { margin-top: 14px; color: var(--gray-600); font-size: 12px; padding: 0 2px; line-height: 1.8; }
     footer a { color: inherit; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <header>
-      <div>
-        <h1>H2S Hub</h1>
-        <p class="sub">Portal shortcuts.</p>
+    <header class="topbar">
+      <div class="brand">
+        <img src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" alt="Home2Smart" />
+        <div style="min-width:0;">
+          <h1>H2S Hub</h1>
+          <p class="sub">Portal shortcuts (local + shared).</p>
+        </div>
       </div>
-      <span class="pill">portal.home2smart.com</span>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn btnGhost" type="button" id="hubLogoutBtn" style="display:none;">Logout</button>
+        <span class="pill">portal.home2smart.com</span>
+      </div>
     </header>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Hiring Dashboard</h2>
-        <p>Hiring pipeline + Proof Packs (same dashboard).</p>
-        <a class="btn" href="/dash">Open /dash</a>
-      </div>
+    <div class="grid" id="hubGate" style="display:none;">
+      <div class="card cardWide">
+        <h2>Sign in</h2>
+        <p>This page is gated. Enter the hub PIN to continue.</p>
 
-      <div class="card">
-        <h2>Funnel Track</h2>
-        <p>Funnel metrics + analytics.</p>
-        <a class="btn" href="/funnel-track">Open /funnel-track</a>
-      </div>
+        <div class="row">
+          <div class="field" style="flex: 1 1 280px;">
+            <div class="label">Hub PIN</div>
+            <input class="text" id="hubGatePin" type="password" placeholder="Enter PIN" maxlength="120" autocomplete="current-password" />
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>Deliverables Library</h2>
-        <p>Browse historical submissions (docs + SQL) with inline preview.</p>
-        <a class="btn" href="/library">Open /library</a>
+        <div class="actions">
+          <button class="btn" type="button" id="hubGateBtn">Sign in</button>
+        </div>
+        <div class="msg" id="hubGateMsg"></div>
       </div>
+    </div>
 
-      <div class="card">
-        <h2>Portal</h2>
-        <p>Ops portal (jobs, dispatch, admin tools).</p>
-        <a class="btn" href="/portal">Open /portal</a>
-      </div>
+    <div class="grid" id="hubApp" style="display:none;">
+      <div class="card cardWide" id="addCard">
+        <h2>Add shortcut</h2>
+        <p>Add a URL to your hub without editing code. Save it locally (this browser) or shared (team).</p>
 
-      <div class="card">
-        <h2>Shop Bundles</h2>
-        <p>Customer-facing bundles page.</p>
-        <a class="btn" href="https://shop.home2smart.com/bundles" target="_blank" rel="noopener">Open shop.home2smart.com/bundles</a>
-      </div>
+        <div class="row">
+          <div class="field">
+            <div class="label">Title</div>
+            <input class="text" id="hubTitle" placeholder="e.g., Dispatch" maxlength="60" />
+          </div>
+          <div class="field" style="flex: 2 1 320px;">
+            <div class="label">URL</div>
+            <input class="text" id="hubUrl" placeholder="/portal or https://…" maxlength="500" />
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>Shop Gallery</h2>
-        <p>Customer-facing gallery page.</p>
-        <a class="btn" href="https://shop.home2smart.com/gallery" target="_blank" rel="noopener">Open shop.home2smart.com/gallery</a>
-      </div>
+        <div class="row">
+          <div class="field" style="flex: 1 1 100%;">
+            <div class="label">Description (optional)</div>
+            <input class="text" id="hubDesc" placeholder="e.g., Dispatch & constraints" maxlength="160" />
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>Shop Reviews</h2>
-        <p>Public reviews page.</p>
-        <a class="btn" href="https://shop.home2smart.com/reviews" target="_blank" rel="noopener">Open shop.home2smart.com/reviews</a>
+        <div class="checkRow">
+          <label>
+            <input type="checkbox" id="hubShared" />
+            Shared (team)
+          </label>
+          <div class="field" style="flex: 1 1 240px; min-width: 220px;">
+            <div class="label">Write key (only for shared)</div>
+            <input class="text" id="hubKey" type="password" placeholder="Enter shared write key" maxlength="120" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btnGhost" type="button" id="hubResetBtn">Reset added links</button>
+          <button class="btn" type="button" id="hubAddBtn">Add</button>
+        </div>
+        <div class="msg" id="hubMsg"></div>
+
+        <div class="mini">
+          Tip: use relative paths like <strong>/dash</strong> or <strong>/portal</strong> for portal links.
+        </div>
       </div>
     </div>
 
@@ -119,5 +246,530 @@
       <div><a href="https://shop.home2smart.com/bundles" target="_blank" rel="noopener">shop.home2smart.com/bundles</a>, <a href="https://shop.home2smart.com/gallery" target="_blank" rel="noopener">shop.home2smart.com/gallery</a>, <a href="https://shop.home2smart.com/reviews" target="_blank" rel="noopener">shop.home2smart.com/reviews</a></div>
     </footer>
   </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = 'h2s_hub_links_v1';
+      const WRITE_KEY_STORAGE = 'h2s_hub_write_key_v1';
+
+      const hubGateEl = document.getElementById('hubGate');
+      const hubAppEl = document.getElementById('hubApp');
+      const hubGatePinEl = document.getElementById('hubGatePin');
+      const hubGateBtnEl = document.getElementById('hubGateBtn');
+      const hubGateMsgEl = document.getElementById('hubGateMsg');
+      const hubLogoutBtnEl = document.getElementById('hubLogoutBtn');
+
+      const DEFAULT_LINKS = [
+        {
+          title: 'Hiring Dashboard',
+          desc: 'Hiring pipeline + Proof Packs (same dashboard).',
+          url: '/dash',
+          sameTab: true,
+        },
+        {
+          title: 'Funnel Track',
+          desc: 'Funnel metrics + analytics.',
+          url: '/funnel-track',
+          sameTab: true,
+        },
+        {
+          title: 'Deliverables Library',
+          desc: 'Browse historical submissions (docs + SQL) with inline preview.',
+          url: '/library',
+          sameTab: true,
+        },
+        {
+          title: 'Portal',
+          desc: 'Ops portal (jobs, dispatch, admin tools).',
+          url: '/portal',
+          sameTab: true,
+        },
+        {
+          title: 'Shop Bundles',
+          desc: 'Customer-facing bundles page.',
+          url: 'https://shop.home2smart.com/bundles',
+          sameTab: false,
+        },
+        {
+          title: 'Shop Gallery',
+          desc: 'Customer-facing gallery page.',
+          url: 'https://shop.home2smart.com/gallery',
+          sameTab: false,
+        },
+        {
+          title: 'Shop Reviews',
+          desc: 'Public reviews page.',
+          url: 'https://shop.home2smart.com/reviews',
+          sameTab: false,
+        },
+      ];
+
+      function safeTrim(s) {
+        return String(s || '').trim();
+      }
+
+      function loadCustom() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return [];
+          return parsed
+            .map((x) => ({
+              id: safeTrim(x && x.id) || ('id_' + Math.random().toString(16).slice(2)),
+              title: safeTrim(x && x.title).slice(0, 60),
+              desc: safeTrim(x && x.desc).slice(0, 160),
+              url: safeTrim(x && x.url).slice(0, 500),
+              createdAt: safeTrim(x && x.createdAt) || new Date().toISOString(),
+            }))
+            .filter((x) => x.title && x.url);
+        } catch {
+          return [];
+        }
+      }
+
+      function saveCustom(items) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(items || []));
+        } catch {
+          // ignore
+        }
+      }
+
+      function normalizeUrl(rawUrl) {
+        const u = safeTrim(rawUrl);
+        if (!u) return '';
+        if (u.startsWith('/')) return u;
+        try {
+          // Will throw if invalid
+          // eslint-disable-next-line no-new
+          new URL(u);
+          return u;
+        } catch {
+          return '';
+        }
+      }
+
+      function isExternalUrl(url) {
+        return /^https?:\/\//i.test(url);
+      }
+
+      async function apiGet(url) {
+        const resp = await fetch(url, { method: 'GET', credentials: 'include', headers: { 'Cache-Control': 'no-cache' } });
+        const json = await resp.json().catch(() => null);
+        return { resp, json };
+      }
+
+      async function apiPost(url, obj) {
+        const resp = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(obj || {}),
+        });
+        const json = await resp.json().catch(() => null);
+        return { resp, json };
+      }
+
+      async function apiDelete(url) {
+        const resp = await fetch(url, { method: 'DELETE', credentials: 'include' });
+        const json = await resp.json().catch(() => null);
+        return { resp, json };
+      }
+
+      async function fetchSharedLinks() {
+        try {
+          const { resp, json } = await apiGet('/api/hub-links');
+          if (!resp.ok || !json || json.ok !== true) {
+            const msg = (json && (json.error || json.message)) || `HTTP ${resp.status}`;
+            return { ok: false, error: msg, links: [] };
+          }
+          const links = Array.isArray(json.links) ? json.links : [];
+          return {
+            ok: true,
+            error: '',
+            links: links
+              .map((x) => ({
+                id: safeTrim(x && x.id),
+                title: safeTrim(x && x.title).slice(0, 60),
+                desc: safeTrim(x && (x.description || x.desc)).slice(0, 160),
+                url: safeTrim(x && x.url).slice(0, 500),
+                sort_order: Number.isFinite(Number(x && x.sort_order)) ? Number(x && x.sort_order) : 0,
+              }))
+              .filter((x) => x.id && x.title && x.url),
+          };
+        } catch (e) {
+          return { ok: false, error: e && e.message ? e.message : 'Shared links unavailable', links: [] };
+        }
+      }
+
+      async function addSharedLink(payload, writeKey) {
+        const key = safeTrim(writeKey);
+        if (!key) return { ok: false, error: 'Missing write key' };
+
+        const resp = await fetch('/api/hub-links', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-h2s-hub-key': key,
+          },
+          body: JSON.stringify(payload || {}),
+        });
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || !json || json.ok !== true) {
+          const msg = (json && (json.error || json.message)) || `HTTP ${resp.status}`;
+          return { ok: false, error: msg };
+        }
+        return { ok: true };
+      }
+
+      async function deleteSharedLink(id, writeKey) {
+        const key = safeTrim(writeKey);
+        if (!key) return { ok: false, error: 'Missing write key' };
+
+        const resp = await fetch('/api/hub-links?id=' + encodeURIComponent(String(id || '')),
+          {
+            method: 'DELETE',
+            credentials: 'include',
+            headers: {
+              'x-h2s-hub-key': key,
+            },
+          }
+        );
+        const json = await resp.json().catch(() => null);
+        if (!resp.ok || !json || json.ok !== true) {
+          const msg = (json && (json.error || json.message)) || `HTTP ${resp.status}`;
+          return { ok: false, error: msg };
+        }
+        return { ok: true };
+      }
+
+      function setMsg(kind, text) {
+        const el = document.getElementById('hubMsg');
+        if (!el) return;
+        el.className = 'msg' + (kind ? ' ' + kind : '');
+        el.textContent = text || '';
+      }
+
+      function createLinkCard(link, opts) {
+        const isCustom = !!(opts && opts.isCustom);
+        const isShared = !!(opts && opts.isShared);
+        const card = document.createElement('div');
+        card.className = 'card';
+
+        const h2 = document.createElement('h2');
+        h2.textContent = link.title || 'Untitled';
+
+        const p = document.createElement('p');
+        p.textContent = link.desc || '';
+
+        const actions = document.createElement('div');
+        actions.className = 'linkActions';
+
+        const a = document.createElement('a');
+        a.className = 'btn';
+        a.href = link.url;
+        if (isExternalUrl(link.url) || link.sameTab === false) {
+          a.target = '_blank';
+          a.rel = 'noopener';
+        }
+        a.textContent = link.url && link.url.startsWith('/') ? `Open ${link.url}` : 'Open link';
+
+        actions.appendChild(a);
+
+        if (isCustom) {
+          const rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'remove';
+          rm.textContent = 'Remove';
+          rm.addEventListener('click', () => {
+            const next = loadCustom().filter((x) => x.id !== link.id);
+            saveCustom(next);
+            render();
+            setMsg('ok', 'Removed.');
+          });
+          actions.appendChild(rm);
+        }
+
+        if (isShared) {
+          const rm = document.createElement('button');
+          rm.type = 'button';
+          rm.className = 'remove';
+          rm.textContent = 'Remove';
+          rm.addEventListener('click', async () => {
+            const key = safeTrim(sessionStorage.getItem(WRITE_KEY_STORAGE));
+            if (!key) {
+              setMsg('bad', 'Shared remove requires the write key. Enter it above and try again.');
+              return;
+            }
+            setMsg('', 'Removing shared shortcut…');
+            const out = await deleteSharedLink(link.id, key);
+            if (!out.ok) {
+              setMsg('bad', out.error || 'Failed to remove shared shortcut.');
+              return;
+            }
+            setMsg('ok', 'Removed shared shortcut.');
+            await refreshSharedAndRender();
+          });
+          actions.appendChild(rm);
+        }
+
+        card.appendChild(h2);
+        if (p.textContent) card.appendChild(p);
+        card.appendChild(actions);
+        return card;
+      }
+
+      let sharedLinks = [];
+      let sharedErr = '';
+
+      async function refreshSharedAndRender() {
+        const out = await fetchSharedLinks();
+        if (out.ok) {
+          sharedLinks = out.links;
+          sharedErr = '';
+        } else {
+          sharedLinks = [];
+          sharedErr = out.error || 'Shared links unavailable';
+        }
+        render();
+      }
+
+      function render() {
+        const grid = hubAppEl;
+        if (!grid) return;
+
+        const addCard = document.getElementById('addCard');
+        grid.textContent = '';
+        if (addCard) grid.appendChild(addCard);
+
+        DEFAULT_LINKS.forEach((l) => grid.appendChild(createLinkCard(l, { isCustom: false })));
+
+        if (sharedErr) {
+          const c = document.createElement('div');
+          c.className = 'card';
+          const h2 = document.createElement('h2');
+          h2.textContent = 'Shared shortcuts';
+          const p = document.createElement('p');
+          p.textContent = sharedErr;
+          c.appendChild(h2);
+          c.appendChild(p);
+          grid.appendChild(c);
+        } else {
+          sharedLinks.forEach((l) => grid.appendChild(createLinkCard(l, { isShared: true })));
+        }
+
+        const custom = loadCustom();
+        custom.forEach((l) => grid.appendChild(createLinkCard(l, { isCustom: true })));
+      }
+
+      let _bound = false;
+      function bind() {
+        if (_bound) return;
+        _bound = true;
+        const addBtn = document.getElementById('hubAddBtn');
+        const resetBtn = document.getElementById('hubResetBtn');
+        const titleEl = document.getElementById('hubTitle');
+        const urlEl = document.getElementById('hubUrl');
+        const descEl = document.getElementById('hubDesc');
+        const sharedEl = document.getElementById('hubShared');
+        const keyEl = document.getElementById('hubKey');
+
+        try {
+          const existing = safeTrim(sessionStorage.getItem(WRITE_KEY_STORAGE));
+          if (keyEl && existing) keyEl.value = existing;
+        } catch {
+          // ignore
+        }
+
+        async function onAdd() {
+          const title = safeTrim(titleEl && titleEl.value);
+          const url = normalizeUrl(urlEl && urlEl.value);
+          const desc = safeTrim(descEl && descEl.value);
+          const wantsShared = !!(sharedEl && sharedEl.checked);
+          const writeKey = safeTrim(keyEl && keyEl.value);
+
+          if (!title) {
+            setMsg('bad', 'Title is required.');
+            return;
+          }
+          if (!url) {
+            setMsg('bad', 'URL must be a valid absolute URL (https://...) or a relative path (/dash).');
+            return;
+          }
+
+          if (keyEl) {
+            try {
+              if (writeKey) sessionStorage.setItem(WRITE_KEY_STORAGE, writeKey);
+            } catch {
+              // ignore
+            }
+          }
+
+          if (wantsShared) {
+            if (!writeKey) {
+              setMsg('bad', 'Shared shortcuts require the write key.');
+              return;
+            }
+            setMsg('', 'Saving shared shortcut…');
+            const out = await addSharedLink({ title, url, description: desc, sort_order: 0 }, writeKey);
+            if (!out.ok) {
+              setMsg('bad', out.error || 'Failed to save shared shortcut.');
+              return;
+            }
+            if (titleEl) titleEl.value = '';
+            if (urlEl) urlEl.value = '';
+            if (descEl) descEl.value = '';
+            setMsg('ok', 'Added shared shortcut.');
+            await refreshSharedAndRender();
+            return;
+          }
+
+          const items = loadCustom();
+          items.unshift({
+            id: 'link_' + Math.random().toString(16).slice(2),
+            title,
+            url,
+            desc,
+            createdAt: new Date().toISOString(),
+          });
+          saveCustom(items);
+          if (titleEl) titleEl.value = '';
+          if (urlEl) urlEl.value = '';
+          if (descEl) descEl.value = '';
+          setMsg('ok', 'Added.');
+          render();
+        }
+
+        function onReset() {
+          saveCustom([]);
+          setMsg('ok', 'Cleared added links.');
+          render();
+        }
+
+        if (addBtn) addBtn.addEventListener('click', onAdd);
+        if (resetBtn) resetBtn.addEventListener('click', onReset);
+
+        [titleEl, urlEl, descEl].forEach((el) => {
+          if (!el) return;
+          el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onAdd();
+          });
+        });
+      }
+
+      function setGateMsg(kind, text) {
+        if (!hubGateMsgEl) return;
+        hubGateMsgEl.className = 'msg' + (kind ? ' ' + kind : '');
+        hubGateMsgEl.textContent = text || '';
+      }
+
+      async function getAuthStatus() {
+        try {
+          const { resp, json } = await apiGet('/api/hub-auth');
+          if (resp.ok && json && json.ok === true) {
+            if (json.gate === false) return { ok: true, gateEnabled: false, authed: true };
+            return { ok: true, gateEnabled: true, authed: true };
+          }
+          return { ok: false, gateEnabled: true, authed: false };
+        } catch {
+          return { ok: false, gateEnabled: true, authed: false };
+        }
+      }
+
+      async function loginWithPin(pin) {
+        const { resp, json } = await apiPost('/api/hub-auth', { pin: String(pin || '') });
+        if (resp.ok && json && json.ok === true) return { ok: true };
+        const msg = (json && (json.error || json.message)) || `HTTP ${resp.status}`;
+        return { ok: false, error: msg };
+      }
+
+      async function logout() {
+        try {
+          await apiDelete('/api/hub-auth');
+        } catch {
+          // ignore
+        }
+      }
+
+      function showGate() {
+        try { if (hubAppEl) hubAppEl.style.display = 'none'; } catch {}
+        try { if (hubLogoutBtnEl) hubLogoutBtnEl.style.display = 'none'; } catch {}
+        try { if (hubGateEl) hubGateEl.style.display = ''; } catch {}
+        try { if (hubGatePinEl) hubGatePinEl.focus(); } catch {}
+      }
+
+      function showApp(opts) {
+        const showLogout = !!(opts && opts.showLogout);
+        try { if (hubGateEl) hubGateEl.style.display = 'none'; } catch {}
+        try { if (hubAppEl) hubAppEl.style.display = ''; } catch {}
+        try { if (hubLogoutBtnEl) hubLogoutBtnEl.style.display = showLogout ? '' : 'none'; } catch {}
+      }
+
+      async function startApp(opts) {
+        showApp(opts);
+        bind();
+        await refreshSharedAndRender();
+      }
+
+      let _gateBound = false;
+      function bindGateHandlers() {
+        if (_gateBound) return;
+        _gateBound = true;
+
+        async function attemptLogin() {
+          const pin = safeTrim(hubGatePinEl && hubGatePinEl.value);
+          if (!pin) {
+            setGateMsg('bad', 'Enter the hub PIN.');
+            return;
+          }
+          setGateMsg('', 'Signing in…');
+          const out = await loginWithPin(pin);
+          if (!out.ok) {
+            setGateMsg('bad', out.error || 'Invalid PIN.');
+            return;
+          }
+          setGateMsg('', '');
+          try { if (hubGatePinEl) hubGatePinEl.value = ''; } catch {}
+          await startApp({ showLogout: true });
+        }
+
+        if (hubGateBtnEl) hubGateBtnEl.addEventListener('click', attemptLogin);
+        if (hubGatePinEl) hubGatePinEl.addEventListener('keydown', (e) => {
+          if (e && e.key === 'Enter') attemptLogin();
+        });
+
+        if (hubLogoutBtnEl) {
+          hubLogoutBtnEl.addEventListener('click', async () => {
+            setMsg('', '');
+            setGateMsg('', '');
+            await logout();
+            try { if (hubGatePinEl) hubGatePinEl.value = ''; } catch {}
+            showGate();
+          });
+        }
+      }
+
+      async function init() {
+        bindGateHandlers();
+        const status = await getAuthStatus();
+
+        if (status.gateEnabled === false) {
+          await startApp({ showLogout: false });
+          return;
+        }
+
+        if (status.authed) {
+          await startApp({ showLogout: true });
+          return;
+        }
+
+        showGate();
+      }
+
+      init();
+    })();
+  </script>
 </body>
 </html>

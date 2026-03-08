@@ -4,13 +4,13 @@
   "description": "Backend for H2S Dashboard",
   "main": "index.js",
   "scripts": {
-    "dev": "next dev",
-    "dev:safe": "node start-safe.js dev",
-    "dev:port": "next dev -p 3001",
+    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev",
+    "dev:safe": "cross-env NODE_OPTIONS=--max-old-space-size=4096 node start-safe.js dev",
+    "dev:port": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev -p 3001",
     "postinstall": "npx prisma generate",
     "vercel-build": "npm run build",
-    "build": "npx prisma generate && next build",
-    "start": "next start",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx prisma generate && cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
+    "start": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next start",
     "lint": "next lint",
     "test": "node --test tests/task_creator.test.cjs"
   },
@@ -22,7 +22,7 @@
     "next": "14.2.18",
     "node-fetch": "^3.3.2",
     "openai": "^4.20.1",
-    "pg": "^8.16.3",
+    "pg": "^8.19.0",
     "prisma": "^5.22.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -35,6 +35,8 @@
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.17",
     "cross-env": "^7.0.3",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.18",
     "typescript": "^5.3.3"
   }
 }

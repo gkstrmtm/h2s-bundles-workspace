@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "checkJs": false,
+    "allowJs": true,
+    "maxNodeModuleJsDepth": 0
+  },
+  "include": [
+    "frontend/**/*.js",
+    "frontend/**/*.mjs",
+    "tools/**/*.js",
+    "scripts/**/*.js"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/.next/**",
+    "**/.vercel/**",
+    "**/dist/**",
+    "**/archive/**",
+    "**/imports/**",
+    "**/_vercel_deployments_page*.txt",
+    "**/_vercel_list_page*.txt",
+    "**/__copilot_fs_probe.txt",
+    "**/_tmp_*",
+    "**/_tmp_*/**",
+    "**/_live_*",
+    "**/_live_*/**",
+    "**/.tmp_*",
+    "**/.tmp_*/**",
+    "**/*.PORTAL_BUILD_*.*",
+    "**/*.map",
+    "frontend/dash.bundle.js",
+    "frontend/dash.bundle.*.js",
+    "frontend/_*.html",
+    "frontend/_*.js",
+    "frontend/_*.css"
+  ]
+}

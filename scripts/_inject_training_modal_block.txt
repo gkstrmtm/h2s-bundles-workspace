@@ -1,0 +1,406 @@
+
+        // Training Viewer (modal) + compact cards (no inline embeds)
+        let currentTrainingViewerResourceId = null;
+        let trainingViewerState = {
+            resourceId: null,
+            videos: [],
+            visibleIndexes: [],
+            currentIndex: -1
+        };
+
+        function normalizeAssetUrlForComparison(url) {
+            const v = String(url || '').trim();
+            return v;
+        }
+
+        function getTrainingVideosFromResource(resource) {
+            try {
+                if (!resource) return [];
+
+                if (Array.isArray(resource.videos)) {
+                    return resource.videos
+                        .map(v => ({
+                            url: (v && (v.url || v.URL || v.assetUrl || v.Asset_URL)) || '',
+                            title: (v && (v.title || v.Title)) || null,
+                            thumbnail: (v && (v.thumbnail || v.thumbnailUrl || v.Thumbnail || v.ThumbnailUrl)) || null,
+                            source: (v && (v.source || v.Source)) || '',
+                            durationSeconds: (v && (v.durationSeconds || v.duration_seconds || v.duration)) ?? null
+                        }))
+                        .filter(v => !!String(v.url || '').trim());
+                }
+
+                if (typeof resource.videos === 'string' && resource.videos.trim().startsWith('[')) {
+                    const parsed = JSON.parse(resource.videos);
+                    if (Array.isArray(parsed)) {
+                        resource.videos = parsed;
+                        return getTrainingVideosFromResource(resource);
+                    }
+                }
+
+                const url = String(resource.URL || resource.url || '').trim();
+                if (url) return [{ url, title: null, thumbnail: null, source: '', durationSeconds: null }];
+            } catch (_) {
+                // ignore
+            }
+            return [];
+        }
+
+        function getTrainingAssetProgress(resource) {
+            const rows = (resource && (resource.assetProgress || resource.AssetProgress || resource.progress)) || [];
+            return Array.isArray(rows) ? rows : [];
+        }
+
+        function isTrainingVideoWatched(resource, videoUrl) {
+            const target = normalizeAssetUrlForComparison(videoUrl);
+            if (!target) return false;
+            const rows = getTrainingAssetProgress(resource);
+            return rows.some(r => {
+                const watched = r && (r.Watched === true || r.watched === true);
+                if (!watched) return false;
+                const assetUrl = normalizeAssetUrlForComparison(r.Asset_URL || r.assetUrl || r.URL || r.url);
+                return assetUrl && assetUrl === target;
+            });
+        }
+
+        function computeTrainingWatchedCount(resource, videos) {
+            const list = Array.isArray(videos) ? videos : [];
+            let watchedCount = 0;
+            for (const v of list) {
+                if (isTrainingVideoWatched(resource, v && v.url)) watchedCount++;
+            }
+            return watchedCount;
+        }
+
+        function embedHtmlForTrainingUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+
+            if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+                const ytMatch = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                const videoId = ytMatch ? ytMatch[1] : '';
+                if (videoId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            if (raw.includes('loom.com/share/') || raw.includes('loom.com/embed/')) {
+                let loomId = '';
+                if (raw.includes('loom.com/share/')) loomId = raw.split('loom.com/share/')[1].split('?')[0];
+                if (!loomId && raw.includes('loom.com/embed/')) loomId = raw.split('loom.com/embed/')[1].split('?')[0];
+                if (loomId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.loom.com/embed/${loomId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            return `
+                <div style="width:100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #f3f4f6; border: 1px solid rgba(148,163,184,0.25); display:flex; align-items:center; justify-content:center;">
+                    <a href="${escapeHtml(raw)}" target="_blank" rel="noopener noreferrer" style="font-weight: 900; color: var(--cobalt); text-decoration:none;">Open video</a>
+                </div>
+            `;
+        }
+
+        function trainingViewerSelect(index) {
+            const idx = Number(index);
+            if (!Number.isFinite(idx) || idx < 0 || idx >= trainingViewerState.videos.length) return;
+            trainingViewerState.currentIndex = idx;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(trainingViewerState.resourceId));
+            const video = trainingViewerState.videos[idx];
+
+            const currentLabel = document.getElementById('trainingViewerCurrentLabel');
+            if (currentLabel) currentLabel.textContent = (video && (video.title || `Video ${idx + 1}`)) || `Video ${idx + 1}`;
+
+            const openExternal = document.getElementById('trainingViewerOpenExternalLink');
+            if (openExternal) {
+                openExternal.href = video && video.url ? video.url : '#';
+                openExternal.style.pointerEvents = video && video.url ? 'auto' : 'none';
+                openExternal.style.opacity = video && video.url ? '1' : '0.4';
+            }
+
+            const player = document.getElementById('trainingViewerPlayer');
+            if (player) player.innerHTML = embedHtmlForTrainingUrl(video && video.url);
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                    const elIdx = Number(el.getAttribute('data-training-viewer-index'));
+                    const isActive = elIdx === idx;
+                    el.style.borderColor = isActive ? 'var(--cobalt)' : 'var(--border)';
+                    el.style.background = isActive ? 'rgba(10, 42, 90, 0.06)' : '#fff';
+                });
+            }
+
+            const pos = trainingViewerState.visibleIndexes.indexOf(idx);
+            const prevBtn = document.getElementById('trainingViewerPrevBtn');
+            const nextBtn = document.getElementById('trainingViewerNextBtn');
+            if (prevBtn) prevBtn.disabled = pos <= 0;
+            if (nextBtn) nextBtn.disabled = pos < 0 || pos >= trainingViewerState.visibleIndexes.length - 1;
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const vids = trainingViewerState.videos;
+                const watchedCount = resource ? computeTrainingWatchedCount(resource, vids) : 0;
+                const isCompleted = resource && Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && vids.length > 0 && watchedCount === vids.length) ? 'inline-flex' : 'none';
+            }
+        }
+
+        function openTrainingViewer(resourceId) {
+            const rid = String(resourceId || '').trim();
+            if (!rid) return;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === rid);
+            if (!resource) {
+                showToast('Training not found', 'error');
+                return;
+            }
+
+            const videos = getTrainingVideosFromResource(resource);
+            if (!videos.length) {
+                const url = String(resource.URL || '').trim();
+                if (url) {
+                    window.open(url, '_blank', 'noopener');
+                    return;
+                }
+                showToast('No videos found for this training', 'error');
+                return;
+            }
+
+            currentTrainingViewerResourceId = rid;
+            trainingViewerState.resourceId = rid;
+            trainingViewerState.videos = videos;
+            trainingViewerState.visibleIndexes = videos.map((_, i) => i);
+            trainingViewerState.currentIndex = -1;
+
+            const modal = document.getElementById('trainingViewerModal');
+            const titleEl = document.getElementById('trainingViewerTitle');
+            if (titleEl) titleEl.textContent = resource.Title || 'Training Videos';
+
+            const descEl = document.getElementById('trainingViewerResourceDescription');
+            if (descEl) {
+                const d = String(resource.Description || '').trim();
+                if (d) {
+                    descEl.style.display = 'block';
+                    descEl.textContent = d;
+                    descEl.title = d;
+                } else {
+                    descEl.style.display = 'none';
+                }
+            }
+
+            const searchEl = document.getElementById('trainingViewerSearch');
+            if (searchEl) searchEl.value = '';
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                list.innerHTML = videos.map((v, i) => {
+                    const watched = isTrainingVideoWatched(resource, v.url);
+                    const displayTitle = escapeHtml((v && v.title) ? v.title : `Video ${i + 1}`);
+                    const displayUrl = escapeHtml(v && v.url ? v.url : '');
+                    return `
+                        <button type="button" data-training-viewer-index="${i}" onclick="trainingViewerSelect(${i})" style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px 12px; cursor: pointer; display:flex; flex-direction:column; gap: 6px;">
+                            <div style="display:flex; justify-content:space-between; gap: 10px; align-items:flex-start;">
+                                <div style="font-weight: 900; color: var(--cobalt); font-size: 13px; line-height: 1.25;">${displayTitle}</div>
+                                ${watched ? '<div style="font-size: 11px; font-weight: 900; color: #166534; background:#dcfce7; border-radius: 999px; padding: 2px 8px; white-space:nowrap;">Watched</div>' : ''}
+                            </div>
+                            <div style="font-size: 11px; color: #6b7280; font-weight: 700; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${displayUrl}</div>
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            const subtitle = document.getElementById('trainingViewerSubtitle');
+            if (subtitle) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+                subtitle.textContent = `${watchedCount}/${videos.length} videos • ${pct}% complete`;
+            }
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const isCompleted = Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && videos.length > 0 && watchedCount === videos.length) ? 'inline-flex' : 'none';
+            }
+
+            if (modal) {
+                modal.style.display = 'flex';
+                const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+                if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+                document.body.style.overflow = 'hidden';
+            }
+
+            trainingViewerSelect(0);
+        }
+
+        function closeTrainingViewer() {
+            const modal = document.getElementById('trainingViewerModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+
+            trainingViewerState.resourceId = null;
+            trainingViewerState.videos = [];
+            trainingViewerState.visibleIndexes = [];
+            trainingViewerState.currentIndex = -1;
+        }
+
+        function filterTrainingViewerList() {
+            const list = document.getElementById('trainingViewerList');
+            const q = String(document.getElementById('trainingViewerSearch')?.value || '').trim().toLowerCase();
+            if (!list) return;
+
+            const visible = [];
+            Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                const idx = Number(el.getAttribute('data-training-viewer-index'));
+                const v = trainingViewerState.videos[idx];
+                const hay = `${(v && v.title) || ''} ${(v && v.url) || ''}`.toLowerCase();
+                const ok = !q || hay.includes(q);
+                el.style.display = ok ? 'flex' : 'none';
+                if (ok) visible.push(idx);
+            });
+            trainingViewerState.visibleIndexes = visible;
+
+            if (visible.length) {
+                const currentVisiblePos = visible.indexOf(trainingViewerState.currentIndex);
+                if (currentVisiblePos === -1) {
+                    trainingViewerSelect(visible[0]);
+                } else {
+                    trainingViewerSelect(trainingViewerState.currentIndex);
+                }
+            }
+        }
+
+        function trainingViewerPrev() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos > 0) trainingViewerSelect(trainingViewerState.visibleIndexes[pos - 1]);
+        }
+
+        function trainingViewerNext() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos >= 0 && pos < trainingViewerState.visibleIndexes.length - 1) trainingViewerSelect(trainingViewerState.visibleIndexes[pos + 1]);
+        }
+
+        async function markTrainingViewerVideoComplete() {
+            const rid = trainingViewerState.resourceId;
+            const idx = trainingViewerState.currentIndex;
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(rid));
+            const video = trainingViewerState.videos[idx];
+
+            if (!rid || !resource || !video || !video.url) {
+                showToast('Select a video first', 'error');
+                return;
+            }
+            if (!currentUser) {
+                showToast('User not set; reload dashboard', 'error');
+                return;
+            }
+            if (isTrainingVideoWatched(resource, video.url)) {
+                showToast('Already marked complete', 'info');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}?action=setTrainingAssetWatched`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        resourceId: rid,
+                        completedBy: currentUser,
+                        assetUrl: video.url,
+                        watched: true
+                    })
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    showToast(data.error || 'Failed to save progress', 'error');
+                    return;
+                }
+
+                if (!Array.isArray(resource.assetProgress)) resource.assetProgress = [];
+                resource.assetProgress.push(data.result || data.progress || data.row || { Asset_URL: video.url, Watched: true });
+                showToast('Marked complete', 'success');
+
+                openTrainingViewer(rid);
+            } catch (e) {
+                showToast('Failed to save progress', 'error');
+                console.error(e);
+            }
+        }
+
+        function renderTrainingResourcesCompact(resources) {
+            const container = document.getElementById('trainingContainer');
+            if (!container) return;
+
+            const html = (resources || []).map(resource => {
+                const type = (resource.Type || 'VIDEO').toUpperCase();
+                const completions = resource.completions || [];
+                const isCompleted = completions.length > 0;
+                const latestCompletion = isCompleted ? completions[0] : null;
+
+                const videos = getTrainingVideosFromResource(resource);
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+
+                const title = escapeHtml(resource.Title || 'Untitled Training');
+                const category = escapeHtml(resource.Category || 'General');
+                const minutes = escapeHtml(resource.Estimated_Minutes || '?');
+                const description = String(resource.Description || '').trim();
+
+                const isVideo = type === 'VIDEO' || videos.length > 0;
+                const clickHandler = isVideo
+                    ? `openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')`
+                    : (resource.URL ? `window.open('${String(resource.URL).replace(/'/g, "\\'")}', '_blank', 'noopener')` : '');
+
+                return `
+                    <div class="training-card" data-resource-id="${resource.Resource_ID}" style="background: #fff; border-radius: 16px; padding: 18px; border: 1px solid var(--border); box-shadow: 0 2px 14px rgba(0,0,0,0.06); display:flex; flex-direction:column; gap: 12px; cursor: ${clickHandler ? 'pointer' : 'default'};" onclick="${clickHandler}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 10px;">
+                            <div style="min-width:0;">
+                                <div style="font-size: 15px; font-weight: 900; color: var(--cobalt); line-height: 1.25; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${title}</div>
+                                <div style="margin-top: 6px; display:flex; gap: 8px; flex-wrap: wrap;">
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${category}</span>
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${minutes} min</span>
+                                    <span style="background: #eff6ff; color: var(--azure); padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 900;">${escapeHtml(type)}</span>
+                                </div>
+                            </div>
+                            ${isCompleted ? '<span class="training-completed-badge" style="background:#dcfce7; color:#166534; padding: 4px 8px; border-radius: 10px; font-size: 12px; font-weight: 900; white-space:nowrap;">Done</span>' : ''}
+                        </div>
+
+                        ${description ? `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(description)}</div>` : ''}
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap: wrap;">
+                            ${videos.length ? `<div style="font-size: 12px; color: #6b7280; font-weight: 900;">${watchedCount}/${videos.length} watched • ${pct}%</div>` : `<div style="font-size: 12px; color: #9ca3af; font-weight: 900;">No videos</div>`}
+                            <div style="display:flex; gap: 8px; align-items:center;">
+                                ${isVideo ? `<button type="button" class="btn" onclick="event.stopPropagation(); openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')" style="height: 34px; padding: 0 12px; background: var(--cobalt); color: #fff; border: none; border-radius: 10px; font-weight: 900; font-size: 13px;">Open</button>` : (resource.URL ? `<a class="btn" href="${escapeHtml(resource.URL)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="height: 34px; padding: 0 12px; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; font-size: 13px; text-decoration:none; display:inline-flex; align-items:center;">Open</a>` : '')}
+                            </div>
+                        </div>
+
+                        <div style="font-size: 12px; color: #9ca3af; font-weight: 700;">
+                            ${isCompleted ? `Submitted ${formatDate(latestCompletion && latestCompletion.Completed_At)}` : 'Not submitted yet'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+
+            const allCount = (resources || []).length;
+            const completedCount = (resources || []).filter(r => (r.completions || []).length > 0).length;
+            const allCountEl = document.getElementById('allCount');
+            const inprogressCountEl = document.getElementById('inprogressCount');
+            if (allCountEl) allCountEl.textContent = allCount;
+            if (inprogressCountEl) inprogressCountEl.textContent = completedCount;
+
+            loadRecommendationsForFilter().then(() => {
+                if (currentFilterMode === 'recommended' && recommendedResourceIds.length === 0) currentFilterMode = 'all';
+                filterTrainingResources(currentFilterMode);
+            });
+        }

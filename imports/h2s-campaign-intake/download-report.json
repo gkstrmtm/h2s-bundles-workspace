@@ -1,0 +1,12 @@
+{
+    "baseUrl":  "https://h2s-campaign-intake.vercel.app",
+    "outDir":  "C:\\Users\\tabar\\h2s-bundles-workspace\\tools\\..\\imports\\h2s-campaign-intake",
+    "crmUrl":  "https://h2s-campaign-intake.vercel.app/crm.html",
+    "crmFile":  "C:\\Users\\tabar\\h2s-bundles-workspace\\tools\\..\\imports\\h2s-campaign-intake\\crm.html",
+    "assetCount":  0,
+    "downloaded":  0,
+    "failedCount":  0,
+    "failed":  [
+
+               ]
+}

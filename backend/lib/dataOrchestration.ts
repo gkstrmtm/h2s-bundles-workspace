@@ -739,6 +739,98 @@ export async function ensureCompletionSideEffects(opts: {
       amount = bestEffortComputePayoutFromCustomerTotals(job);
   }
 
+  // 4c. If payout is still missing, try to derive from the linked order.
+  // This is critical because some dispatch job schemas intentionally do not store payout fields,
+  // while checkout/scheduling stores authoritative payout in h2s_orders.metadata_json.
+  if (amount <= 0) {
+    const safeParseJson = (v: any) => {
+      try {
+        if (!v) return null;
+        if (typeof v === 'object') return v;
+        if (typeof v !== 'string') return null;
+        const s = v.trim();
+        if (!s) return null;
+        return JSON.parse(s);
+      } catch {
+        return null;
+      }
+    };
+
+    const jobMeta = safeParseJson((job as any)?.metadata) || safeParseJson((job as any)?.meta) || {};
+    const orderKey = String((job as any)?.order_id || (job as any)?.orderId || jobMeta?.order_id_text || jobMeta?.order_id || '').trim();
+
+    if (orderKey) {
+      try {
+        const pickPayoutFromOrder = (orderRow: any): number => {
+          const meta = safeParseJson(orderRow?.metadata_json) || safeParseJson(orderRow?.metadata) || {};
+
+          const direct = Number(
+            meta?.tech_payout_dollars ??
+              meta?.payout_estimated ??
+              meta?.estimated_payout ??
+              meta?.payoutEstimated ??
+              orderRow?.payout_estimated ??
+              orderRow?.estimated_payout ??
+              0
+          );
+          if (Number.isFinite(direct) && direct > 0) return round2(direct);
+
+          const rate = Number(meta?.payout_rate ?? 0.35);
+          const subtotalCents = Number(meta?.job_value_cents ?? meta?.cart_subtotal_cents ?? 0);
+          if (Number.isFinite(subtotalCents) && subtotalCents > 0 && Number.isFinite(rate) && rate > 0) {
+            return round2((subtotalCents / 100) * rate);
+          }
+
+          const subtotalDollars = Number(orderRow?.order_subtotal ?? orderRow?.subtotal ?? meta?.order_subtotal ?? meta?.subtotal ?? 0);
+          if (Number.isFinite(subtotalDollars) && subtotalDollars > 0 && Number.isFinite(rate) && rate > 0) {
+            return round2(subtotalDollars * rate);
+          }
+
+          return 0;
+        };
+
+        // Try match by order_id text first.
+        let orderRow: any = null;
+        try {
+          const { data, error } = await sb.from('h2s_orders').select('*').eq('order_id', orderKey).limit(1).maybeSingle();
+          if (!error && data) orderRow = data;
+        } catch {
+          // ignore
+        }
+
+        // Fallback: session_id match (some callers use Stripe session id as "order id").
+        if (!orderRow) {
+          try {
+            const { data, error } = await sb.from('h2s_orders').select('*').eq('session_id', orderKey).limit(1).maybeSingle();
+            if (!error && data) orderRow = data;
+          } catch {
+            // ignore
+          }
+        }
+
+        // Fallback: UUID id match
+        if (!orderRow && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderKey)) {
+          try {
+            const { data, error } = await sb.from('h2s_orders').select('*').eq('id', orderKey).limit(1).maybeSingle();
+            if (!error && data) orderRow = data;
+          } catch {
+            // ignore
+          }
+        }
+
+        if (orderRow) {
+          const derived = pickPayoutFromOrder(orderRow);
+          if (derived > 0) {
+            amount = derived;
+            console.log(`[COMPLETION_ORCH_PAYOUT_DERIVED_FROM_ORDER] jobId=${jobId} orderKey=${orderKey} amount=${amount}`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`[COMPLETION_ORCH_PAYOUT_DERIVE_ORDER_FAILED] jobId=${jobId} orderKey=${orderKey} error=${e?.message || String(e)}`);
+      }
+    }
+  }
+
   // 4b. Integrity Check: Assert minimum viable payout Logic
   // Check if amount is suspiciously zero but we have order total?
   // We won't block on 0, but we will block on NaN or Infinity.

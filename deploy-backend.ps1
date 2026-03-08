@@ -3,7 +3,7 @@
 
 Write-Host "`n=== Deploying Backend to Vercel ===" -ForegroundColor Cyan
 
-$BackendPath = "c:\Users\tabar\h2s-bundles-workspace\backend"
+$BackendPath = Join-Path $PSScriptRoot "backend"
 Push-Location $BackendPath
 
 try {
@@ -25,7 +25,8 @@ try {
 
     Write-Host "`n3. Deploying to production..." -ForegroundColor Yellow
     Write-Host "   This will take 1-2 minutes..." -ForegroundColor Gray
-    vercel --prod --yes
+    # Use cmd.exe to avoid PowerShell's NativeCommandError behavior from the vercel.ps1 shim.
+    cmd /c "vercel --prod --yes" 2>&1 | Out-String | Write-Host
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "`n=== Deployment SUCCESS ===" -ForegroundColor Green

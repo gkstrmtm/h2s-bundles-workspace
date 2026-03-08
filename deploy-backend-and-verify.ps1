@@ -2,6 +2,8 @@
 # Usage:
 #   .\deploy-backend-and-verify.ps1
 #   .\deploy-backend-and-verify.ps1 -SkipDeploy
+#   .\deploy-backend-and-verify.ps1 -SkipDeploy -RunMigrations
+#   .\deploy-backend-and-verify.ps1 -SkipMigrations
 #   .\deploy-backend-and-verify.ps1 -DeploymentUrl https://h2s-backend.vercel.app
 #
 # This script is intentionally minimal:
@@ -15,11 +17,15 @@ param(
   [switch]$SkipDeploy,
   [switch]$SkipVerify,
   [switch]$SkipMigrations,
+  # When running with -SkipDeploy (verify-only), migrations are skipped by default.
+  # Use -RunMigrations to force applying migrations anyway.
+  [switch]$RunMigrations,
   # Comma-separated list of migration files in backend/migrations.
   # Keep these idempotent (IF NOT EXISTS) so it's safe to re-run every deploy.
-  [string]$MigrationFile = "007_create_dashboard_accounts.sql,008_create_offers.sql,009_alter_deliverables_add_metadata.sql",
+  [string]$MigrationFile = "007_create_dashboard_accounts.sql,008_create_offers.sql,009_alter_deliverables_add_metadata.sql,013_create_sms_inbox.sql,014_sms_inbox_sender_and_contacts.sql,015_create_sms_groups.sql,016_create_sms_hidden_conversations.sql,017_add_sms_messages_group_id.sql",
   [int]$BundlePriceDollars = 2100,
-  [string]$DeliveryDate = "2026-01-20",
+  # UPDATED: Use dynamic date to avoid 409 conflicts on repeated runs
+  [string]$DeliveryDate = (Get-Date).AddDays(2).ToString("yyyy-MM-dd"),
   [string]$DeliveryTime = "9am - 12pm"
 )
 
@@ -69,6 +75,33 @@ function Parse-VercelDeploymentUrl([string[]]$lines) {
   return $matches[$matches.Count - 1]
 }
 
+function Normalize-Lines($out) {
+  if ($null -eq $out) { return @() }
+  if ($out -is [string[]]) { return $out }
+  if ($out -is [string]) {
+    return ($out -split "`r?`n")
+  }
+  try {
+    return @($out | ForEach-Object { [string]$_ })
+  } catch {
+    return @([string]$out)
+  }
+}
+
+function Output-Indicates-ExecSqlMissing([string[]]$lines) {
+  if (-not $lines -or $lines.Count -eq 0) { return $false }
+  $text = ($lines -join "\n")
+  return (
+    $text -match "exec_sql" -and (
+      $text -match "does not exist" -or
+      $text -match "Could not find the function" -or
+      $text -match "schema cache" -or
+      $text -match "PGRST" -or
+      $text -match "not in the schema cache"
+    )
+  )
+}
+
 function Invoke-JsonPost($url, $obj, [int]$timeoutSec = 30) {
   $body = $obj | ConvertTo-Json -Depth 20
   return Invoke-RestMethod -Uri $url -Method POST -Body $body -ContentType "application/json" -TimeoutSec $timeoutSec
@@ -94,14 +127,7 @@ Require-Command vercel
 Info "Checking Vercel env vars (best-effort)..."
 try {
   Push-Location "backend"
-  $envOut = @()
-  $prevEap = $ErrorActionPreference
-  try {
-    $ErrorActionPreference = "Continue"
-    $envOut = (& vercel env ls 2>&1)
-  } finally {
-    $ErrorActionPreference = $prevEap
-  }
+  $envOut = Normalize-Lines (cmd /c "vercel env ls 2>&1")
 } catch {
   $envOut = @()
 } finally {
@@ -131,7 +157,15 @@ if ($envOut -and $envOut.Count -gt 0) {
 }
 
 # Migrations (optional, safe to re-run because they use IF NOT EXISTS)
-if (-not $SkipMigrations) {
+# New default behavior:
+# - Migrations NEVER run automatically.
+# - Use -RunMigrations to apply MGMT migrations (unless -SkipMigrations is also set).
+$shouldRunMigrations = $false
+if ($RunMigrations -and -not $SkipMigrations) {
+  $shouldRunMigrations = $true
+}
+
+if ($shouldRunMigrations) {
   $migrationFiles = @()
   if ($MigrationFile) {
     $migrationFiles = ($MigrationFile -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }
@@ -148,6 +182,7 @@ if (-not $SkipMigrations) {
   } else {
     Push-Location "backend"
     try {
+      $forcePg = $false
       foreach ($mf in $migrationFiles) {
         Info "Applying MGMT migration: $mf"
         $prevEap = $ErrorActionPreference
@@ -155,12 +190,22 @@ if (-not $SkipMigrations) {
           # Node writes RPC failures to stderr which PowerShell can treat as a terminating error
           # when $ErrorActionPreference='Stop'. Relax it so we can fall back cleanly.
           $ErrorActionPreference = "Continue"
-          $out = (& node apply_migration_rpc.js $mf --mgmt 2>&1)
+          if ($forcePg) {
+            $out = @("(skipped RPC; exec_sql unavailable)")
+            $LASTEXITCODE = 1
+          } else {
+            $out = (& node apply_migration_rpc.js $mf --mgmt 2>&1)
+          }
         } finally {
           $ErrorActionPreference = $prevEap
         }
         Write-Host ($out -join "`n") -ForegroundColor DarkGray
         if ($LASTEXITCODE -ne 0) {
+          if (-not $forcePg -and (Output-Indicates-ExecSqlMissing (Normalize-Lines $out))) {
+            Warn "RPC exec_sql appears unavailable; switching remaining migrations to pg fallback."
+            $forcePg = $true
+          }
+
           Warn "RPC migration failed for $mf. Attempting direct Postgres migration fallback (pg)..."
           if (-not (Test-Path ".\apply_migration_pg.js")) {
             Fail "RPC migration failed for $mf and apply_migration_pg.js is missing. Cannot continue."
@@ -187,7 +232,13 @@ if (-not $SkipMigrations) {
     }
   }
 } else {
-  Ok "SkipMigrations specified; skipping migration step"
+  if ($SkipMigrations) {
+    Ok "SkipMigrations specified; skipping migration step"
+  } elseif (-not $RunMigrations) {
+    Ok "Skipping migrations (default). Use -RunMigrations to apply MGMT migrations when you actually changed schema."
+  } else {
+    Ok "Skipping migrations"
+  }
 }
 
 # Guardrail: ensure we're linked to the correct Vercel project
@@ -211,6 +262,17 @@ if (Test-Path $localProjectFile) {
 Info "Building backend..."
 Push-Location "backend"
 try {
+  # Next.js can fail with missing manifest files if a previous build left a partial .next directory.
+  # Clean it before building to ensure a fresh, deterministic build.
+  if (Test-Path ".next") {
+    Info "Cleaning backend/.next..."
+    try {
+      Remove-Item -Recurse -Force ".next" -ErrorAction Stop
+    } catch {
+      Warn "Could not delete backend/.next (will still try to build): $($_.Exception.Message)"
+    }
+  }
+
   npm run build
   if ($LASTEXITCODE -ne 0) { Fail "Backend build failed (npm run build)" }
   Ok "Backend build succeeded"
@@ -226,18 +288,9 @@ if (-not $SkipDeploy) {
   Push-Location "backend"
   try {
     $out = @()
-    # Use `vercel deploy` explicitly to make output parsing more reliable.
-    # PowerShell treats stderr from native command wrappers (vercel.ps1) as errors.
-    # With $ErrorActionPreference='Stop' this can become terminating even when the
-    # underlying CLI is behaving normally. Temporarily relax it for the deploy.
-    $prevEap = $ErrorActionPreference
-    try {
-      $ErrorActionPreference = "Continue"
-      $out = (& vercel deploy --prod --yes 2>&1)
-      $exit = $LASTEXITCODE
-    } finally {
-      $ErrorActionPreference = $prevEap
-    }
+    # Use cmd.exe to avoid PowerShell's NativeCommandError behavior from the vercel.ps1 shim.
+    $out = Normalize-Lines (cmd /c "vercel deploy --prod --yes 2>&1")
+    $exit = $LASTEXITCODE
 
     if ($exit -ne 0) {
       Write-Host ($out -join "`n") -ForegroundColor DarkGray
@@ -328,26 +381,72 @@ if (-not $login.ok) { Fail "portal_login failed" }
 $token = $login.token
 if (-not $token) { Fail "portal_login did not return token" }
 
-$job = Invoke-JsonGet "$DeploymentUrl/api/portal_jobs?token=$token&job_id=$($shop.job_id)" 45
-if (-not $job.ok) { Fail "portal_jobs failed" }
+# portal_jobs enrichment can be eventually consistent right after creating the order/job.
+# Retry briefly so we don't fail a good deployment due to propagation delay.
+$maxAttempts = 8
+$sleepSeconds = 3
+$verified = $false
+$lastJob = $null
 
-$payout = [double]($job.job.payout_estimated)
-$deliveryDateOut = [string]($job.job.delivery_date)
-$dueAtOut = [string]($job.job.due_at)
+for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+  $job = Invoke-JsonGet "$DeploymentUrl/api/portal_jobs?token=$token&job_id=$($shop.job_id)" 45
+  $lastJob = $job
 
-if ([Math]::Abs($payout - $expectedPayout) -gt 0.001) { Fail "portal_jobs payout_estimated wrong. expected $expectedPayout got $payout" }
-if ($scheduleSucceeded) {
-  if ($DeliveryDateOut -and ($DeliveryDateOut -ne $DeliveryDate)) {
-    Fail "portal_jobs delivery_date wrong. expected $DeliveryDate got $DeliveryDateOut"
+  if (-not $job.ok) {
+    Warn "portal_jobs failed on attempt $attempt/$maxAttempts."
+    Start-Sleep -Seconds $sleepSeconds
+    continue
   }
-  if ($dueAtOut -and (-not $dueAtOut.StartsWith($DeliveryDate))) {
-    Fail "portal_jobs due_at not reflecting scheduled date. expected startswith $DeliveryDate got $dueAtOut"
+
+  $payoutRaw = $job.job.payout_estimated
+  $payoutState = [string]($job.job.payout_state)
+
+  # If payout is null/pending, PowerShell would coerce it to 0. Treat as 'not ready' and retry.
+  if ($null -eq $payoutRaw -or [string]::IsNullOrWhiteSpace([string]$payoutRaw)) {
+    Warn "portal_jobs payout not ready yet (attempt $attempt/$maxAttempts, payout_state='$payoutState')."
+    Start-Sleep -Seconds $sleepSeconds
+    continue
   }
-} else {
-  Warn "Schedule verification skipped (schedule-appointment did not succeed)."
+
+  $payout = [double]$payoutRaw
+  $deliveryDateOut = [string]($job.job.delivery_date)
+  $dueAtOut = [string]($job.job.due_at)
+
+  if ([Math]::Abs($payout - $expectedPayout) -gt 0.001) {
+    Warn "portal_jobs payout mismatch (attempt $attempt/$maxAttempts). expected $expectedPayout got $payout"
+    Start-Sleep -Seconds $sleepSeconds
+    continue
+  }
+
+  if ($scheduleSucceeded) {
+    if ($deliveryDateOut -and ($deliveryDateOut -ne $DeliveryDate)) {
+      Warn "portal_jobs delivery_date mismatch (attempt $attempt/$maxAttempts). expected $DeliveryDate got $deliveryDateOut"
+      Start-Sleep -Seconds $sleepSeconds
+      continue
+    }
+    if ($dueAtOut -and (-not $dueAtOut.StartsWith($DeliveryDate))) {
+      Warn "portal_jobs due_at mismatch (attempt $attempt/$maxAttempts). expected startswith $DeliveryDate got $dueAtOut"
+      Start-Sleep -Seconds $sleepSeconds
+      continue
+    }
+  } else {
+    Warn "Schedule verification skipped (schedule-appointment did not succeed)."
+  }
+
+  Ok "portal_jobs enrichment OK: payout=$$payout delivery_date=$deliveryDateOut due_at=$dueAtOut"
+  $verified = $true
+  break
 }
 
-Ok "portal_jobs enrichment OK: payout=$$payout delivery_date=$deliveryDateOut due_at=$dueAtOut"
+if (-not $verified) {
+  try {
+    $payoutRaw2 = $lastJob.job.payout_estimated
+    $payoutState2 = [string]($lastJob.job.payout_state)
+    Fail "portal_jobs enrichment not ready after $maxAttempts attempts. payout_estimated='$payoutRaw2' payout_state='$payoutState2'"
+  } catch {
+    Fail "portal_jobs enrichment not ready after $maxAttempts attempts."
+  }
+}
 
 Write-Host "`n========================================" -ForegroundColor Magenta
 Write-Host "✅ BACKEND DEPLOY VERIFIED" -ForegroundColor Green

@@ -11,10 +11,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
     <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="2026-02-05T01:00:00Z">
+    <meta name="h2s-dash-build" content="2026-02-10T00:00:00Z">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
-            const DASH_BUILD_STAMP = '2026-02-05T01:00:00Z';
+            const DASH_BUILD_STAMP = '2026-02-10T00:00:00Z';
             const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
@@ -62,7 +62,7 @@
             try { window.API_URL = '<?= API_URL ?>'; } catch (e) { /* not templated */ }
 
             // Tangible "which file is this?" marker
-            // Visit /Dash.html?about=1 to show.
+            // Visit /dash?about=1 (or add &about=1) to show.
             window.__h2sShowAboutBadge = function __h2sShowAboutBadge() {
                 try {
                     const badge = document.getElementById('h2sAboutBadge');
@@ -105,12 +105,11 @@
       href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
         <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
-    
-        <link rel="stylesheet" href="./Dash.css">
-    <!-- jsPDF Library for PDF Export -->
+        <link rel="stylesheet" href="./dash.css">
+<!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
-<body style="background: #0a2a5a !important; background-color: #0a2a5a !important;">
+<body style="background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #f1f5f9 100%) !important; background-color: #f8fafc !important;">
 
     <!-- Visible only when ?about=1 is present -->
     <div id="h2sAboutBadge" style="display:none; position:fixed; right:12px; bottom:12px; z-index:2147483647; background:rgba(15,23,42,0.92); color:#e2e8f0; border:1px solid rgba(148,163,184,0.35); padding:10px 12px; border-radius:10px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; box-shadow: 0 16px 40px rgba(0,0,0,0.35);">
@@ -128,18 +127,61 @@
                  src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" 
                  alt="Home2Smart">
             <h2 class="user-gate-title">Welcome to Home2Smart</h2>
-            <p class="user-gate-subtitle">Select your profile to continue</p>
-            
-            <div class="user-gate-select-wrapper">
-                <select id="userSelect" class="user-gate-select">
-                    <option value="">-- Select Your Name --</option>
-                    <option value="ROSEL">Rosel</option>
-                </select>
+            <p class="user-gate-subtitle">Sign in with your assigned username/email + PIN</p>
+
+            <div style="margin-top: 14px; display:flex; flex-direction:column; gap:10px;">
+                <input id="dashLoginUser" class="user-gate-select" placeholder="Username or email (e.g., ROSEL)" autocomplete="username" />
+                <input id="dashLoginPin" class="user-gate-select" type="password" placeholder="PIN" autocomplete="current-password" />
+                <button id="dashLoginBtn" class="user-gate-btn" disabled onclick="dashboardAccountLogin()">
+                    <span>Sign in</span>
+                </button>
+                <div class="user-gate-mini" id="dashLoginStatus" style="min-height: 16px;"></div>
             </div>
-            
-            <button id="userGateBtn" class="user-gate-btn" disabled onclick="enterDashboard()">
-                <span>Enter Dashboard</span>
-            </button>
+
+            <div class="user-gate-mini" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,0.25);">
+                No account yet? Ask Admin to create one and send you a temporary PIN.
+            </div>
+
+            <div style="margin-top: 12px; display:flex; flex-direction:column; gap:10px;">
+                <button type="button" class="user-gate-btn" style="width:100%; background:#0f172a;" onclick="toggleAdminCreateAccount()">
+                    <span>Create Account (Admin Key)</span>
+                </button>
+                <div id="dashAdminCreateWrap" style="display:none; text-align:left; padding: 12px; border:1px dashed rgba(148,163,184,0.35); border-radius: 12px; background: rgba(255,255,255,0.75);">
+                    <div style="font-weight:900; font-size:12px; color:#0f172a; margin-bottom:8px;">Admin-only account creation</div>
+                    <div class="user-gate-mini" style="margin-bottom:10px;">Requires the shared admin key. Not stored.</div>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        <input id="dashAdminCreateKey" class="user-gate-select" type="password" placeholder="Admin key" autocomplete="off" />
+                        <select id="dashAdminCreateRole" class="user-gate-select">
+                            <option value="VA" selected>VA</option>
+                            <option value="ADMIN">ADMIN</option>
+                        </select>
+                        <input id="dashAdminCreateName" class="user-gate-select" placeholder="Display name (e.g., Rose)" autocomplete="name" />
+                        <input id="dashAdminCreateUser" class="user-gate-select" placeholder="Username (e.g., ROSE)" autocomplete="username" />
+                        <input id="dashAdminCreateEmail" class="user-gate-select" placeholder="Email (optional)" autocomplete="email" />
+                        <input id="dashAdminCreatePin" class="user-gate-select" placeholder="PIN (leave blank to auto-generate)" autocomplete="new-password" />
+                        <button type="button" class="user-gate-btn" style="width:100%;" onclick="adminKeyCreateAccount()">
+                            <span>Create</span>
+                        </button>
+                        <div class="user-gate-mini" id="dashAdminCreateStatus" style="min-height: 16px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="dashBootstrapWrap" style="display:none; margin-top: 14px; padding-top: 14px; border-top: 1px dashed rgba(148,163,184,0.35); text-align:left;">
+                <div style="font-weight:900; font-size:12px; color:#0f172a; margin-bottom:8px;">First-time setup</div>
+                <div class="user-gate-mini" style="margin-bottom:10px;">Only available when <b>?bootstrap=1</b> and no users exist.</div>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <input id="dashBootstrapSecret" class="user-gate-select" type="password" placeholder="Bootstrap secret" autocomplete="off" />
+                    <input id="dashBootstrapName" class="user-gate-select" placeholder="Admin display name (e.g., Garrett)" autocomplete="name" />
+                    <input id="dashBootstrapUser" class="user-gate-select" placeholder="Admin username (e.g., GARRETT)" autocomplete="username" />
+                    <input id="dashBootstrapEmail" class="user-gate-select" placeholder="Email (optional)" autocomplete="email" />
+                    <input id="dashBootstrapPin" class="user-gate-select" placeholder="PIN (leave blank to auto-generate)" autocomplete="new-password" />
+                    <button type="button" class="user-gate-btn" style="width:100%;" onclick="bootstrapFirstAdminAccount()">
+                        <span>Create first admin</span>
+                    </button>
+                    <div class="user-gate-mini" id="dashBootstrapStatus" style="min-height: 16px;"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -171,6 +213,9 @@
                 <div class="app-topbar-area" id="currentAreaTitle">Pipeline</div>
             </div>
             <div class="app-topbar-right">
+                    <button class="logout-btn logout-btn--primary" onclick="openChangePinModal()" style="display: none; margin-right: 10px;" id="changePinBtn">
+                    Change PIN
+                </button>
                 <button class="logout-btn" onclick="logoutUser()" style="display: none;" id="logoutBtn">
                     Logout
                 </button>
@@ -201,11 +246,14 @@
                 <a class="app-sidebar-nav-item" data-tab="tasks" onclick="switchToTab('tasks')">
                     Tasks
                 </a>
-                <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">
-                    Deliverables
-                </a>
                 <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">
                     Offer Builder
+                </a>
+                <a class="app-sidebar-nav-item" href="#" onclick="openOfferLibraryFromNav(); return false;" style="padding-left: 28px; font-size: 13px; opacity: 0.9;">
+                    Offer Library
+                </a>
+                <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">
+                    Deliverables
                 </a>
                 <div class="app-sidebar-nav-divider"></div>
                 <div class="app-sidebar-nav-label">Admin</div>
@@ -221,6 +269,12 @@
                 <a class="app-sidebar-nav-item" href="#" onclick="bugReportsUI.openReportModal(); return false;">
                     Report Bugs
                 </a>
+
+                <div class="app-sidebar-nav-divider"></div>
+                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Build</div>
+                <div style="padding: 8px 18px 14px 18px; font-size: 11px; font-weight: 800; color: rgba(15, 23, 42, 0.55);">
+                    {{BUILD_ID}}
+                </div>
             </nav>
         </div>
 
@@ -678,7 +732,8 @@
                     
                     <!-- Quick Add Form -->
                     <form id="newTrainingForm" onsubmit="submitNewTraining(event)" style="background: white; padding: 32px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);">
-                        <h4 style="color: var(--cobalt); margin-bottom: 24px; font-size: 22px; font-weight: 700;">Upload New Training</h4>
+                        <input type="hidden" id="editResourceId" value="">
+                        <h4 id="trainingFormTitle" style="color: var(--cobalt); margin-bottom: 24px; font-size: 22px; font-weight: 700;">Upload New Training</h4>
                         
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                             <!-- Title -->
@@ -687,11 +742,19 @@
                                 <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers" required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
                             </div>
 
-                            <!-- Loom URL -->
+                            <!-- Multi-Video URLs -->
                             <div style="margin-bottom: 20px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Loom Video URL</label>
-                                <input type="url" id="newTrainingURL" placeholder="https://loom.com/share/abc123..." required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: monospace;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
-                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Copy the share link from your Loom video</p>
+                                <label style="display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <span>Video URLs</span>
+                                    <button type="button" onclick="addTrainingUrlInput()" style="background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; text-transform: none;">+ Add Video</button>
+                                </label>
+                                <div id="newTrainingUrls" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <!-- Initial Input -->
+                                    <div class="training-url-row" style="display: flex; gap: 8px;">
+                                        <input type="url" class="training-url-input" placeholder="https://loom.com/share/..." style="flex: 1; padding: 12px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-family: monospace;" required>
+                                    </div>
+                                </div>
+                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Supports YouTube, Loom, etc. Add multiple for a series.</p>
                             </div>
                         </div>
 
@@ -776,6 +839,18 @@
                     <h2 class="card-title">Submit Deliverable</h2>
                     <form id="deliverableSubmissionForm" onsubmit="submitDeliverable(event)">
                         <div style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Related Task</label>
+                            <select id="deliverableTaskId" required onchange="onDeliverableTaskChange()" style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: white; color: var(--text);">
+                                <option value="" selected disabled>Select a task…</option>
+                                <option value="__OTHER__">Other / not listed</option>
+                            </select>
+                            <div id="deliverableTaskOtherWrap" style="display: none; margin-top: 10px;">
+                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Task Title (Other)</label>
+                                <input type="text" id="deliverableTaskOtherTitle" placeholder="Type the task title" style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px;">
+                            </div>
+                            <div style="margin-top: 8px; font-size: 12px; color: var(--muted);">This links the submission to a specific task so the library stays precise.</div>
+                        </div>
+                        <div style="margin-bottom: 16px;">
                             <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Title</label>
                             <input type="text" id="deliverableTitle" required style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px;">
                         </div>
@@ -828,9 +903,11 @@
                         <h2 class="card-title">Tasks</h2>
                         <p style="color: var(--cobalt); margin: 0;">Active tasks, documents, and action items.</p>
                     </div>
-                    <button onclick="openAddTaskModal()" class="btn" style="padding: 10px 20px; font-size: 14px; background: var(--azure); color: white;">
-                        + Add Task
-                    </button>
+                    <div style="display:flex; gap: 10px; align-items:center; flex-wrap: wrap; justify-content:flex-end;">
+                        <button onclick="openAddTaskModal()" class="btn" style="padding: 10px 20px; font-size: 14px; background: var(--azure); color: white;">
+                            + Add Task
+                        </button>
+                    </div>
                 </div>
                 <div id="tasksContainer">
                     <div class="spinner"></div>
@@ -856,6 +933,9 @@
                                 <button onclick="adminDashboard.refresh()" class="btn" style="padding: 8px 16px; font-size: 13px; background: var(--cobalt); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
                                     Refresh
                                 </button>
+                                <button onclick="openAccountsAdminModal()" class="btn" style="padding: 8px 16px; font-size: 13px; background: #111827; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">
+                                    Accounts
+                                </button>
                             </div>
                         </div>
                         <div id="adminDashboardContent">
@@ -871,7 +951,6 @@
                             <div>
                                 <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Proof Packs</div>
                                 <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload proof photos and videos for your bundles page. The system handles rotation automatically.</div>
-                                <div id="ppDashBuildStampInline" class="u-text-xs u-muted" style="margin-top:6px;">Dash build: 2026-02-05T01:00:00Z</div>
                             </div>
                             <div class="button-group u-flex u-wrap u-gap-12"></div>
                         </div>
@@ -916,7 +995,7 @@
                         </div>
                         
                         <!-- Hidden for backend -->
-                        <input type="hidden" id="ppPackSelect" value="" />
+                        <input type="hidden" id="ppPackSelect" value="default" />
                         <input type="hidden" id="ppSurface" value="bundles" />
                         <input type="hidden" id="ppWeekOf" value="" />
                         <input type="hidden" id="ppPackTitle" value="" />
@@ -926,65 +1005,16 @@
                         <div class="card u-mt-3" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                             <div class="card-header u-mb-2" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Upload</div>
 
-                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="cursor: pointer;">
-                                <div id="ppDropzonePrompt" style="max-width: 820px; margin: 0 auto;">
-                                    <div class="pp-dropzone-left">
-                                        <div class="pp-dropzone-icon" aria-hidden="true">
-                                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                                <polyline points="17 8 12 3 7 8"/>
-                                                <line x1="12" y1="3" x2="12" y2="15"/>
-                                            </svg>
-                                        </div>
-                                        <div style="flex:1; min-width:240px;">
-                                            <p class="pp-dropzone-title">Drop files to add to your library</p>
-                                            <p class="pp-dropzone-sub">Click anywhere to browse. Right‑click assets in the Library to optimize/replace.</p>
-                                            <div class="pp-dropzone-hint">Defaults are tuned for speed: WebP/AVIF + resize + quality.</div>
-                                        </div>
-                                    </div>
+                            <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="border: 1px solid #e5e7eb; border-radius: 16px; padding: 60px 32px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: #fafafa;">
+                                <div style="max-width: 400px; margin: 0 auto;">
+                                    <p style="font-size: 17px; font-weight: 500; color: #1e293b; margin-bottom: 8px;">Drop files here</p>
+                                    <p style="font-size: 14px; color: #64748b; margin-bottom: 0;">or click to browse</p>
                                     <div id="ppConvertToMp4Wrapper" class="u-text-sm u-muted u-mt-1" style="display:none;">
                                         <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                             <input id="ppConvertToMp4" type="checkbox" checked />
                                             Convert to MP4 (applies rotation/trim)
                                         </label>
                                     </div>
-                                    <div id="ppOptimizeImagesWrapper" class="u-text-sm u-muted u-mt-1" style="display:block;">
-                                        <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
-                                            <input id="ppOptimizeImages" type="checkbox" checked />
-                                            Optimize images (WebP/AVIF + compress)
-                                        </label>
-                                        <div class="u-text-xs u-muted u-mt-1" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
-                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
-                                                Format
-                                                <select id="ppImageFormat" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
-                                                    <option value="auto" selected>Auto</option>
-                                                    <option value="avif">AVIF</option>
-                                                    <option value="webp">WebP</option>
-                                                </select>
-                                            </label>
-                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
-                                                Quality
-                                                <input id="ppImageQuality" type="range" min="35" max="95" value="72" style="width:120px;" />
-                                                <span id="ppImageQualityLabel" style="min-width:30px; text-align:right; font-variant-numeric: tabular-nums;">72</span>
-                                            </label>
-                                            <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
-                                                Max px
-                                                <select id="ppImageMaxDim" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
-                                                    <option value="0">Original</option>
-                                                    <option value="2560">2560</option>
-                                                    <option value="1920" selected>1920</option>
-                                                    <option value="1600">1600</option>
-                                                    <option value="1280">1280</option>
-                                                </select>
-                                            </label>
-                                        </div>
-                                        <div class="u-text-xs u-muted" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
-                                    </div>
-                                </div>
-
-                                <!-- Inline previews live INSIDE the dropzone so files "pop up" immediately -->
-                                <div id="ppFilePreviews" class="u-mt-3" style="display:none; text-align:left;">
-                                    <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                                 </div>
                                 <input id="ppFileInput" class="pp-hidden-file-input" type="file" accept="image/*,video/*" multiple />
                                 <input id="ppCameraPhotoInput" class="pp-hidden-file-input" type="file" accept="image/*" capture="environment" />
@@ -998,6 +1028,10 @@
                                     <div id="ppUploadProgressBar" style="background:linear-gradient(90deg,#3b82f6,#2563eb);height:100%;width:0%;transition:width 0.3s ease;"></div>
                                 </div>
                                 <div class="u-text-xs u-muted u-mt-1" id="ppUploadProgressText" style="text-align:center;"></div>
+                            </div>
+
+                            <div id="ppFilePreviews" class="u-mt-3" style="display:none;">
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;" id="ppPreviewGrid"></div>
                             </div>
 
                             <div id="ppFileSummary" class="u-mt-3" style="display:none;"></div>
@@ -1045,8 +1079,7 @@
                             </div>
                             
                             <!-- Hidden fields for backend compatibility -->
-                            <!-- NOTE: This must be a <select> because the Proof Packs UI dynamically populates options + hints. -->
-                            <select id="ppShotType" style="display:none;"></select>
+                            <input type="hidden" id="ppShotType" value="after" />
                             <div id="ppShotTypeHint" class="u-text-xs u-muted" style="margin-top:4px; padding:6px 10px; background:#f8fafc; border-left:3px solid #3b82f6; border-radius:4px; display:none;"></div>
                             <input type="hidden" id="ppTimeOfDay" value="day" />
                             <input type="hidden" id="ppSlotKey" value="mid_proof_rail" />
@@ -1060,12 +1093,10 @@
                             <input type="hidden" id="ppFilterContrastVal" value="100" />
                             <input type="hidden" id="ppFilterSaturationVal" value="100" />
 
-                            <div class="pp-upload-actions u-mt-3" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                                <button id="ppClearStagedBtn" class="btn btn-secondary" type="button" onclick="proofPacks.clearStagedFiles()" style="min-width:180px; display:none;">Clear queue</button>
-                            </div>
+                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:none;"></div>
+                            <button onclick="proofPacks.uploadAndAssign()" id="ppUploadBtn" style="display:none;"></button>
 
-                            <div id="ppUploadStatus" class="u-text-sm u-muted u-mt-2" style="text-align:center; display:block;"></div>
-                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:block;"></div>
+                            <div id="ppUploadWarning" class="u-text-sm u-muted u-mt-2" style="display:none;"></div>
                             <div id="ppDetectedKind" style="display:none;"></div>
 
                             <!-- Meters removed for cleaner UI -->
@@ -1077,26 +1108,6 @@
                         </div>
 
                         <!-- Library (Always Visible) -->
-                        <div class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background:#f8fafc;">
-                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                                <div>
-                                    <div style="font-size: 13px; font-weight: 800; color:#0f172a; letter-spacing:0.2px;">Quick Asset Tools</div>
-                                    <div class="u-text-xs u-muted" style="margin-top:2px; max-width: 760px; line-height:1.5;">
-                                        Paste an <strong>asset_id</strong> (best) or a storage URL. Use this to open an asset in the editor or optimize it to WebP/AVIF.
-                                    </div>
-                                </div>
-                                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                    <input id="ppQuickAssetInput" type="text" placeholder="asset_id (e.g. 9c1b...) or storage URL" style="min-width: 320px; max-width: 520px; width: min(520px, 70vw); height: 40px; padding: 0 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 13px; background: white;" />
-                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOpenAsset()" style="height:40px;">Open</button>
-                                    <button class="pp-btn-secondary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'download' })" style="height:40px;">Optimize + Download</button>
-                                    <button class="pp-btn-primary" type="button" onclick="proofPacks.quickOptimizeAsset({ mode: 'replace' })" style="height:40px;">Optimize + Replace</button>
-                                </div>
-                            </div>
-                            <div class="u-text-xs u-muted" style="margin-top:10px; opacity:0.92;">
-                                Tip: The optimization settings above (Format/Quality/Max px) apply here too.
-                            </div>
-                        </div>
-
                         <div id="ppLibraryWorkspace" class="u-mt-4">
                             <div class="card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                                 <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Bundles Page</div>
@@ -1243,26 +1254,6 @@
                                                 <option value="date-asc">Oldest First</option>
                                             </select>
                                         </div>
-
-                                        <!-- Library Actions (always visible) -->
-                                        <div class="pp-library-actions" aria-label="Library actions">
-                                            <button class="pp-btn-primary-sm" type="button" onclick="proofPacks.bulkOptimizeEntireLibrary()" title="Optimize EVERY image in the library (scans all packs)">
-                                                Optimize Entire Library
-                                            </button>
-                                            <button class="pp-btn-secondary-sm" type="button" onclick="proofPacks.bulkOptimizeAllLoaded()" title="Optimize images currently loaded in the library list">
-                                                Optimize Loaded
-                                            </button>
-                                            <button class="pp-btn-secondary-sm" id="ppOptimizeSelectedBtn" type="button" onclick="proofPacks.bulkOptimizeSelected()" disabled title="Select assets (click tiles) then optimize them">
-                                                Optimize Selected
-                                            </button>
-                                            <button class="pp-btn-secondary-sm" type="button" onclick="proofPacks.selectAllLoaded()" title="Select all currently loaded tiles">
-                                                Select All Loaded
-                                            </button>
-                                            <button class="pp-btn-secondary-sm" id="ppClearSelectedBtn" type="button" onclick="proofPacks.clearSelection()" disabled title="Clear current selection">
-                                                Clear
-                                            </button>
-                                            <span class="pp-library-actions-hint" id="ppLibraryActionHint">Tip: click tiles to select • right‑click for asset menu</span>
-                                        </div>
                                         
                                         <!-- View Toggles & Count -->
                                         <div class="pp-view-group">
@@ -1305,7 +1296,6 @@
                                         <label class="form-label" for="ppBackendUrl">Backend URL</label>
                                         <input id="ppBackendUrl" class="form-input" placeholder="https://h2s-backend.vercel.app" />
                                         <span class="form-help">Where the Proof Packs API is hosted.</span>
-                                        <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-05T01:00:00Z</span>
                                     </div>
                                     <div class="form-field u-mt-2">
                                         <label class="form-label" for="ppAdminKey">Admin key (optional)</label>
@@ -1339,15 +1329,20 @@
                             <div>
                                 <h2 class="ob-title">Build Your Offer</h2>
                                 <p class="ob-subtitle">Create service packages and bundles. Add services, set pricing, and generate a complete offer brief.</p>
+                                <div class="ob-subtabs" role="tablist" aria-label="Offer Builder tabs">
+                                    <button type="button" class="ob-subtab is-active" id="offerBuilderTabBuilder" onclick="offerBuilder.setSubTab('builder')" role="tab" aria-selected="true">Offer Builder</button>
+                                    <button type="button" class="ob-subtab" id="offerBuilderTabLibrary" onclick="offerBuilder.setSubTab('library')" role="tab" aria-selected="false">Offer Library</button>
+                                    <button type="button" class="ob-subtab" id="offerBuilderTabAdFrameworks" onclick="offerBuilder.setSubTab('adframeworks')" role="tab" aria-selected="false">Ad Frameworks</button>
+                                </div>
                             </div>
                             <div class="ob-actions">
-                                <button onclick="offerBuilder.showHelp()" class="ob-btn ob-btn--secondary ob-btn--icon" title="How to use" aria-label="How to use">
-                                    ?
-                                </button>
                                 <button onclick="offerBuilder.recalculateOffer()" id="offerBuilderRecalcBtn" class="ob-btn ob-btn--secondary">
                                     Recalculate
                                 </button>
                                 <span id="offerBuilderLastUpdate" style="display: none;"></span>
+                                <button onclick="offerBuilder.openOfferLibrary()" id="offerBuilderLibraryBtn" class="ob-btn ob-btn--secondary">
+                                    Offer Library
+                                </button>
                                 <button onclick="offerBuilder.saveOffer()" id="offerBuilderSaveBtn" class="ob-btn ob-btn--primary">
                                     Save Offer
                                 </button>
@@ -1360,9 +1355,13 @@
                                 <button onclick="offerBuilder.generateSampleOffer()" id="offerBuilderSampleBtn" class="ob-btn ob-btn--tertiary">
                                     Sample Offer
                                 </button>
+                                <button onclick="offerBuilder.showHelp()" class="ob-btn ob-btn--secondary ob-btn--icon" title="How to use" aria-label="How to use">
+                                    ?
+                                </button>
                             </div>
                         </div>
 
+                        <div id="offerBuilderBuilderView">
                         <div class="ob-workspace">
                         <!-- Build Order Strip -->
                         <div id="offerBuilderBuildOrder" class="ob-strip">
@@ -1415,7 +1414,10 @@
 
                                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start;">
                                         <div style="min-width: 0;">
-                                            <label style="display: block; font-size: 13px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Offer Name <span style="color: #ef4444;">*</span></label>
+                                            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 8px;">
+                                                <label style="display: block; font-size: 13px; font-weight: 700; color: var(--cobalt); margin: 0;">Offer Name <span style="color: #ef4444;">*</span></label>
+                                                <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder.suggestOfferTitle()" title="Generate a unique, memorable name">Suggest title</button>
+                                            </div>
                                             <input type="text" id="offerBuilderName" placeholder="e.g., Spring Security Bundle" oninput="offerBuilder.updateOfferName(this.value); offerBuilder.recalculateOffer();" style="width: 100%; height: 42px; padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px;">
                                             <div id="offerBuilderNameGuidance" style="font-size: 11px; color: #6b7280; margin-top: 6px; display: none;">Enter a clear, descriptive offer name</div>
                                             <div style="font-size: 11px; color: #64748b; margin-top: 6px; visibility: hidden;">Spacer</div>
@@ -1791,6 +1793,74 @@
                             
                             <!-- ========== RIGHT COLUMN ========== -->
                             <div id="offerBuilderRightColumn" style="display: flex; flex-direction: column; gap: 16px; position: relative; min-width: 0;">
+
+                                <!-- Offer Factory Workspace (single-call) -->
+                                <div id="obWorkspaceCard" class="ob-card" style="padding: 20px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap: 12px; margin-bottom: 12px;">
+                                        <div>
+                                            <h3 style="font-size: 14px; font-weight: 900; color: var(--cobalt); margin: 0;">Offer Factory</h3>
+                                            <p style="font-size: 11px; color: #6b7280; margin: 4px 0 0 0;">READY = brief exists + linked. Hydrates from one endpoint.</p>
+                                        </div>
+                                    </div>
+
+                                    <div style="display:grid; grid-template-columns: 320px 1fr; gap: 12px; align-items: stretch;">
+                                        <!-- LEFT RAIL: Offer Index -->
+                                        <div style="border: 1px solid rgba(148,163,184,0.30); border-radius: 14px; overflow: hidden; background: #ffffff; min-height: 520px; display:flex; flex-direction:column;">
+                                            <div style="padding: 12px; border-bottom: 1px solid rgba(148,163,184,0.20); background: linear-gradient(180deg, rgba(248,250,252,0.9), rgba(248,250,252,0.6));">
+                                                <div style="display:flex; gap: 8px; align-items:center;">
+                                                    <input id="obWorkspaceOfferIdInput" placeholder="Offer_ID (UUID)" style="flex: 1; min-width: 0; padding: 8px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 12px;" />
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.loadWorkspaceFromUi({ forceInput: true })">Open</button>
+                                                </div>
+                                                <div id="obWorkspaceStatus" style="margin-top: 8px; font-size: 11px; color: #6b7280;"></div>
+                                            </div>
+
+                                            <div style="padding: 10px 12px 6px; font-size: 12px; font-weight: 900; color: #0f172a;">READY</div>
+                                            <div id="obIndexReadyList" style="padding: 0 8px; overflow:auto; max-height: 160px;"></div>
+
+                                            <div style="padding: 10px 12px 6px; font-size: 12px; font-weight: 900; color: #0f172a; border-top: 1px solid rgba(148,163,184,0.18);">DRAFTS / NEEDS EXPORT</div>
+                                            <div id="obIndexDraftList" style="padding: 0 8px; overflow:auto; max-height: 160px;"></div>
+
+                                            <div style="padding: 10px 12px 6px; font-size: 12px; font-weight: 900; color: #0f172a; border-top: 1px solid rgba(148,163,184,0.18);">BROKEN</div>
+                                            <div id="obIndexBrokenList" style="padding: 0 8px 10px; overflow:auto; flex: 1;"></div>
+                                        </div>
+
+                                        <!-- RIGHT: Workspace -->
+                                        <div style="border: 1px solid rgba(148,163,184,0.30); border-radius: 14px; overflow: hidden; background: #ffffff; min-height: 520px; display:flex; flex-direction:column;">
+                                            <div style="padding: 12px; border-bottom: 1px solid rgba(148,163,184,0.20); background: linear-gradient(180deg, rgba(248,250,252,0.9), rgba(248,250,252,0.6)); position: sticky; top: 0; z-index: 5;">
+                                                <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap: wrap;">
+                                                    <div style="min-width: 240px; flex: 1;">
+                                                        <div id="obWsOfferName" style="font-size: 13px; font-weight: 1000; color: var(--cobalt);">No offer selected</div>
+                                                        <div style="margin-top: 4px; display:flex; gap: 8px; align-items:center; flex-wrap:wrap;">
+                                                            <span id="obWsLifecyclePill" style="display:inline-flex; align-items:center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 900; border: 1px solid rgba(148,163,184,0.35); color: #475569; background: rgba(248,250,252,0.9);">—</span>
+                                                            <span id="obWsOfferId" style="font-size: 11px; color: #6b7280; font-family: ui-monospace, monospace;">—</span>
+                                                        </div>
+                                                    </div>
+                                                    <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                                                        <button id="obWsNamingBtn" type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.openNamingDrawer()">Auto-fix naming</button>
+                                                        <button id="obWsPrimaryCta" type="button" class="ob-btn ob-btn--primary ob-btn--small" onclick="offerBuilder.workspacePrimaryCta()" disabled>—</button>
+                                                    </div>
+                                                </div>
+                                                <div style="display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" id="obWsTabOverview" onclick="offerBuilder.setWorkspaceTab('overview')">Overview</button>
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" id="obWsTabFrameworks" onclick="offerBuilder.setWorkspaceTab('frameworks')">Frameworks</button>
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" id="obWsTabBrief" onclick="offerBuilder.setWorkspaceTab('brief')">Brief</button>
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" id="obWsTabDeliverables" onclick="offerBuilder.setWorkspaceTab('deliverables')">Deliverables</button>
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" id="obWsTabResources" onclick="offerBuilder.setWorkspaceTab('resources')">Resources</button>
+                                                </div>
+                                            </div>
+
+                                            <div id="obWorkspaceContent" style="padding: 12px; overflow:auto; flex: 1;"></div>
+
+                                            <div id="obNamingDrawer" style="display:none; border-top: 1px solid rgba(148,163,184,0.20); background: #ffffff;">
+                                                <div style="padding: 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px;">
+                                                    <div style="font-size: 12px; font-weight: 1000; color: var(--cobalt);">Auto-fix naming — results</div>
+                                                    <button type="button" class="ob-btn ob-btn--secondary ob-btn--small" onclick="offerBuilder.closeNamingDrawer()">Close</button>
+                                                </div>
+                                                <div id="obNamingDrawerBody" style="padding: 0 12px 12px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                                 
                                 <!-- Standards Panel -->
                                 <div id="offerBuilderStandards" class="ob-card" style="padding: 20px;">
@@ -1892,6 +1962,116 @@
 
                         
                     </div>
+                                            </div>
+                                            </div>
+
+                                            <div id="offerBuilderOfferLibraryView" style="display:none;">
+                                                <div class="ob-workspace">
+                                                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap: 12px; flex-wrap:wrap; margin-bottom: 12px;">
+                                                        <div style="min-width: 320px; flex: 1;">
+                                                            <div style="font-size: 18px; font-weight: 1000; color: var(--cobalt); margin-bottom: 6px;">Offer Library</div>
+                                                            <div style="font-size: 12px; color:#475569; line-height: 1.5;">Shows READY offers only (Offer Brief deliverable exists and is linked).</div>
+                                                        </div>
+                                                        <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                                                            <button id="obOfferLibraryBulkAutoTitleBtn" class="ob-btn ob-btn--secondary" onclick="offerBuilder.autoTitleWeakOffersBulk()" title="Bulk-fix weak offer names in the library" style="display:none;">Auto-title weak offers</button>
+                                                            <button id="obOfferLibraryBulkFrameworksBtn" class="ob-btn ob-btn--secondary" onclick="offerBuilder.generateFrameworksForVisibleOffersMissing()" title="Generate frameworks for visible offers that are missing them">Generate frameworks (missing)</button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom: 12px;">
+                                                        <input id="obOfferLibrarySearch" placeholder="Search offers…" oninput="offerBuilder.setOfferLibraryQuery(this.value)" style="flex: 1; min-width: 240px; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800; color: #0f172a; background: #fff;" />
+                                                        <select id="obOfferLibrarySort" onchange="offerBuilder.setOfferLibrarySort(this.value)" style="height: 40px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 900; color: #0f172a; background: #fff;">
+                                                            <option value="updated_desc" selected>Sort: Newest</option>
+                                                            <option value="updated_asc">Sort: Oldest</option>
+                                                            <option value="name_asc">Sort: Name A→Z</option>
+                                                            <option value="name_desc">Sort: Name Z→A</option>
+                                                        </select>
+                                                        <select id="obOfferLibraryFw" onchange="offerBuilder.setOfferLibraryFrameworksFilter(this.value)" style="height: 40px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 900; color: #0f172a; background: #fff;">
+                                                            <option value="all" selected>Frameworks: All</option>
+                                                            <option value="yes">Frameworks: Yes</option>
+                                                            <option value="no">Frameworks: No</option>
+                                                        </select>
+                                                    </div>
+
+                                                    <div id="obOfferLibraryShell">
+                                                        <div id="obOfferLibrarySidebar">
+                                                            <div id="obOfferLibraryMeta" style="padding: 12px 14px; font-size: 12px; color:#64748b; border-bottom: 1px solid #f1f5f9;">Ready</div>
+                                                            <div id="obOfferLibraryList" style="flex: 1;"></div>
+                                                        </div>
+                                                        <div id="obOfferLibraryDetail" class="ob-lib-detail" style="padding: 14px;">
+                                                            <div style="padding: 18px; border: 1px dashed #e5e7eb; border-radius: 14px; background:#fff; color:#64748b;">Select an offer to view details.</div>
+                                                        </div>
+                                                    </div>
+                                                    <div id="obOfferLibraryDrawerMount"></div>
+                                                </div>
+                                            </div>
+
+                                            <div id="offerBuilderAdFrameworksView" style="display:none;">
+                        <div class="ob-workspace">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom: 12px;">
+                                <div style="min-width: 280px; flex: 1;">
+                                    <div style="font-size: 18px; font-weight: 1000; color: var(--cobalt); margin-bottom: 6px;">Ad Frameworks</div>
+                                    <div style="font-size: 12px; color: #475569; line-height: 1.5;">Checklist + copy reference for TOF/BOF. Use <span style="font-weight:900;">Copy packet</span> / <span style="font-weight:900;">Copy finalized packet</span> to paste into docs. <span style="font-weight:900;">Submit for review</span> creates a Deliverable (PENDING) in Deliverables → Review Queue.</div>
+                                    <div style="margin-top: 8px; display:flex; align-items:center; gap: 10px; flex-wrap:wrap; font-size: 12px; color:#64748b;">
+                                        <span style="font-weight: 900; color:#0f172a;">Active offer:</span>
+                                        <span id="obAfActiveOffer" style="font-weight: 900; color:#334155;">—</span>
+                                        <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" style="padding: 6px 10px; font-weight: 900;" onclick="offerBuilder.setSubTab('library')">Pick from Library</button>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap: 8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.copyPacket()">Copy packet</button>
+                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.copyFinalPacket()">Copy finalized packet</button>
+                                    <button type="button" class="ob-btn ob-btn--secondary" onclick="adFrameworks.submitFinalPacket()">Submit for review</button>
+                                </div>
+                            </div>
+
+                            <div class="af-topbar" style="margin-bottom: 12px;">
+                                <div class="af-field" style="flex: 1 1 320px;">
+                                    <div class="af-label">Keyword / Title</div>
+                                    <input id="obAfKeyword" class="form-input" placeholder="e.g., Same-day TV Mounting" />
+                                    <div class="af-help">Primary input. Auto-fills Offer/Campaign + Angle unless you override below.</div>
+                                </div>
+                                <div class="af-field" style="flex: 0 0 auto; min-width: 260px;">
+                                    <div class="af-label">Stage</div>
+                                    <div class="af-tabs" role="tablist" aria-label="Funnel stage">
+                                        <button type="button" class="af-tab" id="obAfTabTOF" onclick="adFrameworks.setStage('TOF')">TOF</button>
+                                        <button type="button" class="af-tab is-active" id="obAfTabBOF" onclick="adFrameworks.setStage('BOF')">BOF</button>
+                                    </div>
+                                    <div class="af-chiprow" style="margin-top: 8px;">
+                                        <label class="af-chip" style="cursor:pointer; user-select:none;">
+                                            <input id="obAfIncludePriceAnchor" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
+                                            Include Price Anchor
+                                        </label>
+                                        <label class="af-chip" style="cursor:pointer; user-select:none;">
+                                            <input id="obAfIncludeObjectionKiller" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
+                                            Include Objection Killer
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <details class="af-acc" style="margin-bottom: 12px;">
+                                <summary>Advanced fields (auto-filled)</summary>
+                                <div class="af-acc-body">
+                                    <div class="af-topbar" style="margin: 0;">
+                                        <div class="af-field" style="flex: 1 1 280px;">
+                                            <div class="af-label">Offer / Campaign</div>
+                                            <input id="obAfOfferName" class="form-input" placeholder="e.g., TV Mounting Bundle" />
+                                            <div class="af-help">Defaults to your Offer Builder offer name or Keyword if blank.</div>
+                                        </div>
+                                        <div class="af-field" style="flex: 1 1 280px;">
+                                            <div class="af-label">Angle / Concept</div>
+                                            <input id="obAfAngle" class="form-input" placeholder="e.g., Same-day install / clean look / safety" />
+                                            <div class="af-help">Angle = the message lens. Asset = the specific ad you ship.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <div id="offerBuilderOfferFrameworksAi" style="margin-bottom: 12px;"></div>
+
+                            <div id="offerBuilderAdFrameworkBody"></div>
+                        </div>
                     </div>
                     <!-- End offer builder workspace -->
                 </div>
@@ -1955,72 +2135,178 @@
 
         <!-- ADD TASK MODAL -->
         <div class="task-modal-overlay" id="addTaskModal" onclick="closeAddTaskModal(event)">
-            <div class="task-modal" onclick="event.stopPropagation()" style="max-width: 600px;">
+            <div class="task-modal task-creator-modal" onclick="event.stopPropagation()">
                 <div class="task-modal-header">
                     <div style="flex: 1;">
                         <div class="task-title" style="font-size: 24px; margin-bottom: 8px;">Add New Task</div>
-                        <div style="color: var(--cobalt); font-size: 14px;">Create a task or let AI write the SOP for you</div>
+                        <div style="color: var(--cobalt); font-size: 14px;">Quick Task or Built Task (AI with guardrails)</div>
                     </div>
-                    <button class="task-modal-close" onclick="closeAddTaskModal()">X</button>
+                    <button class="task-modal-close" onclick="attemptCloseAddTaskModal('x')">X</button>
                 </div>
                 <div class="task-modal-body">
-                    <form id="addTaskForm" onsubmit="submitNewTask(event)">
+                    <form id="addTaskForm" onsubmit="submitTaskCreator(event)">
                         <div class="form-group">
-                            <label class="form-label">Task Title</label>
-                            <input type="text" id="newTaskTitle" class="form-input" placeholder="e.g., Check candidate emails" required>
-                        </div>
-                        
-                        <div class="form-row">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Priority</label>
-                                <select id="newTaskPriority" class="form-select">
-                                    <option value="HIGH">High</option>
-                                    <option value="MEDIUM" selected>Medium</option>
-                                    <option value="LOW">Low</option>
-                                </select>
+                            <label class="form-label">Mode</label>
+                            <div class="task-creator-mode-toggle">
+                                <button type="button" id="taskModeQuickBtn" class="btn-secondary" onclick="setTaskCreatorMode('quick')" style="flex:1; font-weight: 800;">Quick Task</button>
+                                <button type="button" id="taskModeBuiltBtn" class="btn-secondary" onclick="setTaskCreatorMode('built')" style="flex:1; font-weight: 800;">Built Task</button>
                             </div>
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Due Date</label>
-                                <div style="display:flex; gap:8px;">
-                                    <input type="date" id="newTaskDueDate" class="form-input" style="flex:1;">
-                                    <input type="time" id="newTaskDueTime" class="form-input" style="flex:1;">
-                                    <button type="button" class="btn-secondary" onclick="openCalendarModal()" title="Schedule"><span style="font-weight:900;">Cal</span></button>
+                            <div id="taskCreatorModeHint" style="margin-top: 8px; font-size: 12px; color: #6b7280;"></div>
+                        </div>
+
+                        <div id="taskCreatorStickyBar" class="task-creator-stickybar" style="display:none;">
+                            <div class="task-creator-stickybar-left">
+                                <div id="taskCreatorGateHint" style="font-size: 12px; color: #334155; font-weight: 800;"></div>
+                                <div id="taskCreatorAutosaveHint" style="font-size: 12px; color: #6b7280;"></div>
+                            </div>
+                            <div class="task-creator-stickybar-right">
+                                <button type="button" class="btn-ghost" onclick="taskCreatorDuplicate()" id="taskCreatorDuplicateBtn" style="display:none;">Duplicate</button>
+                                <button type="button" class="btn-ai" onclick="taskCreatorGenerateDetails()" id="taskCreatorGenerateBtn" style="display:none;">
+                                    <span style="font-weight:900;">Generate details</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="taskCreatorBuiltSection" style="display:none;">
+                            <div class="form-group">
+                                <div class="task-brief-label-row">
+                                    <label class="form-label" style="margin:0;">Explain task</label>
+                                    <button type="button" class="btn-mic" data-dictation-target="builtRawInputText" onclick="taskCreatorStartDictation('builtRawInputText')" title="Dictate" aria-label="Dictate" aria-pressed="false">
+                                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                            <path d="M19 11a7 7 0 0 1-14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                            <path d="M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                            <path d="M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <textarea id="builtRawInputText" class="form-textarea" placeholder="Say it or type it. What do you want done?" oninput="taskCreatorBuiltOnInput()"></textarea>
+                                <div style="margin-top: 6px; font-size: 12px; color: #64748b;">We’ll transcribe and suggest title, priority, category, and a plan. Nothing auto-applies.</div>
+                            </div>
+
+                            <div class="form-group">
+                                <label class="form-label">Outcome / Definition of Done (required)</label>
+                                <textarea id="builtOutcomeText" class="form-textarea" placeholder="What does 'done' look like? Be specific." oninput="taskCreatorBuiltOnInput()"></textarea>
+                            </div>
+
+                            <details id="taskCreatorBuiltAdvanced" style="margin-top: 6px;">
+                                <summary style="cursor:pointer; font-weight: 900; color: #0a2a5a; font-size: 13px;">Optional details</summary>
+                                <div style="margin-top: 12px;">
+                                    <div class="form-group">
+                                        <label class="form-label">Context (optional)</label>
+                                        <textarea id="builtContextText" class="form-textarea" placeholder="Background, where to look, who owns it, what system." oninput="taskCreatorBuiltOnInput()"></textarea>
+                                    </div>
+
+                                    <div class="form-group">
+                                        <label class="form-label">Constraints (optional)</label>
+                                        <textarea id="builtConstraintsText" class="form-textarea" placeholder="Do not do X, keep Y unchanged, must use Z." oninput="taskCreatorBuiltOnInput()"></textarea>
+                                    </div>
+                                </div>
+                            </details>
+
+                            <div class="form-group" style="margin-top: 14px;">
+                                <div id="taskCreatorSuggestionsPanel" style="display:none; margin-bottom: 12px; border: 1px solid rgba(20,147,255,0.25); background: rgba(20,147,255,0.06); border-radius: 12px; padding: 12px;">
+                                    <div style="display:flex; align-items:center; justify-content:space-between; gap: 10px; flex-wrap: wrap;">
+                                        <div style="font-weight: 900; color: #0a2a5a;">AI Suggestions</div>
+                                        <button type="button" class="btn-ghost" onclick="taskCreatorApplySuggestions()">Apply suggestions</button>
+                                    </div>
+                                    <div id="taskCreatorSuggestionsText" style="margin-top: 8px; font-size: 13px; color: #0f172a; line-height: 1.5;"></div>
+                                    <div style="margin-top: 6px; font-size: 12px; color: #475569;">Nothing auto-applies. Click Apply if you agree.</div>
+                                </div>
+
+                                <label class="form-label">Preview (AI Details)</label>
+                                <div id="taskCreatorPreview" style="border: 2px solid #e5e7eb; border-radius: 10px; padding: 12px; font-size: 13px; line-height: 1.5; color: #111827; background: #ffffff;">
+                                    <div style="color:#6b7280;">Nothing generated yet.</div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="form-row" style="display: flex; gap: 16px;">
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Recurrence</label>
-                                <select id="newTaskRecurrence" class="form-select">
-                                    <option value="none" selected>None</option>
-                                    <option value="daily">Daily</option>
-                                    <option value="weekly">Weekly</option>
-                                </select>
+                        <details id="taskCreatorManualMeta" class="task-creator-manual-meta" open>
+                            <summary>Manual details</summary>
+                            <div style="margin-top: 12px;">
+                                <div class="form-group">
+                                    <label class="form-label">Task Title</label>
+                                    <input type="text" id="newTaskTitle" class="form-input" placeholder="e.g., Check candidate emails" required>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Category</label>
+                                    <select id="newTaskCategory" class="form-select">
+                                        <option value="">Select…</option>
+                                        <option value="Ads">Ads</option>
+                                        <option value="Offers">Offers</option>
+                                        <option value="Hiring">Hiring</option>
+                                        <option value="Ops">Ops</option>
+                                        <option value="Product">Product</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label">Priority</label>
+                                        <select id="newTaskPriority" class="form-select">
+                                            <option value="HIGH">High</option>
+                                            <option value="MEDIUM" selected>Medium</option>
+                                            <option value="LOW">Low</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label">Due Date</label>
+                                        <div class="task-creator-due-row">
+                                            <input type="date" id="newTaskDueDate" class="form-input" style="flex:1;">
+                                            <input type="time" id="newTaskDueTime" class="form-input" style="flex:1;">
+                                            <button type="button" class="btn-secondary btn-icon" onclick="openCalendarModal()" title="Schedule" aria-label="Schedule">
+                                                <span style="font-weight:900;">Cal</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="form-label">Assigned To</label>
+                                    <select id="newTaskAssignedTo" class="form-select"></select>
+                                    <div style="margin-top: 6px; font-size: 12px; color: #64748b;">Only active employees are selectable (prevents typos).</div>
+                                </div>
+
+                                <div class="form-row" style="display: flex; gap: 16px; flex-wrap: wrap;">
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label">Recurrence</label>
+                                        <select id="newTaskRecurrence" class="form-select">
+                                            <option value="none" selected>None</option>
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly">Weekly</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex: 1;">
+                                        <label class="form-label">Retention (days in Done)</label>
+                                        <select id="newTaskRetention" class="form-select">
+                                            <option value="1">1 day</option>
+                                            <option value="3">3 days</option>
+                                            <option value="7" selected>7 days</option>
+                                            <option value="14">14 days</option>
+                                            <option value="30">30 days</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">Retention (days in Done)</label>
-                                <select id="newTaskRetention" class="form-select">
-                                    <option value="1">1 day</option>
-                                    <option value="3">3 days</option>
-                                    <option value="7" selected>7 days</option>
-                                    <option value="14">14 days</option>
-                                    <option value="30">30 days</option>
-                                </select>
+                        </details>
+
+                        <div id="taskCreatorQuickSection">
+                            <div class="form-group">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <label class="form-label" style="margin-bottom: 0;">Description / Rough Notes</label>
+                                    <button type="button" onclick="polishTaskDescription()" class="btn-magic">AI Polish</button>
+                                </div>
+                                <textarea id="newTaskDescription" class="form-textarea" placeholder="Type a rough idea here (e.g., 'Check emails and reply to candidates') and click AI Polish to turn it into a full SOP."></textarea>
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <label class="form-label" style="margin-bottom: 0;">Description / Rough Notes</label>
-                                <button type="button" onclick="polishTaskDescription()" class="btn-magic">AI Polish</button>
+                        <div class="task-modal-actions task-creator-actions">
+                            <div class="task-creator-actions-right">
+                                <button type="button" class="btn-secondary" onclick="attemptCloseAddTaskModal('cancel')">Cancel</button>
+                                <button type="submit" class="btn-primary" id="taskCreatorSubmitBtn">Save Task</button>
                             </div>
-                            <textarea id="newTaskDescription" class="form-textarea" placeholder="Type a rough idea here (e.g., 'Check emails and reply to candidates') and click AI Polish to turn it into a full SOP."></textarea>
-                        </div>
-
-                        <div class="task-modal-actions">
-                            <button type="button" class="btn-secondary" onclick="closeAddTaskModal()">Cancel</button>
-                            <button type="submit" class="btn-primary">Create Task</button>
                         </div>
                     </form>
                 </div>
@@ -2063,10 +2349,77 @@
                     <div id="modalTaskContent"></div>
                 </div>
                 <div class="task-modal-actions">
+                    <button id="modalTaskEditBtn" class="task-action-btn" type="button">Edit</button>
+                    <button id="modalTaskDeleteBtn" class="task-action-btn" type="button" style="background: #fee2e2; color: #991b1b;">Delete</button>
                     <button id="modalTaskAction" class="task-action-btn"></button>
                     <button class="task-action-btn task-close-btn" onclick="closeTaskModal()">Close</button>
                 </div>
             </div>
+            </div>
+        </div>
+
+        <!-- AD FRAMEWORKS (TOF/BOF) MODAL -->
+        <div class="task-modal-overlay" id="adFrameworkModal" onclick="adFrameworks.close(event)">
+            <div class="task-modal af-modal" onclick="event.stopPropagation()">
+                <div class="task-modal-header">
+                    <div style="flex: 1; padding-right: 16px;">
+                        <div class="task-title" style="font-size: 22px; margin-bottom: 8px;">Ad Frameworks (TOF / BOF)</div>
+                        <div style="color: #475569; font-size: 13px; line-height: 1.4;">Reference-only: checklist, naming rules, and copy blocks. Use Copy packet / Submit for review.</div>
+                    </div>
+                    <button class="task-modal-close" onclick="adFrameworks.close()">X</button>
+                </div>
+                <div class="task-modal-body">
+                    <div class="af-topbar">
+                        <div class="af-field" style="flex: 1 1 320px;">
+                            <div class="af-label">Keyword / Title</div>
+                            <input id="afKeyword" class="form-input" placeholder="e.g., Same-day TV Mounting" />
+                            <div class="af-help">Primary input. Auto-fills Offer/Campaign + Angle unless you override below.</div>
+                        </div>
+                        <div class="af-field" style="flex: 0 0 auto; min-width: 260px;">
+                            <div class="af-label">Stage</div>
+                            <div class="af-tabs" role="tablist" aria-label="Funnel stage">
+                                <button type="button" class="af-tab" id="afTabTOF" onclick="adFrameworks.setStage('TOF')">TOF</button>
+                                <button type="button" class="af-tab is-active" id="afTabBOF" onclick="adFrameworks.setStage('BOF')">BOF</button>
+                            </div>
+                            <div class="af-chiprow" style="margin-top: 8px;">
+                                <label class="af-chip" style="cursor:pointer; user-select:none;">
+                                    <input id="afIncludePriceAnchor" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
+                                    Include Price Anchor
+                                </label>
+                                <label class="af-chip" style="cursor:pointer; user-select:none;">
+                                    <input id="afIncludeObjectionKiller" type="checkbox" style="margin:0;" checked onchange="adFrameworks.render()" />
+                                    Include Objection Killer
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <details class="af-acc" style="margin-bottom: 12px;">
+                        <summary>Advanced fields (auto-filled)</summary>
+                        <div class="af-acc-body">
+                            <div class="af-topbar" style="margin: 0;">
+                                <div class="af-field" style="flex: 1 1 280px;">
+                                    <div class="af-label">Offer / Campaign</div>
+                                    <input id="afOfferName" class="form-input" placeholder="e.g., TV Mounting Bundle" />
+                                    <div class="af-help"><span class="af-term" tabindex="0" data-tip="The thing you are selling/promoting. Ex: 'TV Mounting Bundle' or 'Same-day TV Mounting'.">Offer</span> is the package/promise. Used in naming + task titles (still price-agnostic).</div>
+                                </div>
+                                <div class="af-field" style="flex: 1 1 280px;">
+                                    <div class="af-label">Angle / Concept</div>
+                                    <input id="afAngle" class="form-input" placeholder="e.g., Same-day install / clean look / safety" />
+                                    <div class="af-help"><span class="af-term" tabindex="0" data-tip="The message lens. Ex: 'Same-day install', 'No-mess guarantee', 'Safer for kids', 'Apartment-friendly'.">Angle</span> = what you’re leading with. <span class="af-term" tabindex="0" data-tip="The specific ad unit you ship. Ex: 'UGC 30s Video', 'Static 01', 'Carousel', '15s Retarget Video'.">Asset</span> = the actual ad built from that angle.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <div id="adFrameworkBody"></div>
+                </div>
+                <div class="task-modal-actions">
+                    <button type="button" class="btn-secondary" onclick="adFrameworks.close()">Close</button>
+                    <button type="button" class="btn-secondary" onclick="adFrameworks.copyPacket()">Copy packet</button>
+                    <button type="button" class="btn-secondary" onclick="adFrameworks.copyFinalPacket()">Copy finalized packet</button>
+                    <button type="button" class="btn-secondary" onclick="adFrameworks.submitFinalPacket()">Submit for review</button>
+                </div>
             </div>
         </div>
 
@@ -2082,7 +2435,7 @@
         </div>
     </div> <!-- End #h2s-app -->
 
-        <script src="./Dash.js"></script>
+    <script src="./dash.js" defer></script>
 </body>
 </html>
 

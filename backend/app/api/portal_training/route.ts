@@ -102,7 +102,7 @@ function normalizeVideo(row: TrainingVideoRow, opts?: { china?: boolean }) {
   if (!id) return null;
 
   const title = String(row?.title || '').trim() || 'Untitled';
-  const module = String(row?.module || row?.category || 'General').trim() || 'General';
+  const moduleName = String(row?.module || row?.category || 'General').trim() || 'General';
   const durationSec = Number(row?.duration_sec || 0) || 0;
   const thumb = row?.thumbnail_url || row?.thumb || null;
 
@@ -123,8 +123,8 @@ function normalizeVideo(row: TrainingVideoRow, opts?: { china?: boolean }) {
     id,
     video_id: id,
     title,
-    module,
-    category: module,
+    module: moduleName,
+    category: moduleName,
     duration_sec: durationSec,
     thumbnail: null,
     thumbnail_url: thumb,
@@ -179,14 +179,14 @@ function scoreRecommend(queryRaw: string, videos: any[]) {
     const id = String(v?.id || v?.video_id || '').trim();
     const title = String(v?.title || '').toLowerCase();
     const desc = String(v?.description || '').toLowerCase();
-    const module = String(v?.module || v?.category || '').toLowerCase();
+    const moduleName = String(v?.module || v?.category || '').toLowerCase();
     const tags = Array.isArray(v?.tags) ? v.tags.map((t: any) => String(t).toLowerCase()) : [];
 
     let score = 0;
     for (const t of tokens) {
       if (!t) continue;
       if (title.includes(t)) score += 6;
-      if (module.includes(t)) score += 3;
+      if (moduleName.includes(t)) score += 3;
       if (desc.includes(t)) score += 2;
       if (tags.some((x: string) => x.includes(t))) score += 2;
     }

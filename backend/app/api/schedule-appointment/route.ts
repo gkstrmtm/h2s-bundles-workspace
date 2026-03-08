@@ -621,7 +621,7 @@ export async function POST(request: Request) {
         setIfPresentAndEmpty('zip_code', zip);
 
         if (Object.keys(patch).length > 1) {
-          const { error: addrErr } = await main.from('h2s_orders').update(patch).eq('id', canonicalOrderId);
+          const { error: addrErr } = await main.from('h2s_orders').update(patch).eq('id', order.id);
           if (addrErr) console.warn('[Schedule] Order address hydration failed:', addrErr);
         }
       } catch (e) {

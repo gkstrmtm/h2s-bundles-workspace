@@ -88,17 +88,137 @@ export async function POST(request: Request) {
     }
     const sb = dispatchClient;
 
-    // 2. DETERMINISTIC OWNERSHIP CHECK: Update with WHERE clause enforcing ownership
-    console.log(`[COMPLETE_JOB_UPDATE_START] cid=${cid} updating job with ownership check...`);
-    
+    // Resolve schema (jobs table + assignments table) so ownership checks work across deployments.
+    const schema = await resolveDispatchSchema(sb, { preferProValue: payload.sub, preferEmailValue: payload.email });
+    const jobsTable = schema?.jobsTable || 'h2s_dispatch_jobs';
+    const jobIdCol = schema?.jobsIdCol || 'job_id';
+    const jobStatusCol = schema?.jobsStatusCol || 'status';
+
+    const assignTable = schema?.assignmentsTable || 'h2s_dispatch_job_assignments';
+    const assignJobCol = schema?.assignmentsJobCol || 'job_id';
+    const assignProCol = schema?.assignmentsProCol || 'pro_id';
+    const assignStateCol = schema?.assignmentsStateCol || 'assign_state';
+
+    const proValues = Array.from(new Set([payload.sub, payload.email].filter(Boolean).map((v) => String(v).trim()).filter(Boolean)));
+    const proCols = Array.from(
+      new Set([
+        assignProCol,
+        'pro_id',
+        'tech_id',
+        'assigned_pro_id',
+        'technician_id',
+        'user_id',
+        'pro_email',
+        'tech_email',
+        'email',
+      ].filter(Boolean))
+    );
+
+    // Ownership enforcement:
+    // - Prefer accepted/assigned rows in assignments table
+    // - Fall back to checking common pro columns on the job row
+    let ownershipOk = false;
+    let ownershipDebug: any = { checked: [] as any[] };
+
+    // 2a) Check assignments table first
+    for (const col of proCols) {
+      for (const val of proValues) {
+        try {
+          const probe = await sb.from(assignTable).select('*').eq(assignJobCol as any, jobId).eq(col as any, val).limit(5);
+          if (!probe.error && Array.isArray(probe.data) && probe.data.length) {
+            const rows = probe.data;
+            const getState = (r: any) => String(r?.[assignStateCol] ?? r?.assign_state ?? r?.state ?? r?.status ?? '').toLowerCase().trim();
+            const okStates = new Set(['accepted', 'assigned', 'scheduled', 'done']);
+            const denyStates = new Set(['declined', 'rejected', 'cancelled', 'canceled']);
+
+            // If the table has no usable state column, treat any match as ownership.
+            const anyHasState = rows.some((r: any) => Boolean(getState(r)));
+            if (!anyHasState) {
+              ownershipOk = true;
+              ownershipDebug.checked.push({ table: assignTable, mode: 'assignment_match_no_state', col, val, rows: rows.length });
+              break;
+            }
+
+            // Otherwise require an allowed state and disallow explicit declines.
+            const hasAllowed = rows.some((r: any) => okStates.has(getState(r)));
+            const hasDenied = rows.some((r: any) => denyStates.has(getState(r)));
+            ownershipDebug.checked.push({ table: assignTable, mode: 'assignment_match_with_state', col, val, rows: rows.length, hasAllowed, hasDenied });
+
+            if (hasAllowed && !hasDenied) {
+              ownershipOk = true;
+              break;
+            }
+          } else {
+            ownershipDebug.checked.push({ table: assignTable, mode: 'assignment_miss', col, val, error: probe.error?.message || null });
+          }
+        } catch (e: any) {
+          ownershipDebug.checked.push({ table: assignTable, mode: 'assignment_probe_exception', col, val, error: e?.message || String(e) });
+        }
+      }
+      if (ownershipOk) break;
+    }
+
+    // 2b) Fall back: check job row pro columns (some schemas store ownership on jobs)
+    let jobRow: any = null;
+    if (!ownershipOk) {
+      try {
+        const { data, error } = await sb.from(jobsTable).select('*').eq(jobIdCol as any, jobId).maybeSingle();
+        if (!error && data) {
+          jobRow = data;
+          const jobProCols = [
+            'pro_id',
+            'tech_id',
+            'assigned_pro_id',
+            'technician_id',
+            'user_id',
+            'pro_email',
+            'tech_email',
+            'email',
+            'assigned_email',
+            'assigned_to_email',
+            'assigned_to',
+            'recipient_id',
+          ];
+
+          for (const c of jobProCols) {
+            const v = String(jobRow?.[c] ?? '').trim();
+            if (!v) continue;
+            if (proValues.includes(v)) {
+              ownershipOk = true;
+              ownershipDebug.checked.push({ table: jobsTable, mode: 'job_row_match', col: c, val: v });
+              break;
+            }
+          }
+        }
+      } catch (e: any) {
+        ownershipDebug.checked.push({ table: jobsTable, mode: 'job_row_probe_exception', error: e?.message || String(e) });
+      }
+    }
+
+    if (!ownershipOk) {
+      console.error(`[COMPLETE_JOB_OWNERSHIP_FAILED] cid=${cid} job_id=${jobId} pro_id=${proId} ownership=0`);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Job not found or you do not own this job',
+          error_code: 'not_authorized',
+          build_id: config.buildId,
+          cid,
+        },
+        { status: 403, headers: corsHeaders(request) }
+      );
+    }
+
+    // 2. Update job status to done
+    console.log(`[COMPLETE_JOB_UPDATE_START] cid=${cid} updating job status to done...`);
+
     const { data: updatedRows, error: updateError } = await sb
-      .from('h2s_dispatch_jobs')
-      .update({ 
-        status: 'done',
-        updated_at: new Date().toISOString()
-      })
-      .eq('job_id', jobId)
-      .eq('recipient_id', proId) // OWNERSHIP ENFORCEMENT
+      .from(jobsTable)
+      .update({
+        [jobStatusCol]: 'done',
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq(jobIdCol as any, jobId)
       .select();
     
     if (updateError) {
@@ -112,16 +232,18 @@ export async function POST(request: Request) {
       }, { status: 500, headers: corsHeaders(request) });
     }
     
-    // Check if any rows were updated (proves ownership)
     if (!updatedRows || updatedRows.length === 0) {
-      console.error(`[COMPLETE_JOB_OWNERSHIP_FAILED] cid=${cid} job_id=${jobId} pro_id=${proId} rows_updated=0`);
-      return NextResponse.json({ 
-        ok: false, 
-        error: 'Job not found or you do not own this job',
-        error_code: 'not_authorized',
-        build_id: config.buildId,
-        cid
-      }, { status: 403, headers: corsHeaders(request) });
+      console.error(`[COMPLETE_JOB_UPDATE_EMPTY] cid=${cid} job_id=${jobId} pro_id=${proId} rows_updated=0`);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'Job not found',
+          error_code: 'not_found',
+          build_id: config.buildId,
+          cid,
+        },
+        { status: 404, headers: corsHeaders(request) }
+      );
     }
     
     const updatedJob = updatedRows[0];

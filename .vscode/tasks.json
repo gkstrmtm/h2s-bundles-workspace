@@ -2,6 +2,33 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Deploy Backend (canonical + verify)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-backend-and-verify.ps1 -SkipMigrations",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Deploy Backend (skip verify)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-backend-and-verify.ps1 -SkipVerify -SkipMigrations",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify Backend (no deploy)",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-backend-and-verify.ps1 -SkipDeploy -SkipMigrations",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Deploy Frontend (safe TLS)",
       "type": "shell",
       "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\deploy-frontend-safe.ps1",

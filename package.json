@@ -1,6 +1,7 @@
 {
   "scripts": {
     "vercel-build": "echo 'Static site - no build needed'",
+    "build:dash:singlefile": "node scripts/build-dash-singlefile.js",
     "deploy:frontend": "./scripts/deploy-frontend-prod-macos.sh",
     "deploy:frontend:refresh-ca": "./frontend/scripts/vercel-safe.sh --refresh-ca --prod --yes"
   },
@@ -8,6 +9,7 @@
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.17",
+    "jsdom": "^24.1.3",
     "terser": "^5.44.1",
     "typescript": "^5.3.3"
   },

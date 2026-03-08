@@ -20,22 +20,44 @@ const htmlPath = path.join(frontendDir, 'dash.html');
 const cssPath = path.join(frontendDir, 'dash.css');
 const jsPath = path.join(frontendDir, 'dash.js');
 
+function nowStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return [
+    d.getFullYear(),
+    pad(d.getMonth() + 1),
+    pad(d.getDate()),
+    '_',
+    pad(d.getHours()),
+    pad(d.getMinutes()),
+    pad(d.getSeconds()),
+  ].join('');
+}
+
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+}
+
 function fail(msg) {
   console.error(`ERROR: ${msg}`);
   process.exit(1);
 }
 
 function findFirstStyleBlock(html) {
-  const openIdx = html.indexOf('<style>');
-  if (openIdx < 0) return null;
-  const openEnd = html.indexOf('>', openIdx);
-  if (openEnd < 0) fail('Malformed <style> tag');
-  const closeIdx = html.indexOf('</style>', openEnd);
-  if (closeIdx < 0) fail('Missing </style> for first <style>');
+  const m = /<style\b[^>]*>/i.exec(html);
+  if (!m) return null;
+  const openIdx = m.index;
+  const openEnd = openIdx + m[0].length;
+
+  const tail = html.slice(openEnd);
+  const closeM = /<\/style\s*>/i.exec(tail);
+  if (!closeM) fail('Missing </style> for first <style>');
+  const closeIdx = openEnd + closeM.index;
+  const closeTagLen = closeM[0].length;
   return {
     start: openIdx,
-    end: closeIdx + '</style>'.length,
-    contentStart: openEnd + 1,
+    end: closeIdx + closeTagLen,
+    contentStart: openEnd,
     contentEnd: closeIdx,
   };
 }
@@ -77,6 +99,12 @@ function main() {
   const originalHtmlRaw = fs.readFileSync(htmlPath, 'utf8');
   const originalHtml = normalizeNewlines(originalHtmlRaw);
 
+  // Archive backup (avoid leaving extra dash.html.* files in frontend/)
+  const archiveDir = path.join(root, 'archive', 'dashboard-html', nowStamp());
+  ensureDir(archiveDir);
+  const archiveHtmlPath = path.join(archiveDir, 'dash.html');
+  fs.writeFileSync(archiveHtmlPath, originalHtmlRaw, 'utf8');
+
   const styleBlock = findFirstStyleBlock(originalHtml);
   if (!styleBlock) fail('No <style> block found in dash.html');
 
@@ -104,7 +132,7 @@ function main() {
 
   rewritten =
     rewritten.slice(0, scriptBlock2.start) +
-    '    <script src="./dash.js" defer></script>\n' +
+    '    <script src="./dash.js"></script>\n' +
     rewritten.slice(scriptBlock2.end);
 
   // Preserve original newline style as CRLF for Windows (matches repo file style)
@@ -118,6 +146,7 @@ function main() {
   console.log(`- Wrote: ${path.relative(root, cssPath)} (${cssContent.length} chars)`);
   console.log(`- Wrote: ${path.relative(root, jsPath)} (${jsContent.length} chars)`);
   console.log(`- Rewrote: ${path.relative(root, htmlPath)} (lines ${oldLineCount} -> ${newLineCount})`);
+  console.log(`- Archived original: ${path.relative(root, archiveHtmlPath)}`);
 }
 
 main();

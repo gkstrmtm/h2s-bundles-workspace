@@ -18,6 +18,36 @@
       "source": "/dash.html",
       "destination": "/dash",
       "permanent": false
+    },
+    {
+      "source": "/crm",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
+    },
+    {
+      "source": "/crm.html",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
+    },
+    {
+      "source": "/crm/:path*",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
+    },
+    {
+      "source": "/CRM",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
+    },
+    {
+      "source": "/CRM.html",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
+    },
+    {
+      "source": "/CRM/:path*",
+      "destination": "https://h2s-campaign-intake.vercel.app/crm",
+      "permanent": false
     }
   ],
   "rewrites": [
@@ -217,7 +247,17 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "/portal.html"
+      "destination": "https://h2s-backend.vercel.app/portal.html"
+    },
+    {
+      "source": "/portal/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "https://h2s-backend.vercel.app/portal.html"
     },
     {
       "source": "/portal.html",
@@ -227,7 +267,7 @@
           "value": "portal.home2smart.com"
         }
       ],
-      "destination": "/portal.html"
+      "destination": "https://h2s-backend.vercel.app/portal.html"
     },
     {
       "source": "/:path*",
@@ -344,6 +384,33 @@
     },
     {
       "source": "/portal.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/crm",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/crm.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/crm/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

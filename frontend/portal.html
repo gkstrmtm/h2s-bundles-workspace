@@ -11,10 +11,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
     <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="2026-02-10T00:00:00Z">
+    <meta name="h2s-dash-build" content="PORTAL_BUILD_20260306_115025_4809419">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
-            const DASH_BUILD_STAMP = '2026-02-10T00:00:00Z';
+            const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260306_115025_4809419';
             const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
@@ -105,7 +105,7 @@
       href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
         <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
-        <link rel="stylesheet" href="./dash.css">
+        <link rel="stylesheet" href="/dash.PORTAL_BUILD_20260306_115025_4809419.css">
 <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -271,9 +271,13 @@
                 </a>
 
                 <div class="app-sidebar-nav-divider"></div>
-                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Build</div>
-                <div style="padding: 8px 18px 14px 18px; font-size: 11px; font-weight: 800; color: rgba(15, 23, 42, 0.55);">
-                    {{BUILD_ID}}
+                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Version</div>
+                <div class="h2s-build" style="padding: 6px 16px 14px 16px;">
+                    <button class="h2s-build-pill" id="sidebarBuildPill" type="button" onclick="copyBuildIdFromEl('sidebarBuildId','sidebarBuildPill')" aria-label="Copy version">
+                        <span class="h2s-build-pill__label">Version</span>
+                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260306_115025_4809419</span>
+                        <span class="h2s-build-pill__copy">Copy</span>
+                    </button>
                 </div>
             </nav>
         </div>
@@ -587,20 +591,16 @@
                 <div class="task-modal-body">
                     <form id="hoursForm">
                         <div class="form-row" style="margin-bottom: 20px; align-items: flex-end; gap: 12px;">
-                            <div class="form-group" style="flex: 1.5;">
+                        <div style="color: var(--cobalt); font-size: 14px;">Add notes + links (AI Assist is optional)</div>
                                 <label class="form-label">Date</label>
                                 <input type="date" class="form-input" id="hoursDate" required>
                             </div>
                             <div class="form-group" style="flex: 1;">
                                 <label class="form-label">Start</label>
-                                <input type="time" class="form-input" id="hoursStart" onchange="calculateDuration()" required>
-                            </div>
-                            <div class="form-group" style="flex: 1;">
-                                <label class="form-label">End</label>
-                                <input type="time" class="form-input" id="hoursEnd" onchange="calculateDuration()" required>
-                            </div>
-                            <div class="form-group" style="flex: 0.8; text-align: center; background: #f1f3f4; border-radius: 8px; padding: 8px; height: 46px; display: flex; flex-direction: column; justify-content: center;" title="Calculated automatically from start and end times">
-                                <div style="font-size: 10px; color: #5f6368; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Hours Worked</div>
+                        <details id="taskCreatorAiAssistDetails" style="margin-bottom: 14px;">
+                            <summary style="cursor:pointer; font-weight: 900; color: #0a2a5a; font-size: 13px;">AI Assist (optional)</summary>
+                            <div id="taskCreatorModeHint" style="margin-top: 8px; font-size: 12px; color: #6b7280;"></div>
+                        </details>
                                 <div id="durationDisplay" style="font-size: 16px; font-weight: 900; color: var(--azure); line-height: 1;">0h</div>
                             </div>
                         </div>
@@ -732,20 +732,30 @@
                     
                     <!-- Quick Add Form -->
                     <form id="newTrainingForm" onsubmit="submitNewTraining(event)" style="background: white; padding: 32px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.12);">
-                        <h4 style="color: var(--cobalt); margin-bottom: 24px; font-size: 22px; font-weight: 700;">Upload New Training</h4>
+                        <h4 id="trainingFormTitle" style="color: var(--cobalt); margin-bottom: 24px; font-size: 22px; font-weight: 700;">Upload New Training</h4>
+                        <input type="hidden" id="editResourceId" value="">
                         
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                             <!-- Title -->
                             <div style="margin-bottom: 20px;">
                                 <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Video Title</label>
-                                <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers" required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+                                <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers (optional)" style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
                             </div>
 
-                            <!-- Loom URL -->
+                            <!-- Video URLs / Assets (supports multiple) -->
                             <div style="margin-bottom: 20px;">
-                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Loom Video URL</label>
-                                <input type="url" id="newTrainingURL" placeholder="https://loom.com/share/abc123..." required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: monospace;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
-                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Copy the share link from your Loom video</p>
+                                <label style="display: block; font-weight: 700; color: var(--cobalt); margin-bottom: 8px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Video / Asset Link(s)</label>
+                                <div id="newTrainingUrls" style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div class="training-url-row" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: stretch;">
+                                        <input type="text" class="training-title-input" placeholder="Part Title (Optional)" style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-weight: 600; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+                                        <input type="url" class="training-url-input" placeholder="https://loom.com/share/abc123..." required style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 15px; transition: all 0.2s; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='#e0e0e0'; this.style.boxShadow='none'">
+                                        <button type="button" class="training-url-remove" onclick="return removeTrainingUrlInput(this)" style="padding: 12px 14px; background: #f3f4f6; color: #111827; border: 2px solid #e5e7eb; border-radius: 12px; font-weight: 800; cursor: pointer;">Remove</button>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                    <button type="button" id="addTrainingUrlBtn" onclick="return addTrainingUrlInput('', '')" style="padding: 10px 14px; background: #bfdbfe; color: #0a2a5a; border: 2px solid #93c5fd; border-radius: 12px; font-weight: 900; cursor: pointer;">+ Add another link</button>
+                                </div>
+                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Add one link per row. The first link is the primary embed. Titles are optional.</p>
                             </div>
                         </div>
 
@@ -947,13 +957,13 @@
                         </div>
 
                         <!-- Service Selection & Upload Toolbar -->
-                        <div class="upload-toolbar" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:24px;">
-                            <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:20px;">
+                        <div class="upload-toolbar" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:24px;">
+                            <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px;">
                                 
                                 <!-- Service Select -->
                                 <div style="flex:1; min-width:200px;">
                                     <label for="ppService" style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; letter-spacing:0.5px; text-transform:uppercase;">
-                                        Service Category
+                                        Service
                                     </label>
                                     <div class="custom-select-wrapper" style="position:relative;">
                                         <select id="ppService" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
@@ -966,7 +976,7 @@
                                 <!-- Proof Type Select -->
                                 <div style="flex:1; min-width:260px;">
                                     <label for="ppIntent" style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; letter-spacing:0.5px; text-transform:uppercase;">
-                                        Proof Type <span style="color:#ef4444">*</span>
+                                        Type <span style="color:#ef4444">*</span>
                                     </label>
                                     <select id="ppIntent" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
                                         <option value="" selected>Select Proof Type (Required)</option>
@@ -977,11 +987,6 @@
                                 </div>
 
                                 <!-- Help Text (Visual Only) -->
-                                <div style="flex:2; padding-bottom:4px;">
-                                    <div style="font-size:13px; color:#64748b; line-height:1.4;">
-                                        Start your upload by selecting the category and type above. Images and videos will be tagged automatically.
-                                    </div>
-                                </div>
                             </div>
                         </div>
                         
@@ -2071,36 +2076,41 @@
 
         <!-- Training Completion Modal -->
         <div id="completionModal" class="completion-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.60); z-index: 10000; align-items: center; justify-content: center;">
-            <div class="completion-modal-content" style="background: #ffffff; border-radius: 16px; max-width: 820px; width: 94%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(10,42,90,0.30);">
-                <div style="padding: 20px 24px; border-bottom: 1px solid rgba(10,42,90,0.12); background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%); position: relative; overflow: hidden;">
-                    <div style="position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 2s infinite;"></div>
-                    <h3 style="color: #ffffff; font-size: 20px; font-weight: 900; margin: 0; position: relative; z-index: 1;" id="completionModalTitle">Training Completion Report</h3>
-                    <p style="color: rgba(255,255,255,0.85); font-size: 13px; margin: 6px 0 0; position: relative; z-index: 1;">Detailed responses build your knowledge profile and unlock better recommendations.</p>
+            <div class="completion-modal-content" style="background: #ffffff; border-radius: 14px; max-width: 720px; width: 94%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(10,42,90,0.30);">
+                <div style="padding: 16px 18px; border-bottom: 1px solid rgba(10,42,90,0.10); background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%);">
+                    <h3 style="color: #ffffff; font-size: 18px; font-weight: 900; margin: 0;" id="completionModalTitle">Training Completion Report</h3>
+                    <p style="color: rgba(255,255,255,0.85); font-size: 12px; margin: 6px 0 0;">Quick + specific notes improve recommendations.</p>
                 </div>
-                <div style="padding: 20px 24px;">
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">1. What specific concept, tool, or process did you learn?</label>
-                        <textarea id="conceptLearned" placeholder="Example: Learned how to build multi-step email automation in GoHighLevel. The process includes: 1) Create workflow in Automation tab, 2) Set up trigger (form submission or tag added), 3) Add email actions with delays between them, 4) Use merge fields for personalization, 5) Set up A/B testing for subject lines." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Be specific:</strong> Name the tool/feature, list the steps, mention settings or configurations.</p>
+                <div style="padding: 16px 18px;">
+
+                    <div id="completionAssetsBlock" style="display:none; margin-bottom: 14px; padding: 12px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px;">
+                        <div style="font-weight: 800; color: #0a2a5a; font-size: 13px; margin-bottom: 8px;">Videos watched</div>
+                        <div id="completionAssetsList" style="display:flex; flex-direction:column; gap: 8px;"></div>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">2. How will you apply this to client work or internal operations?</label>
-                        <textarea id="practicalApplication" placeholder="Example: Will use this to set up automated lead nurture sequences for HVAC clients. When a lead fills out ''Free Quote'' form, they''ll get: Day 1 = Welcome + service overview, Day 3 = Customer testimonials, Day 5 = Limited-time discount offer. This replaces manual follow-up emails and ensures no leads fall through cracks." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Real scenarios:</strong> Which client? What problem does it solve? What''s the outcome?</p>
+
+                    <div style="margin-bottom: 14px; padding: 12px; background: #f8fafc; border-left: 2px solid #0a2a5a; border-radius: 10px;">
+                        <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">1) What did you learn?</label>
+                        <textarea id="conceptLearned" placeholder="Example: Learned how to build multi-step email automation in GoHighLevel. Steps: 1) Create workflow, 2) Add trigger, 3) Add emails + delays, 4) Use merge fields, 5) Set up A/B testing." style="width: 100%; min-height: 84px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; line-height: 1.5; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">Name the tool/feature, list steps, mention settings.</p>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #f8fafc; border-left: 3px solid #0a2a5a; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #0a2a5a; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">3. What''s your next action or what will change in your workflow?</label>
-                        <textarea id="nextActions" placeholder="Example: Next steps: 1) Create template automation in our GHL agency account, 2) Document the setup process in ClickUp with screenshots, 3) Add ''Email Automation Setup'' to client onboarding checklist, 4) Test with 1-2 pilot clients before rolling out to all. This will save ~3 hours/week previously spent on manual follow-ups." style="width: 100%; min-height: 110px; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
-                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Actionable steps:</strong> What will you build, test, or implement? What changes in your process?</p>
+                    <div style="margin-bottom: 14px; padding: 12px; background: #f8fafc; border-left: 2px solid #0a2a5a; border-radius: 10px;">
+                        <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">2) How will you apply it?</label>
+                        <textarea id="practicalApplication" placeholder="Example: Use this to set up automated lead nurture sequences for HVAC clients (Day 1 welcome, Day 3 testimonials, Day 5 offer)." style="width: 100%; min-height: 84px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; line-height: 1.5; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">Which client/system? What changes? What outcome?</p>
                     </div>
-                    <div style="margin-bottom: 20px; padding: 16px; background: #fff7ed; border-left: 3px solid #f59e0b; border-radius: 8px;">
-                        <label style="display: block; font-weight: 900; color: #f59e0b; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px;">4. What''s unclear or what do you need help with? (Optional)</label>
-                        <textarea id="challengesQuestions" placeholder="Example: Not sure how to handle unsubscribes in the automation - do I need a separate workflow? Also unclear on best practice for email frequency (don''t want to spam). Need guidance on A/B testing setup - which metrics should I track?" style="width: 100%; min-height: 90px; padding: 12px; border: 2px solid #fed7aa; border-radius: 8px; font-size: 14px; line-height: 1.6; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fed7aa'"></textarea>
-                        <p style="color: #92400e; font-size: 12px; margin-top: 8px; margin-bottom: 0;"><strong>Flag gaps:</strong> What confused you? What needs clarification? What''s the next skill to learn?</p>
+                    <div style="margin-bottom: 14px; padding: 12px; background: #f8fafc; border-left: 2px solid #0a2a5a; border-radius: 10px;">
+                        <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">3) What’s your next action?</label>
+                        <textarea id="nextActions" placeholder="Example: Build template automation in agency account; document SOP; test on 1-2 clients; roll out." style="width: 100%; min-height: 84px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; line-height: 1.5; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+                        <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">What will you build/test/change?</p>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                    <div style="margin-bottom: 14px; padding: 12px; background: #fff7ed; border-left: 2px solid #f59e0b; border-radius: 10px;">
+                        <label style="display: block; font-weight: 800; color: #92400e; margin-bottom: 8px; font-size: 13px;">4) What’s unclear? (Optional)</label>
+                        <textarea id="challengesQuestions" placeholder="Example: Unclear on best practice for unsubscribes / frequency / A/B testing metrics." style="width: 100%; min-height: 72px; padding: 10px; border: 1px solid #fed7aa; border-radius: 10px; font-size: 13px; line-height: 1.5; resize: vertical; transition: border-color 0.2s;" onfocus="this.style.borderColor='#f59e0b'" onblur="this.style.borderColor='#fed7aa'"></textarea>
+                        <p style="color: #92400e; font-size: 12px; margin-top: 8px; margin-bottom: 0;">What should we clarify next?</p>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
                         <div>
-                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">Comprehension Level</label>
+                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 12px;">Comprehension</label>
                             <div class="star-rating" id="starRating" style="display: flex; gap: 8px; align-items: center;">
                                 <span class="star" data-rating="1" title="1 - Need to rewatch"></span>
                                 <span class="star" data-rating="2" title="2 - Understood basics"></span>
@@ -2108,17 +2118,17 @@
                                 <span class="star" data-rating="4" title="4 - Can apply with guidance"></span>
                                 <span class="star" data-rating="5" title="5 - Can apply independently"></span>
                             </div>
-                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">1 = rewatch needed  5 = ready to implement</p>
+                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">1 = rewatch, 5 = ready</p>
                         </div>
                         <div>
-                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 13px;">Time Spent (minutes)</label>
-                            <input type="number" id="timeSpent" value="30" min="1" style="width: 100%; padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'">
-                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">Total time including pauses/rewatches</p>
+                            <label style="display: block; font-weight: 800; color: #0a2a5a; margin-bottom: 8px; font-size: 12px;">Time spent (min)</label>
+                            <input type="number" id="timeSpent" value="30" min="1" style="width: 100%; padding: 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; transition: border-color 0.2s;" onfocus="this.style.borderColor='#0a2a5a'" onblur="this.style.borderColor='#e5e7eb'">
+                            <p style="color: #6b7280; font-size: 12px; margin-top: 8px; margin-bottom: 0;">Include pauses/rewatches</p>
                         </div>
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
-                        <button onclick="closeCompletionModal()" style="padding: 14px 18px; background: #f3f4f6; color: #0a2a5a; border: none; border-radius: 10px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Cancel</button>
-                        <button onclick="submitTrainingCompletion()" style="padding: 14px 18px; background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%); color: #ffffff; border: none; border-radius: 10px; font-weight: 900; font-size: 14px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 20px rgba(10,42,90,0.3)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"><span style="position: relative; z-index: 1;">Submit Training Report</span></button>
+                    <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; padding-top: 12px; border-top: 1px solid #e5e7eb;">
+                        <button onclick="closeCompletionModal()" style="padding: 12px 14px; background: #f3f4f6; color: #0a2a5a; border: none; border-radius: 10px; font-weight: 800; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.background='#e5e7eb'" onmouseout="this.style.background='#f3f4f6'">Cancel</button>
+                        <button onclick="submitTrainingCompletion()" style="padding: 12px 14px; background: linear-gradient(135deg, #0a2a5a 0%, #1a4a8a 100%); color: #ffffff; border: none; border-radius: 10px; font-weight: 900; font-size: 13px; cursor: pointer; transition: all 0.2s;" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 20px rgba(10,42,90,0.25)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">Submit</button>
                     </div>
                 </div>
             </div>
@@ -2426,7 +2436,235 @@
         </div>
     </div> <!-- End #h2s-app -->
 
-    <script src="./dash.js" defer></script>
+    <script src="/dash.PORTAL_BUILD_20260306_115025_4809419.js" defer></script>
+    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260306_115025_4809419" defer></script>
+
+    <script defer>
+        // Training Admin (portal.html) - minimal, HTML-local overrides
+        // Goal: ensure Edit is interactable and supports unlimited video parts + optional per-part titles.
+        (function () {
+            function el(id) { return document.getElementById(id); }
+            function safeStr(v) { return String(v == null ? '' : v); }
+
+            function getApiEndpoint() {
+                if (typeof API_URL !== 'undefined' && API_URL) return API_URL;
+                if (typeof DEFAULT_API_HOST !== 'undefined' && DEFAULT_API_HOST) return DEFAULT_API_HOST + '/api/v1';
+                return '/api/v1';
+            }
+
+            function ensurePanelOpen() {
+                var panel = el('trainingAdminPanel');
+                if (!panel) return null;
+                if (panel.style.display === 'none' || !panel.style.display) panel.style.display = 'block';
+                panel.style.pointerEvents = 'auto';
+                return panel;
+            }
+
+            function escapeHtml(s) {
+                return safeStr(s)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            }
+
+            window.addTrainingUrlInput = function (url, title) {
+                var container = el('newTrainingUrls');
+                if (!container) return false;
+
+                var row = document.createElement('div');
+                row.className = 'training-url-row';
+                row.style.display = 'grid';
+                row.style.gridTemplateColumns = '1fr 1fr auto';
+                row.style.gap = '10px';
+                row.style.alignItems = 'start';
+                row.style.marginBottom = '10px';
+
+                row.innerHTML =
+                    '<div style="flex:1">'
+                    + '<input type="text" class="training-title-input" placeholder="Part Title (Optional)" value="' + escapeHtml(title || '') + '"'
+                    + ' style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-weight: 600;">'
+                    + '</div>'
+                    + '<div style="flex:1">'
+                    + '<input type="url" class="training-url-input" placeholder="https://loom.com/share/..." value="' + escapeHtml(url || '') + '"'
+                    + ' style="width: 100%; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 14px; font-family: monospace;" required>'
+                    + '</div>'
+                    + '<button type="button" class="training-url-remove" style="padding: 14px; background: #fee2e2; color: #b91c1c; border: 2px solid #fecaca; border-radius: 12px; font-weight: 800; cursor: pointer; height: 100%;">✕</button>';
+
+                var removeBtn = row.querySelector('button.training-url-remove');
+                if (removeBtn) removeBtn.addEventListener('click', function () { window.removeTrainingUrlInput(removeBtn); });
+                container.appendChild(row);
+                return false;
+            };
+
+            window.removeTrainingUrlInput = function (btn) {
+                var row = btn && btn.closest ? btn.closest('.training-url-row') : null;
+                if (row) row.remove();
+                return false;
+            };
+
+            window.resetTrainingForm = function () {
+                var form = el('newTrainingForm');
+                if (form && form.reset) form.reset();
+
+                var urls = el('newTrainingUrls');
+                if (urls) {
+                    urls.innerHTML = '';
+                    window.addTrainingUrlInput('', '');
+                }
+
+                var editId = el('editResourceId');
+                if (editId) editId.value = '';
+
+                var title = el('trainingFormTitle');
+                if (title) title.textContent = 'Upload New Training';
+
+                var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+                if (submitBtn) submitBtn.textContent = 'Upload Training Video';
+            };
+
+            window.editTraining = async function (resourceId) {
+                try {
+                    ensurePanelOpen();
+                    var endpoint = getApiEndpoint();
+
+                    if (typeof showToast === 'function') showToast('Loading details...', 'info');
+
+                    var resp = await fetch(endpoint + '?action=training');
+                    var data = await resp.json();
+                    if (!data || !data.ok) throw new Error((data && data.error) ? data.error : 'Failed to load training');
+
+                    var resource = (data.training || []).find(function (r) { return r && r.Resource_ID === resourceId; });
+                    if (!resource) throw new Error('Resource not found');
+
+                    var editId = el('editResourceId');
+                    if (editId) editId.value = safeStr(resource.Resource_ID);
+
+                    var t = el('newTrainingTitle');
+                    if (t) t.value = safeStr(resource.Title);
+
+                    var d = el('newTrainingDescription');
+                    if (d) d.value = safeStr(resource.Description);
+
+                    var c = el('newTrainingCategory');
+                    if (c) c.value = safeStr(resource.Category || 'Home2Smart');
+
+                    var mins = el('newTrainingDuration');
+                    if (mins) mins.value = safeStr(resource.Estimated_Minutes || '');
+
+                    var urls = el('newTrainingUrls');
+                    if (urls) urls.innerHTML = '';
+
+                    var videos = Array.isArray(resource.videos) ? resource.videos : [];
+                    if (!videos.length && resource.URL) videos = [{ url: resource.URL, title: '' }];
+
+                    if (!videos.length) {
+                        window.addTrainingUrlInput('', '');
+                    } else {
+                        videos.forEach(function (v, idx) {
+                            var u = v && v.url ? v.url : '';
+                            var tt = v && v.title ? v.title : '';
+                            window.addTrainingUrlInput(u, tt || ('Part ' + (idx + 1)));
+                        });
+                    }
+
+                    var formTitle = el('trainingFormTitle');
+                    if (formTitle) formTitle.textContent = 'Edit Training Resource';
+
+                    var form = el('newTrainingForm');
+                    var submitBtn = form ? form.querySelector('button[type="submit"]') : null;
+                    if (submitBtn) submitBtn.textContent = 'Save Changes';
+
+                    var panel = el('trainingAdminPanel');
+                    if (panel && panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth' });
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Error loading resource: ' + (e && e.message ? e.message : e), 'error');
+                }
+            };
+
+            window.submitNewTraining = async function (event) {
+                if (event && event.preventDefault) event.preventDefault();
+                try {
+                    var endpoint = getApiEndpoint();
+
+                    var editId = safeStr(el('editResourceId') && el('editResourceId').value).trim();
+                    var title = safeStr(el('newTrainingTitle') && el('newTrainingTitle').value).trim();
+                    var description = safeStr(el('newTrainingDescription') && el('newTrainingDescription').value).trim();
+                    var category = safeStr(el('newTrainingCategory') && el('newTrainingCategory').value).trim();
+                    var minutesRaw = safeStr(el('newTrainingDuration') && el('newTrainingDuration').value).trim();
+                    var estimatedMinutes = minutesRaw ? (parseInt(minutesRaw, 10) || null) : null;
+
+                    var rows = Array.from(document.querySelectorAll('#newTrainingUrls .training-url-row'));
+                    var videos = [];
+                    rows.forEach(function (row) {
+                        var urlInput = row.querySelector('.training-url-input');
+                        var titleInput = row.querySelector('.training-title-input');
+                        var url = safeStr(urlInput && urlInput.value).trim();
+                        var partTitle = safeStr(titleInput && titleInput.value).trim();
+                        if (url) videos.push({ url: url, title: partTitle });
+                    });
+
+                    if (!videos.length) {
+                        if (typeof showToast === 'function') showToast('At least 1 video link required', 'error');
+                        return;
+                    }
+
+                    var assetUrls = videos.map(function (v) { return v.url; });
+                    var assetsMeta = {};
+                    videos.forEach(function (v) {
+                        if (v.title) assetsMeta[v.url] = { title: v.title };
+                    });
+
+                    var isEdit = !!editId;
+                    var action = isEdit ? 'updateTraining' : 'createTraining';
+
+                    var body = {
+                        title: title || null,
+                        type: 'Video',
+                        url: assetUrls[0],
+                        assets: assetUrls,
+                        assetsMeta: assetsMeta,
+                        description: description || null,
+                        category: category || 'Home2Smart',
+                        difficultyLevel: 'BEGINNER',
+                        estimatedMinutes: estimatedMinutes,
+                        skillsTaught: null,
+                        order: 0,
+                        createdBy: (typeof currentUser !== 'undefined' && currentUser) ? currentUser : 'portal'
+                    };
+                    if (isEdit) body.resourceId = editId;
+
+                    if (typeof showToast === 'function') showToast(isEdit ? 'Saving changes...' : 'Uploading training...', 'info');
+
+                    var resp = await fetch(endpoint + '?action=' + encodeURIComponent(action), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    var data = await resp.json().catch(function () { return null; });
+                    if (!data || !data.ok) throw new Error((data && data.error) ? data.error : ('Failed (' + resp.status + ')'));
+
+                    if (typeof showToast === 'function') showToast(isEdit ? 'Changes saved!' : 'Training uploaded!', 'success');
+                    window.resetTrainingForm();
+                    if (typeof loadAdminTrainingList === 'function') loadAdminTrainingList();
+                    if (typeof loadTrainingResources === 'function') loadTrainingResources(true);
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Failed to save training: ' + (e && e.message ? e.message : e), 'error');
+                }
+            };
+
+            // Ensure there's always at least one row on first open.
+            document.addEventListener('DOMContentLoaded', function () {
+                try {
+                    var urls = el('newTrainingUrls');
+                    if (!urls) return;
+                    var existing = urls.querySelectorAll('.training-url-row');
+                    if (!existing || existing.length === 0) window.addTrainingUrlInput('', '');
+                } catch (_) { }
+            });
+        })();
+    </script>
 </body>
 </html>
 

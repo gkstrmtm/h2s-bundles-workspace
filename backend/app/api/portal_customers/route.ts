@@ -3,6 +3,33 @@ import { getSupabaseDispatch } from '@/lib/supabase';
 import { verifyPortalToken } from '@/lib/auth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+
+function safeParseJson(value: any): any {
+  if (value == null) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  const s = value.trim();
+  if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
+  try {
+    return JSON.parse(s);
+  } catch {
+    try {
+      const inner = JSON.parse(s);
+      if (typeof inner === 'string') {
+        const innerTrim = inner.trim();
+        if (!innerTrim) return null;
+        if (innerTrim.length > MAX_JSON_PARSE_CHARS) return null;
+        return JSON.parse(innerTrim);
+      }
+      return inner;
+    } catch {
+      return null;
+    }
+  }
+}
+
 function readBearer(request: Request): string {
   const h = request.headers.get('authorization') || request.headers.get('Authorization') || '';
   const m = h.match(/^Bearer\s+(.+)$/i);
@@ -170,7 +197,7 @@ export async function GET(request: Request) {
       if (start < now || start > weekAhead) continue;
 
       // Try column first, fallback to metadata (consistent with frontend portal.html logic)
-      const metadata = (typeof job?.metadata === 'string' ? JSON.parse(job.metadata) : job?.metadata) || {};
+      const metadata = safeParseJson(job?.metadata) || job?.metadata || {};
       const customer_name = (customerNameCol ? job?.[customerNameCol] : null) || metadata?.customer_name || null;
       const customer_phone = (customerPhoneCol ? job?.[customerPhoneCol] : null) || metadata?.customer_phone || null;
       const customer_email = (customerEmailCol ? job?.[customerEmailCol] : null) || metadata?.customer_email || null;

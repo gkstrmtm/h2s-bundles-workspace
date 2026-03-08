@@ -8,25 +8,36 @@ import { enrichServiceName, extractCameraDetails } from '@/lib/dataOrchestration
 
 export const dynamic = 'force-dynamic';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+
 function safeParseJson(value: any): any {
   if (value == null) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
   const s = value.trim();
   if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(s);
   } catch {
     // Some rows are double-encoded JSON strings ("{...}")
     try {
       const inner = JSON.parse(s);
-      if (typeof inner === 'string') return JSON.parse(inner);
+      if (typeof inner === 'string') {
+        const innerTrim = inner.trim();
+        if (!innerTrim) return null;
+        if (innerTrim.length > MAX_JSON_PARSE_CHARS) return null;
+        return JSON.parse(innerTrim);
+      }
       return inner;
     } catch {
       return null;
     }
   }
 }
+
+const ORDERS_SELECT =
+  'order_id,created_at,status,service_name,address,city,state,zip,geo_lat,geo_lng,order_subtotal,subtotal,delivery_date,delivery_time,items,special_instructions,customer_name,metadata_json,metadata';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -417,7 +428,7 @@ async function fetchAvailableOffers(
         if (orderIds.length > 0) {
           const { data, error } = await ordersSb
             .from('h2s_orders')
-            .select('*')
+            .select(ORDERS_SELECT)
             .in('order_id', orderIds.slice(0, 500))
             .order('created_at', { ascending: false })
             .limit(Math.min(orderIds.length, 500));
@@ -430,10 +441,10 @@ async function fetchAvailableOffers(
         if (orders.length === 0) {
           const { data, error } = await ordersSb
             .from('h2s_orders')
-            .select('*')
+            .select(ORDERS_SELECT)
             .order('created_at', { ascending: false })
             // Larger window improves matching when dispatch jobs are older than the last 300 orders.
-            .limit(1500);
+            .limit(1000);
           if (!error) {
             orders = Array.isArray(data) ? data : [];
           }
@@ -943,7 +954,7 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
   if (orderIds.length > 0) {
     const { data, error } = await ordersSb
       .from('h2s_orders')
-      .select('*')
+      .select(ORDERS_SELECT)
       .in('order_id', orderIds.slice(0, 500))
       .order('created_at', { ascending: false })
       .limit(Math.min(orderIds.length, 500));
@@ -953,9 +964,9 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
   if (orders.length === 0) {
     const { data, error } = await ordersSb
       .from('h2s_orders')
-      .select('*')
+      .select(ORDERS_SELECT)
       .order('created_at', { ascending: false })
-      .limit(1500);
+      .limit(1000);
     if (!error) orders = Array.isArray(data) ? data : [];
   }
 
@@ -1125,7 +1136,7 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
 
       if (orderId) {
         try {
-          const { data, error } = await ordersClient.from('h2s_orders').select('*').eq('order_id', orderId).maybeSingle();
+          const { data, error } = await ordersClient.from('h2s_orders').select(ORDERS_SELECT).eq('order_id', orderId).maybeSingle();
           if (!error && data) order = data;
         } catch {
           // ignore
@@ -1135,7 +1146,7 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
       // Fallback: match by dispatch_job_id in metadata_json
       if (!order) {
         try {
-          const { data } = await ordersClient.from('h2s_orders').select('*').order('created_at', { ascending: false }).limit(200);
+          const { data } = await ordersClient.from('h2s_orders').select(ORDERS_SELECT).order('created_at', { ascending: false }).limit(200);
           const orders = Array.isArray(data) ? data : [];
           order =
             orders.find((o: any) => {

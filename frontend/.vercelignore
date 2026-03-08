@@ -1,0 +1,25 @@
+# Keep frontend deploy focused on canonical runtime assets.
+# This prevents shipping local backups/scratch files.
+
+# Environment / local settings
+.env*
+
+# Vercel local project metadata
+.vercel/
+
+# Local backup & scratch variants
+*.bak*
+dash.BROKEN_*.js
+temp_vercel_*
+temp-vercel-*
+
+# Development-only artifacts
+*.test.js
+
+# Scratch/alt snapshots used during debugging
+_base_*
+_dash_*
+_offerlib_*
+_pp_*
+_prod_*
+_target_*

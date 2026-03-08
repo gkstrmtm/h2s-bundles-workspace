@@ -1,0 +1,151 @@
+﻿        
+        if (mode === 'recommended') {
+            emptyMsg.innerHTML = '<div class="empty-icon">i</div><div class="empty-text">No specific recommendations yet.<br>Check out "All Training" to get started!</div>';
+        } else if (mode === 'inprogress') {
+            emptyMsg.innerHTML = '<div class="empty-icon"></div><div class="empty-text">No training history found.<br>Start a course from the "All" tab.</div>';
+        } else {
+            emptyMsg.innerHTML = '<div class="empty-icon">i</div><div class="empty-text">No training resources found.</div>';
+        }
+        container.appendChild(emptyMsg);
+    }
+}
+
+// Fetch recommendations from Analytics API and update counts
+async function loadRecommendationsForFilter() {
+    if (!currentUser) return;
+    
+    try {
+        // Use vaKnowledgeProfile endpoint instead of missing recommendations endpoint
+        const response = await fetch(`${API_URL}?action=vaKnowledgeProfile&vaName=${encodeURIComponent(currentUser)}`);
+        const data = await response.json();
+        
+        if (data.ok && data.vaKnowledgeProfile) {
+            const profile = data.vaKnowledgeProfile;
+            const raw = profile.Recommended_Trainings || '[]';
+            const recommendations = safeParseJSON(raw, []);
+            
+            // Extract Resource_IDs from recommendations
+            recommendedResourceIds = recommendations
+                .filter(r => r.resourceId)
+                .map(r => r.resourceId);
+            
+            // Update recommended count
+            document.getElementById('recommendedCount').textContent = recommendedResourceIds.length;
+        }
+    } catch (error) {
+    }
+}
+
+        // Load Training Resources
+        async function loadTrainingResources(silent = false) {
+            const container = document.getElementById('trainingContainer');
+            
+            // Only show spinner on initial load
+            if (!silent) {
+                container.innerHTML = '<div class="spinner"></div>';
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}?action=training`, { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                
+                if (data.ok) {
+                    const resources = data.training || data.resources || [];
+                    allTrainingResources = resources; // Store globally for filtering
+                    
+                    if (resources.length > 0) {
+                        renderTrainingResources(resources);
+                        loadAndDisplayKnowledgeProfile(); // Load VA's knowledge profile
+                    } else {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-icon"></div>
+                                <div class="empty-text">No training resources yet. Click "Manage Training" to add your first resource!</div>
+                            </div>
+                        `;
+                    }
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-icon">!</div>
+                            <div class="empty-text" style="color: var(--danger);">Error: ${data.error || 'Failed to load training resources'}</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">!</div>
+                        <div class="empty-text" style="color: var(--danger);">Error loading training resources: ${escapeHtml(error && error.message ? error.message : 'Unknown error')}</div>
+                    </div>
+                `;
+            }
+        }
+
+        // Toggle Admin Panel
+        function toggleAdminPanel() {
+            const panel = document.getElementById('trainingAdminPanel');
+            const isVisible = panel.style.display !== 'none';
+            panel.style.display = isVisible ? 'none' : 'block';
+            
+            if (!isVisible) {
+                loadAdminTrainingList();
+            }
+        }
+
+        // Load Admin Training List
+        async function loadAdminTrainingList() {
+            const container = document.getElementById('adminTrainingList');
+            container.innerHTML = '<div class="spinner"></div>';
+            
+            try {
+                const response = await fetch(`${API_URL}?action=training`);
+                const data = await response.json();
+                
+                if (data.ok) {
+                    const resources = data.training || [];
+                    if (resources.length === 0) {
+                        container.innerHTML = '<p style="color: #666;">No training resources yet.</p>';
+                        return;
+                    }
+                    
+                    const html = resources.map(resource => `
+                        <div style="padding: 20px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                            <div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
+                                <div style="flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                                        <h4 style="color: var(--cobalt); font-size: 16px; font-weight: 700; margin: 0;">${resource.Title}</h4>
+                                        <span style="background: #f3f4f6; color: #4b5563; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${resource.Type}</span>
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 12px; font-size: 13px; color: #6b7280; margin-bottom: 10px;">
+                                        <span>${getCategoryIcon(resource.Category)} ${resource.Category}</span>
+                                        <span>&bull;</span>
+                                        <span>${resource.Difficulty_Level || 'BEGINNER'}</span>
+                                        <span>&bull;</span>
+                                        <span>${resource.Estimated_Minutes || '?'} min</span>
+                                    </div>
+                                    
+                                    <p style="font-size: 14px; color: #4b5563; margin-bottom: 12px; line-height: 1.5;">${resource.Description || 'No description'}</p>
+                                    
+                                    <a href="${resource.URL}" target="_blank" style="font-size: 13px; color: var(--azure); font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">
+                                        View Resource <span>></span>
+                                    </a>
+                                </div>
+                                
+                                <div style="display: flex; flex-direction: column; gap: 8px; min-width: 100px;">
+                                    <button onclick="editTraining('${resource.Resource_ID}')" class="btn" style="padding: 8px 16px; font-size: 13px; background: white; color: var(--azure); border: 1px solid var(--azure); width: 100%; justify-content: center; border-radius: 8px; font-weight: 600;">
+                                        Edit
+                                    </button>
+                                    <button onclick="deleteTraining('${resource.Resource_ID}', '${resource.Title}')" class="btn" style="padding: 8px 16px; font-size: 13px; background: #fee2e2; color: var(--danger); border: 1px solid #fecaca; width: 100%; justify-content: center; border-radius: 8px; font-weight: 600;">
+                                        Delete
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    container.innerHTML = html;

@@ -9,25 +9,36 @@ import { enrichServiceName, extractCameraDetails } from '@/lib/dataOrchestration
 
 export const dynamic = 'force-dynamic';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+
 function safeParseJson(value: any): any {
   if (value == null) return null;
   if (typeof value === 'object') return value;
   if (typeof value !== 'string') return null;
   const s = value.trim();
   if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(s);
   } catch {
     // Some rows are double-encoded JSON strings ("{...}")
     try {
       const inner = JSON.parse(s);
-      if (typeof inner === 'string') return JSON.parse(inner);
+      if (typeof inner === 'string') {
+        const innerTrim = inner.trim();
+        if (!innerTrim) return null;
+        if (innerTrim.length > MAX_JSON_PARSE_CHARS) return null;
+        return JSON.parse(innerTrim);
+      }
       return inner;
     } catch {
       return null;
     }
   }
 }
+
+const ORDERS_SELECT =
+  'order_id,created_at,status,service_name,address,city,state,zip,geo_lat,geo_lng,order_subtotal,subtotal,delivery_date,delivery_time,items,special_instructions,customer_name,metadata_json,metadata';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -728,7 +739,7 @@ async function fetchAvailableOffers(
         if (orderIds.length > 0) {
           const { data, error } = await ordersSb
             .from('h2s_orders')
-            .select('*')
+            .select(ORDERS_SELECT)
             .in('order_id', orderIds.slice(0, 500))
             .order('created_at', { ascending: false })
             .limit(Math.min(orderIds.length, 500));
@@ -741,10 +752,10 @@ async function fetchAvailableOffers(
         if (orders.length === 0) {
           const { data, error } = await ordersSb
             .from('h2s_orders')
-            .select('*')
+            .select(ORDERS_SELECT)
             .order('created_at', { ascending: false })
             // Larger window improves matching when dispatch jobs are older than the last 300 orders.
-            .limit(1500);
+            .limit(1000);
           if (!error) {
             orders = Array.isArray(data) ? data : [];
           }
@@ -1283,7 +1294,7 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
   if (orderIds.length > 0) {
     const { data, error } = await ordersSb
       .from('h2s_orders')
-      .select('*')
+      .select(ORDERS_SELECT)
       .in('order_id', orderIds.slice(0, 500))
       .order('created_at', { ascending: false })
       .limit(Math.min(orderIds.length, 500));
@@ -1293,9 +1304,9 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
   if (orders.length === 0) {
     const { data, error } = await ordersSb
       .from('h2s_orders')
-      .select('*')
+      .select(ORDERS_SELECT)
       .order('created_at', { ascending: false })
-      .limit(1500);
+      .limit(1000);
     if (!error) orders = Array.isArray(data) ? data : [];
   }
 
@@ -1512,9 +1523,82 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
       const orderId = String(job?.order_id || '').trim();
 
       if (orderId) {
+        // Try canonical order_id field first
         try {
-          const { data, error } = await ordersClient.from('h2s_orders').select('*').eq('order_id', orderId).maybeSingle();
+          const { data, error } = await ordersClient
+            .from('h2s_orders')
+            .select('*')
+            .eq('order_id', orderId)
+            .maybeSingle();
           if (!error && data) order = data;
+          if (error) {
+            console.warn('[portal_jobs] Single-job order lookup by order_id failed:', {
+              orderId,
+              message: (error as any)?.message,
+              code: (error as any)?.code,
+              details: (error as any)?.details,
+            });
+          }
+        } catch (e) {
+          console.warn('[portal_jobs] Single-job order lookup by order_id threw:', e);
+        }
+
+        // Compatibility: some schemas link jobs.order_id to h2s_orders.id (UUID)
+        if (!order) {
+          try {
+            const { data, error } = await ordersClient
+              .from('h2s_orders')
+              .select('*')
+              .eq('id', orderId)
+              .maybeSingle();
+            if (!error && data) order = data;
+            if (error) {
+              // Only log in debug-ish scenarios; but keep as warn since this is a single-row lookup.
+              console.warn('[portal_jobs] Single-job order lookup by id failed:', {
+                orderId,
+                message: (error as any)?.message,
+                code: (error as any)?.code,
+              });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      // Best fallback: JSONB containment query on metadata_json
+      if (!order) {
+        try {
+          const { data, error } = await ordersClient
+            .from('h2s_orders')
+            .select('*')
+            .contains('metadata_json', { dispatch_job_id: jobId })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const row = Array.isArray(data) ? data[0] : null;
+          if (!error && row) order = row;
+          if (error) {
+            console.warn('[portal_jobs] Single-job order lookup by metadata_json.dispatch_job_id failed:', {
+              jobId,
+              message: (error as any)?.message,
+              code: (error as any)?.code,
+            });
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!order) {
+        try {
+          const { data } = await ordersClient
+            .from('h2s_orders')
+            .select('*')
+            .contains('metadata_json', { job_id: jobId })
+            .order('created_at', { ascending: false })
+            .limit(1);
+          const row = Array.isArray(data) ? data[0] : null;
+          if (row) order = row;
         } catch {
           // ignore
         }
@@ -1556,6 +1640,7 @@ async function handleSingleJobFetch(sb: any, ordersClient: any | null, jobId: st
           payout_estimated: bestPayout,
           tech_payout_dollars: bestPayout,
           tech_payout_cents: payoutFromMetaCents > 0 ? payoutFromMetaCents : bestPayout > 0 ? Math.round(bestPayout * 100) : null,
+          payout_state: job?.payout_state || (bestPayout > 0 ? 'ready' : 'pending'),
           delivery_date: order?.delivery_date || meta?.delivery_date || meta?.install_date || null,
           delivery_time: order?.delivery_time || meta?.delivery_time || meta?.install_window || null,
           service_name: job?.service_name || order?.service_name || meta?.service_name || 'Service',
@@ -1669,8 +1754,10 @@ async function handle(request: Request, token: string, jobId?: string, debugMode
   // Get main database client for orders enrichment
   let main: any | null = null;
   try {
-    main = getSupabase() as any;
-    console.log('[Portal Jobs] Main database client:', main ? 'CONNECTED' : 'NULL');
+    // Use the same service-role client as dispatch lookups.
+    // In some deployments, getSupabase() can be misconfigured with an anon key which fails RLS-protected reads.
+    main = sb;
+    console.log('[Portal Jobs] Main database client: USING SERVICE ROLE');
   } catch (err) {
     console.error('[Portal Jobs] ERROR getting main database client:', err);
     main = null;

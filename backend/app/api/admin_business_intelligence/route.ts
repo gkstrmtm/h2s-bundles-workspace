@@ -3,6 +3,10 @@ import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
 import { corsHeaders, requireAdmin } from '@/lib/adminAuth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 
+const MAX_JSON_PARSE_CHARS = 250000;
+const ORDERS_SELECT_LITE =
+  'id,order_id,status,created_at,updated_at,service_name,address,city,state,zip,items,special_instructions,customer_name,customer_email,customer_phone,metadata_json,metadata,order_subtotal,subtotal,total_amount,total,order_total';
+
 const PAYOUT_TABLE_CANDIDATES = [
   'h2s_payouts_ledger',
   'h2s_dispatch_payouts_ledger',
@@ -28,6 +32,7 @@ function parseMaybeJson(v: any): any {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   if (!s) return null;
+  if (s.length > MAX_JSON_PARSE_CHARS) return null;
   try {
     return JSON.parse(s);
   } catch {
@@ -275,7 +280,12 @@ async function loadJobs(sb: any, mainSb: any | null, jobsTable: string, days: nu
   // 2. Fetch Orders (Source of Truth) and Merge
   if (mainSb) {
     try {
-      const { data: orders } = await mainSb.from('h2s_orders').select('*').gte('created_at', sinceIso).limit(2000);
+      // Memory guardrail: avoid pulling huge rows unnecessarily.
+      const { data: orders } = await mainSb
+        .from('h2s_orders')
+        .select(ORDERS_SELECT_LITE)
+        .gte('created_at', sinceIso)
+        .limit(1200);
       
       if (Array.isArray(orders)) {
         const existingJobIds = new Set(jobs.map(j => String(j.job_id || j.id || '')));
