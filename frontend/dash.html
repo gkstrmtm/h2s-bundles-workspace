@@ -995,19 +995,19 @@
                                 <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">
                                     <div>
                                         <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Training Title</label>
-                                        <input type="text" id="newTrainingTitle" placeholder="e.g., How to Create Winning Marketing Offers" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
-                                        <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Required.</p>
+                                        <input type="text" id="newTrainingTitle" placeholder="Optional (auto-titles if blank)" style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; transition: all 0.2s; font-family: inherit;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                        <p id="trainingTitleHelpText" style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Optional. Leave blank to auto-title (recommended for videos).</p>
                                     </div>
 
                                     <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
                                         <div>
                                             <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Type</label>
-                                            <select id="newTrainingType" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
+                                            <select id="newTrainingType" required onchange="try{ if(typeof onNewTrainingTypeChange==='function') onNewTrainingTypeChange(); }catch(e){}" style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
                                                 <option value="VIDEO" selected>Video</option>
                                                 <option value="PDF">PDF</option>
                                                 <option value="SOP">SOP</option>
                                             </select>
-                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Video supports multiple parts; PDF/SOP is a single link.</p>
+                                            <p id="trainingTypeHelpText" style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Video supports multiple parts; PDF/SOP is a single link.</p>
                                         </div>
                                         <div>
                                             <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Training Category</label>
@@ -1045,7 +1045,7 @@
                                             </div>
                                         </div>
                                         <div style="display:flex; flex-direction:column; gap:6px; height:100%;">
-                                            <button type="button" onclick="return clearTrainingVideoTitle(this)" aria-label="Reset title" title="Reset title" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">↺</button>
+                                            <button type="button" class="training-title-reset" onclick="return clearTrainingVideoTitle(this)" aria-label="Reset title" title="Reset title" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">↺</button>
                                             <button type="button" class="training-url-remove" onclick="return removeTrainingUrlInput(this)" aria-label="Remove" title="Remove" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">✕</button>
                                         </div>
                                     </div>
@@ -1053,7 +1053,7 @@
                                 <div style="display: flex; gap: 10px; margin-top: 10px;">
                                     <button type="button" id="addTrainingUrlBtn" onclick="return addTrainingUrlInput()" style="padding: 10px 14px; background: color-mix(in srgb, var(--azure) 25%, var(--white)); color: var(--cobalt); border: 2px solid color-mix(in srgb, var(--azure) 45%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer;">+ Add video</button>
                                 </div>
-                                <p style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Video: YouTube + Loom only (multiple parts supported). PDF/SOP: paste a single https link.</p>
+                                <p id="trainingAssetsHelpText" style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Video: YouTube + Loom only (multiple parts supported). PDF/SOP: paste a single https link.</p>
                             </div>
 
                             <!-- Description -->
@@ -2958,6 +2958,82 @@
                     if (submitBtn) submitBtn.textContent = 'Save Training';
                     return false;
                 };
+            }
+
+            if (typeof window.onNewTrainingTypeChange !== 'function') {
+                window.onNewTrainingTypeChange = function () {
+                    try {
+                        const typeEl = el('newTrainingType');
+                        const rawType = normalizeStr(typeEl && typeEl.value || 'VIDEO').toUpperCase();
+                        const isVideo = rawType === 'VIDEO';
+
+                        const typeHelp = el('trainingTypeHelpText');
+                        if (typeHelp) {
+                            typeHelp.textContent = isVideo
+                                ? 'Video supports multiple parts (YouTube/Loom only).'
+                                : `${rawType}: single link.`;
+                        }
+
+                        const assetsHelp = el('trainingAssetsHelpText');
+                        if (assetsHelp) {
+                            assetsHelp.textContent = isVideo
+                                ? 'Video: YouTube + Loom only (multiple parts supported).'
+                                : `${rawType}: paste a single https link.`;
+                        }
+
+                        const addBtn = el('addTrainingUrlBtn');
+                        if (addBtn) {
+                            addBtn.textContent = isVideo ? '+ Add video' : '+ Add link';
+                            // For PDF/SOP we want a single link; hide add button to avoid confusion.
+                            addBtn.style.display = isVideo ? 'inline-flex' : 'none';
+                        }
+
+                        const container = el('newTrainingUrls');
+                        if (!container) return false;
+
+                        // Ensure only one row for non-video types.
+                        const rows = Array.from(container.querySelectorAll('.training-url-row'));
+                        if (!isVideo && rows.length > 1) {
+                            for (let i = 1; i < rows.length; i++) {
+                                try { rows[i].remove(); } catch (_) { }
+                            }
+                        }
+
+                        // Keep remove buttons sane (never delete the last row; just clear the field).
+                        const effectiveRows = Array.from(container.querySelectorAll('.training-url-row'));
+                        for (const r of effectiveRows) {
+                            const removeBtn = r && r.querySelector('.training-url-remove');
+                            if (removeBtn) {
+                                const onlyOne = effectiveRows.length <= 1;
+                                removeBtn.style.display = onlyOne ? 'none' : '';
+                                removeBtn.disabled = !!onlyOne;
+                                removeBtn.style.opacity = onlyOne ? '0.6' : '';
+                                removeBtn.style.cursor = onlyOne ? 'not-allowed' : '';
+                            }
+
+                            // Drag only matters for multi-part videos.
+                            try { r.draggable = !!isVideo; } catch (_) { }
+                            const dragHandle = r && r.querySelector('.training-drag-handle');
+                            if (dragHandle) dragHandle.style.display = isVideo ? '' : 'none';
+                        }
+
+                        const firstRow = container.querySelector('.training-url-row');
+                        if (firstRow) {
+                            const urlInput = firstRow.querySelector('.training-url-input');
+                            const titleInput = firstRow.querySelector('.training-title-input');
+                            const titleReset = firstRow.querySelector('.training-title-reset');
+                            if (titleInput) titleInput.style.display = isVideo ? '' : 'none';
+                            if (titleReset) titleReset.style.display = isVideo ? '' : 'none';
+                            if (urlInput) {
+                                urlInput.placeholder = isVideo ? 'https://loom.com/share/...' : 'https://...';
+                            }
+                        }
+                    } catch (_) { }
+                    return false;
+                };
+
+                // Run once on load.
+                try { window.onNewTrainingTypeChange(); } catch (_) { }
             }
         })();
     </script>

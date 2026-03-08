@@ -9952,6 +9952,12 @@ Format: JSON only, no markdown.
           }
 
           const assets = isVideo ? sanitizeTrainingAssets(body.assets ?? body.urls ?? body.url) : [];
+          if (isVideo && (!assets || assets.length === 0)) {
+            return NextResponse.json(
+              { ok: false, error: 'VIDEO resources must be a valid YouTube or Loom link.' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
           const assetsMetaIncoming = isVideo ? normalizeTrainingAssetsMeta(body.assetsMeta || body.assets_meta, assets) : null;
           const assetsMeta = isVideo
             ? (mergeTrainingAssetsMeta({ existing: null, incoming: assetsMetaIncoming, assets }) || {}) as any
