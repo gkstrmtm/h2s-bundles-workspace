@@ -11,10 +11,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Home2Smart">
     <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="PORTAL_BUILD_20260306_115025_4809419">
+    <meta name="h2s-dash-build" content="PORTAL_BUILD_20260317_191711_5150b8a">
         <title>Home2Smart - Service Tech Hiring Dashboard</title>
         <script>
-            const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260306_115025_4809419';
+            const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260317_191711_5150b8a';
             const H2S_SOURCE_FILE = 'Dash.html';
             // Suppress vendor console spam
             (function() {
@@ -222,7 +222,7 @@
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;600;900&display=swap" rel="stylesheet">
 
     <!-- Dashboard Design System (single source of truth) -->
     <link rel="stylesheet" href="/dashboard-design-system.css">
@@ -232,7 +232,7 @@
       href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
         <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
-        <link rel="stylesheet" href="/dash.PORTAL_BUILD_20260306_115025_4809419.css">
+        <link rel="stylesheet" href="/dash.PORTAL_BUILD_20260317_191711_5150b8a.css">
 <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -275,18 +275,17 @@
         }
 
         #trainingContainer {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-            gap: 14px;
+            display: block;
             width: 100%;
             max-width: none;
         }
 
         #trainingContainer > .spinner {
-            grid-column: 1 / -1;
+            display: block;
+            margin: 0 auto;
         }
 
-        /* Clamp any injected “parts / pills” rows so they don’t become a wall */
+        /* Clamp any injected parts / pills rows so they do not become a wall */
         #trainingContainer .parts,
         #trainingContainer .video-pills,
         #trainingContainer .videoParts,
@@ -344,6 +343,978 @@
             text-transform: uppercase;
             letter-spacing: 0.08em;
         }
+
+        /* Minimal shell polish */
+        #logHoursQuickBtn {
+            position: fixed;
+            right: 22px;
+            bottom: 22px;
+            z-index: 1200;
+            margin-right: 0 !important;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 58px;
+            height: 58px;
+            min-height: 58px;
+            padding: 0 !important;
+            border-radius: 999px !important;
+            border: 1px solid rgba(15, 23, 42, 0.08) !important;
+            background: rgba(15, 23, 42, 0.94) !important;
+            color: #fff !important;
+            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.20);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            font-size: 0;
+        }
+
+        #logHoursQuickBtn::before {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='12' cy='13' r='7.25' stroke='white' stroke-width='1.8'/%3E%3Cpath d='M12 2.75v3.5M9.5 2.75h5' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M12 13V9.5M12 13l3 1.75' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: 20px 20px;
+        }
+
+        #logHoursQuickBtn::after {
+            content: attr(aria-label);
+            position: absolute;
+            right: 72px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.96);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
+            transition: opacity 0.18s ease, transform 0.18s ease;
+        }
+
+        #logHoursQuickBtn:hover,
+        #logHoursQuickBtn:focus-visible {
+            background: #0f172a !important;
+            box-shadow: 0 20px 52px rgba(15, 23, 42, 0.24);
+            transform: none !important;
+        }
+
+        #logHoursQuickBtn:hover::after,
+        #logHoursQuickBtn:focus-visible::after {
+            opacity: 1;
+            transform: translateY(-50%) translateX(-4px);
+        }
+
+        #h2s-app .btn,
+        #h2s-app .deliverables-action-btn,
+        #h2s-app .task-action-btn {
+            border-radius: 14px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+            transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease !important;
+        }
+
+        #h2s-app .btn:hover,
+        #h2s-app .deliverables-action-btn:hover,
+        #h2s-app .task-action-btn:hover {
+            transform: none !important;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+        }
+
+        #h2s-app .btn:not([style*="background"]),
+        #h2s-app .deliverables-tab-btn:not([style*="background"]) {
+            background: #0f172a;
+            border-color: #0f172a;
+            color: #fff;
+        }
+
+        #h2s-app .btn:not([style*="background"]):hover,
+        #h2s-app .deliverables-tab-btn:not([style*="background"]):hover {
+            background: #1e293b;
+            border-color: #1e293b;
+        }
+
+        #h2s-app .btn[style*="background: var(--azure)"] {
+            background: #0f172a !important;
+            border-color: #0f172a !important;
+            color: #fff !important;
+        }
+
+        #h2s-app .btn[style*="background: #eff6ff"] {
+            background: rgba(15, 23, 42, 0.04) !important;
+            border: 1px solid rgba(148, 163, 184, 0.22) !important;
+            color: var(--cobalt) !important;
+            box-shadow: none;
+        }
+
+        #h2s-app .btn[style*="background: #eff6ff"]:hover {
+            background: rgba(15, 23, 42, 0.08) !important;
+            border-color: rgba(148, 163, 184, 0.3) !important;
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+        }
+
+        #pipeline-pane .pipeline-danger-btn {
+            background: linear-gradient(135deg, #7f1d1d, #991b1b) !important;
+            border: 1px solid rgba(127, 29, 29, 0.9) !important;
+            color: #fff !important;
+            box-shadow: 0 14px 32px rgba(127, 29, 29, 0.18);
+        }
+
+        #pipeline-pane .pipeline-danger-btn:hover {
+            background: linear-gradient(135deg, #6b1414, #7f1d1d) !important;
+            border-color: #6b1414 !important;
+        }
+
+        #deliverables-pane .deliverables-switcher {
+            display: inline-flex !important;
+            gap: 8px !important;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.82);
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 18px;
+            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+            backdrop-filter: blur(14px);
+        }
+
+        #deliverables-pane .deliverables-tab-btn {
+            min-width: 108px;
+            box-shadow: none;
+        }
+
+        #deliverables-pane .deliverables-tab-btn:not([style*="background: var(--cobalt)"]) {
+            background: transparent;
+            border-color: transparent;
+            color: var(--cobalt);
+        }
+
+        #deliverables-pane .deliverables-tab-btn:not([style*="background: var(--cobalt)"]):hover {
+            background: rgba(15, 23, 42, 0.06);
+            border-color: rgba(148, 163, 184, 0.18);
+            color: var(--cobalt);
+        }
+
+        #h2s-app select,
+        #h2s-app select.form-input,
+        #h2s-app .form-select,
+        #h2s-app .deliverables-select,
+        #adminDateRange {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-color: rgba(255, 255, 255, 0.96) !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5 6 8.25 9.75 4.5' stroke='%230f172a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 14px center;
+            background-size: 12px 12px;
+            padding-right: 42px !important;
+            border: 1px solid rgba(148, 163, 184, 0.38) !important;
+            border-radius: 14px !important;
+            color: #0f172a !important;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        }
+
+        #h2s-app select:hover,
+        #h2s-app .deliverables-select:hover,
+        #adminDateRange:hover {
+            border-color: rgba(71, 85, 105, 0.42) !important;
+        }
+
+        #h2s-app select:focus,
+        #h2s-app .deliverables-select:focus,
+        #adminDateRange:focus {
+            outline: none;
+            border-color: rgba(15, 23, 42, 0.65) !important;
+            box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.08);
+        }
+
+        #h2s-app select option {
+            color: #0f172a;
+            background: #fff;
+        }
+
+        #screening-pane .card,
+        #techinterview-pane .card {
+            min-height: 0 !important;
+            border-radius: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.07);
+        }
+
+        #screening-pane .card > div:first-child,
+        #techinterview-pane .card > div:first-child {
+            padding-bottom: 18px;
+            margin-bottom: 22px !important;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        #screening-pane .card .btn:not([style*="background"]),
+        #techinterview-pane .card .btn:not([style*="background"]) {
+            background: rgba(15, 23, 42, 0.04);
+            border-color: rgba(148, 163, 184, 0.2);
+            color: var(--cobalt);
+            box-shadow: none;
+        }
+
+        #screening-pane .card .btn:not([style*="background"]):hover,
+        #techinterview-pane .card .btn:not([style*="background"]):hover {
+            background: rgba(15, 23, 42, 0.08);
+            border-color: rgba(148, 163, 184, 0.28);
+        }
+
+        #hoursModal .task-modal {
+            border-radius: 26px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+            overflow: hidden;
+        }
+
+        #hoursModal .task-modal-header {
+            background: linear-gradient(180deg, rgba(248, 250, 252, 0.94), rgba(241, 245, 249, 0.82));
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+        }
+
+        #workspace-pane .workspace-shell {
+            max-width: 1480px;
+            margin: 0 auto;
+            padding: 24px;
+            display: grid;
+            gap: 20px;
+        }
+
+        #workspace-pane .workspace-hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 18px;
+            padding: 26px 28px;
+            border-radius: 28px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+            background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.96));
+        }
+
+        #workspace-pane .workspace-eyebrow {
+            margin-bottom: 10px;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--azure);
+        }
+
+        #workspace-pane .workspace-hero p {
+            margin: 0;
+            max-width: 740px;
+            color: #64748b;
+            line-height: 1.65;
+        }
+
+        #workspace-pane .workspace-hero-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        #workspace-pane .workspace-action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 44px;
+            padding: 0 16px;
+            border-radius: 14px;
+            border: 1px solid transparent;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        }
+
+        #workspace-pane .workspace-action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10);
+        }
+
+        #workspace-pane .workspace-action-btn--primary {
+            background: linear-gradient(135deg, var(--cobalt), #1d4ed8);
+            color: #fff;
+            border-color: rgba(29, 78, 216, 0.24);
+        }
+
+        #workspace-pane .workspace-action-btn--secondary {
+            background: #eff6ff;
+            color: var(--azure);
+            border-color: #bfdbfe;
+        }
+
+        #workspace-pane .workspace-action-btn--ghost {
+            background: rgba(255,255,255,0.96);
+            color: #0f172a;
+            border-color: rgba(148, 163, 184, 0.24);
+        }
+
+        #workspace-pane .workspace-metric-grid,
+        #workspace-pane .workspace-grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        #workspace-pane .workspace-metric-grid {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        }
+
+        #workspace-pane .workspace-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #workspace-pane .workspace-metric,
+        #workspace-pane .workspace-card {
+            border-radius: 24px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            background: rgba(255,255,255,0.94);
+            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+        }
+
+        #workspace-pane .workspace-metric {
+            padding: 20px 22px;
+        }
+
+        #workspace-pane .workspace-metric__label,
+        #workspace-pane .workspace-card__subhead {
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #64748b;
+        }
+
+        #workspace-pane .workspace-card__subhead {
+            margin: 0;
+            padding-top: 2px;
+            line-height: 1.35;
+        }
+
+        #workspace-pane .workspace-metric__value {
+            margin-top: 10px;
+            font-size: 32px;
+            font-weight: 900;
+            line-height: 1;
+            color: var(--cobalt);
+        }
+
+        #workspace-pane .workspace-metric__hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        #workspace-pane .workspace-card {
+            padding: 22px 24px;
+            min-height: 100%;
+        }
+
+        #workspace-pane .workspace-card__head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        #workspace-pane .workspace-card__title {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--cobalt);
+        }
+
+        #workspace-pane .workspace-progress {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+
+        #workspace-pane .workspace-progress__bar {
+            overflow: hidden;
+            width: 100%;
+            height: 10px;
+            border-radius: 999px;
+            background: #e2e8f0;
+        }
+
+        #workspace-pane .workspace-progress__fill {
+            height: 100%;
+            width: 0;
+            border-radius: inherit;
+            background: linear-gradient(90deg, var(--azure), var(--cobalt));
+            transition: width 0.24s ease;
+        }
+
+        #workspace-pane .workspace-stack,
+        #workspace-pane .workspace-tags,
+        #workspace-pane .workspace-notes {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        #workspace-pane .workspace-stack + .workspace-card__subhead,
+        #workspace-pane .workspace-tags + .workspace-card__subhead,
+        #workspace-pane .workspace-notes + .workspace-card__subhead {
+            margin-top: 18px;
+        }
+
+        #workspace-pane .workspace-card__subhead + .workspace-stack,
+        #workspace-pane .workspace-card__subhead + .workspace-tags,
+        #workspace-pane .workspace-card__subhead + .workspace-notes {
+            margin-top: 10px;
+        }
+
+        #workspace-pane .workspace-list-item,
+        #workspace-pane .workspace-note {
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            background: #f8fafc;
+            color: #334155;
+            line-height: 1.55;
+        }
+
+        #workspace-pane .workspace-list-item strong,
+        #workspace-pane .workspace-note strong {
+            color: #0f172a;
+        }
+
+        #workspace-pane .workspace-empty-state {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 26px 22px;
+            min-height: 188px;
+            border-radius: 22px;
+            border: 1px dashed rgba(148, 163, 184, 0.34);
+            background: linear-gradient(180deg, rgba(248,250,252,0.96), rgba(255,255,255,0.98));
+        }
+
+        #workspace-pane .workspace-empty-state__icon {
+            width: 58px;
+            height: 58px;
+            border-radius: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            color: var(--cobalt);
+            background: rgba(29, 78, 216, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.16);
+        }
+
+        #workspace-pane .workspace-empty-state__icon svg {
+            width: 24px;
+            height: 24px;
+            display: block;
+        }
+
+        #workspace-pane .workspace-empty-state__body {
+            min-width: 0;
+            max-width: 320px;
+        }
+
+        #workspace-pane .workspace-empty-state__title {
+            color: #0f172a;
+            font-size: 15px;
+            font-weight: 900;
+            line-height: 1.35;
+        }
+
+        #workspace-pane .workspace-empty-state__copy {
+            margin-top: 6px;
+            color: #64748b;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        #workspace-pane .workspace-empty-state--success .workspace-empty-state__icon {
+            color: #166534;
+            background: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        #workspace-pane .workspace-empty-state--info .workspace-empty-state__icon {
+            color: #92400e;
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.24);
+        }
+
+        #workspace-pane .workspace-tags {
+            flex-direction: row;
+            flex-wrap: wrap;
+        }
+
+        #workspace-pane .workspace-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 9px 12px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.04);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            color: var(--cobalt);
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        #workspace-pane .workspace-muted {
+            color: #64748b;
+        }
+
+        #workspace-pane .workspace-card .hours-table {
+            margin-top: 0;
+        }
+
+        #workspace-pane .workspace-card .empty-state {
+            padding: 28px 18px;
+        }
+
+        .task-creator-modal {
+            max-width: 920px;
+        }
+
+        .task-creator-hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.95fr);
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 18px;
+            border: 1px solid rgba(20, 147, 255, 0.18);
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(20,147,255,0.08), rgba(14,165,233,0.05) 58%, rgba(255,255,255,0.96));
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+        }
+
+        .task-creator-hero__eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+            color: var(--cobalt);
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+
+        .task-creator-hero__title {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 900;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+        }
+
+        .task-creator-hero__sub {
+            margin-top: 10px;
+            color: #334155;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .task-creator-hero__meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .task-creator-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.9);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
+        .task-creator-chip svg {
+            width: 14px;
+            height: 14px;
+            color: var(--azure);
+        }
+
+        .task-creator-mode-rail {
+            display: grid;
+            gap: 10px;
+            align-content: start;
+        }
+
+        .task-creator-mode-rail__label {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .task-creator-mode-btn {
+            width: 100%;
+            text-align: left;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid #dbe4f0;
+            background: rgba(255,255,255,0.92);
+            color: #0f172a;
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+
+        .task-creator-mode-btn:hover,
+        .task-creator-mode-btn.active {
+            border-color: rgba(20,147,255,0.4);
+            background: #fff;
+            box-shadow: 0 14px 28px rgba(20,147,255,0.12);
+            transform: translateY(-1px);
+        }
+
+        .task-creator-mode-btn strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
+            font-weight: 900;
+        }
+
+        .task-creator-mode-btn span {
+            display: block;
+            color: #475569;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .task-creator-section-card {
+            padding: 16px;
+            margin-bottom: 14px;
+            border-radius: 16px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
+            box-shadow: 0 8px 22px rgba(15,23,42,0.04);
+        }
+
+        .task-creator-section-card__head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .task-creator-section-card__title {
+            margin: 0;
+            color: #0f172a;
+            font-size: 16px;
+            font-weight: 900;
+        }
+
+        .task-creator-section-card__sub {
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .task-creator-stickybar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 14px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(20,147,255,0.16);
+            background: linear-gradient(180deg, rgba(239,246,255,0.96), rgba(255,255,255,0.98));
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+        }
+
+        .task-creator-stickybar-left {
+            display: grid;
+            gap: 4px;
+        }
+
+        .task-creator-stickybar-right {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-ghost,
+        .btn-ai {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 42px;
+            padding: 0 14px;
+            border-radius: 12px;
+            border: 1px solid transparent;
+            font-size: 13px;
+            font-weight: 900;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+        }
+
+        .btn-ghost:hover,
+        .btn-ai:hover,
+        .btn-mic:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-ghost {
+            background: #fff;
+            color: #0f172a;
+            border-color: rgba(148, 163, 184, 0.24);
+            box-shadow: 0 8px 18px rgba(15,23,42,0.05);
+        }
+
+        .btn-ai {
+            background: linear-gradient(135deg, #0f172a, var(--cobalt));
+            color: #fff;
+            border-color: rgba(20,147,255,0.25);
+            box-shadow: 0 12px 24px rgba(20,147,255,0.18);
+        }
+
+        .btn-ai[disabled],
+        .btn-ghost[disabled] {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-mic {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            background: #fff;
+            color: var(--cobalt);
+            box-shadow: 0 8px 18px rgba(15,23,42,0.05);
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+
+        .btn-mic svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .btn-mic.is-listening {
+            color: #fff;
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            border-color: rgba(239, 68, 68, 0.24);
+            box-shadow: 0 12px 24px rgba(239,68,68,0.22);
+        }
+
+        .task-brief-label-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+
+        .task-creator-manual-meta summary,
+        #taskCreatorBuiltAdvanced summary,
+        #taskCreatorAiAssistDetails summary {
+            list-style: none;
+        }
+
+        .task-creator-manual-meta summary::-webkit-details-marker,
+        #taskCreatorBuiltAdvanced summary::-webkit-details-marker,
+        #taskCreatorAiAssistDetails summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .task-creator-manual-meta > summary {
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 900;
+            color: #0a2a5a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .task-creator-manual-meta > summary::after,
+        #taskCreatorBuiltAdvanced summary::after,
+        #taskCreatorAiAssistDetails summary::after {
+            content: '+';
+            font-size: 18px;
+            line-height: 1;
+            color: #64748b;
+        }
+
+        .task-creator-manual-meta[open] > summary::after,
+        #taskCreatorBuiltAdvanced[open] summary::after,
+        #taskCreatorAiAssistDetails[open] summary::after {
+            content: '-';
+        }
+
+        .task-creator-quickhead {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .task-creator-quickhead__actions {
+            display: inline-flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .task-creator-mode-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .task-creator-footer-note {
+            margin-right: auto;
+            max-width: 420px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .deliverables-image-ai-card {
+            margin-top: 12px;
+            padding: 12px;
+            border-radius: 14px;
+            border: 1px solid rgba(16,185,129,0.16);
+            background: rgba(240,253,250,0.88);
+            display: grid;
+            gap: 10px;
+        }
+
+        .deliverables-image-ai-card__header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .deliverables-image-ai-card__label {
+            color: #047857;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .deliverables-image-ai-card__summary,
+        .deliverables-image-ai-card__meta {
+            color: #134e4a;
+            font-size: 12px;
+            line-height: 1.55;
+            display: grid;
+            gap: 6px;
+        }
+
+        .deliverables-image-ai-card__list strong {
+            display: block;
+            margin-bottom: 6px;
+            color: #0f172a;
+            font-size: 12px;
+        }
+
+        .deliverables-image-ai-card__list ul {
+            margin: 0 0 0 16px;
+            padding-left: 2px;
+            color: #134e4a;
+            font-size: 12px;
+        }
+
+        .deliverables-image-ai-card__list li {
+            margin-bottom: 4px;
+        }
+
+        @media (max-width: 768px) {
+            #logHoursQuickBtn {
+                right: 16px;
+                bottom: 16px;
+                width: 54px;
+                height: 54px;
+                min-height: 54px;
+            }
+
+            #logHoursQuickBtn::after {
+                display: none;
+            }
+
+            #deliverables-pane .deliverables-switcher {
+                width: 100%;
+                display: grid !important;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            #deliverables-pane .deliverables-tab-btn {
+                min-width: 0;
+            }
+
+            #workspace-pane .workspace-shell {
+                padding: 16px;
+            }
+
+            #workspace-pane .workspace-grid {
+                grid-template-columns: 1fr;
+            }
+
+            #workspace-pane .workspace-hero {
+                padding: 22px;
+                flex-direction: column;
+            }
+
+            #workspace-pane .workspace-hero-actions {
+                width: 100%;
+                justify-content: stretch;
+            }
+
+            #workspace-pane .workspace-hero-actions .btn {
+                flex: 1 1 180px;
+            }
+
+            .task-creator-hero {
+                grid-template-columns: 1fr;
+            }
+
+            .task-creator-footer-note {
+                max-width: none;
+                margin-right: 0;
+                margin-bottom: 10px;
+            }
+        }
     </style>
 </head>
 <body style="background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 45%, #f1f5f9 100%) !important; background-color: #f8fafc !important;">
@@ -352,7 +1323,7 @@
     <div id="h2sAboutBadge" style="display:none; position:fixed; right:12px; bottom:12px; z-index:2147483647; background:rgba(15,23,42,0.92); color:#e2e8f0; border:1px solid rgba(148,163,184,0.35); padding:10px 12px; border-radius:10px; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; box-shadow: 0 16px 40px rgba(0,0,0,0.35);">
         <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px;">
             <div style="font-weight:900; color:#fff;">H2S About</div>
-            <button type="button" onclick="document.getElementById('h2sAboutBadge').style.display='none'" style="background:transparent; border:0; color:#cbd5e1; cursor:pointer; font-weight:900;">×</button>
+            <button type="button" onclick="document.getElementById('h2sAboutBadge').style.display='none'" style="background:transparent; border:0; color:#cbd5e1; cursor:pointer; font-weight:900;">x</button>
         </div>
         <pre id="h2sAboutLines" style="margin:0; white-space:pre-wrap;"></pre>
     </div>
@@ -450,11 +1421,15 @@
                 <div class="app-topbar-area" id="currentAreaTitle">Pipeline</div>
             </div>
             <div class="app-topbar-right">
-                    <button class="logout-btn logout-btn--primary" onclick="openChangePinModal()" style="display: none; margin-right: 10px;" id="changePinBtn">
+                <button class="logout-btn logout-btn--primary" onclick="openHoursModal()" style="display: inline-flex; margin-right: 10px; background: var(--success); border-color: var(--success);" id="logHoursQuickBtn" aria-label="Log time" title="Log time">
+                    Log Hours
+                </button>
+                    <button class="btn-clean-link" onclick="openChangePinModal()" style="display: none; margin-right: 10px;" id="changePinBtn" title="Change PIN">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                     Change PIN
                 </button>
-                <button class="logout-btn" onclick="logoutUser()" style="display: none;" id="logoutBtn">
-                    Logout
+                <button class="icon-only-btn" onclick="logoutUser()" style="display: none;" id="logoutBtn" title="Logout" aria-label="Logout">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                 </button>
             </div>
         </div>
@@ -465,7 +1440,7 @@
                 <div class="app-sidebar-group open" data-group-id="hiringpipeline">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('hiringpipeline')" aria-expanded="true">
                         <span>Hiring Pipeline</span>
-                        <span class="app-sidebar-group-chevron">▾</span>
+                        <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item active" data-tab="pipeline" onclick="switchToTab('pipeline')">Pipeline</a>
@@ -478,18 +1453,19 @@
                 <div class="app-sidebar-group" data-group-id="training">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('training')" aria-expanded="false">
                         <span>Training</span>
-                        <span class="app-sidebar-group-chevron">▾</span>
+                        <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" data-tab="training" onclick="switchToTab('training')">Training</a>
                         <a class="app-sidebar-nav-item" data-tab="tasks" onclick="switchToTab('tasks')">Tasks</a>
+                        <a class="app-sidebar-nav-item" data-tab="workspace" onclick="switchToTab('workspace')">My Summary</a>
                     </div>
                 </div>
 
                 <div class="app-sidebar-group" data-group-id="salestools">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('salestools')" aria-expanded="false">
                         <span>Sales Tools</span>
-                        <span class="app-sidebar-group-chevron">▾</span>
+                        <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">Offer Builder</a>
@@ -501,19 +1477,18 @@
                 <div class="app-sidebar-group" data-group-id="admin">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('admin')" aria-expanded="false">
                         <span>Admin</span>
-                        <span class="app-sidebar-group-chevron">▾</span>
+                        <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">Admin Dashboard</a>
                         <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Proof Packs</a>
-                        <a class="app-sidebar-nav-item" data-tab="hours" onclick="switchToTab('hours')">Log Hours</a>
                     </div>
                 </div>
 
                 <div class="app-sidebar-group" data-group-id="feedback">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('feedback')" aria-expanded="false">
                         <span>Feedback</span>
-                        <span class="app-sidebar-group-chevron">▾</span>
+                        <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" href="#" onclick="bugReportsUI.openReportModal(); return false;">Report Bugs</a>
@@ -523,8 +1498,8 @@
                 <div class="app-sidebar-nav-divider"></div>
                 <div class="app-sidebar-nav-label" style="opacity: 0.75;">Messaging</div>
                 <a class="app-sidebar-nav-item has-badge" data-tab="sms" onclick="switchToTab('sms')">
-                    <span class="app-sidebar-nav-item__label">SMS Inbox</span>
-                    <span class="h2s-badge" id="smsNavUnreadBadge" style="display:none;" aria-label="Unread SMS"></span>
+                    <span class="app-sidebar-nav-item__label">Messaging</span>
+                    <span class="h2s-badge" id="smsNavUnreadBadge" style="display:none;" aria-label="Unread messages"></span>
                 </a>
 
                 <div class="app-sidebar-nav-divider"></div>
@@ -532,7 +1507,7 @@
                 <div class="h2s-build" style="padding: 6px 16px 14px 16px;">
                     <button class="h2s-build-pill" id="sidebarBuildPill" type="button" onclick="copyBuildIdFromEl('sidebarBuildId','sidebarBuildPill')" aria-label="Copy build ID">
                         <span class="h2s-build-pill__label">Version</span>
-                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260306_115025_4809419</span>
+                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260317_191711_5150b8a</span>
                         <span class="h2s-build-pill__copy">Copy</span>
                     </button>
                 </div>
@@ -547,12 +1522,11 @@
                     <button class="tab active" data-tab="pipeline">Pipeline</button>
                     <button class="tab" data-tab="screening">Screening Form</button>
                     <button class="tab" data-tab="techinterview">Tech Interview Form</button>
-                    <button class="tab" data-tab="hours">Log Hours</button>
                     <button class="tab" data-tab="reports">Candidate Review</button>
                     <button class="tab" data-tab="training">Training</button>
                     <button class="tab" data-tab="tasks">Tasks</button>
                     <button class="tab" data-tab="deliverables">Deliverables</button>
-                    <button class="tab" data-tab="sms">SMS Inbox</button>
+                    <button class="tab" data-tab="sms">Messaging</button>
                 </nav>
 
                 <!-- PIPELINE PANE -->
@@ -563,7 +1537,7 @@
                             <input type="text" id="pipelineSearch" placeholder="Search candidates..." oninput="filterPipeline()">
                         </div>
                         <div class="workbench-actions">
-                            <button onclick="bulkCleanupPipeline()" class="btn" style="background: var(--danger); color: white;">
+                            <button onclick="bulkCleanupPipeline()" class="btn btn-danger-quiet pipeline-danger-btn">
                                 Bulk Cleanup
                             </button>
                         </div>
@@ -582,10 +1556,10 @@
                                 <p style="color: var(--cobalt); margin: 0;">Initial VA-led screening form for service tech candidates.</p>
                             </div>
                             <div style="display: flex; gap: 10px;">
-                                <button type="button" onclick="fillScreeningSample()" class="btn" style="padding: 10px 20px; font-size: 14px;">
+                                <button type="button" onclick="fillScreeningSample()" class="btn btn-linkish">
                                     Fill Sample
                                 </button>
-                                <button type="button" onclick="resetScreeningForm()" class="btn" style="padding: 10px 20px; font-size: 14px;">
+                                <button type="button" onclick="resetScreeningForm()" class="btn btn-linkish">
                                     Reset Form
                                 </button>
                             </div>
@@ -622,7 +1596,7 @@
                             <div class="form-row" style="gap: 12px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Tools Requirements Met?</label>
-                                    <select class="form-input" id="screeningToolsReq">
+                                    <select class="form-select" id="screeningToolsReq">
                                         <option value="">Unknown</option>
                                         <option value="true">Yes</option>
                                         <option value="false">No</option>
@@ -630,7 +1604,7 @@
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Experience Level</label>
-                                    <select class="form-input" id="screeningExperience">
+                                    <select class="form-select" id="screeningExperience">
                                         <option value="">Select</option>
                                         <option value=">2 years">&gt; 2 years</option>
                                         <option value="<2 years">&lt; 2 years</option>
@@ -642,7 +1616,7 @@
                             <div class="form-row" style="gap: 12px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Commute OK?</label>
-                                    <select class="form-input" id="screeningCommuteOk">
+                                    <select class="form-select" id="screeningCommuteOk">
                                         <option value="">Unknown</option>
                                         <option value="true">Yes</option>
                                         <option value="false">No</option>
@@ -650,7 +1624,7 @@
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Weekday Daytime Available?</label>
-                                    <select class="form-input" id="screeningWeekday">
+                                    <select class="form-select" id="screeningWeekday">
                                         <option value="">Unknown</option>
                                         <option value="true">Yes</option>
                                         <option value="false">No</option>
@@ -661,7 +1635,7 @@
                             <div class="form-row" style="gap: 12px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Evenings / Saturday Available?</label>
-                                    <select class="form-input" id="screeningEveningSat">
+                                    <select class="form-select" id="screeningEveningSat">
                                         <option value="">Unknown</option>
                                         <option value="true">Yes</option>
                                         <option value="false">No</option>
@@ -669,7 +1643,7 @@
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Screening Outcome</label>
-                                    <select class="form-input" id="screeningOutcome" required>
+                                    <select class="form-select" id="screeningOutcome" required>
                                         <option value="">Select</option>
                                         <option value="PASS">Pass</option>
                                         <option value="REJECT">Reject</option>
@@ -680,7 +1654,7 @@
 
                             <div class="form-group">
                                 <label class="form-label">Effort / Willingness To Take Interviews</label>
-                                <select class="form-input" id="screeningInterviewEffort">
+                                <select class="form-select" id="screeningInterviewEffort">
                                     <option value="">Select</option>
                                     <option value="High">High</option>
                                     <option value="Medium">Medium</option>
@@ -689,7 +1663,7 @@
                             </div>
 
                             <div style="display: flex; gap: 12px; margin-top: 16px;">
-                                <button type="submit" class="btn" style="background: var(--cobalt); color: white;">
+                                <button type="submit" class="btn">
                                     Submit Screening
                                 </button>
                             </div>
@@ -706,10 +1680,10 @@
                                 <p style="color: var(--cobalt); margin: 0;">Deep VA interview phase for technical assessment.</p>
                             </div>
                             <div style="display: flex; gap: 10px;">
-                                <button type="button" onclick="fillTechInterviewSample()" class="btn" style="padding: 10px 20px; font-size: 14px;">
+                                <button type="button" onclick="fillTechInterviewSample()" class="btn btn-linkish">
                                     Fill Sample
                                 </button>
-                                <button type="button" onclick="resetTechInterviewForm()" class="btn" style="padding: 10px 20px; font-size: 14px;">
+                                <button type="button" onclick="resetTechInterviewForm()" class="btn btn-linkish">
                                     Reset Form
                                 </button>
                             </div>
@@ -760,7 +1734,7 @@
                                 </div>
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Worked 1099 Before?</label>
-                                    <select class="form-input" id="techWorked1099">
+                                    <select class="form-select" id="techWorked1099">
                                         <option value="">Unknown</option>
                                         <option value="true">Yes</option>
                                         <option value="false">No</option>
@@ -770,7 +1744,7 @@
 
                             <div class="form-group">
                                 <label class="form-label">Other Job?</label>
-                                <select class="form-input" id="techHasOtherJob">
+                                <select class="form-select" id="techHasOtherJob">
                                     <option value="">Unknown</option>
                                     <option value="true">Yes</option>
                                     <option value="false">No</option>
@@ -795,7 +1769,7 @@
                             <div class="form-row" style="gap: 12px; align-items: flex-end;">
                                 <div class="form-group" style="flex: 1;">
                                     <label class="form-label">Interview Outcome</label>
-                                    <select class="form-input" id="techOutcome" required>
+                                    <select class="form-select" id="techOutcome" required>
                                         <option value="">Select</option>
                                         <option value="PASS">Pass</option>
                                         <option value="REJECT">Reject</option>
@@ -809,32 +1783,13 @@
                             </div>
 
                             <div style="display: flex; gap: 12px; margin-top: 16px;">
-                                <button type="submit" class="btn" style="background: var(--cobalt); color: white;">
+                                <button type="submit" class="btn">
                                     Submit Tech Interview
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
-
-                <!-- HOURS PANE -->
-                <div class="pane" id="hours-pane">
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <div>
-                        <h2 class="card-title" style="margin-bottom: 4px;">Hours Tracking</h2>
-                        <p style="color: var(--cobalt); margin: 0;">Log your daily work with AI-powered productivity analysis.</p>
-                    </div>
-                    <button onclick="openHoursModal()" class="btn" style="padding: 14px 24px; font-size: 16px; background: var(--success); color: white;">
-                        Log Today's Hours
-                    </button>
-                </div>
-                
-                <div id="hoursHistoryContainer">
-                    <div class="spinner"></div>
-                </div>
-            </div>
-        </div>
 
         <!-- HOURS LOGGING MODAL -->
         <div class="task-modal-overlay" id="hoursModal" onclick="closeHoursModal(event)">
@@ -844,7 +1799,7 @@
                         <div class="task-title" style="font-size: 24px; margin-bottom: 8px;">Log Hours</div>
                         <div style="color: var(--cobalt); font-size: 14px;">Record your work hours: Enter start and end times to calculate total hours worked</div>
                     </div>
-                    <button class="task-modal-close" onclick="closeHoursModal()">X</button>
+                    <button class="task-modal-close" onclick="closeHoursModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="task-modal-body">
                     <form id="hoursForm">
@@ -957,7 +1912,7 @@
                             <input type="checkbox" id="trainingDebugToggle" style="width: 16px; height: 16px;" />
                             <label for="trainingDebugToggle" style="font-size: 12px; color: var(--cobalt); font-weight: 900; user-select:none;">Admin debug</label>
                         </div>
-                        <button onclick="toggleAdminPanel()" class="btn" style="padding: 10px 20px; font-size: 14px; background: #eff6ff; color: var(--azure); border: 1px solid #bfdbfe; font-weight: 700; border-radius: 10px; transition: all 0.2s;">
+                        <button id="trainingManageBtn" onclick="toggleAdminPanel()" class="btn btn-tonal" style="display:none;">
                             Manage Training
                         </button>
                     </div>
@@ -978,7 +1933,7 @@
                             <h3 style="color: var(--cobalt); margin: 0; font-size: 18px; font-weight: 900;">Training Management</h3>
                             <p style="color: #6b7280; margin: 4px 0 0; font-size: 13px; font-weight: 700;">Add or edit training modules.</p>
                         </div>
-                        <button onclick="toggleAdminPanel()" class="btn" style="padding: 8px 12px; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer;">
+                        <button onclick="toggleAdminPanel()" class="btn btn-linkish">
                             Close
                         </button>
                     </div>
@@ -1012,13 +1967,14 @@
                                         <div>
                                             <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Training Category</label>
                                             <select id="newTrainingCategory" required style="width: 100%; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s;" onfocus="this.style.borderColor='var(--azure)'; this.style.boxShadow='0 0 0 3px rgba(20, 147, 255, 0.1)'" onblur="this.style.borderColor='var(--border)'; this.style.boxShadow='none'">
-                                                <option value="Marketing">Marketing & Lead Generation</option>
-                                                <option value="CRM">CRM & Sales Management</option>
-                                                <option value="Technical">Technical Implementation</option>
-                                                <option value="Operations">Operations & Fulfillment</option>
-                                                <option value="Home2Smart">Home2Smart</option>
+                                                <option value="AUTO" selected>Auto-detect intelligently</option>
+                                                <option value="Marketing &amp; Lead Generation">Marketing &amp; Lead Generation</option>
+                                                <option value="CRM &amp; Sales Management">CRM &amp; Sales Management</option>
+                                                <option value="Technical Implementation">Technical Implementation</option>
+                                                <option value="Operations &amp; Fulfillment">Operations &amp; Fulfillment</option>
+                                                <option value="Home2Smart Systems">Home2Smart Systems</option>
                                             </select>
-                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Pick the category that fits.</p>
+                                            <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">Leave this on auto-detect unless you want to override the inferred category.</p>
                                         </div>
                                         <div>
                                             <label style="display: block; font-weight: 900; color: var(--cobalt); margin-bottom: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">Estimated Minutes</label>
@@ -1034,7 +1990,7 @@
                                 <div class="training-admin-section__title">Assets</div>
                                 <div id="newTrainingUrls" style="display: flex; flex-direction: column; gap: 10px;">
                                     <div class="training-url-row" draggable="true" style="display: grid; grid-template-columns: 40px 1fr auto; gap: 10px; align-items: start; margin-bottom: 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff;">
-                                        <button type="button" class="training-drag-handle" title="Drag to reorder" style="width: 40px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: #f9fafb; color: var(--cobalt); font-weight: 900; cursor: grab;">≡</button>
+                                        <button type="button" class="training-drag-handle" title="Drag to reorder" style="width: 40px; height: 44px; border-radius: 12px; border: 1px solid var(--border); background: #f9fafb; color: var(--cobalt); font-weight: 900; cursor: grab;">=</button>
                                         <div style="display:flex; flex-direction:column; gap:8px;">
                                             <div>
                                                  <input type="hidden" class="training-title-cleared" value="0" />
@@ -1045,13 +2001,29 @@
                                             </div>
                                         </div>
                                         <div style="display:flex; flex-direction:column; gap:6px; height:100%;">
-                                            <button type="button" class="training-title-reset" onclick="return clearTrainingVideoTitle(this)" aria-label="Reset title" title="Reset title" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">↺</button>
-                                            <button type="button" class="training-url-remove" onclick="return removeTrainingUrlInput(this)" aria-label="Remove" title="Remove" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">✕</button>
+                                            <button type="button" class="training-title-reset" onclick="return clearTrainingVideoTitle(this)" aria-label="Reset title" title="Reset title" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">&#8634;</button>
+                                            <button type="button" class="training-url-remove" onclick="return removeTrainingUrlInput(this)" aria-label="Remove" title="Remove" style="width: 44px; height: 38px; padding: 0; background: #fff; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer; display:flex; align-items:center; justify-content:center;">&times;</button>
                                         </div>
                                     </div>
                                 </div>
                                 <div style="display: flex; gap: 10px; margin-top: 10px;">
-                                    <button type="button" id="addTrainingUrlBtn" onclick="return addTrainingUrlInput()" style="padding: 10px 14px; background: color-mix(in srgb, var(--azure) 25%, var(--white)); color: var(--cobalt); border: 2px solid color-mix(in srgb, var(--azure) 45%, var(--white)); border-radius: 12px; font-weight: 900; cursor: pointer;">+ Add video</button>
+                                    <button type="button" id="addTrainingUrlBtn" class="btn btn-tonal" onclick="return addTrainingUrlInput()">+ Add video</button>
+                                </div>
+                                <div id="trainingFileUploadWrap" style="display:none; margin-top: 10px; padding: 12px 14px; border: 1px dashed color-mix(in srgb, var(--azure) 35%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--azure) 5%, var(--white));">
+                                    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+                                        <div style="min-width:0;">
+                                            <div id="trainingFileUploadLabel" style="font-size: 13px; font-weight: 900; color: var(--cobalt);">Select file</div>
+                                            <div id="trainingFileUploadStatus" data-default-text="No file selected. Upload a file or use the optional link field below." style="font-size: 12px; color: #6b7280; margin-top: 4px;">No file selected. Upload a file or use the optional link field below.</div>
+                                        </div>
+                                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                            <input id="newTrainingFileInput" type="file" style="display:none;" onchange="return onTrainingFileSelected(this)" />
+                                            <button type="button" id="trainingFileChooseBtn" class="btn" onclick="const input=document.getElementById('newTrainingFileInput'); if (input) input.click(); return false;">Choose file</button>
+                                            <button type="button" id="trainingFileClearBtn" class="btn-clean-link" onclick="return clearTrainingFileSelection()" style="display:none;">
+                                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                            Clear
+                                        </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <p id="trainingAssetsHelpText" style="font-size: 12px; color: #999; margin-top: 6px; margin-bottom: 0;">Video: YouTube + Loom only (multiple parts supported). PDF/SOP: paste a single https link.</p>
                             </div>
@@ -1063,7 +2035,7 @@
                                 <p style="font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; font-weight: 700;">If blank, we auto-generate a clean summary from the video titles.</p>
                             </div>
 
-                            <button type="submit" style="width: 100%; padding: 12px 14px; background: var(--cobalt); color: var(--white); border: 1px solid var(--cobalt); border-radius: 12px; font-weight: 900; font-size: 14px; cursor: pointer; transition: background 0.2s, opacity 0.2s; letter-spacing: 0.02em;">
+                            <button type="submit" class="btn" style="width: 100%;">
                                 Save Training
                             </button>
                         </form>
@@ -1072,12 +2044,12 @@
                         <div class="training-admin-card">
                             <h4 style="color: var(--cobalt); margin: 0 0 12px; font-size: 15px; font-weight: 900;">Existing Resources</h4>
                             <div style="display:flex; gap: 10px; flex-wrap: wrap; align-items:center; margin-bottom: 14px;">
-                                <input id="adminTrainingSearch" class="form-input" type="text" placeholder="Search title, category, description…" style="flex: 1; min-width: 240px;" oninput="filterAdminTrainingList()" />
+                                <input id="adminTrainingSearch" class="form-input" type="text" placeholder="Search title, category, description..." style="flex: 1; min-width: 240px;" oninput="filterAdminTrainingList()" />
                                 <select id="adminTrainingSort" class="form-input" style="min-width: 170px; cursor: pointer;" onchange="filterAdminTrainingList()">
                                     <option value="updated_desc">Newest</option>
                                     <option value="updated_asc">Oldest</option>
-                                    <option value="title_asc">Title A→Z</option>
-                                    <option value="title_desc">Title Z→A</option>
+                                    <option value="title_asc">Title A-Z</option>
+                                    <option value="title_desc">Title Z-A</option>
                                 </select>
                             </div>
                             <div id="adminTrainingList">
@@ -1096,57 +2068,65 @@
 
                 <!-- DELIVERABLES PANE -->
                 <div class="pane" id="deliverables-pane">
-            <div style="display: flex; gap: var(--gap-2); margin-bottom: var(--gap-2); flex-wrap: wrap;">
-                <button class="btn" onclick="switchDeliverablesView('submission')" id="deliverablesTabSubmission" style="background: var(--cobalt); color: white;">
+            <div class="deliverables-switcher" style="display: flex; gap: var(--gap-2); margin-bottom: var(--gap-2); flex-wrap: wrap;">
+                <button class="btn deliverables-tab-btn is-active" onclick="switchDeliverablesView('submission')" id="deliverablesTabSubmission" style="background: var(--cobalt); color: white;">
                     Submit
                 </button>
-                <button class="btn" onclick="switchDeliverablesView('review')" id="deliverablesTabReview">
+                <button class="btn deliverables-tab-btn" onclick="switchDeliverablesView('review')" id="deliverablesTabReview">
                     Review Queue
                 </button>
-                <button class="btn" onclick="switchDeliverablesView('library')" id="deliverablesTabLibrary">
+                <button class="btn deliverables-tab-btn" onclick="switchDeliverablesView('library')" id="deliverablesTabLibrary">
                     Library
                 </button>
             </div>
             
             <!-- Submission View -->
             <div id="deliverablesSubmissionView" class="deliverables-view">
-                <div class="card">
+                <div class="card deliverables-submit-card">
                     <h2 class="card-title">Submit Deliverable</h2>
-                    <form id="deliverableSubmissionForm" onsubmit="submitDeliverable(event)">
-                        <div style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Related Task</label>
-                            <select id="deliverableTaskId" required onchange="onDeliverableTaskChange()" style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; background: white; color: var(--text);">
-                                <option value="" selected disabled>Select a task…</option>
+                    <form id="deliverableSubmissionForm" class="deliverables-submit-form" onsubmit="submitDeliverable(event)">
+                        <div class="deliverables-submit-grid">
+                        <div class="deliverables-field">
+                            <label class="deliverables-field__label">Related Task</label>
+                            <select id="deliverableTaskId" class="form-select deliverables-field__control" required onchange="onDeliverableTaskChange()">
+                                <option value="" selected disabled>Select a task...</option>
                                 <option value="__OTHER__">Other / not listed</option>
                             </select>
-                            <div id="deliverableTaskOtherWrap" style="display: none; margin-top: 10px;">
-                                <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Task Title (Other)</label>
-                                <input type="text" id="deliverableTaskOtherTitle" placeholder="Type the task title" style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px;">
+                            <div id="deliverableTaskOtherWrap" class="deliverables-field__subfield" style="display: none;">
+                                <label class="deliverables-field__label">Task Title (Other)</label>
+                                <input type="text" id="deliverableTaskOtherTitle" class="deliverables-field__control" placeholder="Type the task title">
                             </div>
-                            <div style="margin-top: 8px; font-size: 12px; color: var(--muted);">This links the submission to a specific task so the library stays precise.</div>
+                            <div class="deliverables-field__hint">This links the submission to a specific task so the library stays precise and easy to scan later.</div>
                         </div>
-                        <div style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Title</label>
-                            <input type="text" id="deliverableTitle" required style="width: 100%; height: 40px; padding: 0 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px;">
+                        <div class="deliverables-field">
+                            <label class="deliverables-field__label">Title</label>
+                            <input type="text" id="deliverableTitle" class="deliverables-field__control" required placeholder="e.g. Camera ad hero image - revision 2">
                         </div>
-                        <div style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Description</label>
-                            <textarea id="deliverableDescription" required style="width: 100%; min-height: 120px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; font-family: inherit;"></textarea>
+                        <div class="deliverables-field deliverables-field--full">
+                            <label class="deliverables-field__label">Description</label>
+                            <textarea id="deliverableDescription" class="deliverables-field__control deliverables-field__control--textarea" required placeholder="Explain what was uploaded, what reviewers should check, and whether it is final or still in revision."></textarea>
                         </div>
-                        <div style="margin-bottom: 16px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--cobalt);">Attach File (optional)</label>
-                            <div id="deliverableFileUpload" style="border: 2px dashed var(--border); border-radius: var(--radius); padding: var(--gap-2); text-align: center; background: var(--surface-2); cursor: pointer; transition: all 0.2s;" 
+                                                <div class="deliverables-field deliverables-field--full">
+                            <label class="deliverables-field__label">External Link (Loom, Figma, etc, optional)</label>
+                            <input type="url" id="deliverableExternalLink" class="deliverables-field__control" placeholder="https://www.loom.com/share/...">
+                            <div class="deliverables-field__hint">Loom links will automatically convert to a playable video.</div>
+                        </div>
+                        <div class="deliverables-field deliverables-field--full">
+                            <label class="deliverables-field__label">Attach File (optional)</label>
+                            <div id="deliverableFileUpload" class="deliverables-dropzone"
                                  ondrop="handleFileDrop(event)" 
                                  ondragover="handleDragOver(event)" 
                                  ondragleave="handleDragLeave(event)"
                                  onclick="document.getElementById('deliverableFileInput').click()">
                                 <input type="file" id="deliverableFileInput" style="display: none;" onchange="handleFileSelect(event)" multiple>
-                                <div id="deliverableFileDisplay" style="font-size: 14px; color: var(--muted);">
-                                    <div style="margin-bottom: 8px;">Drag and drop files here, or click to browse</div>
-                                    <div style="font-size: 12px; color: var(--muted);">Supports multiple files</div>
+                                <div id="deliverableFileDisplay" class="deliverables-dropzone__body">
+                                    <div class="deliverables-dropzone__headline">Drag and drop files here, or click to browse</div>
+                                    <div class="deliverables-dropzone__sub">Images preview instantly. You can also add docs, PDFs, or supporting files.</div>
                                 </div>
-                                <div id="deliverableFileList" style="margin-top: var(--gap-1); text-align: left; display: none;"></div>
+                                <div id="deliverableFileList" class="deliverables-dropzone__list" style="display: none;"></div>
                             </div>
+                            <div class="deliverables-field__hint">For a quick smoke test, upload a PNG or JPG and confirm the preview card appears before submitting.</div>
+                        </div>
                         </div>
                         <button type="submit" class="btn" style="background: var(--cobalt); color: white;">
                             Submit for Review
@@ -1170,26 +2150,31 @@
             </div>
                 </div>
 
-                <!-- SMS INBOX PANE -->
+                <!-- MESSAGING PANE -->
                 <div class="pane" id="sms-pane">
                     <div class="card sms-inbox-card">
                         <div class="sms-inbox">
                             <div class="sms-inbox__sidebar">
                                 <div class="sms-inbox__sidebar-header">
                                     <div>
-                                        <div class="sms-inbox__title">SMS Inbox</div>
-                                        <div class="sms-inbox__subtitle">Threads from Twilio</div>
+                                        <div class="sms-inbox__title">Messages</div>
+                                        <div class="sms-inbox__subtitle">Internal conversations for platform teammates</div>
                                         <div id="smsHiddenEntry" style="display:none; margin-top: 8px;">
                                             <button type="button" class="btn-secondary" style="height: 28px; padding: 0 10px; font-size: 12px;" onclick="smsOpenHiddenModal()">
                                                 Archived <span id="smsHiddenCount" style="font-weight:900;">0</span>
                                             </button>
                                         </div>
                                     </div>
-                                    <button class="btn sms-new-btn" type="button" onclick="smsStartNewMessage()">New</button>
+                                    <div class="sms-sidebar-actions">
+                                        <button class="sms-secondary-btn" type="button" onclick="if(typeof window.openMessagesGmailComposer === 'function') window.openMessagesGmailComposer()">Gmail</button>
+                                        <button class="btn sms-new-btn" type="button" onclick="smsStartNewMessage()">New Chat</button>
+                                    </div>
                                 </div>
                                 <div style="padding: 10px 10px 8px 10px;">
-                                    <input id="smsThreadSearch" class="form-input" type="text" placeholder="Search threads…" oninput="smsFilterThreads()" style="width: 100%;" />
+                                    <input id="smsThreadSearch" class="form-input" type="text" placeholder="Search conversations..." oninput="smsFilterThreads()" style="width: 100%;" />
                                 </div>
+                                <div class="sms-threads-section">Conversations</div>
+                                <div id="smsGroupsList" style="display:none;"></div>
                                 <div id="smsThreadsList" class="sms-threads">
                                     <div class="spinner"></div>
                                 </div>
@@ -1197,22 +2182,41 @@
 
                             <div class="sms-inbox__main">
                                 <div id="smsThreadHeader" class="sms-thread-header">
-                                    <div class="sms-thread-header__title">Select a thread</div>
-                                    <div class="sms-thread-header__subtitle">Click a phone number on the left — or press New to start one</div>
+                                    <div class="sms-thread-header__title">Select a conversation</div>
+                                    <div class="sms-thread-header__subtitle">Choose a teammate conversation on the left, or start a new internal chat</div>
+                                </div>
+
+                                <div id="smsToWrap" style="display:none; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; background: #f8fafc;">
+                                    <div class="sms-to-bar" style="margin-top: 0;">
+                                        <div class="sms-to-label">To</div>
+                                        <div class="sms-to-entry">
+                                            <div class="sms-to-chips" id="smsToChips"></div>
+                                            <div class="sms-to-inputwrap">
+                                                <input id="smsToInput" class="sms-to-input" type="text" placeholder="Add teammates by name or username..." autocomplete="off" onkeydown="if(typeof window.smsHandleToInputKeydown === 'function') window.smsHandleToInputKeydown(event);" oninput="if(typeof window.smsHandleToInputInput === 'function') window.smsHandleToInputInput(event);" onpaste="if(typeof window.smsHandleToInputPaste === 'function') window.smsHandleToInputPaste(event);" />
+                                                <div id="smsToSuggest" class="sms-to-suggest" style="display:none;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div id="smsMessagesList" class="sms-messages">
-                                    <div class="sms-empty">No thread selected.</div>
+                                    <div class="sms-empty">No conversation selected.</div>
                                 </div>
 
                                 <form class="sms-composer" onsubmit="smsSendFromComposer(event)">
                                     <div class="sms-input-wrapper" style="position: relative; flex: 1; display: flex; align-items: center;">
-                                        <input id="smsSendInput" class="sms-composer__input" type="text" placeholder="Type a message…" disabled style="padding-right: 40px; width: 100%;" />
-                                        <button type="button" id="smsMicBtn" onclick="smsToggleDictation()" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #64748b; padding: 4px; display: flex; align-items: center; justify-content: center; z-index: 10;" title="Dictate (AI Voice)">
+                                        <input id="smsSendInput" class="sms-composer__input" type="text" placeholder="Type a message..." disabled style="padding-right: 76px; width: 100%;" />
+                                        <div class="sms-input-tools">
+                                            <button type="button" id="smsPolishBtn" class="sms-icon-btn" onclick="if(typeof window.messagesPolishDraft === 'function') window.messagesPolishDraft()" title="Polish draft" aria-label="Polish draft" disabled>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.35 3.65L17 8l-3.65 1.35L12 13l-1.35-3.65L7 8l3.65-1.35L12 3Z"></path><path d="M19 13l.9 2.1L22 16l-2.1.9L19 19l-.9-2.1L16 16l2.1-.9L19 13Z"></path><path d="M5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14Z"></path></svg>
+                                            </button>
+                                            <button type="button" id="smsMicBtn" class="sms-icon-btn" onclick="smsToggleDictation()" title="Dictate (AI Voice)" aria-label="Dictate with voice">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-                                        </button>
+                                            </button>
+                                        </div>
                                     </div>
                                     <button id="smsSendBtn" class="btn sms-composer__send" type="submit" disabled>Send</button>
+                                    <div id="smsPolishStatus" class="sms-polish-status" aria-live="polite"></div>
                                 </form>
                             </div>
                         </div>
@@ -1239,6 +2243,132 @@
             </div>
         </div>
 
+                <!-- MY SUMMARY PANE -->
+                <div class="pane" id="workspace-pane">
+                    <div class="workspace-shell">
+                        <div class="card workspace-hero">
+                            <div>
+                                <div class="workspace-eyebrow">Personal workspace</div>
+                                <h2 class="card-title" style="margin-bottom: 8px;">My Summary &amp; Settings</h2>
+                                <p>No separate hours tab anymore. Use the floating time icon to log time, then review your tasks, weekly hours, and recent learnings here.</p>
+                            </div>
+                            <div class="workspace-hero-actions">
+                                <button class="btn workspace-action-btn workspace-action-btn--primary" type="button" onclick="openHoursModal()">Log Time</button>
+                                <button class="btn workspace-action-btn workspace-action-btn--secondary" type="button" onclick="switchToTab('tasks')">Open Tasks</button>
+                            </div>
+                        </div>
+
+                        <div class="workspace-metric-grid">
+                            <div class="workspace-metric">
+                                <div class="workspace-metric__label">Assigned tasks</div>
+                                <div class="workspace-metric__value" id="workspaceAssignedCount">0</div>
+                                <div class="workspace-metric__hint">Total work assigned to you</div>
+                            </div>
+                            <div class="workspace-metric">
+                                <div class="workspace-metric__label">Completed</div>
+                                <div class="workspace-metric__value" id="workspaceCompletedCount">0</div>
+                                <div class="workspace-metric__hint" id="workspaceCompletedHint">0 finished so far</div>
+                            </div>
+                            <div class="workspace-metric">
+                                <div class="workspace-metric__label">Hours this week</div>
+                                <div class="workspace-metric__value" id="workspaceWeeklyHours">0.0h</div>
+                                <div class="workspace-metric__hint">Logged since Monday</div>
+                            </div>
+                            <div class="workspace-metric">
+                                <div class="workspace-metric__label">Total logged</div>
+                                <div class="workspace-metric__value" id="workspaceTotalHours">0.0h</div>
+                                <div class="workspace-metric__hint" id="workspaceLearningHint">Recent learning signals appear below</div>
+                            </div>
+                        </div>
+
+                        <div class="workspace-grid">
+                            <div class="workspace-card">
+                                <div class="workspace-card__head">
+                                    <h3 class="workspace-card__title">Task snapshot</h3>
+                                    <span class="workspace-muted" id="workspaceTaskProgressLabel">0 of 0 finished</span>
+                                </div>
+                                <div class="workspace-progress">
+                                    <div class="workspace-progress__bar">
+                                        <div class="workspace-progress__fill" id="workspaceTaskProgressFill"></div>
+                                    </div>
+                                </div>
+                                <div class="workspace-card__subhead">Recently completed</div>
+                                <div class="workspace-stack" id="workspaceCompletedList">
+                                    <div class="workspace-empty-state workspace-empty-state--success">
+                                        <div class="workspace-empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+                                        <div class="workspace-empty-state__body">
+                                            <div class="workspace-empty-state__title">Nothing completed yet</div>
+                                            <div class="workspace-empty-state__copy">Finished work will land here once tasks start getting checked off.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="workspace-card__subhead">Still open</div>
+                                <div class="workspace-stack" id="workspacePendingList">
+                                    <div class="workspace-empty-state workspace-empty-state--info">
+                                        <div class="workspace-empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+                                        <div class="workspace-empty-state__body">
+                                            <div class="workspace-empty-state__title">No open tasks right now</div>
+                                            <div class="workspace-empty-state__copy">New assignments and anything still in progress will show up here automatically.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="workspace-card">
+                                <div class="workspace-card__head">
+                                    <h3 class="workspace-card__title">Recent logged hours</h3>
+                                    <span class="workspace-muted">Last 7 days</span>
+                                </div>
+                                <div id="hoursHistoryContainer">
+                                    <div class="workspace-empty-state workspace-empty-state--info">
+                                        <div class="workspace-empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+                                        <div class="workspace-empty-state__body">
+                                            <div class="workspace-empty-state__title">No hours logged yet</div>
+                                            <div class="workspace-empty-state__copy">Use the time log button to start building your weekly history.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="workspace-card">
+                                <div class="workspace-card__head">
+                                    <h3 class="workspace-card__title">Weekly focus</h3>
+                                    <span class="workspace-muted">What this week mostly covered</span>
+                                </div>
+                                <div class="workspace-tags" id="workspaceWeeklyFocus">
+                                    <div class="workspace-tag">No recent focus yet</div>
+                                </div>
+                                <div class="workspace-card__subhead">Learnings &amp; skill growth</div>
+                                <div class="workspace-notes" id="workspaceLearningSummary">
+                                    <div class="workspace-empty-state workspace-empty-state--info">
+                                        <div class="workspace-empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+                                        <div class="workspace-empty-state__body">
+                                            <div class="workspace-empty-state__title">No learning activity yet</div>
+                                            <div class="workspace-empty-state__copy">Recent learnings will appear here after you log hours or complete training.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="workspace-card">
+                                <div class="workspace-card__head">
+                                    <h3 class="workspace-card__title">Blockers &amp; support</h3>
+                                    <span class="workspace-muted">Recent asks from your logs</span>
+                                </div>
+                                <div class="workspace-stack" id="workspaceBlockersList">
+                                    <div class="workspace-empty-state workspace-empty-state--success">
+                                        <div class="workspace-empty-state__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg></div>
+                                        <div class="workspace-empty-state__body">
+                                            <div class="workspace-empty-state__title">No blockers logged</div>
+                                            <div class="workspace-empty-state__copy">If something starts slowing you down, it will appear here from your recent logs.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ADMIN DASHBOARD PANE -->
                 <div class="pane" id="admin-pane">
                     <div style="max-width: 1600px; margin: 0 auto; padding: 24px;">
@@ -1248,16 +2378,16 @@
                                 <p style="color: #6b7280; margin: 0; font-size: 14px;">Comprehensive overview of operations, deliverables, training, and productivity metrics</p>
             </div>
                             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                <select id="adminDateRange" onchange="adminDashboard.refresh()" style="padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: white; color: var(--cobalt); cursor: pointer;">
+                                <select id="adminDateRange" class="form-select" onchange="adminDashboard.refresh()" style="padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; background: white; color: var(--cobalt); cursor: pointer;">
                                     <option value="all">All Time</option>
                                     <option value="7">Last 7 Days</option>
                                     <option value="30" selected>Last 30 Days</option>
                                     <option value="90">Last 90 Days</option>
                                 </select>
-                                <button onclick="adminDashboard.refresh()" class="btn" style="padding: 8px 16px; font-size: 13px; background: var(--cobalt); color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
-                                    Refresh
+                                <button onclick="openTrainingAdminFromDashboard()" class="btn btn-tonal">
+                                    Training Manager
                                 </button>
-                                <button onclick="openAccountsAdminModal()" class="btn" style="padding: 8px 16px; font-size: 13px; background: #111827; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">
+                                <button onclick="openAccountsAdminModal()" class="btn">
                                     Accounts
                                 </button>
                             </div>
@@ -1278,7 +2408,7 @@
                                 <div style="margin-top: 10px;">
                                     <button class="h2s-build-pill h2s-build-pill--inline" id="ppBuildPill" type="button" onclick="copyBuildIdFromEl('ppBuildId','ppBuildPill')" aria-label="Copy version ID">
                                         <span class="h2s-build-pill__label">Version</span>
-                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260306_115025_4809419</span>
+                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260317_191711_5150b8a</span>
                                         <span class="h2s-build-pill__copy">Copy</span>
                                     </button>
                                 </div>
@@ -1326,8 +2456,15 @@
 
 
                         <!-- Upload Area -->
-                        <div class="card u-mt-3" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
-                            <div class="card-header u-mb-2" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">Upload</div>
+                        <div class="card u-mt-3 pp-upload-card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
+                            <div class="card-header u-mb-2 pp-upload-card__header" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">
+                                <div>
+                                    <div class="pp-upload-card__eyebrow">Proof Packs</div>
+                                    <div id="ppHeroTitle">Upload Proof | TV Mounting</div>
+                                </div>
+                                <div class="pp-upload-card__meta" id="ppQuickMeta">Drop files or click to browse. Supports bulk upload.</div>
+                            </div>
+                            <div id="ppHeroSubtitle" class="pp-upload-card__subtitle">Upload images and videos to build your proof library.</div>
 
                             <div id="ppDropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload files" style="cursor: pointer;">
                                 <div id="ppDropzonePrompt" style="max-width: 820px; margin: 0 auto;">
@@ -1351,12 +2488,12 @@
                                             Convert to MP4 (applies rotation/trim)
                                         </label>
                                     </div>
-                                    <div id="ppOptimizeImagesWrapper" class="u-text-sm u-muted u-mt-1" style="display:block;">
+                                    <div id="ppOptimizeImagesWrapper" class="u-text-sm u-muted u-mt-1 pp-dropzone-settings" style="display:block;">
                                         <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                             <input id="ppOptimizeImages" type="checkbox" checked />
                                             Optimize images (WebP/AVIF + compress)
                                         </label>
-                                        <div class="u-text-xs u-muted u-mt-1" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
+                                        <div class="u-text-xs u-muted u-mt-1 pp-dropzone-settings__row" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
                                             <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                                 Format
                                                 <select id="ppImageFormat" class="form-select" style="height:28px; font-size:12px; padding:2px 6px; border-radius:8px;">
@@ -1381,7 +2518,7 @@
                                                 </select>
                                             </label>
                                         </div>
-                                        <div class="u-text-xs u-muted" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
+                                        <div class="u-text-xs u-muted pp-dropzone-settings__note" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
                                     </div>
                                 </div>
 
@@ -1578,7 +2715,10 @@
                                 <div class="pp-batch-toolbar" id="ppBatchToolbar" data-batch-mode="false">
                                     <div class="pp-batch-info">
                                         <span class="pp-batch-count" id="ppBatchCount">0 selected</span>
-                                        <button class="pp-btn-secondary-sm" onclick="proofPacks.clearSelection()">Clear</button>
+                                        <button class="btn-clean-link" onclick="proofPacks.clearSelection()">
+                                            <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                            Clear
+                                        </button>
                                     </div>
                                     <div class="pp-batch-actions">
                                         <select id="ppBatchIntent" aria-label="Set tag">
@@ -1695,7 +2835,10 @@
                                         <input id="ppAdminKey" class="form-input" type="password" placeholder="Only needed if uploads fail with Unauthorized" />
                                     </div>
                                     <div class="button-group u-mt-2 u-flex u-wrap u-end u-center u-gap-1">
-                                        <button onclick="proofPacks.saveConfig()" class="btn btn-secondary">Save</button>
+                                        <button onclick="proofPacks.saveConfig()" class="btn-clean-link">
+                                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                                        Save
+                                    </button>
                                         <span id="ppConnStatus" class="u-text-sm u-muted"></span>
                                     </div>
                                 </div>
@@ -1747,7 +2890,10 @@
                         <div id="offerBuilderBuilderView">
                         <div class="ob-workspace">
                         <div style="display:flex; justify-content:flex-end; gap: 10px; margin-bottom: 12px; flex-wrap:wrap;">
-                            <button onclick="offerBuilder.saveOffer()" id="offerBuilderSaveBtn" class="ob-btn ob-btn--primary">Save</button>
+                            <button onclick="offerBuilder.saveOffer()" id="offerBuilderSaveBtn" class="btn-clean-link">
+                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                                Save
+                            </button>
                             <button onclick="offerBuilder.generateBrief()" id="offerBuilderGenerateBriefBtn" class="ob-btn ob-btn--secondary">Brief</button>
                         </div>
                         <!-- Build Order Strip -->
@@ -1825,7 +2971,10 @@
                                                         <div style="font-size: 11px; color: #0369a1; margin-bottom: 2px;">Current Offer Price</div>
                                                         <div id="offerBuilderCurrentPriceDisplay" style="font-size: 20px; font-weight: 700; color: var(--cobalt);">$0</div>
                                                     </div>
-                                                    <button type="button" class="ob-btn ob-btn--tertiary ob-btn--small" id="offerBuilderClearPriceBtn" onclick="offerBuilder.clearOfferPrice()">Clear</button>
+                                                    <button type="button" class="btn-clean-link" id="offerBuilderClearPriceBtn" onclick="offerBuilder.clearOfferPrice()">
+                                                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                                        Clear
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
@@ -2364,12 +3513,12 @@
                                                     </div>
 
                                                     <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom: 12px;">
-                                                        <input id="obOfferLibrarySearch" placeholder="Search offers…" oninput="offerBuilder.setOfferLibraryQuery(this.value)" style="flex: 1; min-width: 240px; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800; color: #0f172a; background: #fff;" />
+                                                        <input id="obOfferLibrarySearch" placeholder="Search offers..." oninput="offerBuilder.setOfferLibraryQuery(this.value)" style="flex: 1; min-width: 240px; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800; color: #0f172a; background: #fff;" />
                                                         <select id="obOfferLibrarySort" onchange="offerBuilder.setOfferLibrarySort(this.value)" style="height: 40px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 900; color: #0f172a; background: #fff;">
                                                             <option value="updated_desc" selected>Sort: Newest</option>
                                                             <option value="updated_asc">Sort: Oldest</option>
-                                                            <option value="name_asc">Sort: Name A→Z</option>
-                                                            <option value="name_desc">Sort: Name Z→A</option>
+                                                            <option value="name_asc">Sort: Name A-Z</option>
+                                                            <option value="name_desc">Sort: Name Z-A</option>
                                                         </select>
                                                         <select id="obOfferLibraryFw" onchange="offerBuilder.setOfferLibraryFrameworksFilter(this.value)" style="height: 40px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 900; color: #0f172a; background: #fff;">
                                                             <option value="all" selected>Frameworks: All</option>
@@ -2409,7 +3558,7 @@
                         <div class="task-title" id="completionModalTitle" style="font-size: 22px; margin-bottom: 6px;">Training Completion Report</div>
                         <div style="color: var(--cobalt); font-size: 13px;">Write what you learned. AI will analyze and update your profile.</div>
                     </div>
-                    <button class="task-modal-close" onclick="closeCompletionModal()">X</button>
+                    <button class="task-modal-close" onclick="closeCompletionModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
 
                 <div class="task-modal-body">
@@ -2420,22 +3569,22 @@
 
                     <div class="form-group">
                         <label class="form-label">1. What is the main concept you learned?</label>
-                        <textarea class="form-textarea" id="conceptLearned" rows="3" placeholder="Write the key takeaway…" required></textarea>
+                        <textarea class="form-textarea" id="conceptLearned" rows="3" placeholder="Write the key takeaway..." required></textarea>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">2. How will you apply this in your day-to-day work?</label>
-                        <textarea class="form-textarea" id="practicalApplication" rows="3" placeholder="Explain how you will use it…" required></textarea>
+                        <textarea class="form-textarea" id="practicalApplication" rows="3" placeholder="Explain how you will use it..." required></textarea>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">3. What are your next actions?</label>
-                        <textarea class="form-textarea" id="nextActions" rows="3" placeholder="List your next steps…" required></textarea>
+                        <textarea class="form-textarea" id="nextActions" rows="3" placeholder="List your next steps..." required></textarea>
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">4. Any challenges or questions? <span style="font-weight: 600; color: #6b7280;">(optional)</span></label>
-                        <textarea class="form-textarea" id="challengesQuestions" rows="2" placeholder="Optional…"></textarea>
+                        <textarea class="form-textarea" id="challengesQuestions" rows="2" placeholder="Optional..."></textarea>
                     </div>
 
                     <div class="form-row" style="gap: 12px; align-items: flex-end;">
@@ -2446,11 +3595,11 @@
                         <div class="form-group" style="flex: 1;">
                             <label class="form-label">Comprehension Rating</label>
                             <div id="starRating" style="display:flex; gap: 6px; align-items:center; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff;">
-                                <span class="star" data-rating="1" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
-                                <span class="star" data-rating="2" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
-                                <span class="star" data-rating="3" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
-                                <span class="star" data-rating="4" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
-                                <span class="star" data-rating="5" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">★</span>
+                                <span class="star" data-rating="1" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">&#9733;</span>
+                                <span class="star" data-rating="2" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">&#9733;</span>
+                                <span class="star" data-rating="3" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">&#9733;</span>
+                                <span class="star" data-rating="4" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">&#9733;</span>
+                                <span class="star" data-rating="5" style="font-size: 20px; color: #d1d5db; opacity: 0.3; user-select:none;">&#9733;</span>
                             </div>
                         </div>
                     </div>
@@ -2471,19 +3620,19 @@
                         <div class="task-title" id="trainingViewerTitle" style="font-size: 20px; margin-bottom: 6px;">Training Videos</div>
                         <div style="color: var(--cobalt); font-size: 13px;">Search and select a video to watch.</div>
                     </div>
-                    <button class="task-modal-close" onclick="closeTrainingViewer()">X</button>
+                    <button class="task-modal-close" onclick="closeTrainingViewer()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
 
                 <div class="task-modal-body">
                     <div style="display:flex; gap: 14px; align-items: stretch;">
                         <div style="flex: 1; min-width: 320px; max-width: 420px; display:flex; flex-direction:column; gap: 10px;">
-                            <input id="trainingViewerSearch" class="form-input" type="text" placeholder="Filter videos by title or URL…" oninput="filterTrainingViewerList()" />
+                            <input id="trainingViewerSearch" class="form-input" type="text" placeholder="Filter videos by title or URL..." oninput="filterTrainingViewerList()" />
                             <div id="trainingViewerList" style="flex: 1; overflow:auto; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px; display:flex; flex-direction:column; gap: 10px; max-height: 60vh;"></div>
                         </div>
                         <div style="flex: 2; min-width: 0; display:flex; flex-direction:column; gap: 10px;">
                             <div style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px; display:flex; align-items:center; justify-content:space-between; gap: 10px; flex-wrap: wrap;">
                                 <div style="min-width: 0; flex: 1;">
-                                    <div id="trainingViewerSubtitle" style="font-size: 12px; color:#6b7280; font-weight: 800;">0/0 videos • 0% complete</div>
+                                    <div id="trainingViewerSubtitle" style="font-size: 12px; color:#6b7280; font-weight: 800;">0/0 videos - 0% complete</div>
                                     <div id="trainingViewerCurrentLabel" style="font-size: 13px; color: var(--cobalt); font-weight: 900; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Select a video</div>
                                     <div id="trainingViewerResourceDescription" title="" style="display:none; margin-top: 6px; font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.35; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></div>
                                 </div>
@@ -2537,15 +3686,45 @@
                 <div class="task-modal-header">
                     <div style="flex: 1;">
                         <div class="task-title" style="font-size: 24px; margin-bottom: 8px;">Add New Task</div>
-                        <div style="color: var(--cobalt); font-size: 14px;">Add notes + links (AI Assist is optional)</div>
+                        <div style="color: var(--cobalt); font-size: 14px;">Voice-first capture with quick manual fallback</div>
                     </div>
-                    <button class="task-modal-close" onclick="attemptCloseAddTaskModal('x')">X</button>
+                    <button class="task-modal-close" onclick="attemptCloseAddTaskModal('x')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="task-modal-body">
                     <form id="addTaskForm" onsubmit="submitTaskCreator(event)">
+                        <div class="task-creator-hero">
+                            <div>
+                                <div class="task-creator-hero__eyebrow">AI task intake</div>
+                                <h3 class="task-creator-hero__title">Start by talking through the work.</h3>
+                                <div class="task-creator-hero__sub">Use the mic to dump the job in plain language, define what &ldquo;done&rdquo; means, then let AI suggest the structure. If you already know the task, switch to quick manual mode and save fast.</div>
+                                <div class="task-creator-hero__meta">
+                                    <span class="task-creator-chip">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 11a7 7 0 0 1-14 0" stroke-linecap="round"></path><path d="M12 18v3" stroke-linecap="round"></path><path d="M8 21h8" stroke-linecap="round"></path></svg>
+                                        Dictate into the brief
+                                    </span>
+                                    <span class="task-creator-chip">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                                        AI suggestions stay opt-in
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="task-creator-mode-rail">
+                                <div class="task-creator-mode-rail__label">Creation mode</div>
+                                <button type="button" id="taskModeBuiltBtn" class="task-creator-mode-btn" onclick="setTaskCreatorMode('built')">
+                                    <strong>AI Capture + Mic</strong>
+                                    <span>Talk through the task, define outcome, and generate cleaner details after intake.</span>
+                                </button>
+                                <button type="button" id="taskModeQuickBtn" class="task-creator-mode-btn" onclick="setTaskCreatorMode('quick')">
+                                    <strong>Quick Manual</strong>
+                                    <span>Type title and rough notes directly, then optionally polish the description.</span>
+                                </button>
+                                <div class="task-creator-mode-hint"><strong id="taskCreatorModeLabel">Voice-first AI capture</strong><br><span id="taskCreatorModeHint">Built Task: autosaves. Generate stays locked until Outcome + minimum detail are provided.</span></div>
+                            </div>
+                        </div>
+
                         <details id="taskCreatorAiAssistDetails" style="margin-bottom: 14px;">
                             <summary style="cursor:pointer; font-weight: 900; color: #0a2a5a; font-size: 13px;">AI Assist (optional)</summary>
-                            <div id="taskCreatorModeHint" style="margin-top: 8px; font-size: 12px; color: #6b7280;"></div>
+                            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">AI intake helps draft titles, due fields, and structured task details, but nothing applies unless you keep it.</div>
                         </details>
 
                         <div id="taskCreatorStickyBar" class="task-creator-stickybar" style="display:none;">
@@ -2561,7 +3740,13 @@
                             </div>
                         </div>
 
-                        <div id="taskCreatorBuiltSection" style="display:none;">
+                        <div id="taskCreatorBuiltSection" class="task-creator-section-card" style="display:none;">
+                            <div class="task-creator-section-card__head">
+                                <div>
+                                    <div class="task-creator-section-card__title">Voice brief</div>
+                                    <div class="task-creator-section-card__sub">Capture the ask, the desired outcome, and any constraints before generating details.</div>
+                                </div>
+                            </div>
                             <div class="form-group">
                                 <div class="task-brief-label-row">
                                     <label class="form-label" style="margin:0;">Explain task</label>
@@ -2575,7 +3760,7 @@
                                     </button>
                                 </div>
                                 <textarea id="builtRawInputText" class="form-textarea" placeholder="Say it or type it. What do you want done?" oninput="taskCreatorBuiltOnInput()"></textarea>
-                                <div style="margin-top: 6px; font-size: 12px; color: #64748b;">We’ll transcribe and suggest title, priority, category, and a plan. Nothing auto-applies.</div>
+                                <div style="margin-top: 6px; font-size: 12px; color: #64748b;">We&apos;ll transcribe and suggest title, priority, category, and a plan. Nothing auto-applies.</div>
                             </div>
 
                             <div class="form-group">
@@ -2615,7 +3800,7 @@
                             </div>
                         </div>
 
-                        <details id="taskCreatorManualMeta" class="task-creator-manual-meta" open>
+                        <details id="taskCreatorManualMeta" class="task-creator-manual-meta task-creator-section-card" open>
                             <summary>Manual details</summary>
                             <div style="margin-top: 12px;">
                                 <div class="form-group">
@@ -2626,7 +3811,7 @@
                                 <div class="form-group">
                                     <label class="form-label">Category</label>
                                     <select id="newTaskCategory" class="form-select">
-                                        <option value="">Select…</option>
+                                        <option value="">Select...</option>
                                         <option value="Ads">Ads</option>
                                         <option value="Offers">Offers</option>
                                         <option value="Hiring">Hiring</option>
@@ -2692,17 +3877,34 @@
                             </div>
                         </details>
 
-                        <div id="taskCreatorQuickSection">
+                        <div id="taskCreatorQuickSection" class="task-creator-section-card">
+                            <div class="task-creator-section-card__head">
+                                <div>
+                                    <div class="task-creator-section-card__title">Quick notes</div>
+                                    <div class="task-creator-section-card__sub">Fast path for obvious tasks. You can still dictate rough notes, then polish them.</div>
+                                </div>
+                            </div>
                             <div class="form-group">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <div class="task-creator-quickhead">
                                     <label class="form-label" style="margin-bottom: 0;">Description / Rough Notes</label>
-                                    <button type="button" onclick="polishTaskDescription()" class="btn-magic">AI Polish</button>
+                                    <div class="task-creator-quickhead__actions">
+                                        <button type="button" class="btn-mic" data-dictation-target="newTaskDescription" onclick="taskCreatorStartDictation('newTaskDescription')" title="Dictate" aria-label="Dictate" aria-pressed="false">
+                                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                                <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                                <path d="M19 11a7 7 0 0 1-14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                                <path d="M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                                <path d="M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                                            </svg>
+                                        </button>
+                                        <button type="button" onclick="polishTaskDescription()" class="btn-magic">AI Polish</button>
+                                    </div>
                                 </div>
                                 <textarea id="newTaskDescription" class="form-textarea" placeholder="Type a rough idea here (e.g., 'Check emails and reply to candidates') and click AI Polish to turn it into a full SOP."></textarea>
                             </div>
                         </div>
 
                         <div class="task-modal-actions task-creator-actions">
+                            <div class="task-creator-footer-note">Mic dictation only fills the active text area. Review title, assignment, and due date before saving.</div>
                             <div class="task-creator-actions-right">
                                 <button type="button" class="btn-secondary" onclick="attemptCloseAddTaskModal('cancel')">Cancel</button>
                                 <button type="submit" class="btn-primary" id="taskCreatorSubmitBtn">Save Task</button>
@@ -2742,7 +3944,7 @@
                         <div id="modalTaskTitle" class="task-title" style="font-size: 24px; margin-bottom: 12px;"></div>
                         <div id="modalTaskBadges" class="task-badges"></div>
                     </div>
-                    <button class="task-modal-close" onclick="closeTaskModal()">X</button>
+                    <button class="task-modal-close" onclick="closeTaskModal()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="task-modal-body">
                     <div id="modalTaskDescription" class="task-description" style="font-size: 16px; margin-bottom: 24px;"></div>
@@ -2766,7 +3968,7 @@
                         <div class="task-title" style="font-size: 22px; margin-bottom: 8px;">Ad Frameworks (TOF / BOF)</div>
                         <div style="color: #475569; font-size: 13px; line-height: 1.4;">Reference-only: checklist, naming rules, and copy blocks. Use Copy packet / Submit for review.</div>
                     </div>
-                    <button class="task-modal-close" onclick="adFrameworks.close()">X</button>
+                    <button class="task-modal-close" onclick="adFrameworks.close()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="task-modal-body">
                     <div class="af-topbar">
@@ -2806,7 +4008,7 @@
                                 <div class="af-field" style="flex: 1 1 280px;">
                                     <div class="af-label">Angle / Concept</div>
                                     <input id="afAngle" class="form-input" placeholder="e.g., Same-day install / clean look / safety" />
-                                    <div class="af-help"><span class="af-term" tabindex="0" data-tip="The message lens. Ex: 'Same-day install', 'No-mess guarantee', 'Safer for kids', 'Apartment-friendly'.">Angle</span> = what you’re leading with. <span class="af-term" tabindex="0" data-tip="The specific ad unit you ship. Ex: 'UGC 30s Video', 'Static 01', 'Carousel', '15s Retarget Video'.">Asset</span> = the actual ad built from that angle.</div>
+                                    <div class="af-help"><span class="af-term" tabindex="0" data-tip="The message lens. Ex: 'Same-day install', 'No-mess guarantee', 'Safer for kids', 'Apartment-friendly'.">Angle</span> = what you're leading with. <span class="af-term" tabindex="0" data-tip="The specific ad unit you ship. Ex: 'UGC 30s Video', 'Static 01', 'Carousel', '15s Retarget Video'.">Asset</span> = the actual ad built from that angle.</div>
                                 </div>
                             </div>
                         </div>
@@ -2827,7 +4029,7 @@
         <div class="detail-drawer" id="detailDrawer">
             <div class="detail-drawer-header">
                 <div class="detail-drawer-title" id="drawerTitle">Candidate Details</div>
-                <button class="detail-drawer-close" onclick="closeDetailDrawer()">X</button>
+                <button class="detail-drawer-close" onclick="closeDetailDrawer()"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
             <div class="detail-drawer-body" id="drawerBody">
                 <!-- Content populated by viewCandidate() -->
@@ -2926,6 +4128,38 @@
                 };
             }
 
+            if (typeof window.clearTrainingFileSelection !== 'function') {
+                window.clearTrainingFileSelection = function () {
+                    const input = el('newTrainingFileInput');
+                    const status = el('trainingFileUploadStatus');
+                    const clearBtn = el('trainingFileClearBtn');
+                    if (input) input.value = '';
+                    if (status) {
+                        status.textContent = status.dataset.defaultText || 'No file selected. Upload a file or use the optional link field below.';
+                        status.removeAttribute('data-file-name');
+                    }
+                    if (clearBtn) clearBtn.style.display = 'none';
+                    return false;
+                };
+            }
+
+            if (typeof window.onTrainingFileSelected !== 'function') {
+                window.onTrainingFileSelected = function (inputEl) {
+                    const status = el('trainingFileUploadStatus');
+                    const clearBtn = el('trainingFileClearBtn');
+                    const file = inputEl && inputEl.files && inputEl.files[0] ? inputEl.files[0] : null;
+                    if (status) {
+                        status.textContent = file
+                            ? `${file.name} (${Math.max(1, Math.round((file.size || 0) / 1024))} KB)`
+                            : (status.dataset.defaultText || 'No file selected. Upload a file or use the optional link field below.');
+                        if (file) status.dataset.fileName = file.name;
+                        else status.removeAttribute('data-file-name');
+                    }
+                    if (clearBtn) clearBtn.style.display = file ? 'inline-flex' : 'none';
+                    return false;
+                };
+            }
+
             if (typeof window.resetTrainingForm !== 'function') {
                 window.resetTrainingForm = function () {
                     const form = el('newTrainingForm');
@@ -2956,6 +4190,7 @@
 
                     const submitBtn = form ? form.querySelector('button[type="submit"]') : null;
                     if (submitBtn) submitBtn.textContent = 'Save Training';
+                    try { window.clearTrainingFileSelection(); } catch (_) { }
                     return false;
                 };
             }
@@ -2978,7 +4213,32 @@
                         if (assetsHelp) {
                             assetsHelp.textContent = isVideo
                                 ? 'Video: YouTube + Loom only (multiple parts supported).'
-                                : `${rawType}: paste a single https link.`;
+                                : `${rawType}: choose a file first, or use the optional direct link field.`;
+                        }
+
+                        const fileWrap = el('trainingFileUploadWrap');
+                        const fileInput = el('newTrainingFileInput');
+                        const fileLabel = el('trainingFileUploadLabel');
+                        const fileStatus = el('trainingFileUploadStatus');
+                        const fileChooseBtn = el('trainingFileChooseBtn');
+                        if (fileWrap) fileWrap.style.display = isVideo ? 'none' : 'block';
+                        if (fileInput) {
+                            fileInput.accept = rawType === 'PDF'
+                                ? '.pdf,application/pdf'
+                                : '.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain';
+                        }
+                        if (fileLabel) fileLabel.textContent = rawType === 'PDF' ? 'Select PDF file' : 'Select file';
+                        if (fileChooseBtn) fileChooseBtn.textContent = rawType === 'PDF' ? 'Choose PDF' : 'Choose file';
+                        if (fileStatus) {
+                            fileStatus.dataset.defaultText = isVideo
+                                ? ''
+                                : 'No file selected. Upload a file or use the optional link field below.';
+                            if (!fileStatus.dataset.fileName) {
+                                fileStatus.textContent = fileStatus.dataset.defaultText;
+                            }
+                        }
+                        if (isVideo) {
+                            try { window.clearTrainingFileSelection(); } catch (_) { }
                         }
 
                         const addBtn = el('addTrainingUrlBtn');
@@ -3025,7 +4285,8 @@
                             if (titleInput) titleInput.style.display = isVideo ? '' : 'none';
                             if (titleReset) titleReset.style.display = isVideo ? '' : 'none';
                             if (urlInput) {
-                                urlInput.placeholder = isVideo ? 'https://loom.com/share/...' : 'https://...';
+                                urlInput.placeholder = isVideo ? 'https://loom.com/share/...' : 'Optional direct URL (advanced)';
+                                urlInput.required = !!isVideo;
                             }
                         }
                     } catch (_) { }
@@ -3037,10 +4298,209 @@
             }
         })();
     </script>
-    <script src="/dash.PORTAL_BUILD_20260306_115025_4809419.js" defer></script>
-    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260306_115025_4809419" defer></script>
+    <script src="/dash.PORTAL_BUILD_20260317_191711_5150b8a.js" defer></script>
+    <script src="/dash-messages.js?v=PORTAL_BUILD_20260317_191711_5150b8a" defer></script>
+    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260317_191711_5150b8a" defer></script>
+    <script>
+        window.addEventListener('load', () => {
+            const installTrainingOverrides = () => {
+                if (typeof window.trainingRenderStage !== 'function' || typeof window.toggleAdminPanel !== 'function') {
+                    window.setTimeout(installTrainingOverrides, 60);
+                    return;
+                }
+
+                const normalizeTrainingEmptyState = () => {
+                    try {
+                        const trainingContainer = document.getElementById('trainingContainer');
+                        if (!trainingContainer) return;
+                        const emptyText = trainingContainer.querySelector('.empty-text');
+                        if (!emptyText) return;
+                        if ((emptyText.textContent || '').includes('Manage Training')) {
+                            emptyText.textContent = 'No training resources are available yet.';
+                        }
+                    } catch (_) { }
+                };
+
+                try {
+                    const trainingContainer = document.getElementById('trainingContainer');
+                    if (trainingContainer && !trainingContainer.dataset.emptyStateObserverBound) {
+                        const observer = new MutationObserver(() => normalizeTrainingEmptyState());
+                        observer.observe(trainingContainer, { childList: true, subtree: true });
+                        trainingContainer.dataset.emptyStateObserverBound = 'true';
+                    }
+                } catch (_) { }
+
+                window.openTrainingAdminFromDashboard = function () {
+                    try {
+                        if (typeof window.isAdminRole === 'function' && !window.isAdminRole()) {
+                            if (typeof window.showToast === 'function') window.showToast('Admin access required', 'error');
+                            return;
+                        }
+
+                        if (typeof window.switchToTab === 'function') {
+                            window.switchToTab('training', { skipPersistence: false, smooth: true });
+                        }
+
+                        window.setTimeout(() => {
+                            try {
+                                window.toggleAdminPanel(true);
+                                const panel = document.getElementById('trainingAdminPanel');
+                                if (panel && typeof panel.scrollIntoView === 'function') {
+                                    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }
+                            } catch (_) { }
+                        }, 80);
+                    } catch (_) { }
+                };
+
+                window.toggleAdminPanel = function (forceOpen = null) {
+                    const panel = document.getElementById('trainingAdminPanel');
+                    if (!panel) return;
+
+                    if (typeof window.isAdminRole === 'function' && !window.isAdminRole()) {
+                        panel.style.display = 'none';
+                        if (typeof window.showToast === 'function') window.showToast('Training management is available in Admin Dashboard only.', 'error');
+                        return;
+                    }
+
+                    const isVisible = panel.style.display !== 'none';
+                    const nextVisible = forceOpen === null ? !isVisible : !!forceOpen;
+                    panel.style.display = nextVisible ? 'block' : 'none';
+
+                    if (nextVisible && typeof window.loadAdminTrainingList === 'function') {
+                        window.loadAdminTrainingList();
+                    }
+                };
+
+                window.trainingRenderStage = function (resource) {
+                    const stage = document.getElementById('trainingStage');
+                    if (!stage) return;
+
+                    if (!resource) {
+                        stage.innerHTML = '<div class="training-stage-empty">Select a training item to preview.</div>';
+                        return;
+                    }
+
+                    const type = String((resource.Type || resource.type || 'VIDEO')).toUpperCase();
+                    const title = window.escapeHtml(window.trainingSafeTrim(resource && (resource.Title ?? resource.title ?? '')) || 'Training Resource');
+                    const category = window.escapeHtml(window.trainingSafeTrim(resource && (resource.Category ?? resource.category ?? '')) || 'General');
+                    const minutes = window.escapeHtml(String(resource && (resource.Estimated_Minutes ?? resource.estimatedMinutes ?? '?')));
+                    const description = window.escapeHtml(window.trainingSafeTrim(resource && (resource.Description ?? resource.description ?? '')));
+                    const primaryUrl = window.trainingGetPrimaryUrl(resource);
+                    const completions = Array.isArray(resource.completions) ? resource.completions : [];
+                    const isCompleted = completions.length > 0;
+                    const latestCompletion = isCompleted ? completions[0] : null;
+                    const completeLabel = latestCompletion && latestCompletion.Completed_At ? window.formatDate(latestCompletion.Completed_At) : '';
+                    const resourceId = String(resource && (resource.Resource_ID || resource.resourceId) || '');
+                    const safeTitleForJs = (window.trainingSafeTrim(resource && (resource.Title ?? resource.title ?? '')) || 'Training Resource')
+                        .replace(/\\/g, '\\\\')
+                        .replace(/'/g, "\\'")
+                        .replace(/\r?\n/g, ' ');
+
+                    let mediaHtml = '';
+                    if (type === 'VIDEO' && primaryUrl) {
+                        let videoId = '';
+                        let platform = 'loom';
+
+                        if (primaryUrl.includes('youtube.com') || primaryUrl.includes('youtu.be')) {
+                            platform = 'youtube';
+                            const ytMatch = primaryUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                            if (ytMatch) videoId = ytMatch[1];
+                        } else if (primaryUrl.includes('loom.com/share/')) {
+                            videoId = primaryUrl.split('loom.com/share/')[1].split('?')[0];
+                        } else if (primaryUrl.includes('loom.com/embed/')) {
+                            videoId = primaryUrl.split('loom.com/embed/')[1].split('?')[0];
+                        }
+
+                        if (videoId && platform === 'youtube') {
+                            mediaHtml = `
+                                <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
+                                    <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                </div>
+                            `;
+                        } else if (videoId && platform === 'loom') {
+                            mediaHtml = `
+                                <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
+                                    <iframe src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
+                                </div>
+                            `;
+                        } else {
+                            mediaHtml = `
+                                <div class="training-stage-media" style="padding: 18px; background: #f8f9fa; color: #6b7280; font-weight: 700; line-height: 1.5; text-align: center;">
+                                    This video preview is unavailable here. Submit your learnings after reviewing the training.
+                                </div>
+                            `;
+                        }
+                    } else if (type === 'PDF' && primaryUrl) {
+                        const embedUrl = window.trainingBuildPdfEmbedUrl(primaryUrl);
+                        const isDrivePreview = !!(embedUrl && embedUrl.includes('drive.google.com/file/d/'));
+                        mediaHtml = `
+                            <div class="training-stage-media training-stage-media--pdf">
+                                ${embedUrl
+                                    ? (isDrivePreview
+                                        ? `<iframe src="${window.escapeHtml(embedUrl)}" title="${title}" loading="lazy"></iframe>`
+                                        : `<object class="training-stage-pdf-object" data="${window.escapeHtml(embedUrl)}#toolbar=0&navpanes=0&view=FitH" type="application/pdf">${window.trainingRenderPdfFallbackHtml(primaryUrl, 'This PDF preview could not load here.', 'Your browser or file host blocked the inline preview. Open the PDF directly to review it.')}</object>`)
+                                    : window.trainingRenderPdfFallbackHtml(primaryUrl, 'Inline preview is not available for this PDF.', 'This file host does not expose an embeddable PDF stream, so use Open PDF to review it in a new tab.')}
+                            </div>
+                        `;
+                    } else if ((type === 'SOP' || type === 'PDF' || type === 'VIDEO') && !primaryUrl) {
+                        mediaHtml = `
+                            <div class="training-stage-media" style="padding: 18px; background: #f8f9fa;">
+                                <div style="font-weight: 900; color: var(--cobalt); margin-bottom: 8px;">Missing link</div>
+                                <div style="color: #6b7280; font-size: 13px; line-height: 1.5;">This training resource doesn&apos;t have a valid URL yet.</div>
+                            </div>
+                        `;
+                    } else {
+                        mediaHtml = `
+                            <div class="training-stage-media" style="padding: 18px; background: #f0f7ff; border-color: #bfdbfe; color:#1e3a8a; line-height:1.6;">
+                                ${description || 'No preview available.'}
+                            </div>
+                        `;
+                    }
+
+                    const openLabel = type === 'PDF' ? 'Open PDF' : (type === 'SOP' ? 'Open SOP' : 'Open Resource');
+                    const primaryAction = (type !== 'VIDEO' && primaryUrl)
+                        ? `<a class="btn training-stage-btn training-stage-btn--primary" href="${window.escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">${openLabel}</a>`
+                        : '';
+                    const secondaryAction = !isCompleted
+                        ? `<button class="btn training-stage-btn training-stage-btn--secondary" onclick="openCompletionModal('${resourceId}', '${safeTitleForJs}')">Complete Learnings</button>`
+                        : `<button class="btn training-stage-btn training-stage-btn--secondary" disabled style="opacity:.65; cursor:not-allowed;">Completed</button>`;
+                    const completionHint = type === 'VIDEO'
+                        ? `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Watch the training here, then submit your learnings when you're done.</div>`
+                        : `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Review the resource, then submit your learnings to update your progress.</div>`;
+
+                    stage.innerHTML = `
+                        <div class="training-stage-header">
+                            <div class="training-stage-heading">
+                                <div class="training-stage-title">${title}</div>
+                                <div class="training-stage-sub"><span>${category}</span>${minutes !== '?' && type !== 'PDF' ? `<span class="training-meta-dot">&bull;</span><span>${minutes} min</span>` : ''}<span class="training-meta-dot">&bull;</span><span>${window.escapeHtml(type)}</span></div>
+                            </div>
+                            ${isCompleted ? `<span class="training-stage-pill">Done${completeLabel ? ` &bull; ${window.escapeHtml(completeLabel)}` : ''}</span>` : ''}
+                        </div>
+                        <div class="training-stage-body">
+                            ${mediaHtml}
+                            ${description ? `<div class="training-stage-copy">${description}</div>` : ''}
+                            <div class="training-stage-actions">
+                                ${primaryAction}
+                                ${secondaryAction}
+                            </div>
+                            ${completionHint}
+                        </div>
+                    `;
+                };
+
+                normalizeTrainingEmptyState();
+            };
+
+            installTrainingOverrides();
+        });
+    </script>
 </body>
 </html>
+
+
+
+
 
 
 
