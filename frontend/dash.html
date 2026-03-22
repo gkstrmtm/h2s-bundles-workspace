@@ -2107,9 +2107,23 @@
                             <textarea id="deliverableDescription" class="deliverables-field__control deliverables-field__control--textarea" required placeholder="Explain what was uploaded, what reviewers should check, and whether it is final or still in revision."></textarea>
                         </div>
                                                 <div class="deliverables-field deliverables-field--full">
-                            <label class="deliverables-field__label">External Link (Loom, Figma, etc, optional)</label>
-                            <textarea id="deliverableExternalLink" class="deliverables-field__control deliverables-field__control--textarea" style="min-height: 60px;" placeholder="Paste one or more links here... (e.g. https://www.loom.com/share/...)"></textarea>
-                            <div class="deliverables-field__hint">Loom links will automatically convert to a playable video.</div>
+    <label class="deliverables-field__label">External Links (Loom, Figma, YouTube, etc.)</label>
+    <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: start;">
+        <input type="text" id="deliverableLinkInput" class="deliverables-field__control" placeholder="Paste a link here and press Enter" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.addDeliverableLinkFromInput();}">
+        <button type="button" class="btn btn-secondary" onclick="window.addDeliverableLinkFromInput()" style="padding: 10px 20px; white-space: nowrap; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer; color: #0f172a;">Add Link</button>
+    </div>
+    <style>
+        @keyframes linkFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    <div id="deliverableAddedLinks" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    <div class="deliverables-field__hint" style="margin-top: 6px;">Added links will automatically convert to playable videos or cards.</div>
+</div>
+    <style>
+        @keyframes linkFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+    <div id="deliverableAddedLinks" style="display: flex; flex-direction: column; gap: 8px;"></div>
+    <div class="deliverables-field__hint" style="margin-top: 6px;">Added links will automatically convert to playable videos or cards.</div>
+</div>
                         </div>
                         <div class="deliverables-field deliverables-field--full">
                             <label class="deliverables-field__label">Attach File (optional)</label>

@@ -13633,6 +13633,7 @@ function smsStartNewMessage(prefillPhone) {
         function resetDeliverableSubmissionForm() {
             const form = document.getElementById('deliverableSubmissionForm');
             if (form) form.reset();
+            if (document.getElementById('deliverableAddedLinks')) document.getElementById('deliverableAddedLinks').innerHTML = '';
             selectedFiles = [];
             clearDeliverablePreviewUrls();
             updateFileDisplay();
@@ -13872,10 +13873,21 @@ function smsStartNewMessage(prefillPhone) {
             
             const title = document.getElementById('deliverableTitle').value.trim();
                         const description = document.getElementById('deliverableDescription').value.trim();
-            const externalLink = document.getElementById('deliverableExternalLink').value.trim();
+            
+            let externalLinksArr = [];
+            const addedLinksNodes = document.querySelectorAll('.deliverable-added-url');
+            if (addedLinksNodes) {
+                addedLinksNodes.forEach(node => externalLinksArr.push(node.textContent.trim()));
+            }
+            const linkInputRemaining = document.getElementById('deliverableLinkInput') ? document.getElementById('deliverableLinkInput').value.trim() : '';
+            if (linkInputRemaining) {
+                externalLinksArr.push(linkInputRemaining);
+            }
+            
+            let externalLinksText = externalLinksArr.join('\n\n');
             let finalDescription = description;
-            if (externalLink) {
-                finalDescription += "\\n\\nExternal Link:\\n" + externalLink;
+            if (externalLinksText) {
+                finalDescription += "\n\nExternal Links:\n" + externalLinksText;
             }
             const taskData = getDeliverableTaskSubmissionData();
             
@@ -39744,4 +39756,71 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+
+
+
+window.addDeliverableLinkFromInput = function() {
+    const input = document.getElementById('deliverableLinkInput');
+    if (!input) return;
+    
+    let url = input.value.trim();
+    if (!url) return;
+    
+    if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
+    
+    const container = document.getElementById('deliverableAddedLinks');
+    if (!container) return;
+    
+    const chip = document.createElement('div');
+    chip.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #bbf7d0; animation: linkFadeIn 0.2s ease-out;';
+    
+    chip.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; max-width: 90%;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <a href="${url}" target="_blank" class="deliverable-added-url" style="color: #15803d; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%;">${url}</a>
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" style="background: none; border: none; color: #dc2626; border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(220, 38, 38, 0.1)'" onmouseout="this.style.background='transparent'" title="Remove link">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+    `;
+    
+    container.appendChild(chip);
+    input.value = '';
+    input.focus();
+};
+
+
+window.addDeliverableLinkFromInput = function() {
+    const input = document.getElementById('deliverableLinkInput');
+    if (!input) return;
+    
+    let url = input.value.trim();
+    if (!url) return;
+    
+    if (!/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+    }
+    
+    const container = document.getElementById('deliverableAddedLinks');
+    if (!container) return;
+    
+    const chip = document.createElement('div');
+    chip.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #bbf7d0; animation: linkFadeIn 0.2s ease-out;';
+    
+    chip.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; max-width: 90%;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <a href="${url}" target="_blank" class="deliverable-added-url" style="color: #15803d; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%;">${url}</a>
+        </div>
+        <button type="button" onclick="this.parentElement.remove()" style="background: none; border: none; color: #dc2626; border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(220, 38, 38, 0.1)'" onmouseout="this.style.background='transparent'" title="Remove link">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+    `;
+    
+    container.appendChild(chip);
+    input.value = '';
+    input.focus();
+};
 
