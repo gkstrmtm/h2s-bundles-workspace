@@ -63,6 +63,7 @@ function normalizeHttpUrl(raw: unknown): string | null {
   try {
     const s = String(raw == null ? '' : raw).trim();
     if (!s) return null;
+    if (s.startsWith('/')) return s;
 
     const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
     const u = new URL(withProto);
@@ -1160,6 +1161,89 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function normalizeDashboardIdentity(value: unknown): string {
+  return String(value || '').trim().toUpperCase();
+}
+
+function mapDashboardUserApiShape(user: any) {
+  return {
+    userId: String(user?.User_ID || user?.user_id || user?.userId || '').trim(),
+    username: String(user?.Username || user?.username || '').trim().toUpperCase(),
+    displayName: String(user?.Display_Name || user?.display_name || user?.displayName || user?.Username || user?.username || '').trim(),
+    email: String(user?.Email || user?.email || '').trim(),
+    role: String(user?.Role || user?.role || '').trim().toUpperCase() || 'VA'
+  };
+}
+
+async function loadDashboardUsersByIds(db: any, userIds: string[]): Promise<Record<string, any>> {
+  const uniqueIds = Array.from(new Set((Array.isArray(userIds) ? userIds : []).map((id) => String(id || '').trim()).filter(Boolean)));
+  if (!uniqueIds.length) return {};
+
+  const { data, error } = await db
+    .from('Dashboard_Users')
+    .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+    .in('User_ID', uniqueIds)
+    .limit(Math.max(50, uniqueIds.length));
+
+  if (error) throw error;
+
+  const byId: Record<string, any> = {};
+  for (const row of data || []) {
+    const shaped = mapDashboardUserApiShape(row);
+    if (!shaped.userId || row?.Is_Disabled) continue;
+    byId[shaped.userId] = shaped;
+  }
+  return byId;
+}
+
+function deriveDashboardConversationTitle(memberUserIds: string[], usersById: Record<string, any>, meUserId?: string | null): string {
+  const labels = (Array.isArray(memberUserIds) ? memberUserIds : [])
+    .map((id) => String(id || '').trim())
+    .filter((id) => id && id !== String(meUserId || '').trim())
+    .map((id) => {
+      const user = usersById && usersById[id] ? usersById[id] : null;
+      return String(user?.displayName || user?.username || id).trim();
+    })
+    .filter(Boolean);
+
+  if (!labels.length) return 'Internal conversation';
+  return labels.slice(0, 3).join(', ');
+}
+
+function buildMessagesPolishFallback(input: {
+  draft: unknown;
+  teammateNames?: unknown;
+  conversationTitle?: unknown;
+}) {
+  const original = String(input?.draft || '');
+  const trimmed = original.replace(/\s+/g, ' ').trim();
+  let polished = trimmed;
+  const changes: string[] = [];
+
+  if (trimmed !== original) changes.push('Condensed extra spacing');
+
+  if (polished && /^[a-z]/.test(polished)) {
+    polished = polished.charAt(0).toUpperCase() + polished.slice(1);
+    changes.push('Capitalized the opening sentence');
+  }
+
+  if (polished && !/[.!?]$/.test(polished)) {
+    polished = `${polished}.`;
+    changes.push('Added a clear closing punctuation mark');
+  }
+
+  const teammates = Array.isArray(input?.teammateNames)
+    ? (input.teammateNames as unknown[]).map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  const contextLabel = String(input?.conversationTitle || '').trim() || (teammates.length ? `conversation with ${teammates.slice(0, 2).join(', ')}` : 'internal conversation');
+
+  return {
+    polished_text: polished || trimmed,
+    summary: `Cleaned this draft for a clearer ${contextLabel}.`,
+    changes: changes.length ? changes : ['Reviewed wording for clarity']
+  };
+}
+
 function coercePositiveNumber(raw: unknown): number | null {
   if (raw == null) return null;
   if (typeof raw === 'number') {
@@ -1369,6 +1453,250 @@ function getDeliverablesDb() {
   } catch {
     return getSupabase();
   }
+}
+
+function parseDeliverableAttachments(fileLink: any): any[] {
+  if (Array.isArray(fileLink)) return fileLink.map((item) => ({ ...(item || {}) }));
+  if (fileLink && typeof fileLink === 'object') return [{ ...(fileLink || {}) }];
+
+  const raw = safeTrim(fileLink);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map((item) => ({ ...(item || {}) }));
+    if (parsed && typeof parsed === 'object') return [{ ...parsed }];
+  } catch {
+    // Legacy single-string format.
+  }
+
+  return [
+    raw.startsWith('data:')
+      ? { name: 'Attachment', dataUrl: raw }
+      : { name: 'Attachment', url: raw }
+  ];
+}
+
+function deliverableAttachmentMime(att: any): string {
+  const explicit = safeTrim(att?.type || att?.mimeType || att?.mime_type || '');
+  if (explicit) return explicit.toLowerCase();
+  const dataUrl = safeTrim(att?.dataUrl || att?.data_url || '');
+  const match = dataUrl.match(/^data:([^;]+);/i);
+  return match ? String(match[1] || '').toLowerCase() : '';
+}
+
+function deliverableAttachmentName(att: any, index = 0): string {
+  const explicit = safeTrim(att?.name || att?.fileName || att?.filename || '');
+  if (explicit) return explicit;
+  return `Image ${index + 1}`;
+}
+
+function deliverableAttachmentSource(att: any): string {
+  return safeTrim(att?.dataUrl || att?.data_url || att?.url || att?.href || att?.src || '');
+}
+
+function deliverableAttachmentIsImage(att: any): boolean {
+  const mime = deliverableAttachmentMime(att);
+  if (mime.startsWith('image/')) return true;
+
+  const name = deliverableAttachmentName(att).toLowerCase();
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name);
+}
+
+function uniqueStringList(values: any[], maxItems = 6): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values || []) {
+    const text = safeTrim(value);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function averageCreativeScoreBreakdowns(analyses: any[]): Record<string, number> {
+  const totals: Record<string, number> = {};
+  const counts: Record<string, number> = {};
+
+  for (const row of analyses || []) {
+    const breakdown = row && typeof row.scoreBreakdown === 'object' ? row.scoreBreakdown : null;
+    if (!breakdown) continue;
+    for (const [key, rawVal] of Object.entries(breakdown)) {
+      const num = Number(rawVal);
+      if (!Number.isFinite(num)) continue;
+      totals[key] = (totals[key] || 0) + num;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  }
+
+  const out: Record<string, number> = {};
+  for (const key of Object.keys(totals)) {
+    const count = counts[key] || 0;
+    if (!count) continue;
+    out[key] = Math.round((totals[key] / count) * 10) / 10;
+  }
+  return out;
+}
+
+async function analyzeDeliverableCreativeAttachment(openaiClient: any, ctx: {
+  title: string;
+  description: string;
+  attachment: any;
+  imageIndex: number;
+  imageCount: number;
+}) {
+  const source = deliverableAttachmentSource(ctx.attachment);
+  if (!source) throw new Error('Attachment is missing an image source');
+
+  if (!openaiClient) {
+    throw new Error('OpenAI is not configured for creative analysis');
+  }
+
+  const attachmentName = deliverableAttachmentName(ctx.attachment, ctx.imageIndex);
+  const prompt = `You are an expert paid-social creative strategist reviewing a single advertisement image.
+
+DELIVERABLE TITLE: ${ctx.title || 'Untitled deliverable'}
+DELIVERABLE DESCRIPTION: ${ctx.description || 'No description provided'}
+IMAGE: ${attachmentName} (${ctx.imageIndex + 1} of ${ctx.imageCount})
+
+Analyze this image as a standalone creative.
+
+Return ONLY valid JSON in this exact schema:
+{
+  "summary": "2-3 sentence assessment of this specific image",
+  "qualityScore": 82,
+  "strengths": ["strength 1", "strength 2", "strength 3"],
+  "improvements": ["improvement 1", "improvement 2", "improvement 3"],
+  "scoreBreakdown": {
+    "hook": 0,
+    "clarity": 0,
+    "visualHierarchy": 0,
+    "cta": 0,
+    "branding": 0,
+    "safeZone": 0
+  },
+  "safeZoneGuidance": {
+    "riskLevel": "low|medium|high",
+    "keepInCenterMessage": "single sentence",
+    "notes": ["note 1", "note 2"],
+    "doNotPlace": ["edge risk 1", "edge risk 2"]
+  },
+  "copyNotes": ["copy note 1", "copy note 2"],
+  "recommendedEdits": ["edit 1", "edit 2", "edit 3"]
+}
+
+Rules:
+- Focus on THIS image only, not the whole deliverable.
+- Be concrete and visual.
+- Mention placement/safe-zone risks if text or CTA is too close to edges.
+- Scores must be 0-100 integers.
+- Keep arrays concise and actionable.`;
+
+  const completion = await openaiClient.chat.completions.create({
+    model: 'gpt-4o',
+    response_format: { type: 'json_object' },
+    temperature: 0.2,
+    max_tokens: 1400,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a senior creative review analyst. Always respond with valid JSON.'
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: source, detail: 'high' } }
+        ]
+      }
+    ] as any
+  });
+
+  const rawText = safeTrim(completion?.choices?.[0]?.message?.content || '{}');
+  const parsed = JSON.parse(rawText || '{}');
+  const scoreBreakdown = parsed && typeof parsed.scoreBreakdown === 'object' ? parsed.scoreBreakdown : {};
+  const safeZoneGuidance = parsed && typeof parsed.safeZoneGuidance === 'object' ? parsed.safeZoneGuidance : {};
+
+  return {
+    summary: safeTrim(parsed?.summary || 'No summary provided'),
+    qualityScore: Math.max(0, Math.min(100, Math.round(Number(parsed?.qualityScore || 0) || 0))),
+    strengths: uniqueStringList(Array.isArray(parsed?.strengths) ? parsed.strengths : [], 5),
+    improvements: uniqueStringList(Array.isArray(parsed?.improvements) ? parsed.improvements : [], 6),
+    scoreBreakdown,
+    safeZoneGuidance: {
+      riskLevel: safeTrim(safeZoneGuidance?.riskLevel || 'medium').toLowerCase() || 'medium',
+      keepInCenterMessage: safeTrim(safeZoneGuidance?.keepInCenterMessage || ''),
+      notes: uniqueStringList(Array.isArray(safeZoneGuidance?.notes) ? safeZoneGuidance.notes : [], 4),
+      doNotPlace: uniqueStringList(Array.isArray(safeZoneGuidance?.doNotPlace) ? safeZoneGuidance.doNotPlace : [], 4)
+    },
+    copyNotes: uniqueStringList(Array.isArray(parsed?.copyNotes) ? parsed.copyNotes : [], 4),
+    recommendedEdits: uniqueStringList(Array.isArray(parsed?.recommendedEdits) ? parsed.recommendedEdits : [], 5),
+    analyzedAt: new Date().toISOString(),
+    raw: parsed && typeof parsed === 'object' ? parsed : {}
+  };
+}
+
+function aggregateDeliverableCreativeAnalysis(attachments: any[]) {
+  const analyzed = (attachments || [])
+    .map((file, index) => ({ file, index, analysis: file && typeof file.aiAnalysis === 'object' ? file.aiAnalysis : null }))
+    .filter((entry) => !!entry.analysis);
+
+  if (!analyzed.length) return null;
+
+  const scores = analyzed
+    .map((entry) => Number(entry.analysis?.qualityScore || 0))
+    .filter((value) => Number.isFinite(value));
+
+  const qualityScore = scores.length
+    ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length)
+    : null;
+
+  const scoreBreakdown = averageCreativeScoreBreakdowns(analyzed.map((entry) => entry.analysis));
+  const strengths = uniqueStringList(analyzed.flatMap((entry) => Array.isArray(entry.analysis?.strengths) ? entry.analysis.strengths : []), 6);
+  const improvements = uniqueStringList(
+    analyzed.flatMap((entry) => [
+      ...(Array.isArray(entry.analysis?.improvements) ? entry.analysis.improvements : []),
+      ...(Array.isArray(entry.analysis?.recommendedEdits) ? entry.analysis.recommendedEdits : [])
+    ]),
+    7
+  );
+
+  const riskRank: Record<string, number> = { low: 1, medium: 2, high: 3 };
+  const worstRisk = analyzed.reduce((current, entry) => {
+    const next = safeTrim(entry.analysis?.safeZoneGuidance?.riskLevel || 'medium').toLowerCase() || 'medium';
+    return (riskRank[next] || 0) > (riskRank[current] || 0) ? next : current;
+  }, 'low');
+
+  const summary = analyzed.length === 1
+    ? safeTrim(analyzed[0].analysis?.summary || 'Creative analysis complete.')
+    : `${analyzed.length} images analyzed. Avg quality ${qualityScore ?? 'N/A'}/100. Focus next on ${improvements[0] || 'improving clarity and CTA placement'}.`;
+
+  return {
+    qualityScore,
+    strengths,
+    improvements,
+    summary,
+    raw: {
+      perImage: analyzed.map((entry) => ({
+        fileIndex: entry.index,
+        fileName: deliverableAttachmentName(entry.file, entry.index),
+        qualityScore: entry.analysis?.qualityScore ?? null,
+        summary: safeTrim(entry.analysis?.summary || ''),
+        strengths: Array.isArray(entry.analysis?.strengths) ? entry.analysis.strengths : [],
+        improvements: Array.isArray(entry.analysis?.improvements) ? entry.analysis.improvements : [],
+        scoreBreakdown: entry.analysis?.scoreBreakdown || null,
+        safeZoneGuidance: entry.analysis?.safeZoneGuidance || null,
+        copyNotes: Array.isArray(entry.analysis?.copyNotes) ? entry.analysis.copyNotes : []
+      })),
+      scoreBreakdown,
+      safeZoneGuidance: { riskLevel: worstRisk },
+      generatedAt: new Date().toISOString()
+    }
+  };
 }
 
 function isMissingTableError(error: any, tableName: string): boolean {
@@ -2150,6 +2478,244 @@ export async function GET(request: Request) {
           }
 
           result = users || [];
+        }
+        break;
+      case 'messagesUsers':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+          const { data: users, error } = await db
+            .from('Dashboard_Users')
+            .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled')
+            .order('Display_Name', { ascending: true })
+            .limit(1000);
+
+          if (error) {
+            return NextResponse.json({ ok: false, error: `Failed to load users: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          result = (users || [])
+            .filter((user: any) => !user?.Is_Disabled)
+            .map((user: any) => mapDashboardUserApiShape(user));
+        }
+        break;
+      case 'messagesConversations':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const db = getDeliverablesDb();
+          const { data: myMemberships, error: membershipError } = await db
+            .from('dashboard_conversation_members')
+            .select('conversation_id')
+            .eq('user_id', me.userId)
+            .limit(1000);
+
+          if (membershipError) {
+            const msg = isMissingTableError(membershipError, 'dashboard_conversation_members')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversations: ${membershipError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const conversationIds = Array.from(new Set((myMemberships || []).map((row: any) => String(row?.conversation_id || '').trim()).filter(Boolean)));
+          if (!conversationIds.length) {
+            result = [];
+            break;
+          }
+
+          const { data: conversations, error: conversationError } = await db
+            .from('dashboard_conversations')
+            .select('conversation_id, created_at, updated_at, title, last_message_at, last_message_preview')
+            .in('conversation_id', conversationIds)
+            .limit(Math.max(100, conversationIds.length));
+
+          if (conversationError) {
+            const msg = isMissingTableError(conversationError, 'dashboard_conversations')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversations: ${conversationError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const { data: allMembers, error: allMembersError } = await db
+            .from('dashboard_conversation_members')
+            .select('conversation_id, user_id')
+            .in('conversation_id', conversationIds)
+            .limit(5000);
+
+          if (allMembersError) {
+            const msg = isMissingTableError(allMembersError, 'dashboard_conversation_members')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversation members: ${allMembersError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const membersByConversation = new Map<string, string[]>();
+          const memberUserIds = new Set<string>();
+          for (const row of allMembers || []) {
+            const conversationId = String(row?.conversation_id || '').trim();
+            const userId = String(row?.user_id || '').trim();
+            if (!conversationId || !userId) continue;
+            if (!membersByConversation.has(conversationId)) membersByConversation.set(conversationId, []);
+            membersByConversation.get(conversationId)!.push(userId);
+            memberUserIds.add(userId);
+          }
+
+          const usersById = await loadDashboardUsersByIds(db, Array.from(memberUserIds));
+
+          result = (conversations || [])
+            .map((conversation: any) => {
+              const conversationId = String(conversation?.conversation_id || '').trim();
+              const memberIds = membersByConversation.get(conversationId) || [];
+              const title = safeTrim(conversation?.title) || deriveDashboardConversationTitle(memberIds, usersById, me.userId);
+              return {
+                conversation_id: conversationId,
+                title,
+                last_message_at: conversation?.last_message_at || conversation?.updated_at || conversation?.created_at || null,
+                last_message_preview: conversation?.last_message_preview || '',
+                unread_count: 0,
+                member_count: memberIds.length
+              };
+            })
+            .sort((a: any, b: any) => {
+              const ta = new Date(String(a?.last_message_at || '')).getTime() || 0;
+              const tb = new Date(String(b?.last_message_at || '')).getTime() || 0;
+              return tb - ta;
+            });
+        }
+        break;
+      case 'messagesConversation':
+        {
+          const me = await getDashboardAuthUserFromSession(request);
+          if (!me) {
+            return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+          }
+
+          const conversationId = safeTrim(searchParams.get('conversation_id') || searchParams.get('conversationId') || '');
+          if (!conversationId) {
+            return NextResponse.json({ ok: false, error: 'conversation_id is required' }, { status: 400, headers: corsHeaders(request) });
+          }
+
+          const limit = Math.min(Math.max(toInt(searchParams.get('limit'), 120), 1), 200);
+          const before = safeTrim(searchParams.get('before') || '');
+          const db = getDeliverablesDb();
+
+          const { data: membership, error: membershipError } = await db
+            .from('dashboard_conversation_members')
+            .select('conversation_id')
+            .eq('conversation_id', conversationId)
+            .eq('user_id', me.userId)
+            .maybeSingle();
+
+          if (membershipError) {
+            const msg = isMissingTableError(membershipError, 'dashboard_conversation_members')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversation membership: ${membershipError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!membership) {
+            return NextResponse.json({ ok: false, error: 'Conversation not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const { data: conversation, error: conversationError } = await db
+            .from('dashboard_conversations')
+            .select('conversation_id, created_at, updated_at, title, last_message_at, last_message_preview')
+            .eq('conversation_id', conversationId)
+            .maybeSingle();
+
+          if (conversationError) {
+            const msg = isMissingTableError(conversationError, 'dashboard_conversations')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversation: ${conversationError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+          if (!conversation) {
+            return NextResponse.json({ ok: false, error: 'Conversation not found' }, { status: 404, headers: corsHeaders(request) });
+          }
+
+          const { data: members, error: membersError } = await db
+            .from('dashboard_conversation_members')
+            .select('conversation_id, user_id, added_at, added_by_user_id')
+            .eq('conversation_id', conversationId)
+            .limit(200);
+
+          if (membersError) {
+            const msg = isMissingTableError(membersError, 'dashboard_conversation_members')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load conversation members: ${membersError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          let messagesQuery = db
+            .from('dashboard_messages')
+            .select('message_id, conversation_id, created_at, sent_by_user_id, body')
+            .eq('conversation_id', conversationId)
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+          if (before) {
+            messagesQuery = messagesQuery.lt('created_at', before);
+          }
+
+          const { data: messageRows, error: messagesError } = await messagesQuery;
+          if (messagesError) {
+            const msg = isMissingTableError(messagesError, 'dashboard_messages')
+              ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+              : `Failed to load messages: ${messagesError.message}`;
+            return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const relatedUserIds = new Set<string>((members || []).map((row: any) => String(row?.user_id || '').trim()).filter(Boolean));
+          for (const row of messageRows || []) {
+            const userId = String(row?.sent_by_user_id || '').trim();
+            if (userId) relatedUserIds.add(userId);
+          }
+          const usersById = await loadDashboardUsersByIds(db, Array.from(relatedUserIds));
+          const memberIds = (members || []).map((row: any) => String(row?.user_id || '').trim()).filter(Boolean);
+
+          const normalizedConversationTitle = safeTrim(conversation?.title) || deriveDashboardConversationTitle(memberIds, usersById, me.userId);
+          result = {
+            conversation: {
+              ...conversation,
+              title: normalizedConversationTitle
+            },
+            members: (members || []).map((row: any) => {
+              const userId = String(row?.user_id || '').trim();
+              const user = usersById[userId] || null;
+              return {
+                conversation_id: String(row?.conversation_id || '').trim(),
+                user_id: userId,
+                added_at: row?.added_at || null,
+                added_by_user_id: String(row?.added_by_user_id || '').trim() || null,
+                username: user?.username || '',
+                display_name: user?.displayName || user?.username || userId,
+                email: user?.email || ''
+              };
+            }),
+            messages: (messageRows || [])
+              .slice()
+              .reverse()
+              .map((row: any) => {
+                const senderId = String(row?.sent_by_user_id || '').trim();
+                const sender = usersById[senderId] || null;
+                return {
+                  message_id: String(row?.message_id || '').trim(),
+                  conversation_id: String(row?.conversation_id || '').trim(),
+                  created_at: row?.created_at || null,
+                  sent_by_user_id: senderId || null,
+                  sent_by_username: sender?.username || '',
+                  sent_by_display_name: sender?.displayName || sender?.username || '',
+                  body: String(row?.body || '')
+                };
+              }),
+            viewer_user_id: me.userId
+          };
         }
         break;
       case 'smsThreads':
@@ -3970,12 +4536,13 @@ export async function GET(request: Request) {
       
       case 'trainingCompletions':
         const vaName = searchParams.get('vaName') || 'ROSEL';
+        const normalizedVaName = normalizeDashboardIdentity(vaName);
+        const showAllTrainingCompletions = !normalizedVaName || normalizedVaName === 'ALL';
         const { data: completions, error: completionsError } = await supabaseMgmt
           .from('Training_Completions')
           .select('*, resource:Training_Resources(*)')
-          .eq('Completed_By', vaName)
           .order('Completed_At', { ascending: false })
-          .limit(50);
+          .limit(showAllTrainingCompletions ? 500 : 250);
         
         if (completionsError) {
           return NextResponse.json({ 
@@ -3983,9 +4550,17 @@ export async function GET(request: Request) {
             error: `Failed to load completions: ${completionsError.message}` 
           }, { status: 500, headers: corsHeaders(request) });
         }
+
+        const filteredCompletions = showAllTrainingCompletions
+          ? (completions || [])
+          : (completions || []).filter((c: any) => {
+              const completedBy = normalizeDashboardIdentity(c?.Completed_By || c?.completedBy || '');
+              const vaNameField = normalizeDashboardIdentity(c?.VA_Name || c?.vaName || '');
+              return completedBy === normalizedVaName || vaNameField === normalizedVaName;
+            });
         
         // Transform data to match frontend expectations - flatten resource relation
-        const transformedCompletions = (completions || []).map(c => {
+        const transformedCompletions = filteredCompletions.map(c => {
           const resource = c.resource || {};
           return {
             ...c,
@@ -7503,6 +8078,241 @@ export async function POST(request: Request) {
               }
               break;
 
+            case 'messagesConversationUpsert':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+                const conversationId = safeTrim(body?.conversation_id || body?.conversationId || '');
+                const rawMemberIds = Array.isArray(body?.member_user_ids)
+                  ? body.member_user_ids
+                  : Array.isArray(body?.memberUserIds)
+                    ? body.memberUserIds
+                    : [];
+                const memberUserIds = Array.from(new Set(rawMemberIds.map((id: any) => safeTrim(id)).filter((id: string) => id && isUuid(id)).concat([authed.userId])));
+
+                if (memberUserIds.length < 2) {
+                  return NextResponse.json({ ok: false, error: 'Pick at least one teammate' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const usersById = await loadDashboardUsersByIds(db, memberUserIds);
+                const validMemberUserIds = memberUserIds.filter((id) => !!usersById[id]);
+                if (validMemberUserIds.length < 2) {
+                  return NextResponse.json({ ok: false, error: 'Pick at least one valid teammate' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const title = safeTrim(body?.title || '') || deriveDashboardConversationTitle(validMemberUserIds, usersById, authed.userId);
+                if (!title) {
+                  return NextResponse.json({ ok: false, error: 'Conversation title is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                let conversation: any = null;
+                if (conversationId) {
+                  const { data: membership, error: membershipError } = await db
+                    .from('dashboard_conversation_members')
+                    .select('conversation_id')
+                    .eq('conversation_id', conversationId)
+                    .eq('user_id', authed.userId)
+                    .maybeSingle();
+
+                  if (membershipError) {
+                    const msg = isMissingTableError(membershipError, 'dashboard_conversation_members')
+                      ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                      : `Failed to update conversation: ${membershipError.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  if (!membership) {
+                    return NextResponse.json({ ok: false, error: 'Conversation not found' }, { status: 404, headers: corsHeaders(request) });
+                  }
+
+                  const { data: updated, error: updateError } = await db
+                    .from('dashboard_conversations')
+                    .update({ title, updated_at: new Date().toISOString() })
+                    .eq('conversation_id', conversationId)
+                    .select('conversation_id, created_at, updated_at, title, last_message_at, last_message_preview')
+                    .single();
+
+                  if (updateError) {
+                    const msg = isMissingTableError(updateError, 'dashboard_conversations')
+                      ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                      : `Failed to update conversation: ${updateError.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  conversation = updated;
+                } else {
+                  const { data: created, error: createError } = await db
+                    .from('dashboard_conversations')
+                    .insert({
+                      created_by_user_id: authed.userId,
+                      title,
+                      updated_at: new Date().toISOString()
+                    })
+                    .select('conversation_id, created_at, updated_at, title, last_message_at, last_message_preview')
+                    .single();
+
+                  if (createError) {
+                    const msg = isMissingTableError(createError, 'dashboard_conversations')
+                      ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                      : `Failed to create conversation: ${createError.message}`;
+                    return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  conversation = created;
+                }
+
+                const memberRows = validMemberUserIds.map((userId) => ({
+                  conversation_id: conversation.conversation_id,
+                  user_id: userId,
+                  added_by_user_id: authed.userId
+                }));
+
+                const { error: memberError } = await db
+                  .from('dashboard_conversation_members')
+                  .upsert(memberRows, { onConflict: 'conversation_id,user_id' });
+
+                if (memberError) {
+                  const msg = isMissingTableError(memberError, 'dashboard_conversation_members')
+                    ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                    : `Failed to save conversation members: ${memberError.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = conversation;
+                extraPayload.messagesConversationUpsert = result;
+              }
+              break;
+
+            case 'messagesSend':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const conversationId = safeTrim(body?.conversation_id || body?.conversationId || '');
+                const messageBody = safeTrim(body?.body || body?.message || '');
+                if (!conversationId) {
+                  return NextResponse.json({ ok: false, error: 'conversation_id is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!messageBody) {
+                  return NextResponse.json({ ok: false, error: 'body is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+                const { data: membership, error: membershipError } = await db
+                  .from('dashboard_conversation_members')
+                  .select('conversation_id')
+                  .eq('conversation_id', conversationId)
+                  .eq('user_id', authed.userId)
+                  .maybeSingle();
+
+                if (membershipError) {
+                  const msg = isMissingTableError(membershipError, 'dashboard_conversation_members')
+                    ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                    : `Failed to send message: ${membershipError.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+                if (!membership) {
+                  return NextResponse.json({ ok: false, error: 'Conversation not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                const nowIso = new Date().toISOString();
+                const { data: message, error: messageError } = await db
+                  .from('dashboard_messages')
+                  .insert({
+                    conversation_id: conversationId,
+                    sent_by_user_id: authed.userId,
+                    body: messageBody,
+                    created_at: nowIso
+                  })
+                  .select('message_id, conversation_id, created_at, sent_by_user_id, body')
+                  .single();
+
+                if (messageError) {
+                  const msg = isMissingTableError(messageError, 'dashboard_messages')
+                    ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                    : `Failed to send message: ${messageError.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                try {
+                  await db
+                    .from('dashboard_conversations')
+                    .update({
+                      updated_at: nowIso,
+                      last_message_at: nowIso,
+                      last_message_preview: messageBody.slice(0, 220)
+                    })
+                    .eq('conversation_id', conversationId);
+                } catch {
+                  // ignore trigger fallback update failures
+                }
+
+                result = {
+                  sent: true,
+                  conversation_id: conversationId,
+                  message: {
+                    ...message,
+                    sent_by_username: authed.username,
+                    sent_by_display_name: authed.displayName
+                  }
+                };
+                extraPayload.messagesSend = result;
+              }
+              break;
+
+            case 'messagesDeleteConversation':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+                if (authed.role !== 'ADMIN') {
+                  return NextResponse.json({ ok: false, error: 'Only admins can delete chats' }, { status: 403, headers: corsHeaders(request) });
+                }
+
+                const conversationId = safeTrim(body?.conversation_id || body?.conversationId || '');
+                if (!conversationId) {
+                  return NextResponse.json({ ok: false, error: 'conversation_id is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const db = getDeliverablesDb();
+                const { error } = await db.from('dashboard_conversations').delete().eq('conversation_id', conversationId);
+                if (error) {
+                  const msg = isMissingTableError(error, 'dashboard_conversations')
+                    ? 'Dashboard message tables not found. Apply migration 023_create_dashboard_messages.sql to the MGMT database.'
+                    : `Failed to delete conversation: ${error.message}`;
+                  return NextResponse.json({ ok: false, error: msg }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                result = { deleted: true, conversation_id: conversationId };
+                extraPayload.messagesDeleteConversation = result;
+              }
+              break;
+
+            case 'messagesPolishDraft':
+              {
+                const authed = await getDashboardAuthUserFromSession(request);
+                if (!authed) {
+                  return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+                }
+
+                const draft = safeTrim(body?.draft || '');
+                if (!draft) {
+                  return NextResponse.json({ ok: false, error: 'draft is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                result = buildMessagesPolishFallback({
+                  draft,
+                  teammateNames: body?.teammate_names || body?.teammateNames,
+                  conversationTitle: body?.conversation_title || body?.conversationTitle
+                });
+                extraPayload.messagesPolishDraft = result;
+              }
+              break;
+
             case 'smsSend':
               {
                 const authed = await getDashboardAuthUserFromSession(request);
@@ -8280,6 +9090,61 @@ export async function POST(request: Request) {
               }
               break;
 
+            case 'updateDashboardUser':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) {
+                  return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                }
+
+                const userId = String(body?.userId || '').trim();
+                const username = normalizeDashboardUsername(body?.username);
+                const roleRaw = String(body?.role || '').trim();
+                const hasRole = !!roleRaw;
+                const role = hasRole ? (roleRaw.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA') : null;
+
+                if (!userId && !username) {
+                  return NextResponse.json({ ok: false, error: 'userId or username is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+                if (!hasRole) {
+                  return NextResponse.json({ ok: false, error: 'role is required' }, { status: 400, headers: corsHeaders(request) });
+                }
+
+                const sessionUser = await getDashboardAuthUserFromSession(request);
+                if (sessionUser) {
+                  const selfByUserId = userId && String(sessionUser.userId || '').trim() === userId;
+                  const selfByUsername = username && String(sessionUser.username || '').trim().toUpperCase() === username;
+                  if (selfByUserId || selfByUsername) {
+                    return NextResponse.json(
+                      { ok: false, error: 'You cannot change your own account role from this window.' },
+                      { status: 403, headers: corsHeaders(request) }
+                    );
+                  }
+                }
+
+                const db = tasksDb;
+                const nowIso = new Date().toISOString();
+                let q = db.from('Dashboard_Users').update({ Role: role, Updated_At: nowIso });
+                q = userId ? q.eq('User_ID', userId) : q.eq('Username', username);
+
+                const { data: rows, error } = await q
+                  .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Updated_At')
+                  .limit(1);
+
+                if (error) {
+                  return NextResponse.json({ ok: false, error: `Failed to update user: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+
+                const updated = Array.isArray(rows) && rows.length ? rows[0] : null;
+                if (!updated) {
+                  return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+
+                result = { user: updated };
+                extraPayload.updateDashboardUser = result;
+              }
+              break;
+
             case 'resetDashboardUserPin':
               {
                 const auth = await requireAdminToken(request);
@@ -8338,7 +9203,8 @@ export async function POST(request: Request) {
                 const inputEmail = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
                 const inputUsername = normalizeDashboardUsername(body?.username);
                 const inputDisplayName = typeof body?.displayName === 'string' ? body.displayName.trim() : '';
-                const inputRole = String(body?.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                const hasExplicitRole = body?.role !== undefined && body?.role !== null && String(body.role).trim() !== '';
+                const inputRole = hasExplicitRole ? (String(body?.role || '').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA') : null;
                 const userId = String(body?.userId || '').trim();
 
                 // Optional: allow sending invite to a disabled account if explicitly enabled.
@@ -8346,6 +9212,25 @@ export async function POST(request: Request) {
 
                 const db = tasksDb;
                 const nowIso = new Date().toISOString();
+                const renderDashboardInviteEmail = (opts: { loginUrl: string; username: string; pin: string; heading: string; intro: string; displayName?: string | null }) => {
+                  const safeDisplayName = String(opts.displayName || '').trim();
+                  return `
+                    <div style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.45; color:#0f172a;">
+                      <h2 style="margin:0 0 8px 0;">${opts.heading}</h2>
+                      <p style="margin:0 0 14px 0;">${safeDisplayName ? `Hi ${safeDisplayName}, ` : ''}${opts.intro}</p>
+                      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin: 0 0 14px 0;">
+                        <div style="font-weight:800; margin-bottom:6px;">Dashboard URL</div>
+                        <div><a href="${opts.loginUrl}" style="color:#1d4ed8;">${opts.loginUrl}</a></div>
+                        <div style="height:10px;"></div>
+                        <div style="font-weight:800; margin-bottom:6px;">Login details</div>
+                        <div><b>Username:</b> ${opts.username}</div>
+                        <div><b>Temporary PIN:</b> ${opts.pin}</div>
+                      </div>
+                      <p style="margin:0 0 10px 0; color:#334155;">After you sign in, use the <b>Change PIN</b> button to choose your own PIN.</p>
+                      <p style="margin:0; color:#64748b; font-size:12px;">If you have trouble signing in, reply to this email.</p>
+                    </div>
+                  `;
+                };
 
                 const deriveUsernameFromEmail = (email: string): string => {
                   const local = String(email.split('@')[0] || '').trim();
@@ -8414,7 +9299,7 @@ export async function POST(request: Request) {
                       Username: usernameToUse,
                       Display_Name: displayNameToUse,
                       Email: emailToUse,
-                      Role: inputRole,
+                      Role: inputRole || 'VA',
                       Is_Disabled: false,
                       Pin_Salt: saltB64,
                       Pin_Hash: hashB64,
@@ -8433,23 +9318,15 @@ export async function POST(request: Request) {
                   // Send email
                   const loginUrl = String(process.env.H2S_DASHBOARD_LOGIN_URL || process.env.H2S_DASHBOARD_URL || 'https://portal.home2smart.com').trim();
                   const safeUrl = /^https?:\/\//i.test(loginUrl) ? loginUrl : 'https://portal.home2smart.com';
-                  const subject = 'Your Home2Smart Portal Login';
-                  const html = `
-                    <div style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.45; color:#0f172a;">
-                      <h2 style="margin:0 0 8px 0;">Log into your account</h2>
-                      <p style="margin:0 0 14px 0;">Your Home2Smart Portal access is ready.</p>
-                      <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin: 0 0 14px 0;">
-                        <div style="font-weight:800; margin-bottom:6px;">Login URL</div>
-                        <div><a href="${safeUrl}" style="color:#1d4ed8;">${safeUrl}</a></div>
-                        <div style="height:10px;"></div>
-                        <div style="font-weight:800; margin-bottom:6px;">Credentials</div>
-                        <div><b>Username:</b> ${String(usernameToUse)}</div>
-                        <div><b>PIN:</b> ${String(pin)}</div>
-                      </div>
-                      <p style="margin:0 0 10px 0; color:#334155;">After you sign in, use the <b>Change PIN</b> button to set your own PIN.</p>
-                      <p style="margin:0; color:#64748b; font-size:12px;">If you have trouble signing in, reply to this email.</p>
-                    </div>
-                  `;
+                  const subject = 'Your Home2Smart dashboard login details';
+                  const html = renderDashboardInviteEmail({
+                    loginUrl: safeUrl,
+                    username: String(usernameToUse),
+                    pin: String(pin),
+                    heading: 'Your dashboard login is ready',
+                    intro: 'your Home2Smart dashboard access is ready.',
+                    displayName: displayNameToUse
+                  });
 
                   const idempotencyKey = `dashboard_invite:${String(inserted?.User_ID || '')}:${await sha256Base64Url(String(pin))}`;
                   const mailRes = await sendMail({
@@ -8479,7 +9356,7 @@ export async function POST(request: Request) {
                     signInTest = { ok: false, error: e?.message || 'Sign-in test failed' };
                   }
 
-                  result = { user, pin, created: true, mail: mailRes, signInTest };
+                  result = { user, pin, email: emailToUse, created: true, mail: mailRes, signInTest };
                   extraPayload.sendDashboardLoginInvite = result;
                   break;
                 }
@@ -8513,7 +9390,7 @@ export async function POST(request: Request) {
                 if (forceEnable) patch.Is_Disabled = false;
                 if (inputEmail) patch.Email = inputEmail;
                 if (inputDisplayName) patch.Display_Name = inputDisplayName;
-                if (inputRole) patch.Role = inputRole;
+                if (hasExplicitRole && inputRole) patch.Role = inputRole;
 
                 const { data: updatedRows, error: updateError } = await db
                   .from('Dashboard_Users')
@@ -8531,23 +9408,15 @@ export async function POST(request: Request) {
 
                 const loginUrl = String(process.env.H2S_DASHBOARD_LOGIN_URL || process.env.H2S_DASHBOARD_URL || 'https://portal.home2smart.com').trim();
                 const safeUrl = /^https?:\/\//i.test(loginUrl) ? loginUrl : 'https://portal.home2smart.com';
-                const subject = 'Your Home2Smart Portal Login';
-                const html = `
-                  <div style="font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; line-height:1.45; color:#0f172a;">
-                    <h2 style="margin:0 0 8px 0;">Log into your account</h2>
-                    <p style="margin:0 0 14px 0;">Here are your updated login credentials.</p>
-                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:14px; margin: 0 0 14px 0;">
-                      <div style="font-weight:800; margin-bottom:6px;">Login URL</div>
-                      <div><a href="${safeUrl}" style="color:#1d4ed8;">${safeUrl}</a></div>
-                      <div style="height:10px;"></div>
-                      <div style="font-weight:800; margin-bottom:6px;">Credentials</div>
-                      <div><b>Username:</b> ${String(user.Username || '')}</div>
-                      <div><b>PIN:</b> ${String(pin)}</div>
-                    </div>
-                    <p style="margin:0 0 10px 0; color:#334155;">After you sign in, use the <b>Change PIN</b> button to set your own PIN.</p>
-                    <p style="margin:0; color:#64748b; font-size:12px;">If you have trouble signing in, reply to this email.</p>
-                  </div>
-                `;
+                const subject = 'Your Home2Smart dashboard login details';
+                const html = renderDashboardInviteEmail({
+                  loginUrl: safeUrl,
+                  username: String(user.Username || ''),
+                  pin: String(pin),
+                  heading: 'Your login details have been updated',
+                  intro: 'here are your latest Home2Smart dashboard login details.',
+                  displayName: String(user.Display_Name || '')
+                });
 
                 const idempotencyKey = `dashboard_invite:${String(user?.User_ID || '')}:${await sha256Base64Url(String(pin))}`;
                 const mailRes = await sendMail({
@@ -8577,7 +9446,7 @@ export async function POST(request: Request) {
                   signInTest = { ok: false, error: e?.message || 'Sign-in test failed' };
                 }
 
-                result = { user, pin, created: false, mail: mailRes, signInTest };
+                result = { user, pin, email: emailToUse, created: false, mail: mailRes, signInTest };
                 extraPayload.sendDashboardLoginInvite = result;
               }
               break;
@@ -9122,6 +9991,7 @@ CONSTRAINTS_TEXT:\n${constraintsText}
         }
 
       case 'logHours':
+        const hoursDb = getSupabaseMgmt();
         // Server-side validation
         if (!body.date || body.hours === undefined || body.hours === null || !body.tasks || !body.vaName) {
           const missing = [];
@@ -9146,7 +10016,11 @@ CONSTRAINTS_TEXT:\n${constraintsText}
         }
         
         // Validate date format
-        const dateObj = new Date(body.date);
+        const rawHoursDate = safeTrim(body.date || '');
+        const dateMatch = rawHoursDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const dateObj = dateMatch
+          ? new Date(Date.UTC(parseInt(dateMatch[1], 10), parseInt(dateMatch[2], 10) - 1, parseInt(dateMatch[3], 10), 12, 0, 0, 0))
+          : new Date(rawHoursDate);
         if (isNaN(dateObj.getTime())) {
           return NextResponse.json({ 
             ok: false, 
@@ -9154,17 +10028,16 @@ CONSTRAINTS_TEXT:\n${constraintsText}
           }, { status: 400, headers: corsHeaders(request) });
         }
         
-        // Normalize date to start of day for duplicate check
-        const normalizedDate = new Date(dateObj);
-        normalizedDate.setHours(0, 0, 0, 0);
-        const dateISO = normalizedDate.toISOString();
-        const dateOnly = dateISO.split('T')[0];
+        const dateOnly = dateMatch
+          ? rawHoursDate
+          : `${dateObj.getUTCFullYear()}-${String(dateObj.getUTCMonth() + 1).padStart(2, '0')}-${String(dateObj.getUTCDate()).padStart(2, '0')}`;
+        const dateISO = `${dateOnly}T12:00:00.000Z`;
         
         // Check for existing entry (idempotency: one entry per user per day)
         const dayStart = `${dateOnly}T00:00:00.000Z`;
         const dayEnd = `${dateOnly}T23:59:59.999Z`;
         
-        const { data: existingEntry } = await getSupabase()
+        const { data: existingEntry } = await hoursDb
           .from('VA_Hours_Log')
           .select('Entry_ID, Date, Hours')
           .eq('Logged_By', body.vaName)
@@ -9223,7 +10096,7 @@ Be direct, constructive, and actionable. Keep each section concise (2-3 sentence
         try {
           const entryId = crypto.randomUUID();
           
-          const { data: hoursLog, error: dbError } = await getSupabase()
+          const { data: hoursLog, error: dbError } = await hoursDb
             .from('VA_Hours_Log')
             .insert({
               Entry_ID: entryId,
@@ -10555,6 +11428,9 @@ You are an expert quality analyst and content strategist reviewing a work delive
 
 DELIVERABLE TITLE: ${body.title}
 DESCRIPTION: ${body.description || 'No description provided'}
+If the DESCRIPTION is empty, extremely brief, or primarily external links, please deeply analyze the title, file names, and the URL contexts (e.g. Loom, Figma routes) to infer and auto-generate a comprehensive professional description of what this deliverable likely represents, treating the links themselves as the deliverable content.
+If the DESCRIPTION is empty, extremely brief, or primarily external links, please deeply analyze the title, file names, and the URL contexts (e.g. Loom, Figma routes) to infer and auto-generate a comprehensive professional description of what this deliverable likely represents, treating the links themselves as the deliverable content.
+If the DESCRIPTION is primarily URLs/links or extremely brief, please deeply analyze the title, file names, and the URL contexts (e.g. Loom, Figma) to infer and auto-generate a comprehensive description of what this deliverable likely represents.
 ${documentText ? `ATTACHED FILES: ${documentText}` : ''}
 ${fileTypes.length > 0 ? `FILE TYPES: ${fileTypes.join(', ')}` : ''}
 
@@ -10745,6 +11621,253 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         
         result = newDeliverable;
         break;
+
+      case 'analyzeDeliverableCreative': {
+        if (!body.deliverableId) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required field: deliverableId'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const { data: deliverableRow, error: deliverableLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (deliverableLoadError || !deliverableRow) {
+          return NextResponse.json({
+            ok: false,
+            error: deliverableLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const attachments = parseDeliverableAttachments(deliverableRow.File_Link);
+        const imageIndexes = attachments
+          .map((file, index) => ({ file, index }))
+          .filter((entry) => deliverableAttachmentIsImage(entry.file));
+
+        if (!imageIndexes.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'No image attachments found to analyze'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const requestedFileIndex = Number.isInteger(body.fileIndex)
+          ? Number(body.fileIndex)
+          : Number.isFinite(Number(body.fileIndex))
+            ? Math.trunc(Number(body.fileIndex))
+            : null;
+        const analyzeAll = requestedFileIndex === null || requestedFileIndex < 0;
+        const targetIndexes = analyzeAll
+          ? imageIndexes.map((entry) => entry.index)
+          : [requestedFileIndex];
+
+        const validTargets = targetIndexes.filter((index) => Number.isInteger(index) && imageIndexes.some((entry) => entry.index === index));
+        if (!validTargets.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Requested image was not found on this deliverable'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const force = body.force === true;
+        const analyzedIndexes: number[] = [];
+
+        for (const fileIndex of validTargets) {
+          const existing = attachments[fileIndex] || {};
+          if (!force && existing.aiAnalysis && typeof existing.aiAnalysis === 'object') {
+            analyzedIndexes.push(fileIndex);
+            continue;
+          }
+
+          const analysis = await analyzeDeliverableCreativeAttachment(openai, {
+            title: safeTrim(deliverableRow.Title || ''),
+            description: safeTrim(deliverableRow.Description || ''),
+            attachment: existing,
+            imageIndex: fileIndex,
+            imageCount: imageIndexes.length
+          });
+
+          attachments[fileIndex] = {
+            ...existing,
+            aiSummary: analysis.summary,
+            aiQualityScore: analysis.qualityScore,
+            aiStrengths: analysis.strengths,
+            aiImprovements: analysis.improvements,
+            aiAnalysis: analysis,
+            aiAnalyzedAt: analysis.analyzedAt
+          };
+          analyzedIndexes.push(fileIndex);
+        }
+
+        const aggregate = aggregateDeliverableCreativeAnalysis(attachments);
+        const { data: analyzedDeliverable, error: analyzeUpdateError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update({
+            File_Link: JSON.stringify(attachments),
+            AI_Quality_Score: aggregate?.qualityScore ?? deliverableRow.AI_Quality_Score ?? null,
+            AI_Strengths: aggregate?.strengths?.length ? JSON.stringify(aggregate.strengths) : deliverableRow.AI_Strengths ?? null,
+            AI_Improvements: aggregate?.improvements?.length ? JSON.stringify(aggregate.improvements) : deliverableRow.AI_Improvements ?? null,
+            AI_Summary: aggregate?.summary || deliverableRow.AI_Summary || null,
+            AI_Analysis_Raw: aggregate?.raw ? JSON.stringify(aggregate.raw) : deliverableRow.AI_Analysis_Raw ?? null
+          })
+          .eq('Deliverable_ID', body.deliverableId)
+          .select()
+          .single();
+
+        if (analyzeUpdateError) {
+          return NextResponse.json({
+            ok: false,
+            error: `Database error: ${analyzeUpdateError.message}`
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        result = {
+          ...analyzedDeliverable,
+          analyzedFileIndexes: analyzedIndexes
+        };
+        break;
+      }
+
+      case 'appendDeliverableVariant': {
+        if (!body.deliverableId || !Array.isArray(body.files) || !body.files.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required fields: deliverableId, files[]'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const { data: deliverableRow, error: deliverableLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (deliverableLoadError || !deliverableRow) {
+          return NextResponse.json({
+            ok: false,
+            error: deliverableLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const existingAttachments = parseDeliverableAttachments(deliverableRow.File_Link);
+        const nowIso = new Date().toISOString();
+        const uploadedBy = safeTrim(body.uploadedBy || body.submittedBy || body.reviewedBy || '');
+        const newAttachments = (body.files || [])
+          .map((file: any, idx: number) => {
+            const dataUrl = safeTrim(file?.dataUrl || '');
+            const url = safeTrim(file?.url || '');
+            if (!dataUrl && !url) return null;
+            return {
+              ...file,
+              name: deliverableAttachmentName(file, existingAttachments.length + idx),
+              size: Number(file?.size || 0) || null,
+              type: safeTrim(file?.type || ''),
+              dataUrl: dataUrl || undefined,
+              url: url || undefined,
+              uploadedAt: nowIso,
+              uploadedBy: uploadedBy || undefined,
+              isVariant: existingAttachments.length > 0
+            };
+          })
+          .filter(Boolean);
+
+        if (!newAttachments.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'No valid files were provided'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const mergedAttachments = [...existingAttachments, ...newAttachments];
+        const { data: updatedDeliverable, error: appendError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update({
+            File_Link: JSON.stringify(mergedAttachments),
+            Status: 'PENDING',
+            Reviewed_By: null,
+            Reviewed_At: null,
+            Review_Notes: null
+          })
+          .eq('Deliverable_ID', body.deliverableId)
+          .select()
+          .single();
+
+        if (appendError) {
+          return NextResponse.json({
+            ok: false,
+            error: `Database error: ${appendError.message}`
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        result = updatedDeliverable;
+        break;
+      }
+
+      case 'setDeliverablePrimaryFile': {
+        if (!body.deliverableId || (!Number.isInteger(body.fileIndex) && !Number.isFinite(Number(body.fileIndex)))) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required fields: deliverableId, fileIndex'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const fileIndex = Math.trunc(Number(body.fileIndex));
+        const { data: deliverableRow, error: deliverableLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (deliverableLoadError || !deliverableRow) {
+          return NextResponse.json({
+            ok: false,
+            error: deliverableLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const attachments = parseDeliverableAttachments(deliverableRow.File_Link);
+        if (fileIndex < 0 || fileIndex >= attachments.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Requested file index is out of range'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const chosen = { ...(attachments[fileIndex] || {}) };
+        const reordered = [
+          {
+            ...chosen,
+            isVariant: false,
+            promotedAt: new Date().toISOString(),
+            promotedBy: safeTrim(body.updatedBy || body.reviewedBy || body.submittedBy || '') || undefined
+          },
+          ...attachments.filter((_: any, index: number) => index !== fileIndex).map((file: any, index: number) => ({
+            ...file,
+            isVariant: index >= 0
+          }))
+        ];
+
+        const { data: updatedDeliverable, error: reorderError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update({ File_Link: JSON.stringify(reordered) })
+          .eq('Deliverable_ID', body.deliverableId)
+          .select()
+          .single();
+
+        if (reorderError) {
+          return NextResponse.json({
+            ok: false,
+            error: `Database error: ${reorderError.message}`
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        result = updatedDeliverable;
+        break;
+      }
 
       case 'deliverables':
         const statusFilter = searchParams.get('status') || 'all';
@@ -13741,14 +14864,20 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
           const nonce = randomTokenBase64Url(12);
           const path = `ad_resources/${y}-${m}-${d}/${nonce}_${filename}`;
 
+          // Try main db first because 'proof' bucket usually lives there, fallback to MGMT
           let signed: any = null;
           try {
-            // Supabase JS v2 returns { data: { signedUrl, path, token }, error }
+            let db = getSupabase();
             const { data, error } = await (db as any).storage.from(bucket).createSignedUploadUrl(path, { upsert: false, contentType });
             if (error) {
-              return NextResponse.json({ ok: false, error: `Failed to sign upload: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+              // Try fallback
+              const mgmtDb = getDeliverablesDb();
+              const retry = await (mgmtDb as any).storage.from(bucket).createSignedUploadUrl(path, { upsert: false, contentType });
+              if (retry.error) throw retry.error;
+              signed = retry.data;
+            } else {
+              signed = data;
             }
-            signed = data;
           } catch (e: any) {
             return NextResponse.json({ ok: false, error: e?.message || 'Failed to sign upload' }, { status: 500, headers: corsHeaders(request) });
           }
@@ -13990,11 +15119,26 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
       case 'createDashboardUser':
         payload.createDashboardUser = result;
         break;
+      case 'updateDashboardUser':
+        payload.updateDashboardUser = result;
+        break;
       case 'disableDashboardUser':
         payload.disableDashboardUser = result;
         break;
       case 'sendDashboardLoginInvite':
         payload.sendDashboardLoginInvite = result;
+        break;
+      case 'messagesConversationUpsert':
+        payload.messagesConversationUpsert = result;
+        break;
+      case 'messagesSend':
+        payload.messagesSend = result;
+        break;
+      case 'messagesDeleteConversation':
+        payload.messagesDeleteConversation = result;
+        break;
+      case 'messagesPolishDraft':
+        payload.messagesPolishDraft = result;
         break;
       case 'smsSend':
         payload.smsSend = result;
@@ -14134,3 +15278,4 @@ async function updateVaKnowledgeProfile(vaName: string, resourceId: string, aiAn
     console.error('Error updating VA knowledge profile:', error);
   }
 }
+

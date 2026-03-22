@@ -1,2 +1,5 @@
+canary-edit-training-applypatch-test
 patch_canary_write_test=2026-03-06T23:XXZ
 canary v2
+
+PATCH_TOOL_CANARY=1

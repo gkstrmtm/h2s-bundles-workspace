@@ -1,7 +1,14 @@
 # Ignore large hand-maintained dashboard files (format-on-save can hang VS Code)
+frontend/dash.html
 frontend/dash.js
 frontend/dash2.js
 frontend/dash.bundle.js
+Dash.html
+Dash.js
+live_dash.js
+portal.html
+bundles.html
+bundles.js
 
 # Ignore generated build-stamped assets
 frontend/dash.PORTAL_BUILD_*.js

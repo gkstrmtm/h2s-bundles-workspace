@@ -24,7 +24,7 @@ function isAllowed(bucket: string, path: string) {
   const p = String(path || '').trim().replace(/^\/+/, '');
   if (b !== 'proof') return false;
   // Keep this tight: only serve public proof media.
-  if (!(p.startsWith('uploads/') || p.startsWith('bundles/') || p.startsWith('thumbnails/') || p.startsWith('raw/'))) return false;
+  if (!(p.startsWith('uploads/') || p.startsWith('bundles/') || p.startsWith('thumbnails/') || p.startsWith('raw/') || p.startsWith('ad_resources/'))) return false;
   // basic traversal protection
   if (p.includes('..')) return false;
   return true;

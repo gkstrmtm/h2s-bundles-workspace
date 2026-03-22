@@ -87,11 +87,20 @@ export async function POST(request: Request) {
     );
   }
 
+  let publicUrl: string | null = null;
+  try {
+    const pub = client.storage.from(bucket).getPublicUrl(objectPath);
+    publicUrl = String(pub?.data?.publicUrl || '').trim() || null;
+  } catch {
+    publicUrl = null;
+  }
+
   return NextResponse.json(
     {
       ok: true,
       bucket,
       path: objectPath,
+      public_url: publicUrl,
       content_type: contentType,
       file_size_kb: Math.round(bytes.length / 1024),
       original_name: originalName,

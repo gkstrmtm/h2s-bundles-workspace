@@ -44,13 +44,15 @@ export async function sendMail(opts: {
   let recipient = opts.to;
   const isProd = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
   
-  // Safety override for non-prod environments to prevent leaking to real customers
+  // NOTE: Safety override has been removed as per user request to allow 
+  // invite emails to be sent to actual users in testing/staging environments.
+  // 
   // We allow @home2smart.com emails to pass through in all envs
-  if (!isProd && !recipient.includes('@home2smart.com')) {
-     const safety = process.env.MAIL_SAFETY_OVERRIDE || 'dev@home2smart.com';
-     console.log(`[MAIL] Non-prod redirect: ${recipient} -> ${safety}`);
-     recipient = safety;
-  }
+  // if (!isProd && !recipient.includes('@home2smart.com')) {
+  //    const safety = process.env.MAIL_SAFETY_OVERRIDE || 'dev@home2smart.com';
+  //    console.log(`[MAIL] Non-prod redirect: ${recipient} -> ${safety}`);
+  //    recipient = safety;
+  // }
 
   const payload = {
     personalizations: [{ to: [{ email: recipient }] }],

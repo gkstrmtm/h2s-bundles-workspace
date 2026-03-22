@@ -85,8 +85,47 @@ test-*.html
 *-test.js
 diagnose-*.js
 check-*.js
+check*.js
 verify-*.js
 debug-*.js
+
+# Local scratch scripts (underscored/numbered variants)
+test*.js
+get*.js
+tmp*.js
+live*.js
+make*.js
+master_rebuild*.js
+rewrite*.js
+runfix.js
+p.js
+find*.js
+inject*.js
+read*.js
+*view.js
+checl_*.js
+tools/print-live-dash-assets.ps1
+tools/verify-live-training-marker.ps1
+
+# Local scratch patch helpers (do not commit)
+fix*.js
+fix*.ps1
+patch*.js
+patch*.ps1
+apply-pdf-patch*.js
+apply_training_patch.js
+create_group_chat_patch.js
+run_patch.bat
+deleted_lines.txt
+diff.txt
+temp_head.txt
+
+# Local probes (do not commit)
+debug-*.ps1
+
+# Generated / ad-hoc artifacts (do not commit)
+backend/public/dash.js
+frontend/dash-messages.js
 
 # SQL and database files
 *.sql

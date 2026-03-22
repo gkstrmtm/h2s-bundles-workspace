@@ -73,11 +73,21 @@ export async function POST(request: Request) {
     warnings.push('MP4 conversion is not performed during staged finalize on this deployment. Raw upload stored as-is.');
   }
 
+  let publicUrl: string | null = null;
+  try {
+    const sb = getSupabase();
+    const pub = sb.storage.from(bucket).getPublicUrl(finalPath);
+    publicUrl = String(pub?.data?.publicUrl || '').trim() || null;
+  } catch {
+    publicUrl = null;
+  }
+
   return NextResponse.json(
     {
       ok: true,
       bucket,
       path: finalPath,
+      public_url: publicUrl,
       content_type: mime || null,
       converted_to_mp4: false,
       received_convert_to_mp4: wantsConvert ? 'true' : 'false',
