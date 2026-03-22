@@ -3923,8 +3923,8 @@
         </div>
 
         <!-- CALENDAR SCHEDULING MODAL -->
-        <div class="calendar-modal-overlay" id="calendarModal" onclick="closeCalendarModal(event)">
-            <div class="calendar-modal" onclick="event.stopPropagation()">
+        <div class="calendar-modal-overlay" id="calendarModal" onclick="closeCalendarModal(event)" style="display: none; position: fixed; inset: 0; background: rgba(10, 42, 90, 0.4); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+            <div class="calendar-modal" onclick="event.stopPropagation()" style="background: white; padding: 24px; border-radius: 12px; width: 100%; max-width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
                 <div class="calendar-modal-header">Schedule Task</div>
                 <div class="calendar-modal-body">
                     <div class="form-group">
