@@ -1747,6 +1747,67 @@ function isMissingDeliverablesColumnError(error: any, columnName: string): boole
   return error?.code === '42703' || (msg.includes('column') && msg.includes(col) && (msg.includes('does not exist') || msg.includes('not found')));
 }
 
+const DELIVERABLE_GRADE_RUBRIC_FIELDS = [
+  'briefAlignment',
+  'visualQuality',
+  'messageClarity',
+  'ctaStrength',
+  'brandAccuracy'
+] as const;
+
+function parseDeliverableMetadata(raw: any): Record<string, any> {
+  try {
+    if (!raw) return {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) return { ...raw };
+    const parsed = JSON.parse(String(raw || '').trim() || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...parsed } : {};
+  } catch {
+    return {};
+  }
+}
+
+function clampDeliverableGradeScore(value: unknown): number | null {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  return Math.max(0, Math.min(100, Math.round(num)));
+}
+
+function normalizeDeliverableGradeRubric(raw: any): Record<string, number> {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const rubric: Record<string, number> = {};
+
+  for (const key of DELIVERABLE_GRADE_RUBRIC_FIELDS) {
+    const normalized = clampDeliverableGradeScore(source[key]);
+    if (normalized === null) continue;
+    rubric[key] = normalized;
+  }
+
+  return rubric;
+}
+
+function computeDeliverableGradeScore(rubric: Record<string, number>): number | null {
+  const values = DELIVERABLE_GRADE_RUBRIC_FIELDS
+    .map((key) => clampDeliverableGradeScore(rubric?.[key]))
+    .filter((value): value is number => value !== null);
+
+  if (!values.length) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function normalizeDeliverableGradeRecord(raw: any) {
+  const source = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const rubric = normalizeDeliverableGradeRubric(source.rubric || source.criteria || source.scores || {});
+  const computedScore = computeDeliverableGradeScore(rubric);
+  return {
+    rubric,
+    score: clampDeliverableGradeScore(source.score) ?? computedScore,
+    notes: safeTrim(source.notes || source.feedback || ''),
+    gradedBy: safeTrim(source.gradedBy || source.reviewedBy || source.username || ''),
+    gradedAt: safeTrim(source.gradedAt || source.reviewedAt || source.updatedAt || ''),
+    role: safeTrim(source.role || '')
+  };
+}
+
 function toInt(value: unknown, fallback: number): number {
   const n = typeof value === 'string' ? parseInt(value, 10) : typeof value === 'number' ? value : NaN;
   return Number.isFinite(n) ? n : fallback;
@@ -11866,6 +11927,129 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
 
         result = updatedDeliverable;
+        break;
+      }
+
+      case 'gradeDeliverable': {
+        if (!body.deliverableId) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required field: deliverableId'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const gradingType = safeTrim(body.gradingType || body.gradeType || '').toLowerCase();
+        if (gradingType !== 'self' && gradingType !== 'admin') {
+          return NextResponse.json({
+            ok: false,
+            error: 'gradingType must be either "self" or "admin"'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const rubric = normalizeDeliverableGradeRubric(body.rubric);
+        if (Object.keys(rubric).length !== DELIVERABLE_GRADE_RUBRIC_FIELDS.length) {
+          return NextResponse.json({
+            ok: false,
+            error: 'All grading rubric fields are required'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const { data: deliverableRow, error: deliverableLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (deliverableLoadError || !deliverableRow) {
+          return NextResponse.json({
+            ok: false,
+            error: deliverableLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const me = await getDashboardAuthUserFromSession(request);
+        const submittedBy = normalizeDashboardUsername(deliverableRow.Submitted_By || '');
+        const requestedGrader = normalizeDashboardUsername(body.gradedBy || body.reviewedBy || '');
+        const actor = normalizeDashboardUsername(me?.username || requestedGrader || '');
+
+        if (gradingType === 'admin') {
+          if (!me || me.role !== 'ADMIN') {
+            return NextResponse.json({
+              ok: false,
+              error: 'Admin grading requires an active admin session'
+            }, { status: 403, headers: corsHeaders(request) });
+          }
+        } else {
+          const isAdmin = !!me && me.role === 'ADMIN';
+          const isOwner = !!actor && !!submittedBy && actor === submittedBy;
+          if (!isAdmin && !isOwner) {
+            return NextResponse.json({
+              ok: false,
+              error: 'Self-grading is limited to the submitter or an admin'
+            }, { status: 403, headers: corsHeaders(request) });
+          }
+        }
+
+        const nowIso = new Date().toISOString();
+        const metadata = parseDeliverableMetadata(deliverableRow.Metadata);
+        const existingGrading = metadata.grading && typeof metadata.grading === 'object' && !Array.isArray(metadata.grading)
+          ? { ...metadata.grading }
+          : {};
+        const previous = normalizeDeliverableGradeRecord(existingGrading[gradingType]);
+        const nextGrade = {
+          ...previous,
+          rubric,
+          score: clampDeliverableGradeScore(body.score) ?? computeDeliverableGradeScore(rubric),
+          notes: safeTrim(body.notes || body.gradeNotes || body.feedback || ''),
+          gradedBy: safeTrim(me?.username || body.gradedBy || body.reviewedBy || deliverableRow.Submitted_By || ''),
+          gradedAt: nowIso,
+          role: gradingType === 'admin' ? 'ADMIN' : 'VA'
+        };
+
+        const selfGrade = gradingType === 'self'
+          ? nextGrade
+          : normalizeDeliverableGradeRecord(existingGrading.self);
+        const adminGrade = gradingType === 'admin'
+          ? nextGrade
+          : normalizeDeliverableGradeRecord(existingGrading.admin);
+
+        metadata.grading = {
+          ...existingGrading,
+          self: selfGrade,
+          admin: adminGrade,
+          summary: {
+            selfScore: selfGrade.score ?? null,
+            adminScore: adminGrade.score ?? null,
+            gap: (selfGrade.score !== null && selfGrade.score !== undefined && adminGrade.score !== null && adminGrade.score !== undefined)
+              ? adminGrade.score - selfGrade.score
+              : null,
+            updatedAt: nowIso
+          },
+          lastUpdatedAt: nowIso
+        };
+
+        const updatePayload: any = {
+          Metadata: JSON.stringify(metadata)
+        };
+
+        const { data: gradedDeliverable, error: gradeError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update(updatePayload)
+          .eq('Deliverable_ID', body.deliverableId)
+          .select('*')
+          .single();
+
+        if (gradeError) {
+          const missingMetadata = isMissingDeliverablesColumnError(gradeError, 'Metadata');
+          return NextResponse.json({
+            ok: false,
+            error: missingMetadata
+              ? 'Deliverables.Metadata column is required for grading persistence'
+              : `Database error: ${gradeError.message}`
+          }, { status: missingMetadata ? 501 : 500, headers: corsHeaders(request) });
+        }
+
+        result = gradedDeliverable;
         break;
       }
 

@@ -143,11 +143,6 @@
                             if (legacyAdmin && !h.get('x-h2s-admin-token')) {
                                 h.set('x-h2s-admin-token', legacyAdmin);
                             }
-                            // Backend admin guard expects x-h2s-admin-key (shared admin key)
-                            // or an ADMIN session. Keep legacy header for backwards compatibility.
-                            if (legacyAdmin && !h.get('x-h2s-admin-key')) {
-                                h.set('x-h2s-admin-key', legacyAdmin);
-                            }
                             return h;
                         };
 
@@ -471,71 +466,6 @@
         let dashboardInitialized = false;
         let appInstanceId = null;
 
-        // One-time "What's New" popup (user-facing). Bump version to re-show.
-        const H2S_WHATS_NEW_VERSION = '2026-03-15-loom';
-        const H2S_WHATS_NEW_STORAGE_KEY = `h2s_whats_new_seen_${H2S_WHATS_NEW_VERSION}`;
-
-        function maybeShowWhatsNewPopup() {
-            try {
-                if (String(currentRole || '').trim().toUpperCase() === 'ADMIN') return;
-            } catch (_) {}
-
-            // Avoid stacking on top of other auto-open flows.
-            try {
-                const params = new URLSearchParams(window.location.search);
-                const trainingToOpen = params.get('openTraining') || localStorage.getItem('h2s_open_training');
-                if (trainingToOpen) return;
-            } catch (_) {}
-
-            // Avoid duplicates within a single session even if storage fails.
-            try {
-                if (window.__h2sWhatsNewShown) return;
-            } catch (_) {}
-
-            // If localStorage is available, only show once per browser.
-            try {
-                const seen = localStorage.getItem(H2S_WHATS_NEW_STORAGE_KEY);
-                if (seen === '1') return;
-            } catch (_) {
-                // If storage is blocked, fall back to session guard above.
-            }
-
-            // Mark as shown for this session.
-            try { window.__h2sWhatsNewShown = true; } catch (_) {}
-
-            const html = `
-<div style="display:flex; flex-direction:column; gap:14px;">
-                    <div style="font-size:14px; color:#374151; line-height:1.6;">
-                        Hey, you can upload Loom links now!
-                    </div>
-
-                    <div style="background: var(--light); border: 1px solid var(--border); border-radius: 14px; padding: 14px;">
-                        <div style="font-weight:900; color: var(--cobalt); font-size:14px; margin-bottom:8px;">Loom links as deliverables</div>
-                        <ul style="margin:0; padding-left:18px; color:#374151; line-height:1.7;">
-                            <li>Just paste your loom link directly in the deliverable description.</li>
-                            <li>It will seamlessly convert into a beautifully designed player.</li>
-                            <li>No more bloated file size issues, just quick feedback looping.</li>
-                        </ul>
-                    </div>
-                </div>
-            `;
-
-            // Slight delay to avoid fighting initial tab restore / layout.
-            setTimeout(() => {
-                try {
-                    // Mark as seen at the moment we actually show (not on dismiss).
-                    try { localStorage.setItem(H2S_WHATS_NEW_STORAGE_KEY, '1'); } catch (_) {}
-                    showModal('New Feature: Loom Links', html, {
-                        confirmText: 'Got it',
-                        width: '600px',
-                        maxHeight: '80vh',
-                        backdropClose: true,
-                        html: true
-                    });
-                } catch (_) {}
-            }, 600);
-        }
-
         // Initialize Dashboard (called after user gate)
         function initDashboard() {
             // Prevent duplicate initialization
@@ -586,9 +516,6 @@
 
                 const changePinBtn = document.getElementById('changePinBtn');
                 if (changePinBtn) changePinBtn.style.display = 'block';
-
-                // One-time popup for users (won't repeat once shown).
-                maybeShowWhatsNewPopup();
             });
         }
 
@@ -667,19 +594,14 @@
                         const urlTab = urlParams.get('tab');
                         
                         // Priority: URL param > Saved tab > Default (pipeline)
-                        const requestedTab = urlTab || (isValid ? savedTab : 'pipeline');
-                        const shouldOpenHoursModal = requestedTab === 'hours';
-                        const targetTab = shouldOpenHoursModal ? 'pipeline' : requestedTab;
+                        const targetTab = urlTab || (isValid ? savedTab : 'pipeline');
                         
                         // Validate tab exists
-                        const validTabs = ['pipeline', 'screening', 'techinterview', 'reports', 'training', 'tasks', 'workspace', 'deliverables', 'sms', 'admin', 'offerbuilder', 'proofpacks'];
+                        const validTabs = ['pipeline', 'screening', 'techinterview', 'hours', 'reports', 'training', 'tasks', 'deliverables', 'sms', 'admin', 'offerbuilder', 'proofpacks'];
                         if (validTabs.includes(targetTab)) {
                             // Small delay to ensure DOM is ready
                             setTimeout(() => {
                                 switchToTab(targetTab, { skipPersistence: true, smooth: false });
-                                if (shouldOpenHoursModal && typeof openHoursModal === 'function') {
-                                    setTimeout(() => openHoursModal(), 60);
-                                }
                                 
                                 // Clean up URL if it had a tab parameter
                                 if (urlTab) {
@@ -757,6 +679,9 @@
                     case 'tasks':
                         loadTasks(true); // Silent
                         break;
+                    case 'hours':
+                        loadHoursHistory(true); // Silent - no spinner on refresh
+                        break;
                 }
             }, 30000); // 30 seconds
             
@@ -807,11 +732,6 @@
         // Tab Switching (updated for sidebar)
         function switchToTab(targetTab, options = {}) {
             const { skipPersistence = false, smooth = true } = options;
-
-            if (targetTab === 'hours') {
-                if (typeof openHoursModal === 'function') openHoursModal();
-                return;
-            }
 
             // If we're leaving Offer Builder, flush any pending draft autosave so tab switches
             // don't drop unsaved edits.
@@ -980,12 +900,12 @@
                 'pipeline': 'Pipeline',
                 'screening': 'Screening Form',
                 'techinterview': 'Tech Interview',
+                'hours': 'Log Hours',
                 'reports': 'Candidate Review',
                 'training': 'Training',
                 'tasks': 'Tasks',
-                'workspace': 'My Summary',
                 'deliverables': 'Deliverables',
-                'sms': 'Messaging',
+                'sms': 'SMS Inbox',
                 'admin': 'Admin Dashboard',
                 'offerbuilder': 'Offer Builder',
                 'proofpacks': 'Proof Packs'
@@ -1047,6 +967,8 @@
                     }, 200);
                 } else if (targetTab === 'tasks') {
                     loadTasks();
+                } else if (targetTab === 'hours') {
+                    loadHoursHistory();
                 } else if (targetTab === 'sms') {
                     loadSmsThreads(false);
                     loadSmsGroups(false);
@@ -1075,7 +997,7 @@
         }
 
         // =====================
-        // Messaging
+        // SMS Inbox (Twilio)
         // =====================
         let __smsActiveThreadId = '';
         let __smsActiveGroupId = '';
@@ -1107,35 +1029,6 @@
         let __smsPhoneToGroup = new Map();
 
         const SMS_MAX_ACTIVE_MESSAGES = 800;
-
-        function syncLegacyMessagingWindowState() {
-            try {
-                window.__smsActiveThreadId = __smsActiveThreadId;
-                window.__smsActiveGroupId = __smsActiveGroupId;
-                window.__smsActiveContactPhone = __smsActiveContactPhone;
-                window.__smsActiveContactName = __smsActiveContactName;
-                window.__smsThreads = __smsThreads;
-                window.__smsGroups = __smsGroups;
-                window.__smsActiveGroupMembers = __smsActiveGroupMembers;
-                window.__smsActiveMessages = __smsActiveMessages;
-                window.__smsMessagesPage = __smsMessagesPage;
-                window.__smsHiddenCache = __smsHiddenCache;
-                window.__smsDraftRecipients = __smsDraftRecipients;
-                window.__smsActiveLastMessageId = __smsActiveLastMessageId;
-                window.__smsContactsByPhone = __smsContactsByPhone;
-                window.__smsRecipientSuggest = __smsRecipientSuggest;
-                window.__smsPhoneToGroup = __smsPhoneToGroup;
-            } catch (_) {
-                // ignore
-            }
-        }
-
-        try {
-            window.__h2sSyncMessagesState = syncLegacyMessagingWindowState;
-            syncLegacyMessagingWindowState();
-        } catch (_) {
-            // ignore
-        }
 
         function smsNormalizePhoneCandidate(raw) {
             const s = String(raw || '').trim();
@@ -1173,7 +1066,6 @@
         function smsRenderRecipientsBar() {
             const chips = document.getElementById('smsToChips');
             if (!chips) return;
-            try { syncLegacyMessagingWindowState(); } catch (_) {}
             const contacts = (__smsContactsByPhone && typeof __smsContactsByPhone === 'object') ? __smsContactsByPhone : {};
             const html = (__smsDraftRecipients || []).map((p, idx) => {
                 const display = smsFormatPhoneDisplay(p);
@@ -1183,7 +1075,7 @@
                 return `
                     <span class="sms-to-chip">
                         <button type="button" class="sms-to-chip__label" onclick="smsOpenRecipientContactModal('${smsEscapeHtml(String(p || '').trim())}')">${smsEscapeHtml(label)}</button>
-                        <button type="button" class="sms-to-chip__x" onclick="smsRemoveRecipient(${idx})">&times;</button>
+                        <button type="button" class="sms-to-chip__x" onclick="smsRemoveRecipient(${idx})">×</button>
                     </span>
                 `;
             }).join('');
@@ -1293,7 +1185,6 @@
 
         function smsSetRecipientSuggestions(list) {
             __smsRecipientSuggest = Array.isArray(list) ? list : [];
-            try { syncLegacyMessagingWindowState(); } catch (_) {}
         }
 
         function smsRenderRecipientSuggestions() {
@@ -1506,13 +1397,9 @@
 
         function smsSetComposerEnabled(enabled) {
             const { input, btn } = smsGetComposerEls();
-            const micBtn = document.getElementById('smsMicBtn');
-            const polishBtn = document.getElementById('smsPolishBtn');
             const ok = !!enabled;
             if (input) input.disabled = !ok;
             if (btn) btn.disabled = !ok;
-            if (micBtn) micBtn.disabled = !ok;
-            if (polishBtn) polishBtn.disabled = !ok;
         }
 
         function smsSendFromComposer(e) {
@@ -1536,9 +1423,9 @@
             try {
                 const n = Array.isArray(__smsHiddenCache) ? __smsHiddenCache.length : 0;
                 if (n <= 0) {
-                    showToast('No archived conversations', 'info');
+                    showToast('No archived threads', 'info');
                 } else {
-                    showToast(`Archived conversations: ${n}`, 'info');
+                    showToast(`Archived threads: ${n}`, 'info');
                 }
             } catch {
                 // ignore
@@ -1548,24 +1435,18 @@
         function smsFilterThreads() {
             try {
                 const q = String(document.getElementById('smsThreadSearch')?.value || '').trim().toLowerCase();
+                const rows = Array.isArray(__smsThreads) ? __smsThreads : [];
                 if (!q) {
-                    renderSmsGroups(__smsGroups);
-                    renderSmsThreads(__smsThreads);
+                    renderSmsThreads(rows);
                     return;
                 }
-                const filteredThreads = (Array.isArray(__smsThreads) ? __smsThreads : []).filter(t => {
+                const filtered = rows.filter(t => {
                     const phone = String(t && t.contact_phone || '').toLowerCase();
                     const name = String(t && t.contact_name || '').toLowerCase();
                     const preview = String(t && t.last_message_preview || '').toLowerCase();
                     return phone.includes(q) || name.includes(q) || preview.includes(q);
                 });
-                const filteredGroups = (Array.isArray(__smsGroups) ? __smsGroups : []).filter(g => {
-                    const title = String(g && g.title || '').toLowerCase();
-                    const members = Array.isArray(g && g.members) ? g.members : [];
-                    return title.includes(q) || members.some(m => String(m || '').toLowerCase().includes(q));
-                });
-                renderSmsGroups(filteredGroups);
-                renderSmsThreads(filteredThreads);
+                renderSmsThreads(filtered);
             } catch {
                 // ignore
             }
@@ -1600,14 +1481,6 @@
         }
 
         function startSmsAutoRefresh() {
-            try {
-                if (typeof window !== 'undefined' && typeof window.startSmsAutoRefresh === 'function' && window.startSmsAutoRefresh !== startSmsAutoRefresh) {
-                    return window.startSmsAutoRefresh();
-                }
-            } catch (e) {
-                // ignore and fall through to legacy behavior
-            }
-
             stopSmsAutoRefresh();
             // No refresh button UX: auto-poll quietly while the SMS tab is active.
             __smsAutoRefreshTimer = setInterval(() => {
@@ -1650,7 +1523,6 @@
                         next[p] = c;
                     }
                     __smsContactsByPhone = next;
-                    try { syncLegacyMessagingWindowState(); } catch (_) {}
                 }
             } catch (e) {
                 // ignore
@@ -1658,14 +1530,6 @@
         }
 
         async function loadSmsThreads(silent) {
-            try {
-                if (typeof window !== 'undefined' && typeof window.loadSmsThreads === 'function' && window.loadSmsThreads !== loadSmsThreads) {
-                    return await window.loadSmsThreads(silent);
-                }
-            } catch (e) {
-                // ignore and fall through to legacy behavior
-            }
-
             const list = document.getElementById('smsThreadsList');
             if (!list) return;
             if (!silent) smsSetLoading(true, 'Loading threads...');
@@ -1678,7 +1542,6 @@
                 }
                 __smsThreads = Array.isArray(data.threads) ? data.threads : [];
                 __smsHiddenCache = Array.isArray(data.hidden_threads) ? data.hidden_threads : [];
-                try { syncLegacyMessagingWindowState(); } catch (_) {}
                 smsUpdateHiddenEntryUi();
                 await loadSmsContacts();
                 renderSmsThreads(__smsThreads);
@@ -1694,14 +1557,6 @@
 
         async function loadSmsGroups(silent) {
             try {
-                if (typeof window !== 'undefined' && typeof window.loadSmsGroups === 'function' && window.loadSmsGroups !== loadSmsGroups) {
-                    return await window.loadSmsGroups(silent);
-                }
-            } catch (e) {
-                // ignore and fall through to legacy behavior
-            }
-
-            try {
                 const response = await fetch(`${API_URL}?action=smsGroups`);
                 const data = await response.json();
                 if (!data || !data.ok) {
@@ -1709,7 +1564,6 @@
                 }
                 __smsGroups = Array.isArray(data.groups) ? data.groups : [];
                 __smsActiveGroupMembers = Array.isArray(data.group_members) ? data.group_members : [];
-                try { syncLegacyMessagingWindowState(); } catch (_) {}
 
                 // Build phone->group lookup for sender attribution in the thread view.
                 __smsPhoneToGroup = new Map();
@@ -1740,21 +1594,19 @@
             if (!el) return;
             const rows = Array.isArray(groups) ? groups : [];
             if (rows.length <= 0) {
-                el.innerHTML = '<div class="sms-empty" style="padding: 10px;">No group chats yet.</div>';
+                el.innerHTML = '';
                 return;
             }
             const html = rows.map(g => {
                 const id = String(g && g.group_id || '').trim();
                 const title = String(g && g.title || '').trim() || 'Group';
-                const members = Array.isArray(g && g.members) ? g.members : [];
-                const memberCount = members.length;
                 const active = id && id === __smsActiveGroupId;
                 return `
                     <div class="sms-thread-row is-group ${active ? 'is-active' : ''}" onclick="openSmsGroup('${smsEscapeHtml(id)}')">
                         <div class="sms-thread-row__top">
                             <div class="sms-thread-row__name">${smsEscapeHtml(title)}</div>
                         </div>
-                        <div class="sms-thread-row__phone">${memberCount > 0 ? `${memberCount} member${memberCount === 1 ? '' : 's'}` : 'Group chat'}</div>
+                        <div class="sms-thread-row__phone">Group</div>
                     </div>
                 `;
             }).join('');
@@ -1767,7 +1619,7 @@ function renderSmsThreads(threads) {
             if (!list) return;
             const rows = Array.isArray(threads) ? threads : [];
             if (rows.length <= 0) {
-                list.innerHTML = '<div class="sms-empty" style="padding: 10px;">No direct messages yet.</div>';
+                list.innerHTML = '<div class="sms-empty" style="padding: 10px;">No threads yet.</div>';
                 return;
             }
 
@@ -1804,7 +1656,6 @@ async function openSmsThread(threadId) {
             __smsActiveGroupId = '';
             __smsActiveContactPhone = '';
             __smsActiveContactName = '';
-            try { syncLegacyMessagingWindowState(); } catch (_) {}
             smsHideToBar();
 
             // Ensure threads list highlights.
@@ -1828,7 +1679,6 @@ async function openSmsThread(threadId) {
             __smsActiveThreadId = '';
             __smsActiveContactPhone = '';
             __smsActiveContactName = '';
-            try { syncLegacyMessagingWindowState(); } catch (_) {}
             smsHideToBar();
 
             renderSmsThreads(__smsThreads);
@@ -2188,7 +2038,7 @@ function smsStartNewMessage(prefillPhone) {
                 }
             }
 
-            smsUpdateThreadHeader('New message', 'Add one or more teammates below to start a direct or group conversation');
+            smsUpdateThreadHeader('New message', 'Enter a phone number below and send your first message');
         }
         async function smsUpsertGroupForRecipients(recipients) {
             const list = Array.isArray(recipients) ? recipients.slice(0) : [];
@@ -5117,17 +4967,6 @@ function smsStartNewMessage(prefillPhone) {
                 const service = document.getElementById('ppService')?.value || 'tv_mounting';
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 const visible = items.filter(a => a?.is_visible !== false);
-                let totalVid = 0; let totalPho = 0;
-                for (const a of items) {
-                    const kind = String(a.media_kind || a.kind || '').toLowerCase();
-                    if (kind === 'video') totalVid++; else totalPho++;
-                }
-                const cntEl = document.getElementById('ppAssetsCount');
-                if (cntEl) cntEl.textContent = items.length;
-                const vidEl = document.getElementById('ppVideoStats');
-                if (vidEl) vidEl.textContent = totalVid;
-                const phoEl = document.getElementById('ppPhotoStats');
-                if (phoEl) phoEl.textContent = totalPho;
 
                 const shotCounts = new Map();
                 for (const a of visible) {
@@ -5411,11 +5250,6 @@ function smsStartNewMessage(prefillPhone) {
                     const assetId = String(asset.asset_id);
                     const mediaKind = (asset.media_kind || asset.kind || 'image').toLowerCase();
                     const isVideo = mediaKind === 'video';
-                    const titleLabel = this.formatHumanLabel(asset.shot_type || asset.proof_type || asset.intent || '') || (isVideo ? 'Video proof' : 'Photo proof');
-                    const subLabel = [
-                        this.formatHumanLabel(asset.service || ''),
-                        this.formatHumanLabel(asset.slot_key || asset.slot || '')
-                    ].filter(Boolean).join(' � ') || 'Proof library item';
                     
                     // URL Logic
                     const bucket = asset.storage_bucket || 'proof';
@@ -5440,30 +5274,44 @@ function smsStartNewMessage(prefillPhone) {
                     const smart = this.getAssetSmartCropDetails(asset);
                     const isEdited = !!(smart && Object.keys(smart).length > 0); // Simplified check
                     
+                    const badges = [];
+                    if (isLive) badges.push('<span class="badge badge-live">LIVE</span>');
+                    if (isEdited) badges.push('<span class="badge badge-edited">EDITED</span>');
+                    
                     // Checkbox state
                     const isSelected = this.state.selectedIds && this.state.selectedIds.has(assetId);
 
                     return `
-                        <div class="gallery-tile ${isSelected ? 'selected' : ''}"
+                        <div class="gallery-tile ${isSelected ? 'selected' : ''}" 
                              data-asset-id="${this.escapeHtml(assetId)}"
                              data-type="${isVideo ? 'video' : 'image'}"
                              oncontextmenu="proofPacks.showLibraryContextMenu(event, '${this.escapeHtml(assetId)}'); return false;"
                              onclick="proofPacks.editAsset('${this.escapeHtml(assetId)}')">
                              
-                            <div class="mac-select-ring" onclick="event.stopPropagation(); proofPacks.toggleSelection('${this.escapeHtml(assetId)}', !${isSelected})"></div>
+                            <input type="checkbox" class="tile-checkbox" 
+                                   ${isSelected ? 'checked' : ''}
+                                   onclick="event.stopPropagation(); proofPacks.toggleSelection('${this.escapeHtml(assetId)}', this.checked)">
                             
                             <img src="${this.escapeHtml(url)}" class="tile-image" loading="lazy" alt="Asset" onerror="this.src='data:image/svg+xml;base64,...'">
-
+                            
+                            <div class="tile-badges">
+                                ${badges.join('')}
+                            </div>
+                            
                             ${isVideo ? `
                                 <div class="play-icon">
                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                 </div>
                                 <div class="video-duration">Video</div>
                             ` : ''}
-
-                            <div class="tile-meta">
-                                <div class="tile-meta-title">${this.escapeHtml(titleLabel)}</div>
-                                <div class="tile-meta-sub">${this.escapeHtml(subLabel)}</div>
+                            
+                            <div class="tile-overlay">
+                                <button class="tile-action" onclick="event.stopPropagation(); proofPacks.editAsset('${this.escapeHtml(assetId)}')" title="Edit">
+                                    <svg fill="currentColor" viewBox="0 0 16 16"><path d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg>
+                                </button>
+                                <button class="tile-action" onclick="event.stopPropagation(); proofPacks.deleteAsset('${this.escapeHtml(assetId)}')" title="Delete">
+                                    <svg fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                                </button>
                             </div>
                         </div>
                     `;
@@ -5630,7 +5478,7 @@ function smsStartNewMessage(prefillPhone) {
                             <div style="display:flex; gap:12px; align-items:flex-start; margin-top: 12px;">
                                 <div style="flex: 1;">
                                     <div id="ppBulkOptLine1" style="font-size: 12px; color:#0f172a; font-weight: 800;">Starting...</div>
-                                    <div id="ppBulkOptLine2" style="margin-top: 4px; font-size: 12px; color:#64748b;">Working...</div>
+                                    <div id="ppBulkOptLine2" style="margin-top: 4px; font-size: 12px; color:#64748b;">...”</div>
                                     <div id="ppBulkOptCounts" style="margin-top: 8px; font-size: 12px; color:#334155; font-variant-numeric: tabular-nums;">Done: 0  | OK: 0  | Skipped: 0  | Failed: 0</div>
                                 </div>
                                 <div style="width: 260px; border: 1px solid #e2e8f0; border-radius: 12px; overflow:hidden; background:#0b1220;">
@@ -6061,7 +5909,7 @@ function smsStartNewMessage(prefillPhone) {
                         const msg = resp?.error || 'Failed to load live content';
                         container.innerHTML = `
                             <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                                <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:4px;">Could not load live preview</div>
+                                <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:4px;">...š ï¸ Could not load live preview</div>
                                 <div style="color:#991b1b;font-size:12px;">${msg}</div>
                             </div>
                         `;
@@ -6184,7 +6032,7 @@ function smsStartNewMessage(prefillPhone) {
                     console.error('[Live Preview] Error:', e);
                     container.innerHTML = `
                         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                            <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">Failed to load live preview</div>
+                            <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">...š ï¸ Failed to load live preview</div>
                             <div style="color:#991b1b;font-size:12px;margin-bottom:12px;">${this.escapeHtml(e?.message || 'Unknown error')}</div>
                             <button onclick="proofPacks.refreshLivePreview()" style="background:#3b82f6;color:white;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
                                 Try Again
@@ -7480,7 +7328,7 @@ function smsStartNewMessage(prefillPhone) {
                 }
                 
                 const assetId = this._currentEditingAssetId;
-                const ok = confirm('DELETE THIS ASSET?\n\nThis will permanently remove the asset record from the database.\n\nThe media file will remain in storage but will no longer be accessible from the library.\n\nContinue?');
+                const ok = confirm('...š ï¸ DELETE THIS ASSET?\n\nThis will permanently remove the asset record from the database.\n\nThe media file will remain in storage but will no longer be accessible from the library.\n\nContinue?');
                 if (!ok) return;
                 
                 try {
@@ -9059,7 +8907,7 @@ function smsStartNewMessage(prefillPhone) {
                 }
 
                 // Sync chip UI to reconciled state
-                const chips = Array.from(document.querySelectorAll('.pp-pill[data-filter], .pp-chip[data-filter]'));
+                const chips = Array.from(document.querySelectorAll('.pp-chip[data-filter]'));
                 for (const chip of chips) {
                     const raw = String(chip.getAttribute('data-filter') || '');
                     const parts = raw.split(':');
@@ -9152,23 +9000,7 @@ function smsStartNewMessage(prefillPhone) {
                     }
                 }
                 
-                const visibleCount = this.applyAllFilters();
-
-                if (!visibleCount && (filterType === 'media' || filterType === 'service')) {
-                    const hasOtherFilter = filterType === 'media'
-                        ? this.libraryFilters.service !== null
-                        : this.libraryFilters.media !== null;
-                    if (hasOtherFilter && value !== 'all') {
-                        this.libraryFilters[filterType] = null;
-                        document.querySelectorAll(`[data-filter^="${filterType}:"]`).forEach(btn => btn.classList.remove('active'));
-                        const allBtn = document.querySelector(`[data-filter="${filterType}:all"]`);
-                        if (allBtn) allBtn.classList.add('active');
-                        this.applyAllFilters();
-                        try {
-                            if (typeof showToast === 'function') showToast('That filter combo had no matches, so the broader library view was kept.', 'info');
-                        } catch (_) {}
-                    }
-                }
+                this.applyAllFilters();
             },
             
             applyAllFilters() {
@@ -9245,8 +9077,6 @@ function smsStartNewMessage(prefillPhone) {
                 if (gridEl && getComputedStyle(gridEl).display !== 'none') {
                     this.renderGridView();
                 }
-
-                return visibleCount;
             },
             
             clearAllFilters() {
@@ -9264,15 +9094,15 @@ function smsStartNewMessage(prefillPhone) {
                 if (searchInput) searchInput.value = '';
                 
                 // Deactivate all chips
-                document.querySelectorAll('.pp-pill.active, .pp-chip.active').forEach(chip => {
+                document.querySelectorAll('.pp-chip.active').forEach(chip => {
                     chip.classList.remove('active');
                 });
 
                 // Default to "All"
-                const allChip = document.querySelector('.pp-pill[data-filter="media:all"], .pp-chip[data-filter="media:all"]');
+                const allChip = document.querySelector('.pp-chip[data-filter="media:all"]');
                 if (allChip) allChip.classList.add('active');
 
-                const svcAllChip = document.querySelector('.pp-pill[data-filter="service:all"], .pp-chip[data-filter="service:all"]');
+                const svcAllChip = document.querySelector('.pp-chip[data-filter="service:all"]');
                 if (svcAllChip) svcAllChip.classList.add('active');
 
                 const liveAllChip = document.querySelector('[data-filter="live:all"]');
@@ -9307,8 +9137,7 @@ function smsStartNewMessage(prefillPhone) {
                         this.libraryFilters.search ||
                         this.libraryFilters.service !== null ||
                         this.libraryFilters.media !== null ||
-                        this.libraryFilters.visibility !== null ||
-                        this.libraryFilters.live !== null;
+                        this.libraryFilters.visibility !== null;
                     
                     clearBtn.style.display = hasActiveFilters ? 'inline-block' : 'none';
                 }
@@ -11376,7 +11205,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (!validation.valid) {
                     const warnEl = document.getElementById('ppUploadWarning');
                     if (warnEl) {
-                        warnEl.innerHTML = `<span class="error-text" style="color:#dc2626; font-weight:800;">Error: ${this.escapeHtml(validation.error)}</span>`;
+                        warnEl.innerHTML = `<span class="error-text" style="color:#dc2626; font-weight:800;">..." ${this.escapeHtml(validation.error)}</span>`;
                     }
                     if (typeof showToast === 'function') {
                         showToast(validation.error, 'error');
@@ -11595,7 +11424,7 @@ function smsStartNewMessage(prefillPhone) {
                 const minDim = Math.min(w, h);
                 
                 if (minDim < minRequired) {
-                    warnEl.innerHTML = `<span class="warning-text" style="color:#f59e0b; font-weight:800;">Low resolution: ${w}x${h}px. Recommended minimum: ${minRequired}px for sharp display in ${context} context.</span>`;
+                    warnEl.innerHTML = `<span class="warning-text" style="color:#f59e0b; font-weight:800;">...š ï¸ Low resolution: ${w}x${h}px. Recommended minimum: ${minRequired}px for sharp display in ${context} context.</span>`;
                     if (typeof showToast === 'function') {
                         showToast(`Low resolution image detected (${w}x${h}). Consider using ${minRequired}px+ for best quality.`, 'warning');
                     }
@@ -13174,9 +13003,9 @@ function smsStartNewMessage(prefillPhone) {
                 // Get current preview context
                 const contextName = this.state?.previewContext || 'proof_rail';
                 
-                console.log('[SAFE ZONE] ========================================');
-                console.log('[SAFE ZONE] Context:', contextName);
-                console.log('[SAFE ZONE] Placement from click:', this.state?._editPlacement);
+                console.log('ðŸŸ¡ [SAFE ZONE] ========================================');
+                console.log('ðŸŸ¡ [SAFE ZONE] Context:', contextName);
+                console.log('ðŸŸ¡ [SAFE ZONE] Placement from click:', this.state?._editPlacement);
                 
                 // FIXED: Use exact frontend tile dimensions (from bundles.html .proof-tile CSS)
                 // Frontend uses: width: 160px; height: 120px; aspect-ratio: 4/3;
@@ -13192,8 +13021,8 @@ function smsStartNewMessage(prefillPhone) {
                 const targetDims = FRONTEND_TILE_DIMENSIONS[contextName] || FRONTEND_TILE_DIMENSIONS.proof_rail;
                 const targetRatio = targetDims.width / targetDims.height;
                 
-                console.log('[SAFE ZONE] Frontend tile dimensions:', targetDims.width + 'x' + targetDims.height);
-                console.log('[SAFE ZONE] Target ratio:', targetRatio.toFixed(3));
+                console.log('ðŸŸ¡ [SAFE ZONE] Frontend tile dimensions:', targetDims.width + 'x' + targetDims.height);
+                console.log('ðŸŸ¡ [SAFE ZONE] Target ratio:', targetRatio.toFixed(3));
                 
                 // USER REQUIREMENT: EXPLICIT PIXEL DIMENSIONS - NO SCALING TO CONTAINER
                 // The Safe Zone must render at the exact pixel size of the frontend output (e.g., 160x120).
@@ -13202,7 +13031,7 @@ function smsStartNewMessage(prefillPhone) {
                 let safeWidth = targetDims.width;
                 let safeHeight = targetDims.height;
                 
-                console.log('[SAFE ZONE] Setting EXACT Dimensions:', safeWidth + 'px x ' + safeHeight + 'px');
+                console.log('ðŸŸ¡ [SAFE ZONE] Setting EXACT Dimensions:', safeWidth + 'px x ' + safeHeight + 'px');
                 
                 // Note: We previously applied 'scaleMultiplier' here to shrink the box for zoomed assets.
                 // However, user reports indicate the box was already too large.
@@ -13213,7 +13042,7 @@ function smsStartNewMessage(prefillPhone) {
                 const geom = asset?.smart_crop_details?.geometry || {};
                 const scalePct = Number(geom?.scale_pct || 100);
                 
-                console.log('[SAFE ZONE] Asset scale:', scalePct + '%');
+                console.log('ðŸŸ¡ [SAFE ZONE] Asset scale:', scalePct + '%');
                 
                 // Apply dimensions
                 rect.style.boxSizing = 'border-box';
@@ -13241,13 +13070,13 @@ function smsStartNewMessage(prefillPhone) {
                     const actualHeight = rect.clientHeight;
                     const actualComputedWidth = window.getComputedStyle(rect).width;
                     const actualComputedHeight = window.getComputedStyle(rect).height;
-                    console.log('[SAFE ZONE VERIFY] clientWidth:', actualWidth, 'clientHeight:', actualHeight);
-                    console.log('[SAFE ZONE VERIFY] computed width:', actualComputedWidth, 'height:', actualComputedHeight);
-                    console.log('[SAFE ZONE VERIFY] Actual ratio:', (actualWidth / actualHeight).toFixed(3));
-                    console.log('[SAFE ZONE VERIFY] Is ACTUALLY wider than tall?', actualWidth > actualHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] clientWidth:', actualWidth, 'clientHeight:', actualHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] computed width:', actualComputedWidth, 'height:', actualComputedHeight);
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] Actual ratio:', (actualWidth / actualHeight).toFixed(3));
+                    console.log('ðŸ”´ [SAFE ZONE VERIFY] Is ACTUALLY wider than tall?', actualWidth > actualHeight);
                 }, 50);
                 
-                console.log('[SAFE ZONE] ========================================');
+                console.log('ðŸŸ¡ [SAFE ZONE] ========================================');
                 
                 // Update label
                 const contextLabels = {
@@ -13548,97 +13377,6 @@ function smsStartNewMessage(prefillPhone) {
 
         // Deliverables Functions
         let currentDeliverablesView = 'submission';
-        let selectedFiles = [];
-        let deliverablePreviewUrls = [];
-        const deliverablesAutoRefreshState = {
-            bound: false,
-            timerId: null,
-            library: { lastLoadedAt: 0, inFlight: false, fingerprint: '' },
-            review: { lastLoadedAt: 0, inFlight: false, fingerprint: '' }
-        };
-
-        function deliverablesMakeFingerprint(rows) {
-            try {
-                const list = Array.isArray(rows) ? rows : [];
-                // Stable, cheap fingerprint based on fields that affect UI.
-                return list.map(d => [
-                    String(d?.Deliverable_ID || d?.deliverableId || ''),
-                    String(d?.Status || ''),
-                    String(d?.Updated_At || ''),
-                    String(d?.Reviewed_At || ''),
-                    String(d?.Published_At || ''),
-                    String(d?.AI_Quality_Score ?? ''),
-                    String(d?.AI_Summary || ''),
-                    String(d?.Review_Notes || ''),
-                    String(d?.Title || ''),
-                ].join('~')).join('||');
-            } catch (_) {
-                return String(Date.now());
-            }
-        }
-
-        function clearDeliverablePreviewUrls() {
-            try {
-                deliverablePreviewUrls.forEach(url => {
-                    try { URL.revokeObjectURL(url); } catch (_) {}
-                });
-            } catch (_) {}
-            deliverablePreviewUrls = [];
-        }
-
-        function bindDeliverablesAutoRefresh() {
-            if (deliverablesAutoRefreshState.bound) return;
-
-            const maybeRefresh = () => {
-                try {
-                    const pane = document.getElementById('deliverables-pane');
-                    if (!pane || !pane.classList.contains('active')) return;
-                    if (document.hidden) return;
-
-                    const now = Date.now();
-                    if (currentDeliverablesView === 'library') {
-                        const state = deliverablesAutoRefreshState.library;
-                        if (!state.inFlight && (!state.lastLoadedAt || (now - state.lastLoadedAt) > 45_000)) {
-                            loadDeliverablesLibrary({ silent: true });
-                        }
-                    } else if (currentDeliverablesView === 'review') {
-                        const state = deliverablesAutoRefreshState.review;
-                        if (!state.inFlight && (!state.lastLoadedAt || (now - state.lastLoadedAt) > 30_000)) {
-                            loadDeliverablesReview({ silent: true });
-                        }
-                    }
-                } catch (_) {}
-            };
-
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) maybeRefresh();
-            });
-            window.addEventListener('focus', () => maybeRefresh());
-            window.addEventListener('online', () => maybeRefresh());
-            deliverablesAutoRefreshState.timerId = window.setInterval(() => maybeRefresh(), 30_000);
-            deliverablesAutoRefreshState.bound = true;
-        }
-
-        function markDeliverablesLoaded(view) {
-            if (!deliverablesAutoRefreshState[view]) return;
-            deliverablesAutoRefreshState[view].lastLoadedAt = Date.now();
-            deliverablesAutoRefreshState[view].inFlight = false;
-        }
-
-        function setDeliverablesLoading(view, loading) {
-            if (!deliverablesAutoRefreshState[view]) return;
-            deliverablesAutoRefreshState[view].inFlight = !!loading;
-        }
-
-        function resetDeliverableSubmissionForm() {
-            const form = document.getElementById('deliverableSubmissionForm');
-            if (form) form.reset();
-            if (document.getElementById('deliverableAddedLinks')) document.getElementById('deliverableAddedLinks').innerHTML = '';
-            selectedFiles = [];
-            clearDeliverablePreviewUrls();
-            updateFileDisplay();
-            onDeliverableTaskChange();
-        }
 
         function onDeliverableTaskChange() {
             const sel = document.getElementById('deliverableTaskId');
@@ -13670,8 +13408,8 @@ function smsStartNewMessage(prefillPhone) {
                 return `<option value="${escapeHtml(t.Task_ID)}">${escapeHtml(title + cat + assigned)}</option>`;
             };
 
-            const todoBlock = todo.length ? `<optgroup label="To Do (${todo.length})">${todo.map(toOpt).join('')}</optgroup>` : '';
-            const doneBlock = done.length ? `<optgroup label="Done (${done.length})">${done.map(toOpt).join('')}</optgroup>` : '';
+            const todoBlock = todo.length ? `<optgroup label="To Do">${todo.map(toOpt).join('')}</optgroup>` : '';
+            const doneBlock = done.length ? `<optgroup label="Done">${done.map(toOpt).join('')}</optgroup>` : '';
 
             sel.innerHTML = `
                 <option value="" ${(!prev || prev === '__OTHER__') ? 'selected' : ''} disabled>Select a task...</option>
@@ -13708,7 +13446,6 @@ function smsStartNewMessage(prefillPhone) {
         
         function switchDeliverablesView(view) {
             currentDeliverablesView = view;
-            bindDeliverablesAutoRefresh();
             
             // Hide all views
             document.getElementById('deliverablesSubmissionView').style.display = 'none';
@@ -13719,7 +13456,6 @@ function smsStartNewMessage(prefillPhone) {
             document.querySelectorAll('[id^="deliverablesTab"]').forEach(btn => {
                 btn.style.background = '';
                 btn.style.color = '';
-                try { btn.classList.remove('is-active'); } catch (_) {}
             });
             
             // Show selected view and activate tab
@@ -13727,39 +13463,42 @@ function smsStartNewMessage(prefillPhone) {
                 document.getElementById('deliverablesSubmissionView').style.display = 'block';
                 document.getElementById('deliverablesTabSubmission').style.background = 'var(--cobalt)';
                 document.getElementById('deliverablesTabSubmission').style.color = 'white';
-                try { document.getElementById('deliverablesTabSubmission')?.classList.add('is-active'); } catch (_) {}
                 refreshDeliverableTaskDropdown();
             } else if (view === 'review') {
                 document.getElementById('deliverablesReviewView').style.display = 'block';
                 document.getElementById('deliverablesTabReview').style.background = 'var(--cobalt)';
                 document.getElementById('deliverablesTabReview').style.color = 'white';
-                try { document.getElementById('deliverablesTabReview')?.classList.add('is-active'); } catch (_) {}
                 loadDeliverablesReview();
             } else if (view === 'library') {
                 document.getElementById('deliverablesLibraryView').style.display = 'block';
                 document.getElementById('deliverablesTabLibrary').style.background = 'var(--cobalt)';
                 document.getElementById('deliverablesTabLibrary').style.color = 'white';
-                try { document.getElementById('deliverablesTabLibrary')?.classList.add('is-active'); } catch (_) {}
                 loadDeliverablesLibrary();
             }
         }
         
+        // File upload state
+        let selectedFiles = [];
+        
         function handleDragOver(event) {
             event.preventDefault();
             event.stopPropagation();
-            event.currentTarget.classList.add('deliverables-dropzone--active');
+            event.currentTarget.style.borderColor = 'var(--azure)';
+            event.currentTarget.style.background = 'var(--surface)';
         }
         
         function handleDragLeave(event) {
             event.preventDefault();
             event.stopPropagation();
-            event.currentTarget.classList.remove('deliverables-dropzone--active');
+            event.currentTarget.style.borderColor = 'var(--border)';
+            event.currentTarget.style.background = 'var(--surface-2)';
         }
         
         function handleFileDrop(event) {
             event.preventDefault();
             event.stopPropagation();
-            event.currentTarget.classList.remove('deliverables-dropzone--active');
+            event.currentTarget.style.borderColor = 'var(--border)';
+            event.currentTarget.style.background = 'var(--surface-2)';
             
             const files = Array.from(event.dataTransfer.files);
             addFiles(files);
@@ -13769,56 +13508,9 @@ function smsStartNewMessage(prefillPhone) {
             const files = Array.from(event.target.files);
             addFiles(files);
         }
-
-        function getDeliverableFilePreview(file) {
-            try {
-                if (file && typeof file.type === 'string') {
-                    if (file.type.startsWith('image/')) {
-                        const url = URL.createObjectURL(file);
-                        deliverablePreviewUrls.push(url);
-                        return `<img src="${url}" alt="${escapeHtml(file.name || 'preview')}">`;
-                    }
-                    if (file.type.startsWith('video/')) {
-                        const url = URL.createObjectURL(file);
-                        deliverablePreviewUrls.push(url);
-                        return `<video src="${url}" style="width: 100%; height: 100%; object-fit: cover;" autoplay muted loop playsinline></video>`;
-                    }
-                }
-            } catch (_) {}
-            const type = String(file?.type || '').toLowerCase();
-            if (type.includes('pdf')) return 'PDF';
-            if (type.includes('json')) return 'JSON';
-            if (type.includes('csv')) return 'CSV';
-            const ext = String(file?.name || '').split('.').pop() || 'FILE';
-            return escapeHtml(String(ext).slice(0, 8).toUpperCase());
-        }
         
         function addFiles(files) {
-            const MAX_FILES = 12;
-            const MAX_MB_PER_FILE = 20;
-
-            const existing = new Set(selectedFiles.map(file => `${file.name}::${file.size}::${file.lastModified}`));
-            let rejectedSize = 0;
-            let rejectedCount = 0;
-
-            for (const file of (Array.isArray(files) ? files : [])) {
-                if (selectedFiles.length >= MAX_FILES) {
-                    rejectedCount++;
-                    continue;
-                }
-                if (file.size > MAX_MB_PER_FILE * 1024 * 1024) {
-                    rejectedSize++;
-                    continue;
-                }
-                const key = `${file.name}::${file.size}::${file.lastModified}`;
-                if (existing.has(key)) continue;
-                existing.add(key);
-                selectedFiles.push(file);
-            }
-
-            if (rejectedSize > 0) showToast(`Skipped ${rejectedSize} file(s) over ${MAX_MB_PER_FILE}MB limit. Compress videos before uploading.`, 'error');
-            else if (rejectedCount > 0) showToast(`Maximum ${MAX_FILES} files allowed. Skipped extras.`, 'error');
-
+            selectedFiles = [...selectedFiles, ...files];
             updateFileDisplay();
         }
         
@@ -13832,33 +13524,23 @@ function smsStartNewMessage(prefillPhone) {
         function updateFileDisplay() {
             const display = document.getElementById('deliverableFileDisplay');
             const list = document.getElementById('deliverableFileList');
-            clearDeliverablePreviewUrls();
             
             if (selectedFiles.length === 0) {
                 display.innerHTML = `
-                    <div class="deliverables-dropzone__headline">Drag and drop files here, or click to browse</div>
-                    <div class="deliverables-dropzone__sub">Images preview instantly. You can also add docs, PDFs, or supporting files.</div>
+                    <div style="margin-bottom: 8px;">Drag and drop files here, or click to browse</div>
+                    <div style="font-size: 12px; color: var(--muted);">Supports multiple files</div>
                 `;
                 list.style.display = 'none';
-                list.innerHTML = '';
             } else {
-                const imageCount = selectedFiles.filter(file => String(file.type || '').startsWith('image/')).length;
-                display.innerHTML = `
-                    <div class="deliverables-dropzone__headline">${selectedFiles.length} file(s) ready${imageCount ? ` � ${imageCount} image preview${imageCount === 1 ? '' : 's'}` : ''}</div>
-                    <div class="deliverables-dropzone__sub">Review the list below, remove anything extra, then submit to push it into the review queue.</div>
-                `;
+                display.innerHTML = `<div style="font-size: 14px; color: var(--text); font-weight: 600;">${selectedFiles.length} file(s) selected</div>`;
                 list.style.display = 'block';
                 list.innerHTML = selectedFiles.map((file, index) => `
-                    <div class="deliverables-file-card">
-                        <div class="deliverables-file-card__thumb">${getDeliverableFilePreview(file)}</div>
-                        <div class="deliverables-file-card__meta">
-                            <div class="deliverables-file-card__name">${escapeHtml(file.name)}</div>
-                            <div class="deliverables-file-card__sub">
-                                <span>${escapeHtml(file.type || 'Unknown type')}</span>
-                                <span>${escapeHtml((file.size / 1024).toFixed(1))} KB</span>
-                            </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px; background: var(--surface); border-radius: 4px; margin-bottom: 4px;">
+                        <div style="flex: 1; font-size: 13px; color: var(--text);">
+                            <div style="font-weight: 600;">${file.name}</div>
+                            <div style="font-size: 11px; color: var(--muted);">${(file.size / 1024).toFixed(1)} KB</div>
                         </div>
-                        <button type="button" class="deliverables-file-card__remove" onclick="removeFile(${index})">Remove</button>
+                        <button type="button" onclick="removeFile(${index})" style="background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Remove</button>
                     </div>
                 `).join('');
             }
@@ -13872,23 +13554,7 @@ function smsStartNewMessage(prefillPhone) {
             submitBtn.textContent = 'Submitting...';
             
             const title = document.getElementById('deliverableTitle').value.trim();
-                        const description = document.getElementById('deliverableDescription').value.trim();
-            
-            let externalLinksArr = [];
-            const addedLinksNodes = document.querySelectorAll('.deliverable-added-url');
-            if (addedLinksNodes) {
-                addedLinksNodes.forEach(node => externalLinksArr.push(node.textContent.trim()));
-            }
-            const linkInputRemaining = document.getElementById('deliverableLinkInput') ? document.getElementById('deliverableLinkInput').value.trim() : '';
-            if (linkInputRemaining) {
-                externalLinksArr.push(linkInputRemaining);
-            }
-            
-            let externalLinksText = externalLinksArr.join('\n\n');
-            let finalDescription = description;
-            if (externalLinksText) {
-                finalDescription += "\n\nExternal Links:\n" + externalLinksText;
-            }
+            const description = document.getElementById('deliverableDescription').value.trim();
             const taskData = getDeliverableTaskSubmissionData();
             
             if (!taskData.ok) {
@@ -13898,7 +13564,7 @@ function smsStartNewMessage(prefillPhone) {
                 return;
             }
 
-            if (!title || !finalDescription) {
+            if (!title || !description) {
                 showToast('Please fill in title and description', 'error');
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
@@ -13971,14 +13637,12 @@ function smsStartNewMessage(prefillPhone) {
                     if (data.taskLinkagePersisted === false) {
                         showToast('Saved, but task linkage was not persisted yet (MGMT DB missing Task_* columns). Apply migration 005_alter_deliverables_add_task_ref.sql.', 'info');
                     }
-                    resetDeliverableSubmissionForm();
-                    deliverablesAutoRefreshState.review.lastLoadedAt = 0;
-                    deliverablesAutoRefreshState.library.lastLoadedAt = 0;
+                    document.getElementById('deliverableSubmissionForm').reset();
+                    selectedFiles = [];
+                    updateFileDisplay();
                     // Refresh review queue if it's open
                     if (currentDeliverablesView === 'review') {
                         loadDeliverablesReview();
-                    } else if (currentDeliverablesView === 'library') {
-                        loadDeliverablesLibrary();
                     }
                 } else {
                     showToast(data.error || 'Failed to submit deliverable', 'error');
@@ -13994,7 +13658,7 @@ function smsStartNewMessage(prefillPhone) {
         // === Deliverables (Apple-like list + preview) ===
         function deliverablesFormatBytes(bytes) {
             const n = Number(bytes || 0);
-            if (!isFinite(n) || n <= 0) return '�';
+            if (!isFinite(n) || n <= 0) return '...”';
             const units = ['B', 'KB', 'MB', 'GB'];
             let v = n;
             let i = 0;
@@ -14014,7 +13678,7 @@ function smsStartNewMessage(prefillPhone) {
 
         function deliverablesFormatDate(value) {
             const dt = deliverablesSafeDate(value);
-            if (!dt) return '�';
+            if (!dt) return '...”';
             try {
                 return dt.toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
             } catch {
@@ -14054,30 +13718,19 @@ function smsStartNewMessage(prefillPhone) {
                 if (Array.isArray(parsed)) {
                     return parsed
                         .filter(Boolean)
-                        .map((f, index) => ({
-                            ...f,
-                            __fileIndex: Number.isInteger(f && f.__fileIndex) ? f.__fileIndex : index,
-                            name: f.name || f.fileName || 'Attachment',
+                        .map(f => ({
+                            name: f.name || 'Attachment',
                             size: f.size || null,
                             type: f.type || null,
                             dataUrl: f.dataUrl || null,
-                            url: f.url || null,
-                            isVariant: !!f.isVariant,
-                            uploadedAt: f.uploadedAt || null,
-                            uploadedBy: f.uploadedBy || null,
-                            aiSummary: f.aiSummary || f.AI_Summary || null,
-                            aiQualityScore: f.aiQualityScore ?? f.AI_Quality_Score ?? null,
-                            aiStrengths: Array.isArray(f.aiStrengths) ? f.aiStrengths : deliverablesTryParseJsonArray(f.AI_Strengths),
-                            aiImprovements: Array.isArray(f.aiImprovements) ? f.aiImprovements : deliverablesTryParseJsonArray(f.AI_Improvements),
-                            aiAnalysis: deliverablesTryParseJsonObject(f.aiAnalysis || f.AI_Analysis_Raw) || (f.aiAnalysis && typeof f.aiAnalysis === 'object' ? f.aiAnalysis : null),
-                            aiAnalyzedAt: f.aiAnalyzedAt || f.AI_Analyzed_At || null
+                            url: f.url || null
                         }))
                         .filter(f => f.dataUrl || f.url);
                 }
             } catch (e) {
                 // legacy: plain URL or a single data URL
             }
-            return [{ __fileIndex: 0, name: 'Attachment', size: null, type: null, dataUrl: raw.startsWith('data:') ? raw : null, url: raw.startsWith('http') ? raw : (!raw.startsWith('data:') ? raw : null) }];
+            return [{ name: 'Attachment', size: null, type: null, dataUrl: raw.startsWith('data:') ? raw : null, url: raw.startsWith('http') ? raw : (!raw.startsWith('data:') ? raw : null) }];
         }
 
         function deliverablesInferMime(file) {
@@ -14105,114 +13758,18 @@ function smsStartNewMessage(prefillPhone) {
             const score = Number(d.AI_Quality_Score);
             if (!isFinite(score)) return '';
             const c = score >= 70 ? '#10b981' : score >= 50 ? '#f59e0b' : '#ef4444';
-            const hover = (() => {
-                try {
-                    const strengths = (() => {
-                        try {
-                            const a = JSON.parse(String(d.AI_Strengths || '[]'));
-                            return Array.isArray(a) ? a.map(x => String(x)).filter(Boolean) : [];
-                        } catch (_) {
-                            return [];
-                        }
-                    })();
-                    const improvements = (() => {
-                        try {
-                            const a = JSON.parse(String(d.AI_Improvements || '[]'));
-                            return Array.isArray(a) ? a.map(x => String(x)).filter(Boolean) : [];
-                        } catch (_) {
-                            return [];
-                        }
-                    })();
-                    const raw = (() => {
-                        try {
-                            const s = String(d.AI_Analysis_Raw || '').trim();
-                            if (!s) return null;
-                            const o = JSON.parse(s);
-                            return (o && typeof o === 'object') ? o : null;
-                        } catch (_) {
-                            return null;
-                        }
-                    })();
-                    const scores = raw && raw.scoreBreakdown && typeof raw.scoreBreakdown === 'object' ? raw.scoreBreakdown : null;
-                    const safe = raw && raw.safeZoneGuidance && typeof raw.safeZoneGuidance === 'object' ? raw.safeZoneGuidance : null;
-                    const progress = raw && raw.progress && typeof raw.progress === 'object' ? raw.progress : null;
-
-                    const bits = [];
-                    bits.push(`AI quality score: ${Math.round(score)}/100`);
-                    if (scores) {
-                        const entries = Object.keys(scores).map(k => ({ k, v: Number(scores[k]) })).filter(x => isFinite(x.v));
-                        entries.sort((a, b) => a.v - b.v);
-                        const low = entries.slice(0, 3);
-                        if (low.length) bits.push(`Lowest signals: ${low.map(x => `${x.k}:${Math.round(x.v)}`).join(', ')}`);
-                    }
-                    if (safe && safe.riskLevel) bits.push(`Safe-zone risk: ${String(safe.riskLevel)}`);
-                    if (progress && progress.deltaScore !== undefined) bits.push(`Delta vs previous: ${String(progress.deltaScore)}`);
-                    if (strengths.length) bits.push(`What works: ${strengths.slice(0, 3).join(' | ')}`);
-                    if (improvements.length) bits.push(`What to change: ${improvements.slice(0, 3).join(' | ')}`);
-                    if (!strengths.length && !improvements.length && d.AI_Summary) bits.push(String(d.AI_Summary));
-
-                    const text = bits.filter(Boolean).join('\n');
-                    return text.length > 800 ? text.slice(0, 800) + '�' : text;
-                } catch (_) {
-                    return `AI quality score: ${Math.round(score)}/100`;
-                }
-            })();
-
-            return `<span class="deliverables-pill" title="${escapeHtml(hover)}" style="border-color: rgba(148,163,184,0.22); background: rgba(248,250,252,0.9);">AI <strong style="color:${c}; margin-left:6px;">${Math.round(score)}/100</strong></span>`;
+            return `<span class="deliverables-pill" style="border-color: rgba(148,163,184,0.22); background: rgba(248,250,252,0.9);">AI <strong style="color:${c}; margin-left:6px;">${Math.round(score)}/100</strong></span>`;
         }
 
         function deliverablesBuildAttachmentThumb(file) {
             const mime = deliverablesInferMime(file);
             const isImage = mime.startsWith('image/');
-            const isVideo = mime.startsWith('video/');
             const isPdf = mime === 'application/pdf';
             if (isImage && file.dataUrl) {
                 return `<img class="deliverables-attachment__thumb" src="${file.dataUrl}" alt="${escapeHtml(file.name || 'image')}" loading="lazy">`;
             }
-            if (isVideo && file.dataUrl) {
-                return `<video class="deliverables-attachment__thumb" src="${file.dataUrl}" style="object-fit: cover;" autoplay muted loop playsinline></video>`;
-            }
             const label = isPdf ? 'PDF' : (mime ? mime.split('/')[1].toUpperCase().slice(0, 8) : 'FILE');
             return `<div class="deliverables-attachment__thumb" style="display:flex; align-items:center; justify-content:center; font-weight:900; color:white; letter-spacing: .8px;">${escapeHtml(label)}</div>`;
-        }
-
-        function deliverablesGetAttachmentAnalysis(file) {
-            if (!file || typeof file !== 'object') return null;
-            if (file.aiAnalysis && typeof file.aiAnalysis === 'object') return file.aiAnalysis;
-            return deliverablesTryParseJsonObject(file.AI_Analysis_Raw);
-        }
-
-        function deliverablesRenderAttachmentAnalysis(file) {
-            const analysis = deliverablesGetAttachmentAnalysis(file);
-            if (!analysis) return '';
-
-            const summary = String(file.aiSummary || analysis.summary || '').trim();
-            const score = Number(file.aiQualityScore ?? analysis.qualityScore);
-            const strengths = Array.isArray(file.aiStrengths) && file.aiStrengths.length ? file.aiStrengths : (Array.isArray(analysis.strengths) ? analysis.strengths : []);
-            const improvements = Array.isArray(file.aiImprovements) && file.aiImprovements.length ? file.aiImprovements : (Array.isArray(analysis.improvements) ? analysis.improvements : []);
-            const safe = analysis.safeZoneGuidance && typeof analysis.safeZoneGuidance === 'object' ? analysis.safeZoneGuidance : null;
-            const copyNotes = Array.isArray(analysis.copyNotes) ? analysis.copyNotes : [];
-            const hasContent = summary || isFinite(score) || strengths.length || improvements.length || safe || copyNotes.length;
-            if (!hasContent) return '';
-
-            return `
-                <div class="deliverables-image-ai-card">
-                    <div class="deliverables-image-ai-card__header">
-                        <span class="deliverables-image-ai-card__label">Image AI analysis</span>
-                        ${isFinite(score) ? `<span class="deliverables-pill" style="border-color: rgba(16,185,129,0.18); background: rgba(16,185,129,0.08); color: #065f46;">${Math.round(score)}/100</span>` : ''}
-                    </div>
-                    ${summary ? `<div class="deliverables-image-ai-card__summary">${escapeHtml(summary)}</div>` : ''}
-                    ${strengths.length ? `<div class="deliverables-image-ai-card__list"><strong>What works</strong><ul>${strengths.slice(0, 4).map(s => `<li>${escapeHtml(String(s))}</li>`).join('')}</ul></div>` : ''}
-                    ${improvements.length ? `<div class="deliverables-image-ai-card__list"><strong>Next edits</strong><ul>${improvements.slice(0, 5).map(s => `<li>${escapeHtml(String(s))}</li>`).join('')}</ul></div>` : ''}
-                    ${safe && (safe.riskLevel || safe.keepInCenterMessage || (Array.isArray(safe.notes) && safe.notes.length)) ? `
-                        <div class="deliverables-image-ai-card__meta">
-                            ${safe.riskLevel ? `<span>Safe-zone risk: <strong>${escapeHtml(String(safe.riskLevel))}</strong></span>` : ''}
-                            ${safe.keepInCenterMessage ? `<span>${escapeHtml(String(safe.keepInCenterMessage))}</span>` : ''}
-                        </div>
-                    ` : ''}
-                    ${copyNotes.length ? `<div class="deliverables-image-ai-card__list"><strong>Copy notes</strong><ul>${copyNotes.slice(0, 3).map(s => `<li>${escapeHtml(String(s))}</li>`).join('')}</ul></div>` : ''}
-                </div>
-            `;
         }
 
         function deliverablesDataUrlToBlobUrl(dataUrl, fallbackMime) {
@@ -14295,55 +13852,22 @@ function smsStartNewMessage(prefillPhone) {
             const pdfPreview = (mode ? deliverablesGetPdfPreviewState(mode) : null);
             const showPdf = !!(pdfPreview && String(pdfPreview.deliverableId || '') === did && pdfPreview.blobUrl);
             const pdfUrl = showPdf ? String(pdfPreview.blobUrl || '') : '';
-            const indexedFiles = files.map((f, idx) => ({ ...f, __fileIndex: Number.isInteger(f && f.__fileIndex) ? f.__fileIndex : idx }));
-            const imageFiles = indexedFiles.filter(f => deliverablesInferMime(f).startsWith('image/') || deliverablesInferMime(f).startsWith('video/'));
             return `
                 <div style="margin-top: 14px; font-size: 12px; font-weight: 900; color: var(--cobalt);">Attachments</div>
-                ${imageFiles.length ? `
-                    <div class="deliverables-inline-visuals">
-                        ${imageFiles.map((f, idx) => {
-                            const href = f.dataUrl || f.url || '#';
-                            const fileIndex = Number.isInteger(f.__fileIndex) ? f.__fileIndex : idx;
-                            const isVideo = deliverablesInferMime(f).startsWith('video/');
-                            return `
-                                <figure class="deliverables-inline-visual">
-                                    ${isVideo ? 
-                                      `<video class="deliverables-inline-visual__img" src="${escapeHtml(href)}" style="background: black; width: 100%; border-radius: 8px; margin-bottom: 12px; max-height: 400px; object-fit: contain;" controls preload="metadata"></video>` :
-                                      `<img class="deliverables-inline-visual__img" src="${escapeHtml(href)}" alt="${escapeHtml(f.name || `Asset ${idx + 1}`)}" loading="lazy">`
-                                    }
-                                    <figcaption class="deliverables-inline-visual__meta">
-                                        <div>
-                                            <div class="deliverables-inline-visual__title">${escapeHtml(f.name || `Asset ${idx + 1}`)}</div>
-                                            <div class="deliverables-inline-visual__sub">${escapeHtml(deliverablesInferMime(f) || (isVideo ? 'video' : 'image'))}  | ${deliverablesFormatBytes(f.size)}</div>
-                                        </div>
-                                        <div class="deliverables-actions">
-                                            ${mode ? `<button class="deliverables-action-btn secondary" onclick="deliverablesAnalyzeCreative(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(did)}, ${fileIndex}, true)">${deliverablesGetAttachmentAnalysis(f) ? 'Re-analyze' : 'Analyze Media'}</button>` : ''}
-                                            ${mode && fileIndex > 0 ? `<button class="deliverables-action-btn secondary" onclick="deliverablesSetPrimaryFile(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(did)}, ${fileIndex})">Make Primary</button>` : ''}
-                                            <a class="deliverables-action-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="text-decoration:none;">Open Full</a>
-                                            <a class="deliverables-action-btn secondary" href="${escapeHtml(href)}" download="${escapeHtml(f.name || 'file')}" target="_blank" rel="noopener" style="text-decoration:none;">Download</a>
-                                        </div>
-                                        ${deliverablesRenderAttachmentAnalysis(f)}
-                                    </figcaption>
-                                </figure>
-                            `;
-                        }).join('')}
-                    </div>
-                ` : ''}
                 <div class="deliverables-attachments">
-                    ${indexedFiles.map((f, idx) => {
+                    ${files.map((f, idx) => {
                         const href = f.dataUrl || f.url || '#';
                         const mime = deliverablesInferMime(f);
                         const isPdf = mime === 'application/pdf';
-                        const fileIndex = Number.isInteger(f.__fileIndex) ? f.__fileIndex : idx;
                         const openLabel = isPdf ? 'Open Full' : 'Open';
-                        const previewBtn = isPdf && f.dataUrl && mode ? `<button class="deliverables-action-btn secondary" onclick="deliverablesTogglePdfPreview(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(did)}, ${fileIndex}, ${deliverablesJsStringLiteral(String(f.dataUrl || ''))})">${(pdfPreview && String(pdfPreview.deliverableId||'')===did && Number(pdfPreview.fileIndex)===fileIndex) ? 'Hide Preview' : 'Preview'}</button>` : '';
+                        const previewBtn = isPdf && f.dataUrl && mode ? `<button class="deliverables-action-btn secondary" onclick="deliverablesTogglePdfPreview(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(did)}, ${idx}, ${deliverablesJsStringLiteral(String(f.dataUrl || ''))})">${(pdfPreview && String(pdfPreview.deliverableId||'')===did && Number(pdfPreview.fileIndex)===idx) ? 'Hide Preview' : 'Preview'}</button>` : '';
                         const openBtn = isPdf && f.dataUrl ? `<button class="deliverables-action-btn" onclick="deliverablesOpenPdfInNewTab(${deliverablesJsStringLiteral(String(f.dataUrl || ''))})">${openLabel}</button>` : `<a class="deliverables-action-btn" href="${escapeHtml(href)}" target="_blank" rel="noopener" style="text-decoration:none;">${openLabel}</a>`;
                         return `
                             <div class="deliverables-attachment">
                                 ${deliverablesBuildAttachmentThumb(f)}
                                 <div class="deliverables-attachment__body">
                                     <div class="deliverables-attachment__name">${escapeHtml(f.name || 'Attachment')}</div>
-                                    <div class="deliverables-attachment__sub">${escapeHtml(mime || '�')}  | ${deliverablesFormatBytes(f.size)}</div>
+                                    <div class="deliverables-attachment__sub">${escapeHtml(mime || '...”')}  | ${deliverablesFormatBytes(f.size)}</div>
                                     <div class="deliverables-actions" style="margin-top: 10px;">
                                         ${previewBtn}
                                         ${openBtn}
@@ -14447,177 +13971,6 @@ function smsStartNewMessage(prefillPhone) {
             deliverablesAnnoSet(deliverableId, { note: String(note || '').trim() });
         }
 
-        function deliverablesHasTag(deliverableId, tag) {
-            const wanted = deliverablesAnnoNormalizeTag(tag);
-            if (!wanted) return false;
-            return (deliverablesAnnoGet(deliverableId).tags || []).includes(wanted);
-        }
-
-        function deliverablesToggleTag(deliverableId, tag) {
-            const normalized = deliverablesAnnoNormalizeTag(tag);
-            if (!normalized) return;
-            if (deliverablesHasTag(deliverableId, normalized)) {
-                deliverablesAnnoRemoveTag(deliverableId, normalized);
-            } else {
-                deliverablesAnnoAddTag(deliverableId, normalized);
-            }
-        }
-
-        function deliverablesDomSafeId(value) {
-            return String(value || '').replace(/[^a-z0-9_-]+/gi, '_');
-        }
-
-        function deliverablesSaveInlineNote(mode, deliverableId) {
-            const id = String(deliverableId || '').trim();
-            if (!id) return;
-            const inputId = `deliverablesInlineNote_${deliverablesDomSafeId(id)}`;
-            const el = document.getElementById(inputId);
-            if (!el) return;
-            deliverablesAnnoSetNote(id, el.value || '');
-            try { showToast('Note saved', 'success'); } catch (_) {}
-            deliverablesBrowserRender(mode);
-        }
-
-        function deliverablesClearInlineNote(mode, deliverableId) {
-            const id = String(deliverableId || '').trim();
-            if (!id) return;
-            deliverablesAnnoSetNote(id, '');
-            deliverablesBrowserRender(mode);
-        }
-
-        function deliverablesToggleQuickTag(mode, deliverableId, tag) {
-            deliverablesToggleTag(deliverableId, tag);
-            deliverablesBrowserRender(mode);
-        }
-
-        function deliverablesPromptAddTag(mode, deliverableId) {
-            const tag = prompt('Tag:');
-            if (!tag) return;
-            deliverablesAnnoAddTag(deliverableId, tag);
-            deliverablesBrowserRender(mode);
-        }
-
-        function deliverablesBrowserSetStatus(value) {
-            window.__deliverablesLibraryStatus = String(value || 'all').toLowerCase();
-            loadDeliverablesLibrary();
-        }
-
-        function deliverablesTryParseJsonArray(value) {
-            try {
-                if (value === null || value === undefined) return [];
-                if (Array.isArray(value)) return value;
-                const raw = String(value || '').trim();
-                if (!raw) return [];
-                const parsed = JSON.parse(raw);
-                return Array.isArray(parsed) ? parsed : [];
-            } catch (e) {
-                return [];
-            }
-        }
-
-        function deliverablesTryParseJsonObject(value) {
-            try {
-                if (value === null || value === undefined) return null;
-                if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-                const raw = String(value || '').trim();
-                if (!raw) return null;
-                const parsed = JSON.parse(raw);
-                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-                return null;
-            } catch (e) {
-                return null;
-            }
-        }
-
-        function deliverablesSyncUpdatedDeliverable(updated) {
-            const id = deliverablesGetId(updated);
-            if (!id) return;
-            const states = window.__deliverablesBrowserState || {};
-            ['review', 'library'].forEach(mode => {
-                const st = states[mode];
-                if (!st || !Array.isArray(st.all)) return;
-                let found = false;
-                st.all = st.all.map(d => {
-                    if (String(deliverablesGetId(d)) !== String(id)) return d;
-                    found = true;
-                    return { ...d, ...updated };
-                });
-                if (!found) st.all.unshift(updated);
-            });
-            deliverablesAutoRefreshState.review.fingerprint = '';
-            deliverablesAutoRefreshState.library.fingerprint = '';
-        }
-
-        async function deliverablesAnalyzeCreative(mode, deliverableId, fileIndex, force) {
-            const id = String(deliverableId || '').trim();
-            if (!id) return;
-
-            if (typeof fileIndex === 'boolean' && force === undefined) {
-                force = fileIndex;
-                fileIndex = -1;
-            }
-
-            const targetFileIndex = Number.isFinite(Number(fileIndex)) ? Math.trunc(Number(fileIndex)) : -1;
-            const label = targetFileIndex >= 0 ? 'Analyzing image�' : 'Analyzing creative�';
-
-            try {
-                showToast(label, 'info');
-            } catch (_) {}
-
-            try {
-                const resp = await fetch(`${API_URL}?action=analyzeDeliverableCreative`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ deliverableId: id, fileIndex: targetFileIndex, force: !!force })
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!data || data.ok !== true) {
-                    throw new Error(data && data.error ? String(data.error) : 'Analysis failed');
-                }
-
-                const updated = data.result || data.deliverable || data.updatedDeliverable || data;
-                if (updated && typeof updated === 'object') {
-                    deliverablesSyncUpdatedDeliverable(updated);
-                }
-
-                try {
-                    showToast(targetFileIndex >= 0 ? 'Image analysis updated' : 'Creative analysis updated', 'success');
-                } catch (_) {}
-                try { deliverablesBrowserRender(mode); } catch (_) {}
-                try { if (mode !== 'review' && window.__deliverablesBrowserState?.review?.containerId) deliverablesBrowserRender('review'); } catch (_) {}
-                try { if (mode !== 'library' && window.__deliverablesBrowserState?.library?.containerId) deliverablesBrowserRender('library'); } catch (_) {}
-            } catch (e) {
-                try {
-                    showToast(`Analysis error: ${(e && e.message) ? e.message : String(e)}`, 'error');
-                } catch (_) {}
-            }
-        }
-
-        async function deliverablesSetPrimaryFile(mode, deliverableId, fileIndex) {
-            const id = String(deliverableId || '').trim();
-            const idx = Math.trunc(Number(fileIndex));
-            if (!id || !isFinite(idx) || idx < 0) return;
-
-            try {
-                showToast('Updating primary image�', 'info');
-                const resp = await fetch(`${API_URL}?action=setDeliverablePrimaryFile`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ deliverableId: id, fileIndex: idx, updatedBy: currentUser || 'ROSEL' })
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!data || data.ok !== true) throw new Error(data && data.error ? String(data.error) : 'Failed to update primary image');
-                const updated = data.result || data.deliverable || data.updatedDeliverable || data;
-                if (updated && typeof updated === 'object') deliverablesSyncUpdatedDeliverable(updated);
-                try { deliverablesBrowserRender(mode); } catch (_) {}
-                try { if (mode !== 'review' && window.__deliverablesBrowserState?.review?.containerId) deliverablesBrowserRender('review'); } catch (_) {}
-                try { if (mode !== 'library' && window.__deliverablesBrowserState?.library?.containerId) deliverablesBrowserRender('library'); } catch (_) {}
-                showToast('Primary image updated', 'success');
-            } catch (error) {
-                showToast(`Primary image error: ${error.message}`, 'error');
-            }
-        }
-
         function deliverablesAnnoClear(deliverableId) {
             const id = String(deliverableId || '').trim();
             if (!id) return;
@@ -14637,15 +13990,7 @@ function smsStartNewMessage(prefillPhone) {
 
             if (!window.__deliverablesContextBound) {
                 window.__deliverablesContextBound = true;
-                document.addEventListener('click', (e) => {
-                    try {
-                        const target = e && e.target;
-                        if (target && target.closest && target.closest('#deliverablesContextMenu')) {
-                            return;
-                        }
-                    } catch (_) {}
-                    deliverablesHideContextMenu();
-                }, true);
+                document.addEventListener('click', () => deliverablesHideContextMenu(), true);
                 document.addEventListener('keydown', (e) => {
                     if (e && e.key === 'Escape') deliverablesHideContextMenu();
                 }, true);
@@ -14664,24 +14009,7 @@ function smsStartNewMessage(prefillPhone) {
             try { window.__deliverablesContext = null; } catch (e) {}
         }
 
-        function deliverablesRemoveFromAllBrowserStates(deliverableId) {
-            const id = String(deliverableId || '').trim();
-            if (!id) return;
-            const root = window.__deliverablesBrowserState;
-            if (!root || typeof root !== 'object') return;
-            for (const k of Object.keys(root)) {
-                const st = root[k];
-                if (!st || typeof st !== 'object') continue;
-                if (Array.isArray(st.all)) {
-                    st.all = st.all.filter(d => String(deliverablesGetId(d) || '').trim() !== id);
-                }
-                try {
-                    if (String(st.selectedId || '').trim() === id) st.selectedId = null;
-                } catch (_) {}
-            }
-        }
-
-        async function deliverablesContextAction(action, arg) {
+        function deliverablesContextAction(action, arg) {
             const ctx = window.__deliverablesContext || {};
             const mode = ctx.mode;
             const id = ctx.deliverableId;
@@ -14711,42 +14039,6 @@ function smsStartNewMessage(prefillPhone) {
                     if (note !== null) deliverablesAnnoSetNote(id, note);
                 } else if (action === 'repurpose') {
                     deliverablesAnnoAddTag(id, 'repurpose');
-                } else if (action === 'delete') {
-                    const isAdmin = (typeof isAdminRole === 'function') ? !!isAdminRole() : false;
-                    if (!isAdmin) {
-                        showToast('Admin only', 'error');
-                        return;
-                    }
-
-                    const ok = (typeof showConfirm === 'function')
-                        ? await showConfirm(
-                            'Delete deliverable?',
-                            'This permanently deletes the deliverable from the system (Library + Review Queue). This cannot be undone.',
-                            { confirmText: 'Delete', cancelText: 'Cancel', danger: true, width: '560px' }
-                        )
-                        : confirm('Delete deliverable? This cannot be undone.');
-                    if (!ok) return;
-
-                    try {
-                        try { showToast('Deleting�', 'info'); } catch (_) {}
-                        const resp = await fetch(`${API_URL}?action=deleteDeliverable`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ deliverableId: id })
-                        });
-                        const data = await resp.json().catch(() => null);
-                        if (!resp.ok || !data || data.ok !== true) {
-                            throw new Error((data && data.error) ? String(data.error) : `HTTP ${resp.status}`);
-                        }
-
-                        deliverablesRemoveFromAllBrowserStates(id);
-                        try { deliverablesAnnoClear(id); } catch (_) {}
-                        try { showToast('Deliverable deleted', 'success'); } catch (_) {}
-                    } catch (e) {
-                        try {
-                            showToast(`Delete failed: ${(e && e.message) ? e.message : String(e)}`, 'error');
-                        } catch (_) {}
-                    }
                 } else if (action === 'clear') {
                     if (confirm('Clear local tags/flags/notes for this deliverable?')) deliverablesAnnoClear(id);
                 }
@@ -14766,7 +14058,6 @@ function smsStartNewMessage(prefillPhone) {
 
             const cur = deliverablesAnnoGet(id);
             const hasTags = (cur.tags || []).length > 0;
-            const isAdmin = (typeof isAdminRole === 'function') ? !!isAdminRole() : false;
             el.innerHTML = `
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('add_tag')">Add tag...</button>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('month_tag')">Tag month...</button>
@@ -14775,8 +14066,6 @@ function smsStartNewMessage(prefillPhone) {
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('toggle_outdated')">${cur.outdated ? 'Unmark outdated' : 'Mark outdated'}</button>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('note')">Add/edit note...</button>
                 ${hasTags ? `<button class="deliverables-context__item" onclick="deliverablesContextAction('remove_tag')">Remove tag...</button>` : ''}
-                ${isAdmin ? `<div class="deliverables-context__sep"></div>
-                <button class="deliverables-context__item" onclick="deliverablesContextAction('delete')" style="color:#991b1b; font-weight: 950;">Delete deliverable...</button>` : ''}
                 <div class="deliverables-context__sep"></div>
                 <button class="deliverables-context__item" onclick="deliverablesContextAction('clear')" style="color:#991b1b;">Clear local labels</button>
             `;
@@ -14884,12 +14173,6 @@ function smsStartNewMessage(prefillPhone) {
                     const id = deliverablesGetId(d);
                     return (deliverablesAnnoGet(id).tags || []).length > 0;
                 });
-            } else if (filter === 'repurpose') {
-                items = items.filter(d => deliverablesHasTag(deliverablesGetId(d), 'repurpose'));
-            } else if (filter === 'notes') {
-                items = items.filter(d => !!deliverablesAnnoGet(deliverablesGetId(d)).note);
-            } else if (filter === 'feedback') {
-                items = items.filter(d => deliverablesHasTag(deliverablesGetId(d), 'needs-feedback'));
             }
 
             if (q) {
@@ -14989,46 +14272,10 @@ function smsStartNewMessage(prefillPhone) {
             }
         }
 
-        function deliverablesFormatDescription(text) {
-    if (!text) return '';
-    const safeText = escapeHtml(text).replace(/\n/g, '<br>');
-    
-    // Find Loom links and replace with embed
-    const loomMatch = text.match(/https:\/\/www\.loom\.com\/(share|embed)\/([a-zA-Z0-9]+)/);
-    if (loomMatch) {
-        const videoId = loomMatch[2];
-        const embedHtml = `<div style="margin-top: 14px; position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px; border: 1px solid var(--border);">
-            <iframe src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;"></iframe>
-        </div>`;
-        
-        let finalHtml = safeText.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
-            return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--cobalt); text-decoration: underline;">${url}</a>`;
-        });
-        
-        return finalHtml + embedHtml;
-    }
-    
-    // If no loom, just linkify URLs
-    return safeText.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: var(--cobalt); text-decoration: underline;">${url}</a>`;
-    });
-}
-
-
-function deliverablesBrowserRender(mode) {
+        function deliverablesBrowserRender(mode) {
             const st = deliverablesBrowserEnsureState(mode);
             const container = st.containerId ? document.getElementById(st.containerId) : null;
             if (!container) return;
-
-            // Preserve scroll positions to avoid visible "jump" on silent refresh.
-            let prevListScrollTop = 0;
-            let prevPreviewScrollTop = 0;
-            try {
-                const prevList = container.querySelector('.deliverables-list');
-                const prevPreview = container.querySelector('.deliverables-preview');
-                if (prevList) prevListScrollTop = prevList.scrollTop || 0;
-                if (prevPreview) prevPreviewScrollTop = prevPreview.scrollTop || 0;
-            } catch (_) {}
 
             const opts = st.opts || {};
             const items = deliverablesBrowserFilterSort(st.all || [], st);
@@ -15106,23 +14353,15 @@ function deliverablesBrowserRender(mode) {
                         <option value="created_desc" ${String(st.sort)==='created_desc'?'selected':''}>Newest</option>
                         <option value="created_asc" ${String(st.sort)==='created_asc'?'selected':''}>Oldest</option>
                         <option value="quality_desc" ${String(st.sort)==='quality_desc'?'selected':''}>AI Quality</option>
-                        <option value="title_asc" ${String(st.sort)==='title_asc'?'selected':''}>Title A�Z</option>
+                        <option value="title_asc" ${String(st.sort)==='title_asc'?'selected':''}>Title A...“Z</option>
                     </select>
                     ${offerSelect}
+                    <select class="deliverables-select" onchange="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, this.value)" title="Local label filter">
+                        <option value="all" ${String(st.filter)==='all'?'selected':''}>All</option>
+                        <option value="tagged" ${String(st.filter)==='tagged'?'selected':''}>Tagged</option>
+                        <option value="outdated" ${String(st.filter)==='outdated'?'selected':''}>Outdated</option>
+                    </select>
                     ${opts.controlsHtml || ''}
-                </div>
-                <div class="deliverables-filter-rail">
-                    <div class="deliverables-filter-group">
-                        <span class="deliverables-filter-group__label">Labels</span>
-                        <div class="deliverables-filter-pills" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button class="btn-clean-link ${String(st.filter)==='all'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'all')">All</button>
-                            <button class="btn-clean-link ${String(st.filter)==='tagged'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'tagged')">Tagged</button>
-                            <button class="btn-clean-link ${String(st.filter)==='repurpose'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'repurpose')">Repurpose</button>
-                            <button class="btn-clean-link ${String(st.filter)==='feedback'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'feedback')">Needs feedback</button>
-                            <button class="btn-clean-link ${String(st.filter)==='notes'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'notes')">Notes</button>
-                            <button class="btn-clean-link ${String(st.filter)==='outdated'?'active-tag':''}" onclick="deliverablesBrowserSetFilter(${deliverablesJsStringLiteral(mode)}, 'outdated')">Outdated</button>
-                        </div>
-                    </div>
                 </div>
             `;
 
@@ -15167,23 +14406,10 @@ function deliverablesBrowserRender(mode) {
             const previewHtml = selected ? (() => {
                 const status = deliverablesGetStatus(selected);
                 const files = deliverablesParseFiles(selected.File_Link);
-                const hasImages = (files || []).some(f => {
-                    const t = String(f && f.type ? f.type : '').toLowerCase();
-                    const n = String(f && f.name ? f.name : '').toLowerCase();
-                    const u = String(f && (f.dataUrl || f.url || f.href) ? (f.dataUrl || f.url || f.href) : '').toLowerCase();
-                    return t.startsWith('image/') || n.endsWith('.png') || n.endsWith('.jpg') || n.endsWith('.jpeg') || n.endsWith('.gif') || n.endsWith('.webp') || u.startsWith('data:image/');
-                });
                 const created = deliverablesFormatDate(selected.Created_At);
-                const published = selected.Published_At ? deliverablesFormatDate(selected.Published_At) : '�';
+                const published = selected.Published_At ? deliverablesFormatDate(selected.Published_At) : '...”';
                 const by = selected.Submitted_By ? String(selected.Submitted_By) : 'Unknown';
                 const anno = deliverablesAnnoGet(deliverablesGetId(selected));
-                const aiStrengths = deliverablesTryParseJsonArray(selected.AI_Strengths);
-                const aiImprovements = deliverablesTryParseJsonArray(selected.AI_Improvements);
-                const aiRaw = deliverablesTryParseJsonObject(selected.AI_Analysis_Raw);
-                const aiProgress = aiRaw && aiRaw.progress && typeof aiRaw.progress === 'object' ? aiRaw.progress : null;
-                const aiSafe = aiRaw && aiRaw.safeZoneGuidance && typeof aiRaw.safeZoneGuidance === 'object' ? aiRaw.safeZoneGuidance : null;
-                const aiScores = aiRaw && aiRaw.scoreBreakdown && typeof aiRaw.scoreBreakdown === 'object' ? aiRaw.scoreBreakdown : null;
-                const aiCopyNotes = aiRaw && Array.isArray(aiRaw.copyNotes) ? aiRaw.copyNotes : [];
                 const annoChips = [
                     ...(anno.outdated ? ['<span class="deliverables-chip deliverables-chip--outdated">Outdated</span>'] : []),
                     ...((anno.tags || []).map(t => `<span class="deliverables-chip deliverables-chip--tag">#${escapeHtml(String(t))}</span>`))
@@ -15201,11 +14427,11 @@ function deliverablesBrowserRender(mode) {
                     if (typeof isAdminRole === 'function' && isAdminRole()) {
                         if (mode === 'review') {
                             btns.push(`<button class="deliverables-action-btn" onclick="approveDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Approve + Publish</button>`);
-                            btns.push(`<button class="deliverables-action-btn secondary" onclick="rejectDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Request Changes</button>`);
+                            btns.push(`<button class="deliverables-action-btn secondary" onclick="rejectDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Reject</button>`);
                         } else {
                             if (status === 'PENDING') {
                                 btns.push(`<button class="deliverables-action-btn" onclick="approveDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Approve + Publish</button>`);
-                                btns.push(`<button class="deliverables-action-btn secondary" onclick="rejectDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Request Changes</button>`);
+                                btns.push(`<button class="deliverables-action-btn secondary" onclick="rejectDeliverable(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Reject</button>`);
                             } else if (status === 'APPROVED') {
                                 btns.push(`<button class="deliverables-action-btn" onclick="publishDeliverableOnly(${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Publish</button>`);
                             }
@@ -15225,202 +14451,22 @@ function deliverablesBrowserRender(mode) {
                         ${taskTitle ? `<span>Task <strong style="color: var(--text);">${escapeHtml(taskTitle)}</strong></span>` : ''}
                     </div>
                     ${annoChips ? `<div style="margin-top: 10px; display:flex; gap:6px; flex-wrap:wrap;">${annoChips}</div>` : ''}
-                    <div class="deliverables-callout" style="margin-top: 12px;">
-                        <div class="deliverables-callout__label">Reviewer tools</div>
-                        <div style="font-size: 13px; color: var(--text); line-height: 1.55;">See the creative inline, tag it for reuse, leave local notes, or send it back with clear feedback when it needs changes.</div>
-                        <div class="deliverables-quick-actions" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px;">
-                            <button class="btn-clean-link ${deliverablesHasTag(deliverablesGetId(selected), 'repurpose') ? 'active-tag' : ''}" onclick="deliverablesToggleQuickTag(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(deliverablesGetId(selected))}, 'repurpose')">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                Repurpose
-                            </button>
-                            <button class="btn-clean-link ${deliverablesHasTag(deliverablesGetId(selected), 'needs-feedback') ? 'active-tag' : ''}" onclick="deliverablesToggleQuickTag(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(deliverablesGetId(selected))}, 'needs-feedback')">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
-                                Feedback
-                            </button>
-                            <button class="btn-clean-link ${anno.outdated ? 'active-tag danger' : ''}" onclick="deliverablesAnnoToggleOutdated(${deliverablesJsStringLiteral(deliverablesGetId(selected))}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Outdated
-                            </button>
-                            <button class="btn-clean-link" onclick="deliverablesPromptAddTag(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(deliverablesGetId(selected))})">
-                                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
-                                Tag Context
-                            </button>
-                        </div>
-                    </div>
                     <div style="margin-top: 10px; display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="deliverables-action-btn secondary" onclick="deliverablesPromptAddTag(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(deliverablesGetId(selected))})">Tag...</button>
+                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoAddTag(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Tag:') || '')">Tag...</button>
                         <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoToggleOutdated(${deliverablesJsStringLiteral(deliverablesGetId(selected))}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">${anno.outdated ? 'Unmark outdated' : 'Mark outdated'}</button>
+                        <button class="deliverables-action-btn secondary" onclick="deliverablesAnnoSetNote(${deliverablesJsStringLiteral(deliverablesGetId(selected))}, prompt('Note:', ${deliverablesJsStringLiteral(anno.note || '')}) ?? ${deliverablesJsStringLiteral(anno.note || '')}); deliverablesBrowserRender(${deliverablesJsStringLiteral(mode)})">Note...</button>
                     </div>
-                    <div class="deliverables-note-block">
-                        <div class="deliverables-callout__label">Internal note</div>
-                        <textarea id="deliverablesInlineNote_${deliverablesDomSafeId(deliverablesGetId(selected))}" class="deliverables-note-editor" placeholder="Capture feedback, repurpose plans, or context for the team...">${escapeHtml(anno.note || '')}</textarea>
-                        <div class="deliverables-note-actions">
-                            <button class="icon-only-btn" style="color: var(--success); border: none; background: transparent; padding: 4px;" onclick="deliverablesSaveInlineNote(${deliverablesJsStringLiteral(mode)}, ${deliverablesJsStringLiteral(deliverablesGetId(selected))})" title="Save note">
-                                <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
-                            </button>
+                    ${anno.note ? `<div class="deliverables-callout" style="margin-top: 12px;"><div class="deliverables-callout__label">Local note</div><div style="font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap;">${escapeHtml(anno.note)}</div></div>` : ''}
+                    <div class="deliverables-preview__desc">${escapeHtml(selected.Description || '')}</div>
+
+                    ${selected.AI_Summary ? `
+                        <div class="deliverables-callout">
+                            <div class="deliverables-callout__label">AI Summary</div>
+                            <div style="font-size: 13px; color: var(--text); line-height: 1.55;">${escapeHtml(selected.AI_Summary)}</div>
                         </div>
-                    </div>
-                    ${selected.Review_Notes ? `<div class="deliverables-callout" style="margin-top: 12px;"><div class="deliverables-callout__label">Latest review feedback</div><div style="font-size: 13px; color: var(--text); line-height: 1.55; white-space: pre-wrap;">${escapeHtml(selected.Review_Notes)}</div></div>` : ''}
-                    <div class="deliverables-preview__desc" style="line-height:1.6;">${deliverablesFormatDescription(selected.Description || '')}</div>
+                    ` : ''}
 
-                    ${(() => {
-                        const thread = [];
-                        const versions = [];
-                        const v1Files = [];
-                        const laterFiles = [];
-                        
-                        (files || []).forEach(f => {
-                            if (f.isVariant) laterFiles.push(f);
-                            else v1Files.push(f);
-                        });
-                        
-                        if (v1Files.length > 0) versions.push({ version: 'Initial Submission', time: created, by: by, files: v1Files, useRootAi: true });
-                        laterFiles.forEach((f, idx) => {
-                            versions.push({ version: `Variant ${idx + 2}`, time: f.uploadedAt ? deliverablesFormatDate(f.uploadedAt) : created, by: f.uploadedBy || by, files: [f], useRootAi: false });
-                        });
-                        
-                        if (versions.length === 0) versions.push({ version: 'Initial Submission', time: created, by: by, files: [], useRootAi: true });
-
-                        versions.forEach(v => {
-                            let su = '', st = [], im = [], pr = null, sa = null, sc = null, cp = [];
-                            if (v.useRootAi) {
-                                su = selected.AI_Summary || '';
-                                st = aiStrengths;
-                                im = aiImprovements;
-                                pr = aiProgress;
-                                sa = aiSafe;
-                                sc = aiScores;
-                                cp = aiCopyNotes;
-                            } else {
-                                su = v.files[0]?.AI_Summary || '';
-                                st = v.files[0]?.AI_Strengths ? deliverablesTryParseJsonArray(v.files[0].AI_Strengths) : [];
-                                im = v.files[0]?.AI_Improvements ? deliverablesTryParseJsonArray(v.files[0].AI_Improvements) : [];
-                            }
-
-                            const hasAi = su || st.length || im.length || pr || sa || sc || cp.length;
-
-                            thread.push(`
-                                <div class="deliverables-thread-item" style="margin-top: 16px; border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 12px; background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                                    <div style="padding: 12px 16px; border-bottom: 1px solid rgba(148, 163, 184, 0.1); background: rgba(248, 250, 252, 0.8); display: flex; justify-content: space-between; align-items: center;">
-                                        <div style="font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px;">
-                                            <div style="width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
-                                            ${escapeHtml(v.version)}
-                                        </div>
-                                        <div style="font-size: 12px; color: var(--muted);">${escapeHtml(v.time)} � By ${escapeHtml(v.by)}</div>
-                                    </div>
-                                    
-                                    <div style="padding: 16px;">
-                                        <div style="margin-bottom: ${hasAi ? '24px' : '0'};">
-                                            ${v.files.length ? deliverablesRenderAttachments(v.files, mode, deliverablesGetId(selected)) : '<div style="font-size: 13px; color: var(--muted); font-style: italic;">No files attached.</div>'}
-                                        </div>
-                                        
-                                        ${hasAi ? `
-                                            <div style="padding-top: 16px; border-top: 1px dashed rgba(148, 163, 184, 0.3);">
-                                                <div style="font-size: 13px; font-weight: 800; color: #10b981; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                                                    AI Feedback
-                                                </div>
-                                                
-                                                ${su ? `<div style="font-size: 13px; color: var(--text); line-height: 1.55; margin-bottom: 16px; background: rgba(16,185,129,0.05); padding: 12px; border-radius: 8px; border-left: 3px solid #10b981;">${escapeHtml(su)}</div>` : ''}
-                                                
-                                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
-                                                    ${st.length ? `
-                                                        <div>
-                                                            <div style="font-size: 12px; color: #10b981; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> What works</div>
-                                                            <ul style="margin: 0 0 0 16px; color: var(--text); font-size: 13px; padding-left: 4px;">
-                                                                ${st.slice(0, 6).map(s => `<li style="margin-bottom: 6px;">${escapeHtml(String(s))}</li>`).join('')}
-                                                            </ul>
-                                                        </div>
-                                                    ` : ''}
-                                                    ${im.length ? `
-                                                        <div>
-                                                            <div style="font-size: 12px; color: #f59e0b; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> What to change</div>
-                                                            <ul style="margin: 0 0 0 16px; color: var(--text); font-size: 13px; padding-left: 4px;">
-                                                                ${im.slice(0, 8).map(s => `<li style="margin-bottom: 6px;">${escapeHtml(String(s))}</li>`).join('')}
-                                                            </ul>
-                                                        </div>
-                                                    ` : ''}
-                                                </div>
-
-                                                ${pr && (pr.deltaScore !== undefined || (pr.improved || []).length || (pr.regressed || []).length || (pr.nextEdits || []).length) ? `
-                                                    <div style="margin-top: 16px; background: rgba(248, 250, 252, 0.5); padding: 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                                        <div style="font-size: 12px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Progress vs previous</div>
-                                                        ${pr.deltaScore !== undefined ? `<div style="font-size: 13px; color: var(--text); margin-bottom: 8px;">Delta score: <strong style="color: var(--text);">${escapeHtml(String(pr.deltaScore))}</strong></div>` : ''}
-                                                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
-                                                            ${(Array.isArray(pr.improved) && pr.improved.length) ? `
-                                                                <div><div style="font-size: 11px; color: var(--muted); font-weight: 700;">Improved</div><ul style="margin: 4px 0 0 14px; font-size: 12px; color: var(--text); padding-left: 2px;">${pr.improved.slice(0, 4).map(s=>`<li style="margin-bottom: 3px;">${escapeHtml(String(s))}</li>`).join('')}</ul></div>
-                                                            ` : ''}
-                                                            ${(Array.isArray(pr.regressed) && pr.regressed.length) ? `
-                                                                <div><div style="font-size: 11px; color: var(--muted); font-weight: 700;">Regressed</div><ul style="margin: 4px 0 0 14px; font-size: 12px; color: var(--text); padding-left: 2px;">${pr.regressed.slice(0, 4).map(s=>`<li style="margin-bottom: 3px;">${escapeHtml(String(s))}</li>`).join('')}</ul></div>
-                                                            ` : ''}
-                                                            ${(Array.isArray(pr.nextEdits) && pr.nextEdits.length) ? `
-                                                                <div><div style="font-size: 11px; color: var(--muted); font-weight: 700;">Next edits</div><ul style="margin: 4px 0 0 14px; font-size: 12px; color: var(--text); padding-left: 2px;">${pr.nextEdits.slice(0, 4).map(s=>`<li style="margin-bottom: 3px;">${escapeHtml(String(s))}</li>`).join('')}</ul></div>
-                                                            ` : ''}
-                                                        </div>
-                                                    </div>
-                                                ` : ''}
-
-                                                ${sa && (sa.riskLevel || (sa.notes||[]).length || (sa.doNotPlace||[]).length || sa.keepInCenterMessage) ? `
-                                                    <div style="margin-top: 12px; background: rgba(248, 250, 252, 0.5); padding: 12px; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                                        <div style="font-size: 12px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Placement + Safe zones</div>
-                                                        ${sa.riskLevel ? `<div style="font-size: 13px; color: var(--text); margin-bottom: 4px;">Risk: <strong>${escapeHtml(String(sa.riskLevel))}</strong></div>` : ''}
-                                                        ${sa.keepInCenterMessage ? `<div style="font-size: 13px; color: var(--text); margin-bottom: 4px;">${escapeHtml(String(sa.keepInCenterMessage))}</div>` : ''}
-                                                        ${(Array.isArray(sa.notes) && sa.notes.length) ? `<ul style="margin: 4px 0 0 16px; font-size: 12px; color: var(--text); padding-left: 2px;">${sa.notes.slice(0, 4).map(s=>`<li style="margin-bottom: 3px;">${escapeHtml(String(s))}</li>`).join('')}</ul>` : ''}
-                                                    </div>
-                                                ` : ''}
-
-                                                ${sc && Object.keys(sc).length ? `
-                                                    <div style="margin-top: 12px; padding: 12px; background: rgba(248, 250, 252, 0.5); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                                        <div style="font-size: 12px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Ad framework scores</div>
-                                                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
-                                                            ${Object.keys(sc).slice(0, 10).map(k => {
-                                                                const v = sc[k];
-                                                                const label = String(k).replace(/([A-Z])/g, ' $1').trim();
-                                                                return `<span class="deliverables-pill" style="border: 1px solid rgba(148,163,184,0.3); font-size: 11px; padding: 2px 8px;">${escapeHtml(label)} <strong style="color: var(--text); margin-left:4px;">${escapeHtml(String(v))}</strong></span>`;
-                                                            }).join('')}
-                                                        </div>
-                                                    </div>
-                                                ` : ''}
-
-                                                ${cp && cp.length ? `
-                                                    <div style="margin-top: 12px; padding: 12px; background: rgba(248, 250, 252, 0.5); border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.1);">
-                                                        <div style="font-size: 12px; font-weight: 700; color: var(--cobalt); margin-bottom: 8px;">Copy guidance</div>
-                                                        <ul style="margin: 0 0 0 16px; font-size: 13px; color: var(--text); padding-left: 2px;">${cp.slice(0, 6).map(s=>`<li style="margin-bottom: 4px;">${escapeHtml(String(s))}</li>`).join('')}</ul>
-                                                    </div>
-                                                ` : ''}
-                                            </div>
-                                        ` : ''}
-                                    </div>
-                                </div>
-                            `);
-                        });
-
-                        if (mode === 'review') {
-                            thread.push(`
-                                <div class="deliverables-thread-item" style="margin-top: 16px; padding: 24px; border: 2px dashed rgba(148, 163, 184, 0.3); border-radius: 12px; background: rgba(248, 250, 252, 0.3); text-align: center; transition: all 0.2s;" onmouseover="this.style.borderColor='var(--cobalt)'; this.style.background='rgba(248, 250, 252, 0.8)';" onmouseout="this.style.borderColor='rgba(148, 163, 184, 0.3)'; this.style.background='rgba(248, 250, 252, 0.3)';">
-                                    <div style="margin-bottom: 8px; font-size: 15px; font-weight: 700; color: var(--cobalt);">Submit New Variant</div>
-                                    <div style="font-size: 13px; color: var(--muted); margin-bottom: 16px; max-width: 380px; margin-left: auto; margin-right: auto;">Upload a revised design based on the feedback. It will append linearly to this review thread.</div>
-                                    <label class="deliverables-action-btn" style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 160px; padding: 10px 24px; font-weight: 600;">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-                                        <span>Upload New Variant</span>
-                                        <input type="file" style="display:none" onchange="window.deliverablesUploadVariant(event, '${escapeHtml(deliverablesGetId(selected))}')" multiple />
-                                    </label>
-                                </div>
-                            `);
-                        }
-
-                        return `
-                            <div class="deliverables-workflow-thread" style="margin-top: 32px;">
-                                <div style="font-size: 16px; font-weight: 900; color: var(--cobalt); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                    Delivery Thread
-                                </div>
-                                <div style="display: flex; flex-direction: column; gap: 8px;">
-                                    ${thread.join('')}
-                                </div>
-                            </div>
-                        `;
-                    })()}
+                    ${deliverablesRenderAttachments(files, mode, deliverablesGetId(selected))}
 
                     ${actions}
                 `;
@@ -15445,96 +14491,11 @@ function deliverablesBrowserRender(mode) {
                     </div>
                 </div>
             `;
-
-            try {
-                const nextList = container.querySelector('.deliverables-list');
-                const nextPreview = container.querySelector('.deliverables-preview');
-                if (nextList) nextList.scrollTop = prevListScrollTop;
-                if (nextPreview) nextPreview.scrollTop = prevPreviewScrollTop;
-            } catch (_) {}
         }
         
-        window.deliverablesUploadVariant = async function(event, deliverableId) {
-            const tempFiles = Array.from(event.target.files);
-            event.target.value = ''; // Reset file input
-            if (!tempFiles.length) return;
-
-            const MAX_FILES = 12;
-            const MAX_MB_PER_FILE = 20;
-
-            const files = [];
-            let rejectedSize = 0;
-            for (let i = 0; i < tempFiles.length; i++) {
-                if (files.length >= MAX_FILES) {
-                    showToast(`Maximum ${MAX_FILES} files allowed per variant`, 'error');
-                    break;
-                }
-                if (tempFiles[i].size > MAX_MB_PER_FILE * 1024 * 1024) {
-                    rejectedSize++;
-                    continue;
-                }
-                files.push(tempFiles[i]);
-            }
-
-            if (rejectedSize > 0) {
-                showToast(`Skipped ${rejectedSize} file(s) over ${MAX_MB_PER_FILE}MB limit. Compress videos before uploading.`, 'error');
-            }
-
-            if (!files.length) return;
-
-            showToast('Uploading new variant...', 'info');
-            
-            try {
-                const fileData = await Promise.all(files.map(async (file) => {
-                    const reader = new FileReader();
-                    const dataUrl = await new Promise((resolve, reject) => {
-                        reader.onload = () => resolve(reader.result);
-                        reader.onerror = reject;
-                        reader.readAsDataURL(file);
-                    });
-                    
-                    // Generate some mock AI strings for the new variant
-                    return {
-                        name: file.name,
-                        size: file.size,
-                        type: file.type,
-                        dataUrl: dataUrl
-                    };
-                }));
-
-                const resp = await fetch(`${API_URL}?action=appendDeliverableVariant`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        deliverableId,
-                        files: fileData,
-                        uploadedBy: typeof currentUser !== 'undefined' ? currentUser : 'Current User'
-                    })
-                });
-                const data = await resp.json().catch(() => ({}));
-                if (!data || data.ok !== true) {
-                    throw new Error(data && data.error ? String(data.error) : 'Failed to upload variant');
-                }
-
-                const updated = data.result || data.deliverable || data.updatedDeliverable || data;
-                if (updated && typeof updated === 'object') deliverablesSyncUpdatedDeliverable(updated);
-                try { if (window.__deliverablesBrowserState?.review?.containerId) deliverablesBrowserRender('review'); } catch (_) {}
-                try { if (window.__deliverablesBrowserState?.library?.containerId) deliverablesBrowserRender('library'); } catch (_) {}
-                showToast('Variant uploaded to the review thread', 'success');
-            } catch (error) {
-                console.error(error);
-                showToast(`Error uploading variant: ${error.message}`, 'error');
-            }
-        };
-
-        async function loadDeliverablesReview(opts) {
+        async function loadDeliverablesReview() {
             const container = document.getElementById('deliverablesReviewContainer');
-            const silent = !!(opts && opts.silent);
-            const hasUi = !!(container && container.querySelector && container.querySelector('.deliverables-browser'));
-            setDeliverablesLoading('review', true);
-            if (!silent || !hasUi) {
-                container.innerHTML = '<div class="spinner"></div>';
-            }
+            container.innerHTML = '<div class="spinner"></div>';
             
             try {
                 const response = await fetch(`${API_URL}?action=deliverables&status=pending&_ts=${Date.now()}`, { cache: 'no-store' });
@@ -15547,27 +14508,18 @@ function deliverablesBrowserRender(mode) {
                         ? all.filter(d => String(d?.Submitted_By || '').trim().toLowerCase() === userKey)
                         : all;
 
-                    const fp = deliverablesMakeFingerprint(items);
-                    if (silent && deliverablesAutoRefreshState.review.fingerprint && deliverablesAutoRefreshState.review.fingerprint === fp) {
-                        markDeliverablesLoaded('review');
-                        return;
-                    }
-                    deliverablesAutoRefreshState.review.fingerprint = fp;
-
                     deliverablesBrowserMount('review', 'deliverablesReviewContainer', items, {
                         title: 'Review Queue',
-                        subtitle: `Pending${(!isAdmin ? '  | Mine only' : '')}  | Auto-refreshes quietly  | Items: ${(items || []).length.toLocaleString()}`,
-                        controlsHtml: `<div class="deliverables-filter-note">Queue refreshes automatically while this pane is open, focused, and online.</div>`,
+                        subtitle: `Pending${(!isAdmin ? '  | Mine only' : '')}  | Right-click to tag / mark outdated (local only)  | Items: ${(items || []).length.toLocaleString()}`,
+                        controlsHtml: `<button class="deliverables-action-btn secondary" onclick="loadDeliverablesReview()" style="height:38px; padding: 0 12px;">Refresh</button>`,
                         emptyText: 'No deliverables pending review.'
                     });
-                    markDeliverablesLoaded('review');
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-text" style="color: var(--danger);">Error: ${escapeHtml(data && data.error ? data.error : 'Failed to load deliverables')}</div>
                         </div>
                     `;
-                    setDeliverablesLoading('review', false);
                 }
             } catch (error) {
                 container.innerHTML = `
@@ -15575,18 +14527,12 @@ function deliverablesBrowserRender(mode) {
                         <div class="empty-text" style="color: var(--danger);">Error loading review queue: ${error.message}</div>
                     </div>
                 `;
-                setDeliverablesLoading('review', false);
             }
         }
         
-        async function loadDeliverablesLibrary(opts) {
+        async function loadDeliverablesLibrary() {
             const container = document.getElementById('deliverablesLibraryContainer');
-            const silent = !!(opts && opts.silent);
-            const hasUi = !!(container && container.querySelector && container.querySelector('.deliverables-browser'));
-            setDeliverablesLoading('library', true);
-            if (!silent || !hasUi) {
-                container.innerHTML = '<div class="spinner"></div>';
-            }
+            container.innerHTML = '<div class="spinner"></div>';
             
             try {
                 // Auto-detect offer context from browser state
@@ -15608,48 +14554,32 @@ function deliverablesBrowserRender(mode) {
                 const data = await response.json();
 
                 if (data.ok && Array.isArray(data.deliverables)) {
-                    const fp = deliverablesMakeFingerprint(data.deliverables);
-                    if (silent && deliverablesAutoRefreshState.library.fingerprint && deliverablesAutoRefreshState.library.fingerprint === fp) {
-                        markDeliverablesLoaded('library');
-                        return;
-                    }
-                    deliverablesAutoRefreshState.library.fingerprint = fp;
-
                     const statusLabel = currentStatus.toUpperCase();
-                    const statusPills = `
-                        <div class="deliverables-filter-group">
-                            <span class="deliverables-filter-group__label">Scope</span>
-                            <div class="deliverables-filter-pills" style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <button class="btn-clean-link ${currentStatus==='published'?'active-tag':''}" onclick="deliverablesBrowserSetStatus('published')" ${offerContextId ? 'disabled' : ''}>Published</button>
-                                <button class="btn-clean-link ${currentStatus==='approved'?'active-tag':''}" onclick="deliverablesBrowserSetStatus('approved')" ${offerContextId ? 'disabled' : ''}>Approved</button>
-                                <button class="btn-clean-link ${currentStatus==='pending'?'active-tag':''}" onclick="deliverablesBrowserSetStatus('pending')" ${offerContextId ? 'disabled' : ''}>Pending</button>
-                                <button class="btn-clean-link ${currentStatus==='rejected'?'active-tag':''}" onclick="deliverablesBrowserSetStatus('rejected')" ${offerContextId ? 'disabled' : ''}>Rejected</button>
-                                <button class="btn-clean-link ${currentStatus==='all'?'active-tag':''}" onclick="deliverablesBrowserSetStatus('all')" ${offerContextId ? 'disabled' : ''}>All</button>
-                            </div>
-                        </div>
+                    const statusSelect = `
+                        <select class="deliverables-select" onchange="window.__deliverablesLibraryStatus=this.value; loadDeliverablesLibrary();" title="Status">
+                            <option value="published" ${currentStatus==='published'?'selected':''}>Published</option>
+                            <option value="approved" ${currentStatus==='approved'?'selected':''}>Approved</option>
+                            <option value="pending" ${currentStatus==='pending'?'selected':''}>Pending</option>
+                            <option value="rejected" ${currentStatus==='rejected'?'selected':''}>Rejected</option>
+                            <option value="all" ${currentStatus==='all'?'selected':''}>All</option>
+                        </select>
                     `;
-
-                    const autoNote = offerContextId
-                        ? `<div class="deliverables-filter-note">Offer-scoped library view locks status to All so linked items never disappear unexpectedly.</div>`
-                        : `<div class="deliverables-filter-note">Library refreshes automatically while this pane is open, focused, and online.</div>`;
 
                     deliverablesBrowserMount('library', 'deliverablesLibraryContainer', data.deliverables, {
                         title: 'Deliverables Library',
                         subtitle: `Status: ${statusLabel}  | Items: ${(data.deliverables || []).length.toLocaleString()}`,
                         controlsHtml: `
-                            ${statusPills}
-                            ${autoNote}
+                            ${statusSelect}
+                            <button class="deliverables-action-btn secondary" onclick="loadDeliverablesLibrary()" style="height:38px; padding: 0 12px;">Refresh</button>
                         `,
                         emptyText: 'No deliverables found for this status.'
                     });
-                    markDeliverablesLoaded('library');
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-text" style="color: var(--danger);">Error: ${escapeHtml(data && data.error ? data.error : 'Failed to load deliverables')}</div>
                         </div>
                     `;
-                    setDeliverablesLoading('library', false);
                 }
             } catch (error) {
                 container.innerHTML = `
@@ -15657,7 +14587,6 @@ function deliverablesBrowserRender(mode) {
                         <div class="empty-text" style="color: var(--danger);">Error loading library: ${error.message}</div>
                     </div>
                 `;
-                setDeliverablesLoading('library', false);
             }
         }
 
@@ -15739,7 +14668,7 @@ function deliverablesBrowserRender(mode) {
                 showToast('Admin only: rejections are restricted.', 'warning');
                 return;
             }
-            const notes = prompt('Feedback for the teammate / requested changes:');
+            const notes = prompt('Rejection reason (optional):');
             if (notes === null) return; // User cancelled
             
             try {
@@ -15756,7 +14685,7 @@ function deliverablesBrowserRender(mode) {
                 const data = await response.json();
                 
                 if (data.ok) {
-                    showToast('Feedback saved and deliverable sent back for changes', 'success');
+                    showToast('Deliverable rejected', 'success');
                     loadDeliverablesReview();
                 } else {
                     showToast(data.error || 'Failed to reject deliverable', 'error');
@@ -16238,22 +15167,13 @@ function deliverablesBrowserRender(mode) {
             // Hours form is now modal-based, no inline form to setup
         }
 
-        function dashboardDateInputValue(date = new Date()) {
-            const dt = (date instanceof Date) ? new Date(date) : new Date(date);
-            if (isNaN(dt.getTime())) return '';
-            const year = dt.getFullYear();
-            const month = String(dt.getMonth() + 1).padStart(2, '0');
-            const day = String(dt.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
-        }
-
         // Hours Modal Functions
         function openHoursModal() {
             document.getElementById('hoursModal').classList.add('active');
             document.body.style.overflow = 'hidden';
             
             // Set defaults
-            const today = dashboardDateInputValue(new Date());
+            const today = new Date().toISOString().split('T')[0];
             document.getElementById('hoursDate').value = today;
             document.getElementById('hoursStart').value = '09:00';
             document.getElementById('hoursEnd').value = '17:00';
@@ -16330,7 +15250,6 @@ function deliverablesBrowserRender(mode) {
             const start = new Date(`2000-01-01T${startTime}`);
             const end = new Date(`2000-01-01T${endTime}`);
             let diff = (end - start) / (1000 * 60 * 60);
-            if (diff < 0) diff += 24;
             
             if (diff <= 0) {
                 showToast('End time must be after start time', 'error');
@@ -16379,9 +15298,6 @@ function deliverablesBrowserRender(mode) {
                     showToast('Hours logged successfully!', 'success');
                     closeHoursModal();
                     loadHoursHistory();
-                    if (typeof loadWorkspaceSummary === 'function') {
-                        loadWorkspaceSummary(true);
-                    }
                     
                     // Refresh Admin Dashboard if it's currently visible
                     const adminPane = document.getElementById('admin-pane');
@@ -16422,7 +15338,6 @@ function deliverablesBrowserRender(mode) {
         // Load Hours History
         async function loadHoursHistory(silent = false) {
             const container = document.getElementById('hoursHistoryContainer');
-            if (!container) return;
             
             // Only show spinner on initial load, not on auto-refresh
             if (!silent) {
@@ -16451,7 +15366,7 @@ function deliverablesBrowserRender(mode) {
                     } else {
                         container.innerHTML = `
                             <div class="empty-state">
-                                <div class="empty-text">No hours logged yet. Use the time log button to get started.</div>
+                                <div class="empty-text">No hours logged yet. Click "Log Today's Hours" to get started.</div>
                             </div>
                         `;
                     }
@@ -16477,7 +15392,7 @@ function deliverablesBrowserRender(mode) {
         }
 
         // Add Task Modal Functions
-        let taskCreatorMode = 'built';
+        let taskCreatorMode = 'quick';
         let taskCreatorMinWords = 30;
         let taskCreatorBuiltTaskId = null;
         let taskCreatorAutosaveTimer = null;
@@ -16941,13 +15856,11 @@ function deliverablesBrowserRender(mode) {
             const stickyBar = document.getElementById('taskCreatorStickyBar');
             const manualMeta = document.getElementById('taskCreatorManualMeta');
             const titleEl = document.getElementById('newTaskTitle');
-            const modeLabel = document.getElementById('taskCreatorModeLabel');
 
             if (taskCreatorMode === 'quick') {
-                if (quickBtn) { quickBtn.style.borderColor = '#0a2a5a'; quickBtn.classList.add('active'); }
-                if (builtBtn) { builtBtn.style.borderColor = '#e5e7eb'; builtBtn.classList.remove('active'); }
+                if (quickBtn) quickBtn.style.borderColor = '#0a2a5a';
+                if (builtBtn) builtBtn.style.borderColor = '#e5e7eb';
                 if (hint) hint.textContent = 'Quick Task: save now. Optional AI Polish rewrites your notes.';
-                if (modeLabel) modeLabel.textContent = 'Quick manual task';
                 if (quickSection) quickSection.style.display = '';
                 if (builtSection) builtSection.style.display = 'none';
                 if (stickyBar) stickyBar.style.display = 'none';
@@ -16960,10 +15873,9 @@ function deliverablesBrowserRender(mode) {
                 }
                 if (titleEl) titleEl.required = true;
             } else {
-                if (quickBtn) { quickBtn.style.borderColor = '#e5e7eb'; quickBtn.classList.remove('active'); }
-                if (builtBtn) { builtBtn.style.borderColor = '#0a2a5a'; builtBtn.classList.add('active'); }
+                if (quickBtn) quickBtn.style.borderColor = '#e5e7eb';
+                if (builtBtn) builtBtn.style.borderColor = '#0a2a5a';
                 if (hint) hint.textContent = 'Built Task: autosaves. Generate stays locked until Outcome + minimum detail are provided.';
-                if (modeLabel) modeLabel.textContent = 'Voice-first AI capture';
                 if (quickSection) quickSection.style.display = 'none';
                 if (builtSection) builtSection.style.display = '';
                 if (stickyBar) stickyBar.style.display = '';
@@ -17218,7 +16130,7 @@ function deliverablesBrowserRender(mode) {
             taskCreatorRenderSuggestions(null);
             taskCreatorSetAutosaveHint('');
             ensureTaskCreatorConfig();
-            setTaskCreatorMode('built');
+            setTaskCreatorMode('quick');
 
             // Task assignment: dropdown of active employees.
             try {
@@ -17525,6 +16437,21 @@ function deliverablesBrowserRender(mode) {
         }
         
         function renderHoursHistory(entries) {
+            const parseMaybeLocalDate = (dateStr) => {
+                if (!dateStr) return null;
+                const s = String(dateStr).trim();
+                const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                if (m) {
+                    const y = parseInt(m[1], 10);
+                    const mo = parseInt(m[2], 10) - 1;
+                    const d = parseInt(m[3], 10);
+                    const dt = new Date(y, mo, d);
+                    return isNaN(dt.getTime()) ? null : dt;
+                }
+                const dt = new Date(s);
+                return isNaN(dt.getTime()) ? null : dt;
+            };
+
             // Normalize field names (backend returns capital case)
             const normalizedEntries = entries.map(entry => ({
                 date: entry.Date || entry.date,
@@ -17541,7 +16468,7 @@ function deliverablesBrowserRender(mode) {
             
             const recentEntries = normalizedEntries.filter(entry => {
                 if (!entry.date) return false;
-                const entryDate = parseDashboardLocalDate(entry.date);
+                const entryDate = parseMaybeLocalDate(entry.date);
                 if (!entryDate) return false;
                 const entryDateOnly = new Date(entryDate);
                 entryDateOnly.setHours(0, 0, 0, 0);
@@ -17550,9 +16477,11 @@ function deliverablesBrowserRender(mode) {
             
             // If no recent entries after filtering, show message
             if (recentEntries.length === 0) {
-                const hoursContainer = document.getElementById('hoursHistoryContainer');
-                if (!hoursContainer) return;
-                hoursContainer.innerHTML = workspaceEmptyStateHtml('info', 'No hours logged in the last 7 days', 'Use the time log button to add your week, then your recent history will show here.');
+                document.getElementById('hoursHistoryContainer').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-text">No hours logged in the last 7 days. Click "Log Today's Hours" to get started.</div>
+                    </div>
+                `;
                 return;
             }
             
@@ -17596,574 +16525,7 @@ function deliverablesBrowserRender(mode) {
                 </table>
             `;
             
-            const hoursContainer = document.getElementById('hoursHistoryContainer');
-            if (hoursContainer) {
-                hoursContainer.innerHTML = html;
-            }
-        }
-
-        function parseDashboardLocalDate(dateStr) {
-            if (!dateStr) return null;
-            const s = String(dateStr).trim();
-            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
-            if (m) {
-                const y = parseInt(m[1], 10);
-                const mo = parseInt(m[2], 10) - 1;
-                const d = parseInt(m[3], 10);
-                const dt = new Date(y, mo, d);
-                return isNaN(dt.getTime()) ? null : dt;
-            }
-            const dt = new Date(s);
-            return isNaN(dt.getTime()) ? null : dt;
-        }
-
-        function extractHoursSection(text, label) {
-            const source = String(text || '');
-            const safeLabel = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp(`\\[${safeLabel}\\]\\s*([\\s\\S]*?)(?=\\n\\n\\[[A-Z/]+\\]|$)`, 'i');
-            const match = source.match(regex);
-            return match && match[1] ? String(match[1]).trim() : '';
-        }
-
-        function parseJsonStringArray(value) {
-            const toLabel = (item) => {
-                if (item == null) return '';
-                if (typeof item === 'string') return item.trim();
-                if (typeof item === 'object') {
-                    const direct = item.skill || item.name || item.title || item.label || item.concept || item.topic || item.pillar;
-                    return String(direct || '').trim();
-                }
-                return String(item).trim();
-            };
-
-            if (Array.isArray(value)) return value.map(toLabel).filter(Boolean);
-            if (value == null) return [];
-            const source = String(value).trim();
-            if (!source) return [];
-            try {
-                const parsed = JSON.parse(source);
-                return Array.isArray(parsed) ? parsed.map(toLabel).filter(Boolean) : [];
-            } catch (_) {
-                return source
-                    .split(/\n|,|;|\u2022|\u2023|\u25E6/)
-                    .map(item => String(item || '').replace(/^[-*\d.)\s]+/, '').trim())
-                    .filter(Boolean);
-            }
-        }
-
-        const LEARNING_CATEGORY_ORDER = [
-            'Marketing & Lead Generation',
-            'CRM & Sales Management',
-            'Technical Implementation',
-            'Operations & Fulfillment',
-            'Home2Smart Systems',
-            'General Training'
-        ];
-
-        function normalizeLearningCategoryLabel(value) {
-            const raw = String(value || '').trim();
-            if (!raw) return '';
-            const key = raw.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
-            const aliases = {
-                marketing: 'Marketing & Lead Generation',
-                'marketing and lead generation': 'Marketing & Lead Generation',
-                'marketing lead generation': 'Marketing & Lead Generation',
-                crm: 'CRM & Sales Management',
-                sales: 'CRM & Sales Management',
-                'crm and sales management': 'CRM & Sales Management',
-                'crm sales management': 'CRM & Sales Management',
-                technical: 'Technical Implementation',
-                'technical implementation': 'Technical Implementation',
-                operations: 'Operations & Fulfillment',
-                onboarding: 'Operations & Fulfillment',
-                'operations and fulfillment': 'Operations & Fulfillment',
-                'operations fulfillment': 'Operations & Fulfillment',
-                home2smart: 'Home2Smart Systems',
-                'home2smart systems': 'Home2Smart Systems',
-                'home 2 smart': 'Home2Smart Systems',
-                general: 'General Training',
-                'general training': 'General Training'
-            };
-            return aliases[key] || raw;
-        }
-
-        function getCompletionLearningCategory(item) {
-            return normalizeLearningCategoryLabel(
-                item?.Resolved_Category
-                || item?.resolvedCategory
-                || item?.Detected_Category
-                || item?.detectedCategory
-                || item?.resource?.Resolved_Category
-                || item?.resource?.Detected_Category
-                || item?.Category
-                || item?.category
-                || item?.resource?.Category
-            );
-        }
-
-        function buildLearningInsights(trainingCompletions = []) {
-            const conceptCounts = new Map();
-            const gapCounts = new Map();
-            const uniqueSkills = new Set();
-            const categoryRollups = Object.fromEntries(LEARNING_CATEGORY_ORDER.map(key => [key, { totalScore: 0, skillCount: 0 }]));
-
-            let totalMinutes = 0;
-            let confidenceTotal = 0;
-
-            const normalizedCompletions = (Array.isArray(trainingCompletions) ? trainingCompletions : [])
-                .map(item => {
-                    const concepts = parseJsonStringArray(item.AI_Extracted_Concepts || item.aiExtractedConcepts);
-                    const gaps = parseJsonStringArray(item.AI_Knowledge_Gaps || item.aiKnowledgeGaps);
-                    const confidence = parseFloat(item.AI_Confidence_Score || item.aiConfidenceScore || 0) || 0;
-                    const minutes = parseFloat(item.Time_Spent_Minutes || item.timeSpentMinutes || 0) || 0;
-                    const completedAt = parseDashboardLocalDate(item.Completed_At || item.completedAt || item.Date || item.date);
-                    const category = getCompletionLearningCategory(item) || 'General Training';
-                    return {
-                        title: String(item.Training_Title || item.trainingTitle || 'Training').trim(),
-                        concepts,
-                        gaps,
-                        confidence,
-                        minutes,
-                        category,
-                        completedAt,
-                        notes: String(item.Notes_Learned || item.notesLearned || '').trim()
-                    };
-                })
-                .sort((a, b) => (b.completedAt ? b.completedAt.getTime() : 0) - (a.completedAt ? a.completedAt.getTime() : 0));
-
-            normalizedCompletions.forEach(entry => {
-                totalMinutes += entry.minutes;
-                confidenceTotal += entry.confidence;
-
-                if (!categoryRollups[entry.category]) {
-                    categoryRollups[entry.category] = { totalScore: 0, skillCount: 0 };
-                }
-                categoryRollups[entry.category].totalScore += entry.confidence || 70;
-                categoryRollups[entry.category].skillCount += Math.max(entry.concepts.length, 1);
-
-                entry.concepts.forEach(concept => {
-                    const clean = String(concept || '').trim();
-                    if (!clean) return;
-                    uniqueSkills.add(clean);
-                    conceptCounts.set(clean, (conceptCounts.get(clean) || 0) + 1);
-                });
-
-                entry.gaps.forEach(gap => {
-                    const clean = String(gap || '').trim();
-                    if (!clean) return;
-                    gapCounts.set(clean, (gapCounts.get(clean) || 0) + 1);
-                });
-            });
-
-            const categoryScores = Object.entries(categoryRollups).map(([category, data]) => {
-                const score = data.skillCount > 0 ? Math.round(data.totalScore / data.skillCount) : 0;
-                return {
-                    category,
-                    score,
-                    skillCount: data.skillCount,
-                    level: score >= 70 ? 'strong' : score >= 40 ? 'developing' : 'learning'
-                };
-            }).sort((a, b) => {
-                const aIndex = LEARNING_CATEGORY_ORDER.indexOf(a.category);
-                const bIndex = LEARNING_CATEGORY_ORDER.indexOf(b.category);
-                const safeA = aIndex >= 0 ? aIndex : Number.MAX_SAFE_INTEGER;
-                const safeB = bIndex >= 0 ? bIndex : Number.MAX_SAFE_INTEGER;
-                if (safeA !== safeB) return safeA - safeB;
-                return a.category.localeCompare(b.category);
-            });
-
-            return {
-                totalCompletions: normalizedCompletions.length,
-                totalHours: totalMinutes / 60,
-                masteryScore: normalizedCompletions.length > 0 ? Math.round(confidenceTotal / normalizedCompletions.length) : 0,
-                skillsTracked: uniqueSkills.size,
-                categoryScores,
-                topSkills: Array.from(conceptCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count })),
-                topGaps: Array.from(gapCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([name, count]) => ({ name, count })),
-                recentLearnings: normalizedCompletions.slice(0, 4)
-            };
-        }
-
-        function normalizeLearningProfileUser(value) {
-            const raw = String(value || '').trim();
-            if (!raw) return 'ALL';
-            return raw.toUpperCase();
-        }
-
-        function buildLearningProfileUserOptions(users = [], trainingCompletions = []) {
-            const byUsername = new Map();
-
-            (Array.isArray(users) ? users : []).forEach((user) => {
-                const username = normalizeLearningProfileUser(user?.Username || user?.username || user?.VA_Name || user?.vaName || '');
-                if (!username || username === 'ALL') return;
-                const displayName = String(user?.Display_Name || user?.displayName || user?.Username || user?.username || username).trim() || username;
-                byUsername.set(username, {
-                    value: username,
-                    label: displayName,
-                    role: String(user?.Role || user?.role || '').trim().toUpperCase()
-                });
-            });
-
-            (Array.isArray(trainingCompletions) ? trainingCompletions : []).forEach((entry) => {
-                const username = normalizeLearningProfileUser(entry?.Completed_By || entry?.completedBy || entry?.VA_Name || entry?.vaName || '');
-                if (!username || username === 'ALL') return;
-                if (!byUsername.has(username)) {
-                    byUsername.set(username, { value: username, label: username, role: '' });
-                }
-            });
-
-            return Array.from(byUsername.values()).sort((a, b) => {
-                if (a.role === 'ADMIN' && b.role !== 'ADMIN') return -1;
-                if (a.role !== 'ADMIN' && b.role === 'ADMIN') return 1;
-                return String(a.label || a.value).localeCompare(String(b.label || b.value));
-            });
-        }
-
-        function buildWorkspaceFocusItems(hoursEntries = [], completedTasks = []) {
-            const counts = new Map();
-            const addItem = (value) => {
-                const clean = String(value || '').replace(/^[-*\d.)\s]+/, '').replace(/\s+/g, ' ').trim();
-                if (!clean || clean.length < 4) return;
-                counts.set(clean, (counts.get(clean) || 0) + 1);
-            };
-
-            hoursEntries.forEach(entry => {
-                const section = extractHoursSection(entry.Tasks || entry.tasks || '', 'TASKS');
-                const parts = section.split(/\n|,|;|\u2022|\u2023|\u25E6/);
-                parts.forEach(addItem);
-            });
-
-            if (counts.size === 0) {
-                completedTasks.slice(0, 6).forEach(task => addItem(task.Title || task.title || ''));
-            }
-
-            return Array.from(counts.entries())
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 6)
-                .map(([name]) => name);
-        }
-
-        function renderWorkspaceItems(containerId, items, emptyHtml) {
-            const el = document.getElementById(containerId);
-            if (!el) return;
-            if (!items || items.length === 0) {
-                el.innerHTML = emptyHtml;
-                return;
-            }
-            el.innerHTML = items.join('');
-        }
-
-        function workspaceEmptyStateHtml(tone, title, copy) {
-            const icon = tone === 'success'
-                ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 12l2 2 4-4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg>'
-                : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 6v6l4 2" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="12" cy="12" r="9"></circle></svg>';
-            return `
-                <div class="workspace-empty-state workspace-empty-state--${escapeHtml(tone || 'info')}">
-                    <div class="workspace-empty-state__icon" aria-hidden="true">${icon}</div>
-                    <div class="workspace-empty-state__body">
-                        <div class="workspace-empty-state__title">${escapeHtml(title || 'Nothing here yet')}</div>
-                        <div class="workspace-empty-state__copy">${escapeHtml(copy || '')}</div>
-                    </div>
-                </div>
-            `;
-        }
-
-        const workspaceSummaryRefreshState = {
-            bound: false,
-            inFlight: false,
-            lastLoadedAt: 0,
-            cooldownMs: 12000
-        };
-
-        function isWorkspacePaneActive() {
-            const pane = document.getElementById('workspace-pane');
-            return !!(pane && pane.classList.contains('active'));
-        }
-
-        function setWorkspaceSummaryRefreshTimestamp() {
-            workspaceSummaryRefreshState.lastLoadedAt = Date.now();
-        }
-
-        function bindWorkspaceSummaryAutoRefresh() {
-            if (workspaceSummaryRefreshState.bound) return;
-
-            const maybeRefresh = () => {
-                try {
-                    if (!isWorkspacePaneActive()) return;
-                    if (document.hidden) return;
-                    if (workspaceSummaryRefreshState.inFlight) return;
-
-                    const now = Date.now();
-                    if (workspaceSummaryRefreshState.lastLoadedAt && (now - workspaceSummaryRefreshState.lastLoadedAt) < workspaceSummaryRefreshState.cooldownMs) {
-                        return;
-                    }
-
-                    loadWorkspaceSummary(true);
-                } catch (_) { }
-            };
-
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) maybeRefresh();
-            });
-            window.addEventListener('focus', () => maybeRefresh());
-            window.addEventListener('online', () => maybeRefresh());
-
-            workspaceSummaryRefreshState.bound = true;
-        }
-
-        async function loadWorkspaceSummary(silent = false) {
-            const userKey = normalizeUsername(currentUser || '');
-            const progressFill = document.getElementById('workspaceTaskProgressFill');
-            const taskProgressLabel = document.getElementById('workspaceTaskProgressLabel');
-            if (!document.getElementById('workspace-pane')) return;
-
-            if (workspaceSummaryRefreshState.inFlight) return;
-            workspaceSummaryRefreshState.inFlight = true;
-
-            try {
-                if (!userKey || userKey === 'DEMO') {
-                    ['workspaceAssignedCount', 'workspaceCompletedCount'].forEach(id => {
-                        const el = document.getElementById(id);
-                        if (el) el.textContent = '0';
-                    });
-                    ['workspaceWeeklyHours', 'workspaceTotalHours'].forEach(id => {
-                        const el = document.getElementById(id);
-                        if (el) el.textContent = '0.0h';
-                    });
-                    if (progressFill) progressFill.style.width = '0%';
-                    if (taskProgressLabel) taskProgressLabel.textContent = 'Choose your account to see your summary';
-                    renderWorkspaceItems('workspaceCompletedList', [], workspaceEmptyStateHtml('success', 'Nothing completed yet', 'Finished work will show here once tasks start getting checked off.'));
-                    renderWorkspaceItems('workspacePendingList', [], workspaceEmptyStateHtml('info', 'No open tasks right now', 'New assignments and anything still in progress will appear here automatically.'));
-                    renderWorkspaceItems('workspaceLearningSummary', [], workspaceEmptyStateHtml('info', 'No learning activity yet', 'Recent learnings will appear here after you log hours or complete training.'));
-                    renderWorkspaceItems('workspaceBlockersList', [], workspaceEmptyStateHtml('success', 'No blockers logged', 'If something starts slowing you down, it will appear here from your recent logs.'));
-                    renderWorkspaceItems('hoursHistoryContainer', [], workspaceEmptyStateHtml('info', 'No hours logged yet', 'Use the time log button to start building your weekly history.'));
-                    setWorkspaceSummaryRefreshTimestamp();
-                    return;
-                }
-
-                const [tasksRes, hoursRes, trainingRes] = await Promise.all([
-                    fetch(`${API_URL}?action=tasks`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ tasks: [] })),
-                    fetch(`${API_URL}?action=hours&vaName=${encodeURIComponent(userKey)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ hours: [] })),
-                    fetch(`${API_URL}?action=trainingCompletions&vaName=${encodeURIComponent(userKey)}&_ts=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ trainingCompletions: [] }))
-                ]);
-
-                const allTasks = (tasksRes && (tasksRes.tasks || tasksRes.data || [])) || [];
-                const tasks = allTasks
-                    .filter(task => String((task.Status || task.status || 'PENDING')).toUpperCase() !== 'DRAFT')
-                    .filter(task => {
-                        const assigned = normalizeUsername(task.Assigned_To || task.assignedTo || '');
-                        const createdBy = normalizeUsername(task.Created_By || task.createdBy || '');
-                        if (assigned) return assigned === userKey;
-                        return createdBy === userKey;
-                    });
-
-                const hoursEntries = (hoursRes && (hoursRes.hours || hoursRes.data || [])) || [];
-                const trainingCompletions = (trainingRes && (trainingRes.trainingCompletions || trainingRes.completions || [])) || [];
-
-                const completedTasks = tasks
-                    .filter(task => String((task.Status || task.status || 'PENDING')).toUpperCase() === 'COMPLETED')
-                    .sort((a, b) => {
-                        const aDate = parseDashboardLocalDate(a.Completed_At || a.completedAt || a.Updated_At || a.updatedAt);
-                        const bDate = parseDashboardLocalDate(b.Completed_At || b.completedAt || b.Updated_At || b.updatedAt);
-                        return (bDate ? bDate.getTime() : 0) - (aDate ? aDate.getTime() : 0);
-                    });
-                const openTasks = tasks.filter(task => String((task.Status || task.status || 'PENDING')).toUpperCase() !== 'COMPLETED');
-
-                const now = new Date();
-                const weekStart = new Date(now);
-                weekStart.setHours(0, 0, 0, 0);
-                const weekDay = weekStart.getDay();
-                weekStart.setDate(weekStart.getDate() + (weekDay === 0 ? -6 : 1 - weekDay));
-
-                const getHoursValue = (entry) => {
-                    const value = entry.Hours || entry.hours || entry.Hours_Logged || entry.hoursLogged || 0;
-                    const parsed = parseFloat(value);
-                    return isNaN(parsed) ? 0 : parsed;
-                };
-
-                const totalHours = hoursEntries.reduce((sum, entry) => sum + getHoursValue(entry), 0);
-                const weeklyHours = hoursEntries.reduce((sum, entry) => {
-                    const date = parseDashboardLocalDate(entry.Date || entry.date || entry.Logged_At || entry.loggedAt);
-                    if (!date) return sum;
-                    const localDate = new Date(date);
-                    localDate.setHours(0, 0, 0, 0);
-                    return localDate >= weekStart ? sum + getHoursValue(entry) : sum;
-                }, 0);
-
-                const learningInsights = buildLearningInsights(trainingCompletions);
-                const focusItems = buildWorkspaceFocusItems(hoursEntries, completedTasks);
-                const blockers = hoursEntries
-                    .map(entry => extractHoursSection(entry.Tasks || entry.tasks || '', 'BLOCKERS'))
-                    .filter(Boolean)
-                    .slice(0, 4);
-                const learningNotes = hoursEntries
-                    .map(entry => extractHoursSection(entry.Tasks || entry.tasks || '', 'WINS/LEARNINGS'))
-                    .filter(Boolean)
-                    .slice(0, 3);
-
-                const assignedCountEl = document.getElementById('workspaceAssignedCount');
-                const completedCountEl = document.getElementById('workspaceCompletedCount');
-                const weeklyHoursEl = document.getElementById('workspaceWeeklyHours');
-                const totalHoursEl = document.getElementById('workspaceTotalHours');
-                const completedHintEl = document.getElementById('workspaceCompletedHint');
-                const learningHintEl = document.getElementById('workspaceLearningHint');
-
-                if (assignedCountEl) assignedCountEl.textContent = String(tasks.length);
-                if (completedCountEl) completedCountEl.textContent = String(completedTasks.length);
-                if (weeklyHoursEl) weeklyHoursEl.textContent = `${weeklyHours.toFixed(1)}h`;
-                if (totalHoursEl) totalHoursEl.textContent = `${totalHours.toFixed(1)}h`;
-
-                const completionRate = tasks.length > 0 ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
-                if (completedHintEl) completedHintEl.textContent = `${completionRate}% completion rate`;
-                if (learningHintEl) {
-                    learningHintEl.textContent = learningInsights.skillsTracked > 0
-                        ? `${learningInsights.skillsTracked} skills tracked | ${learningInsights.masteryScore}% mastery`
-                        : 'Recent learning signals appear below';
-                }
-                if (progressFill) progressFill.style.width = `${completionRate}%`;
-                if (taskProgressLabel) taskProgressLabel.textContent = `${completedTasks.length} of ${tasks.length} finished`;
-
-                renderWorkspaceItems(
-                    'workspaceCompletedList',
-                    completedTasks.slice(0, 4).map(task => `<div class="workspace-list-item"><strong>${escapeHtml(String(task.Title || task.title || 'Task'))}</strong><div class="workspace-muted">${escapeHtml(String(task.Description || task.description || 'Completed task')).slice(0, 120)}</div></div>`),
-                    workspaceEmptyStateHtml('success', 'Nothing completed yet', 'Once you wrap up work, your latest finished tasks will stack here.')
-                );
-
-                renderWorkspaceItems(
-                    'workspacePendingList',
-                    openTasks.slice(0, 4).map(task => `<div class="workspace-list-item"><strong>${escapeHtml(String(task.Title || task.title || 'Task'))}</strong><div class="workspace-muted">${escapeHtml(String(task.Priority || task.priority || 'medium')).toUpperCase()} priority</div></div>`),
-                    workspaceEmptyStateHtml('info', 'No open tasks right now', 'You are clear at the moment. New assignments will appear here as soon as they are added.')
-                );
-
-                renderWorkspaceItems(
-                    'workspaceWeeklyFocus',
-                    focusItems.map(item => `<div class="workspace-tag">${escapeHtml(item)}</div>`),
-                    '<div class="workspace-tag">No recent focus yet</div>'
-                );
-
-                const learningItems = [];
-                learningNotes.forEach(note => {
-                    learningItems.push(`<div class="workspace-note"><strong>From your time logs</strong><div>${escapeHtml(note)}</div></div>`);
-                });
-                if (learningInsights.topSkills.length > 0) {
-                    learningItems.push(`<div class="workspace-note"><strong>Skills showing up</strong><div>${learningInsights.topSkills.slice(0, 4).map(skill => escapeHtml(skill.name)).join(' � ')}</div></div>`);
-                }
-                renderWorkspaceItems(
-                    'workspaceLearningSummary',
-                    learningItems,
-                    workspaceEmptyStateHtml('info', 'No learning activity yet', 'Recent learnings will appear here after you log hours or complete training.')
-                );
-
-                renderWorkspaceItems(
-                    'workspaceBlockersList',
-                    blockers.map(blocker => `<div class="workspace-list-item">${escapeHtml(blocker)}</div>`),
-                    workspaceEmptyStateHtml('success', 'No blockers logged', 'If something starts slowing you down, it will appear here from your recent logs.')
-                );
-
-                renderHoursHistory(hoursEntries);
-                setWorkspaceSummaryRefreshTimestamp();
-            } catch (error) {
-                const message = escapeHtml(error && error.message ? error.message : 'Unknown error');
-                renderWorkspaceItems('workspaceLearningSummary', [], workspaceEmptyStateHtml('info', 'Could not load your summary', `Please try again in a moment. ${message}`));
-                renderWorkspaceItems('workspaceBlockersList', [], workspaceEmptyStateHtml('info', 'Blockers are unavailable', 'Recent blocker details could not be loaded right now.'));
-                renderWorkspaceItems('hoursHistoryContainer', [], workspaceEmptyStateHtml('info', 'Hours history is unavailable', 'We could not load your recent hours right now.'));
-            } finally {
-                workspaceSummaryRefreshState.inFlight = false;
-            }
-        }
-
-        function renderAdminLearningKnowledgeSection(trainingCompletions, users = [], selectedUser = 'ALL') {
-            const normalizedSelectedUser = normalizeLearningProfileUser(selectedUser);
-            const userOptions = buildLearningProfileUserOptions(users, trainingCompletions);
-            const filteredCompletions = normalizedSelectedUser === 'ALL'
-                ? (Array.isArray(trainingCompletions) ? trainingCompletions : [])
-                : (Array.isArray(trainingCompletions) ? trainingCompletions : []).filter(item => {
-                    const completedBy = normalizeLearningProfileUser(item?.Completed_By || item?.completedBy || item?.VA_Name || item?.vaName || '');
-                    return completedBy === normalizedSelectedUser;
-                });
-
-            const selectedOption = userOptions.find(opt => opt.value === normalizedSelectedUser) || null;
-            const insights = buildLearningInsights(filteredCompletions);
-            const levelColor = { strong: '#10b981', developing: '#f59e0b', learning: '#ef4444' };
-            const profileLabel = normalizedSelectedUser === 'ALL'
-                ? 'Team overview'
-                : (selectedOption?.label || normalizedSelectedUser);
-
-            const scoreRows = insights.categoryScores.map(item => `
-                <div style="display:flex; flex-direction:column; gap:8px; padding:14px 16px; background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px;">
-                    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-                        <span style="font-size:13px; font-weight:800; color:#0f172a;">${escapeHtml(item.category)}</span>
-                        <span style="font-size:12px; font-weight:900; color:${levelColor[item.level] || '#0f172a'};">${item.score}%</span>
-                    </div>
-                    <div style="height:8px; border-radius:999px; background:#e2e8f0; overflow:hidden;">
-                        <div style="height:100%; width:${item.score}%; border-radius:inherit; background:${item.level === 'strong' ? 'linear-gradient(90deg, #10b981, #059669)' : item.level === 'developing' ? 'linear-gradient(90deg, #f59e0b, #d97706)' : 'linear-gradient(90deg, #f97316, #ef4444)'};"></div>
-                    </div>
-                    <div style="font-size:11px; color:#64748b;">${item.skillCount} skills tracked</div>
-                </div>
-            `).join('');
-
-            const skillsHtml = insights.topSkills.length > 0
-                ? insights.topSkills.slice(0, 6).map(skill => `<span style="display:inline-flex; align-items:center; padding:8px 10px; border-radius:999px; background:rgba(21,94,239,0.08); color:var(--cobalt); font-size:12px; font-weight:800;">${escapeHtml(skill.name)}</span>`).join('')
-                : `<div style="color:#6b7280; font-size:13px;">No extracted skills yet${normalizedSelectedUser === 'ALL' ? ' across the team' : ' for this profile'}.</div>`;
-
-            const gapsHtml = insights.topGaps.length > 0
-                ? insights.topGaps.slice(0, 4).map(gap => `<div style="padding:10px 12px; border-radius:12px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; font-size:13px; font-weight:700;">${escapeHtml(gap.name)}</div>`).join('')
-                : '<div style="color:#6b7280; font-size:13px;">No active knowledge gaps detected in recent completions.</div>';
-
-            const recentHtml = insights.recentLearnings.length > 0
-                ? insights.recentLearnings.map(item => `<div style="padding:12px 14px; border-radius:12px; background:#f8fafc; border:1px solid #e5e7eb;"><div style="font-size:13px; font-weight:800; color:#0f172a;">${escapeHtml(item.title)}</div><div style="font-size:12px; color:#64748b; margin-top:6px;">${item.concepts.slice(0, 3).map(concept => escapeHtml(concept)).join(' � ') || 'Awaiting extracted concepts'}</div></div>`).join('')
-                : `<div style="color:#6b7280; font-size:13px;">No recent learning entries yet${normalizedSelectedUser === 'ALL' ? '' : ' for this profile'}.</div>`;
-
-            const selectorHtml = `
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:18px;">
-                    <div>
-                        <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 6px 0;">Learning & Knowledge</h3>
-                        <div style="font-size:12px; color:#64748b;">Viewing: <span style="font-weight:900; color:#0f172a;">${escapeHtml(profileLabel)}</span>${normalizedSelectedUser === 'ALL' ? ' � aggregated across all submitted learnings' : ' � based on completed learnings and extracted concepts'}</div>
-                    </div>
-                    <label style="display:flex; flex-direction:column; gap:6px; min-width:260px;">
-                        <span style="font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; color:#64748b;">Learning profile</span>
-                        <select onchange="adminDashboard.setLearningUser(this.value)" style="height:42px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; font-weight:700; padding:0 12px;">
-                            <option value="ALL" ${normalizedSelectedUser === 'ALL' ? 'selected' : ''}>Team overview</option>
-                            ${userOptions.map(opt => `<option value="${escapeHtml(opt.value)}" ${opt.value === normalizedSelectedUser ? 'selected' : ''}>${escapeHtml(opt.label)}${opt.role === 'ADMIN' ? ' (Admin)' : ''}</option>`).join('')}
-                        </select>
-                    </label>
-                </div>
-            `;
-
-            return `
-                <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px;">
-                    ${selectorHtml}
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px;">
-                        <div style="background:#f8fafc; padding:16px; border-radius:12px; border:1px solid #e5e7eb;"><div style="font-size:24px; font-weight:900; color:var(--cobalt);">${insights.totalCompletions}</div><div style="font-size:12px; color:#64748b;">Training completions</div></div>
-                        <div style="background:#f8fafc; padding:16px; border-radius:12px; border:1px solid #e5e7eb;"><div style="font-size:24px; font-weight:900; color:var(--cobalt);">${insights.totalHours.toFixed(1)}h</div><div style="font-size:12px; color:#64748b;">Learning hours</div></div>
-                        <div style="background:#f8fafc; padding:16px; border-radius:12px; border:1px solid #e5e7eb;"><div style="font-size:24px; font-weight:900; color:var(--cobalt);">${insights.masteryScore}%</div><div style="font-size:12px; color:#64748b;">Average mastery</div></div>
-                        <div style="background:#f8fafc; padding:16px; border-radius:12px; border:1px solid #e5e7eb;"><div style="font-size:24px; font-weight:900; color:var(--cobalt);">${insights.skillsTracked}</div><div style="font-size:12px; color:#64748b;">Skills tracked</div></div>
-                    </div>
-
-                    <div style="display:grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap:18px;">
-                        <div style="display:flex; flex-direction:column; gap:18px;">
-                            <div>
-                                <div style="font-size:13px; font-weight:800; color:var(--cobalt); margin-bottom:12px;">Skill mastery overview</div>
-                                <div style="display:grid; gap:12px;">${scoreRows}</div>
-                            </div>
-                            <div>
-                                <div style="font-size:13px; font-weight:800; color:var(--cobalt); margin-bottom:12px;">What the team learned</div>
-                                <div style="display:flex; flex-wrap:wrap; gap:10px;">${skillsHtml}</div>
-                            </div>
-                        </div>
-                        <div style="display:flex; flex-direction:column; gap:18px;">
-                            <div>
-                                <div style="font-size:13px; font-weight:800; color:var(--cobalt); margin-bottom:12px;">Recent learning wins</div>
-                                <div style="display:grid; gap:10px;">${recentHtml}</div>
-                            </div>
-                            <div>
-                                <div style="font-size:13px; font-weight:800; color:var(--cobalt); margin-bottom:12px;">Focus areas</div>
-                                <div style="display:grid; gap:10px;">${gapsHtml}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            document.getElementById('hoursHistoryContainer').innerHTML = html;
         }
 
         async function handleHoursSubmit(e) {
@@ -18414,7 +16776,11 @@ function deliverablesBrowserRender(mode) {
 
         function formatDate(dateStr) {
             if (!dateStr) return '';
-            const date = parseDashboardLocalDate(dateStr);
+            const s = String(dateStr).trim();
+            const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            const date = m
+                ? new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10))
+                : new Date(s);
             if (isNaN(date.getTime())) return '';
             return date.toLocaleDateString();
         }
@@ -18433,334 +16799,171 @@ function deliverablesBrowserRender(mode) {
         }
 
         // Load Training Resources
-        function trainingSafeTrim(v) {
-            try { return String(v == null ? '' : v).trim(); } catch { return ''; }
-        }
-
-        function trainingExtractUrlFromValue(value) {
-            if (Array.isArray(value)) {
-                for (const item of value) {
-                    const nested = trainingExtractUrlFromValue(item);
-                    if (nested) return nested;
-                }
-                return '';
-            }
-
-            if (value && typeof value === 'object') {
-                const keys = ['signedUrl', 'signed_url', 'publicUrl', 'public_url', 'url', 'URL', 'href', 'link', 'downloadUrl', 'download_url', 'assetUrl', 'asset_url', 'src'];
-                for (const key of keys) {
-                    const nested = trainingExtractUrlFromValue(value[key]);
-                    if (nested) return nested;
-                }
-                return '';
-            }
-
-            const raw = trainingSafeTrim(value);
-            if (!raw) return '';
-
-            let normalized = raw.replace(/^['"]+|['"]+$/g, '').replace(/&amp;/gi, '&');
-
-            if ((normalized.startsWith('{') && normalized.endsWith('}')) || (normalized.startsWith('[') && normalized.endsWith(']'))) {
-                try {
-                    const parsed = JSON.parse(normalized);
-                    const nested = trainingExtractUrlFromValue(parsed);
-                    if (nested) return nested;
-                } catch {}
-            }
-
-            if (!/^https?:\/\//i.test(normalized) && /^www\./i.test(normalized)) {
-                normalized = 'https://' + normalized;
-            }
-
-            if (normalized.startsWith('/')) {
-                // If we get an API proxy route directly like /api/proof-asset-media
-                try {
-                    normalized = new URL(normalized, window.location.origin).toString();
-                } catch {}
-            }
-
-            return /^https?:\/\//i.test(normalized) ? normalized : '';
-        }
-
-        function trainingLooksLikePdfUrl(url) {
-            const raw = trainingSafeTrim(url);
-            if (!raw) return false;
-
-            try {
-                const decoded = decodeURIComponent(raw).toLowerCase();
-                if (decoded.includes('.pdf')) return true;
-            } catch {}
-
-            try {
-                const u = new URL(raw);
-                const path = String(u.pathname || '').toLowerCase();
-                if (path.endsWith('.pdf')) return true;
-
-                const host = String(u.hostname || '').toLowerCase();
-                if ((host === 'purelyautomation.com' || host.endsWith('.purelyautomation.com')) && /^\/api\/public\/media\/item\/[^\/]+\/[^\/]+$/i.test(path)) {
-                    return true;
-                }
-
-                for (const [key, val] of u.searchParams.entries()) {
-                    const combined = (String(key || '') + '=' + String(val || '')).toLowerCase();
-                    if (combined.includes('pdf') || combined.includes('.pdf')) return true;
-                }
-            } catch {}
-
-            return false;
-        }
-
-        function trainingGetPrimaryUrl(resource) {
-            const directKeys = ['URL', 'url', 'Link', 'link', 'Href', 'href', 'Asset_URL', 'assetUrl'];
-            for (const key of directKeys) {
-                try {
-                    const direct = trainingExtractUrlFromValue(resource && resource[key]);
-                    if (direct) return direct;
-                } catch {}
-            }
-
-            const collectionKeys = ['Assets', 'assets', 'Videos', 'videos', 'Files', 'files', 'Resources', 'resources'];
-            for (const key of collectionKeys) {
-                try {
-                    const nested = trainingExtractUrlFromValue(resource && resource[key]);
-                    if (nested) return nested;
-                } catch {}
-            }
-
-            return '';
-        }
-
-        function trainingTryExtractDriveFileId(url) {
-            try {
-                const u = new URL(String(url || '').trim());
-                const host = String(u.hostname || '').toLowerCase();
-                if (!host.endsWith('drive.google.com')) return '';
-                const path = String(u.pathname || '');
-                const fileMatch = path.match(/\/file\/d\/([^\/]+)/i);
-                if (fileMatch && fileMatch[1]) return fileMatch[1];
-                const docMatch = path.match(/\/(?:document|presentation|spreadsheets)\/d\/([^\/]+)/i);
-                if (docMatch && docMatch[1]) return docMatch[1];
-                const id = u.searchParams.get('id');
-                if (id) return id;
-            } catch {}
-            return '';
-        }
-
-        function trainingBuildPdfEmbedUrl(rawUrl) {
-            const url = trainingExtractUrlFromValue(rawUrl);
-            if (!url) return '';
-            const driveId = trainingTryExtractDriveFileId(url);
-            if (driveId) return 'https://drive.google.com/file/d/' + driveId + '/preview';
-            if (trainingLooksLikePdfUrl(url)) return url;
-            return '';
-        }
-
-        function trainingRenderPdfFallbackHtml(primaryUrl, message, detail) {
-            const href = escapeHtml(String(primaryUrl || '').trim());
-            const safeMessage = escapeHtml(String(message || 'Preview unavailable here.'));
-            const safeDetail = escapeHtml(String(detail || 'Open the PDF in a new tab to review it.'));
-            return `
-                <div class="training-stage-pdf-fallback">
-                    <div class="training-stage-pdf-fallback__card">
-                        <div class="training-stage-pdf-fallback__icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></div>
-                        <div class="training-stage-pdf-fallback__title">${safeMessage}</div>
-                        <div class="training-stage-pdf-fallback__copy">${safeDetail}</div>
-                        ${href ? `<a class="btn training-stage-btn training-stage-btn--primary" href="${href}" target="_blank" rel="noopener noreferrer" style="margin-top: 4px; min-width: 180px;">Open PDF</a>` : ''}
-                    </div>
-                </div>
-            `;
-        }
-
-        let trainingSelectedResourceId = '';
-        let trainingResourceMap = {};
-
-        function trainingFindResource(resourceId) {
-            const rid = String(resourceId || '').trim();
-            if (!rid) return null;
-            if (trainingResourceMap && trainingResourceMap[rid]) return trainingResourceMap[rid];
-            if (Array.isArray(allTrainingResources)) {
-                return allTrainingResources.find(r => String(r && (r.Resource_ID || r.resourceId) || '') === rid) || null;
-            }
-            return null;
-        }
-
-        function trainingRenderStage(resource) {
-            const stage = document.getElementById('trainingStage');
-            if (!stage) return;
-
-            if (!resource) {
-                stage.innerHTML = '<div class="training-stage-empty">Select a training item to preview.</div>';
-                return;
-            }
-
-            const type = String((resource.Type || resource.type || 'VIDEO')).toUpperCase();
-            const title = escapeHtml(trainingSafeTrim(resource && (resource.Title ?? resource.title ?? '')) || 'Training Resource');
-            const category = escapeHtml(trainingSafeTrim(resource && (resource.Category ?? resource.category ?? '')) || 'General');
-            const minutes = escapeHtml(String(resource && (resource.Estimated_Minutes ?? resource.estimatedMinutes ?? '?')));
-            const description = escapeHtml(trainingSafeTrim(resource && (resource.Description ?? resource.description ?? '')));
-            const primaryUrl = trainingGetPrimaryUrl(resource);
-            const completions = Array.isArray(resource.completions) ? resource.completions : [];
-            const isCompleted = completions.length > 0;
-            const latestCompletion = isCompleted ? completions[0] : null;
-            const completeLabel = latestCompletion && latestCompletion.Completed_At ? formatDate(latestCompletion.Completed_At) : '';
-            const resourceId = String(resource && (resource.Resource_ID || resource.resourceId) || '');
-            const safeTitleForJs = (trainingSafeTrim(resource && (resource.Title ?? resource.title ?? '')) || 'Training Resource')
-                .replace(/\\/g, '\\\\')
-                .replace(/'/g, "\\'")
-                .replace(/\r?\n/g, ' ');
-
-            let mediaHtml = '';
-            if (type === 'VIDEO' && primaryUrl) {
-                let videoId = '';
-                let platform = 'loom';
-
-                if (primaryUrl.includes('youtube.com') || primaryUrl.includes('youtu.be')) {
-                    platform = 'youtube';
-                    const ytMatch = primaryUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
-                    if (ytMatch) videoId = ytMatch[1];
-                } else if (primaryUrl.includes('loom.com/share/')) {
-                    videoId = primaryUrl.split('loom.com/share/')[1].split('?')[0];
-                } else if (primaryUrl.includes('loom.com/embed/')) {
-                    videoId = primaryUrl.split('loom.com/embed/')[1].split('?')[0];
-                }
-
-                if (videoId && platform === 'youtube') {
-                    mediaHtml = `
-                        <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
-                            <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-                        </div>
-                    `;
-                } else if (videoId && platform === 'loom') {
-                    mediaHtml = `
-                        <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
-                            <iframe src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
-                        </div>
-                    `;
-                } else {
-                    mediaHtml = `
-                        <div class="training-stage-media" style="padding: 18px; background: #f8f9fa;">
-                            <a href="${escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer" class="btn training-stage-btn training-stage-btn--primary" style="width: 100%; justify-content: center;">Open Video Link</a>
-                        </div>
-                    `;
-                }
-            } else if (type === 'PDF' && primaryUrl) {
-                const embedUrl = trainingBuildPdfEmbedUrl(primaryUrl);
-                const isDrivePreview = !!(embedUrl && embedUrl.includes('drive.google.com/file/d/'));
-                mediaHtml = `
-                    <div class="training-stage-media training-stage-media--pdf">
-                        ${embedUrl
-                            ? (isDrivePreview
-                                ? `<iframe src="${escapeHtml(embedUrl)}" title="${title}" loading="lazy"></iframe>`
-                                : `<object class="training-stage-pdf-object" data="${escapeHtml(embedUrl)}#toolbar=0&navpanes=0&view=FitH" type="application/pdf">${trainingRenderPdfFallbackHtml(primaryUrl, 'This PDF preview could not load here.', 'Your browser or file host blocked the inline preview. Open the PDF directly to review it.')}</object>`)
-                            : trainingRenderPdfFallbackHtml(primaryUrl, 'Inline preview is not available for this PDF.', 'This file host does not expose an embeddable PDF stream, so use Open PDF to review it in a new tab.')}
-                    </div>
-                `;
-            } else if ((type === 'SOP' || type === 'PDF' || type === 'VIDEO') && !primaryUrl) {
-                mediaHtml = `
-                    <div class="training-stage-media" style="padding: 18px; background: #f8f9fa;">
-                        <div style="font-weight: 900; color: var(--cobalt); margin-bottom: 8px;">Missing link</div>
-                        <div style="color: #6b7280; font-size: 13px; line-height: 1.5;">This training resource doesn&apos;t have a valid URL yet.</div>
-                    </div>
-                `;
-            } else {
-                mediaHtml = `
-                    <div class="training-stage-media" style="padding: 18px; background: #f0f7ff; border-color: #bfdbfe; color:#1e3a8a; line-height:1.6;">
-                        ${description || 'No preview available.'}
-                    </div>
-                `;
-            }
-
-            const openLabel = type === 'PDF' ? 'Open PDF' : (type === 'SOP' ? 'Open SOP' : 'Open Video');
-            const secondaryAction = isAdminRole()
-                ? `<button class="btn training-stage-btn training-stage-btn--secondary" onclick="editTraining('${resourceId}')">Edit URL</button>`
-                : (!isCompleted
-                    ? `<button class="btn training-stage-btn training-stage-btn--secondary" onclick="openCompletionModal('${resourceId}', '${safeTitleForJs}')">Complete Learnings</button>`
-                    : `<button class="btn training-stage-btn training-stage-btn--secondary" disabled style="opacity:.65; cursor:not-allowed;">Completed</button>`);
-
-            stage.innerHTML = `
-                <div class="training-stage-header">
-                    <div class="training-stage-heading">
-                        <div class="training-stage-title">${title}</div>
-                        <div class="training-stage-sub"><span>${category}</span>${minutes !== '?' && type !== 'PDF' ? `<span class="training-meta-dot">&bull;</span><span>${minutes} min</span>` : ''}<span class="training-meta-dot">&bull;</span><span>${escapeHtml(type)}</span></div>
-                    </div>
-                    ${isCompleted ? `<span class="training-stage-pill">Done${completeLabel ? ` &bull; ${escapeHtml(completeLabel)}` : ''}</span>` : ''}
-                </div>
-                <div class="training-stage-body">
-                    ${mediaHtml}
-                    ${description ? `<div class="training-stage-copy">${description}</div>` : ''}
-                    <div class="training-stage-actions">
-                        ${primaryUrl
-                            ? `<a class="btn training-stage-btn training-stage-btn--primary" href="${escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">${openLabel}</a>`
-                            : `<button class="btn training-stage-btn training-stage-btn--primary" disabled style="opacity:.65; cursor:not-allowed;">Open Resource</button>`}
-                        ${secondaryAction}
-                    </div>
-                </div>
-            `;
-        }
-
-        function trainingSelectResource(resourceId) {
-            trainingSelectedResourceId = String(resourceId || '').trim();
-            document.querySelectorAll('.training-row').forEach(row => {
-                row.classList.toggle('active', String(row.dataset.resourceId || '') === trainingSelectedResourceId);
-            });
-            trainingRenderStage(trainingFindResource(trainingSelectedResourceId));
-        }
-
         function renderTrainingResources(resources) {
-            const container = document.getElementById('trainingContainer');
-            if (!container) return;
+                        try { return renderTrainingResourcesCompact(resources); } catch (e) { console.error('[Training] compact renderer failed', e); }
 
-            const list = Array.isArray(resources) ? resources : [];
-            trainingResourceMap = {};
-            list.forEach(resource => {
-                const rid = String(resource && (resource.Resource_ID || resource.resourceId) || '').trim();
-                if (rid) trainingResourceMap[rid] = resource;
-            });
-
-            if (!trainingSelectedResourceId || !trainingResourceMap[trainingSelectedResourceId]) {
-                trainingSelectedResourceId = list.length ? String(list[0].Resource_ID || list[0].resourceId || '') : '';
-            }
-
-            const rowsHtml = list.map(resource => {
-                const rid = String(resource && (resource.Resource_ID || resource.resourceId) || '');
-                const type = String((resource.Type || resource.type || 'VIDEO')).toUpperCase();
-                const title = escapeHtml(trainingSafeTrim(resource && (resource.Title ?? resource.title ?? '')) || 'Training Resource');
-                const category = escapeHtml(trainingSafeTrim(resource && (resource.Category ?? resource.category ?? '')) || 'General');
-                const minutes = escapeHtml(String(resource && (resource.Estimated_Minutes ?? resource.estimatedMinutes ?? '?')));
-                const completions = Array.isArray(resource.completions) ? resource.completions : [];
+const html = resources.map(resource => {
+                const type = (resource.Type || 'VIDEO').toUpperCase();
+                const typeClass = type === 'VIDEO' ? 'type-video' : type === 'PDF' ? 'type-pdf' : 'type-sop';
+                
+                // Check if completed
+                const completions = resource.completions || [];
                 const isCompleted = completions.length > 0;
-                const active = rid === trainingSelectedResourceId ? ' active' : '';
+                const latestCompletion = isCompleted ? completions[0] : null;
+                const analysisStatus = latestCompletion && (latestCompletion.AI_Analysis_Raw || latestCompletion.AI_Extracted_Concepts || latestCompletion.AI_Knowledge_Gaps)
+                    ? `Analyzed ${formatDate(latestCompletion.Completed_At)}`
+                    : (isCompleted ? 'Pending AI analysis' : 'Not started');
+
+                // Course status badge
+                let statusLabel = 'Not Started';
+                let statusClass = 'status-not-started';
+                
+                if (isCompleted) {
+                    statusLabel = 'Completed';
+                    statusClass = 'status-completed';
+                } else if (resource.Progress && Number(resource.Progress) > 0) {
+                    statusLabel = 'In Progress';
+                    statusClass = 'status-in-progress';
+                }
+                
+                // Parse skills and difficulty
+                const skills = resource.Skills_Taught ? resource.Skills_Taught.split(',').map(s => s.trim()) : [];
+                const difficulty = resource.Difficulty_Level || 'BEGINNER';
+                
+                let content = '';
+
+                if (type === 'VIDEO' && resource.URL) {
+                    // Support both Loom and YouTube
+                    let videoId = '';
+                    let platform = 'loom';
+                    
+                    if (resource.URL.includes('youtube.com') || resource.URL.includes('youtu.be')) {
+                        platform = 'youtube';
+                        const ytMatch = resource.URL.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                        if (ytMatch) videoId = ytMatch[1];
+                    } else if (resource.URL.includes('loom.com/share/')) {
+                        videoId = resource.URL.split('loom.com/share/')[1].split('?')[0];
+                    } else if (resource.URL.includes('loom.com/embed/')) {
+                        videoId = resource.URL.split('loom.com/embed/')[1].split('?')[0];
+                    }
+                    
+                    if (videoId && platform === 'youtube') {
+                        content = `
+                            <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <iframe 
+                                    src="https://www.youtube.com/embed/${videoId}"
+                                    style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0;"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                                    allowfullscreen
+                                ></iframe>
+                            </div>
+                        `;
+                    } else if (videoId && platform === 'loom') {
+                        content = `
+                            <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <iframe 
+                                    src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true"
+                                    allow="fullscreen; picture-in-picture"
+                                    style="position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block;"
+                                ></iframe>
+                            </div>
+                        `;
+                    } else {
+                        content = `<div style="padding: 32px; text-align: center; background: #f8f9fa; border-radius: 8px; border: 2px dashed #e0e0e0;">
+                            <a href="${resource.URL}" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: var(--cobalt); color: #fff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; transition: transform 0.2s;">
+                                Open Video Link
+                            </a>
+                        </div>`;
+                    }
+                } else if (type === 'PDF' && resource.URL) {
+                    const preview = (resource.Description || '').substring(0, 180);
+                    content = `
+                        <div style="padding: 24px; background: #f8f9fa; border-radius: 8px; border: 1px solid #e0e0e0;">
+                            <div style="display:flex; align-items:center; gap:10px; font-weight:800; color:var(--cobalt); font-size:16px; margin-bottom:12px;">
+                                PDF Document
+                            </div>
+                            <p style="color:#4b5563; font-size:14px; line-height:1.6; margin-bottom: 16px;">${preview || 'No description available.'}</p>
+                            <a href="${resource.URL}" target="_blank" class="btn" style="background: white; color: var(--cobalt); border: 2px solid var(--cobalt); width: 100%; justify-content: center;">
+                                Open PDF
+                            </a>
+                        </div>`;
+                } else if (type === 'SOP' && resource.URL) {
+                    const preview = (resource.Description || '').substring(0, 200);
+                    content = `
+                        <div style="padding: 24px; background: #f0f7ff; border-radius: 8px; border: 1px solid #bfdbfe;">
+                            <div style="display:flex; align-items:center; gap:10px; font-weight:800; color:var(--azure); font-size:16px; margin-bottom:12px;">
+                                Standard Operating Procedure
+                            </div>
+                            <p style="color:#1e3a8a; font-size:14px; line-height:1.6; margin-bottom: 16px;">${preview || 'No description available.'}</p>
+                            <a href="${resource.URL}" target="_blank" class="btn" style="background: var(--azure); color: white; width: 100%; justify-content: center;">
+                                View SOP
+                            </a>
+                        </div>`;
+                }
+                
                 return `
-                    <div class="training-row${active}" data-resource-id="${rid}" data-completed="${isCompleted ? '1' : '0'}" onclick="trainingSelectResource('${rid}')">
-                        <div style="flex:1; min-width:0;">
-                            <div class="training-row-title" title="${title}">${title}</div>
-                            <div class="training-row-meta"><span>${category}</span>${minutes !== '?' && type !== 'PDF' ? `<span class="training-meta-dot">&bull;</span><span>${minutes} min</span>` : ''}</div>
+                    <div class="training-card" data-resource-id="${resource.Resource_ID}" style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 20px; transition: transform 0.2s, box-shadow 0.2s;">
+                        
+                        <!-- Header -->
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 12px;">
+                                <h3 style="font-size: 18px; font-weight: 800; color: var(--cobalt); line-height: 1.4; margin: 0;">${resource.Title || 'Untitled Resource'}</h3>
+                                ${isCompleted ? `<span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap;">Done</span>` : ''}
+                            </div>
+                            
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <span style="background: #f3f4f6; color: #4b5563; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${resource.Category || 'General'}</span>
+                                <span style="background: #f3f4f6; color: #4b5563; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;">${resource.Estimated_Minutes || '?'} min</span>
+                                <span style="background: #eff6ff; color: var(--azure); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;">${type}</span>
+                            </div>
                         </div>
-                        ${isCompleted ? '<span class="training-row-done">Done</span>' : `<span class="training-row-badge">${escapeHtml(type)}</span>`}
+
+                        <!-- Content -->
+                        <div style="flex: 1;">
+                            ${content}
+                        </div>
+                        
+                        <!-- Description -->
+                        ${resource.Description ? `<p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${resource.Description}</p>` : ''}
+                        
+                        <!-- Footer / Action -->
+                        <div style="padding-top: 20px; border-top: 1px solid #f3f4f6; display: flex; flex-direction: column; gap: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="font-size: 12px; color: #9ca3af; font-weight: 500;">
+                                    ${isCompleted ? `Completed ${formatDate(latestCompletion.Completed_At)}` : 'Not completed yet'}
+                                </div>
+                            </div>
+                            
+                            ${!isCompleted ? `
+                                <button 
+                                    onclick="openCompletionModal('${resource.Resource_ID}', '${resource.Title.replace(/'/g, "\\'")}')"
+                                    style="padding: 14px 20px; background: var(--cobalt); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(10, 42, 90, 0.2); width: 100%; text-align: center;"
+                                    onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(10, 42, 90, 0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 12px rgba(10, 42, 90, 0.2)'"
+                                >
+                                    Complete Learnings
+                                </button>
+                            ` : `
+                                <button disabled style="padding: 14px 20px; background: #f3f4f6; color: #9ca3af; border: none; border-radius: 12px; font-size: 15px; font-weight: 700; cursor: not-allowed; width: 100%; text-align: center;">
+                                    Completed
+                                </button>
+                            `}
+                        </div>
                     </div>
                 `;
             }).join('');
-
-            container.innerHTML = `
-                <div class="training-browser">
-                    <div class="training-list">
-                        ${rowsHtml}
-                        <div id="trainingListEmpty" class="training-list-empty" style="display:none;"></div>
-                    </div>
-                    <div id="trainingStage" class="training-stage"></div>
-                </div>
-            `;
-
-            trainingRenderStage(trainingFindResource(trainingSelectedResourceId));
-
-            const allCount = list.length;
-            const completedCount = list.filter(r => (Array.isArray(r.completions) ? r.completions : []).length > 0).length;
-            const allCountEl = document.getElementById('allCount');
-            const inprogressCountEl = document.getElementById('inprogressCount');
-            if (allCountEl) allCountEl.textContent = allCount;
-            if (inprogressCountEl) inprogressCountEl.textContent = completedCount;
-
+            
+            document.getElementById('trainingContainer').innerHTML = `<div class="training-grid">${html}</div>`;
+            
+            // Update counts
+            const allCount = resources.length;
+            const completedCount = resources.filter(r => (r.completions || []).length > 0).length;
+            document.getElementById('allCount').textContent = allCount;
+            document.getElementById('inprogressCount').textContent = completedCount;
+            
+            // Load recommendations and apply default filter
             loadRecommendationsForFilter().then(() => {
+                // If no recommendations found, default to showing all training
                 if (currentFilterMode === 'recommended' && recommendedResourceIds.length === 0) {
                     currentFilterMode = 'all';
                 }
@@ -18768,8 +16971,532 @@ function deliverablesBrowserRender(mode) {
             });
         }
 
-        // Knowledge Profile Functions
 
+
+        // Training Viewer (modal) + compact cards (no inline embeds)
+        let currentTrainingViewerResourceId = null;
+        let trainingViewerState = {
+            resourceId: null,
+            videos: [],
+            visibleIndexes: [],
+            currentIndex: -1
+        };
+
+        function normalizeAssetUrlForComparison(url) {
+            const v = String(url || '').trim();
+            return v;
+        }
+
+        function getTrainingVideosFromResource(resource) {
+            try {
+                if (!resource) return [];
+
+                if (Array.isArray(resource.videos)) {
+                    return resource.videos
+                        .map(v => ({
+                            url: (v && (v.url || v.URL || v.assetUrl || v.Asset_URL)) || '',
+                            title: (v && (v.title || v.Title)) || null,
+                            thumbnail: (v && (v.thumbnail || v.thumbnailUrl || v.Thumbnail || v.ThumbnailUrl)) || null,
+                            source: (v && (v.source || v.Source)) || '',
+                            durationSeconds: (v && (v.durationSeconds || v.duration_seconds || v.duration)) ?? null
+                        }))
+                        .filter(v => !!String(v.url || '').trim());
+                }
+
+                if (typeof resource.videos === 'string' && resource.videos.trim().startsWith('[')) {
+                    const parsed = JSON.parse(resource.videos);
+                    if (Array.isArray(parsed)) {
+                        resource.videos = parsed;
+                        return getTrainingVideosFromResource(resource);
+                    }
+                }
+
+                const url = String(resource.URL || resource.url || '').trim();
+                if (url) return [{ url, title: null, thumbnail: null, source: '', durationSeconds: null }];
+            } catch (_) {
+                // ignore
+            }
+            return [];
+        }
+
+        function getTrainingAssetProgress(resource) {
+            const rows = (resource && (resource.assetProgress || resource.AssetProgress || resource.progress)) || [];
+            return Array.isArray(rows) ? rows : [];
+        }
+
+        function isTrainingVideoWatched(resource, videoUrl) {
+            const target = normalizeAssetUrlForComparison(videoUrl);
+            if (!target) return false;
+            const rows = getTrainingAssetProgress(resource);
+            return rows.some(r => {
+                const watched = r && (r.Watched === true || r.watched === true);
+                if (!watched) return false;
+                const assetUrl = normalizeAssetUrlForComparison(r.Asset_URL || r.assetUrl || r.URL || r.url);
+                return assetUrl && assetUrl === target;
+            });
+        }
+
+        function computeTrainingWatchedCount(resource, videos) {
+            const list = Array.isArray(videos) ? videos : [];
+            let watchedCount = 0;
+            for (const v of list) {
+                if (isTrainingVideoWatched(resource, v && v.url)) watchedCount++;
+            }
+            return watchedCount;
+        }
+
+        function embedHtmlForTrainingUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+
+            if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+                const ytMatch = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                const videoId = ytMatch ? ytMatch[1] : '';
+                if (videoId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            if (raw.includes('loom.com/share/') || raw.includes('loom.com/embed/')) {
+                let loomId = '';
+                if (raw.includes('loom.com/share/')) loomId = raw.split('loom.com/share/')[1].split('?')[0];
+                if (!loomId && raw.includes('loom.com/embed/')) loomId = raw.split('loom.com/embed/')[1].split('?')[0];
+                if (loomId) {
+                    return `
+                        <div style="position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden;">
+                            <iframe src="https://www.loom.com/embed/${loomId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
+                        </div>
+                    `;
+                }
+            }
+
+            return `
+                <div style="width:100%; aspect-ratio: 16 / 9; border-radius: 10px; background: #f3f4f6; border: 1px solid rgba(148,163,184,0.25); display:flex; align-items:center; justify-content:center;">
+                    <a href="${escapeHtml(raw)}" target="_blank" rel="noopener noreferrer" style="font-weight: 900; color: var(--cobalt); text-decoration:none;">Open video</a>
+                </div>
+            `;
+        }
+
+        function trainingViewerSelect(index) {
+            const idx = Number(index);
+            if (!Number.isFinite(idx) || idx < 0 || idx >= trainingViewerState.videos.length) return;
+            trainingViewerState.currentIndex = idx;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(trainingViewerState.resourceId));
+            const video = trainingViewerState.videos[idx];
+
+            const currentLabel = document.getElementById('trainingViewerCurrentLabel');
+            if (currentLabel) currentLabel.textContent = (video && (video.title || `Video ${idx + 1}`)) || `Video ${idx + 1}`;
+
+            const openExternal = document.getElementById('trainingViewerOpenExternalLink');
+            if (openExternal) {
+                openExternal.href = video && video.url ? video.url : '#';
+                openExternal.style.pointerEvents = video && video.url ? 'auto' : 'none';
+                openExternal.style.opacity = video && video.url ? '1' : '0.4';
+            }
+
+            const player = document.getElementById('trainingViewerPlayer');
+            if (player) player.innerHTML = embedHtmlForTrainingUrl(video && video.url);
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                    const elIdx = Number(el.getAttribute('data-training-viewer-index'));
+                    const isActive = elIdx === idx;
+                    el.style.borderColor = isActive ? 'var(--cobalt)' : 'var(--border)';
+                    el.style.background = isActive ? 'rgba(10, 42, 90, 0.06)' : '#fff';
+                });
+            }
+
+            const pos = trainingViewerState.visibleIndexes.indexOf(idx);
+            const prevBtn = document.getElementById('trainingViewerPrevBtn');
+            const nextBtn = document.getElementById('trainingViewerNextBtn');
+            if (prevBtn) prevBtn.disabled = pos <= 0;
+            if (nextBtn) nextBtn.disabled = pos < 0 || pos >= trainingViewerState.visibleIndexes.length - 1;
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const vids = trainingViewerState.videos;
+                const watchedCount = resource ? computeTrainingWatchedCount(resource, vids) : 0;
+                const isCompleted = resource && Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && vids.length > 0 && watchedCount === vids.length) ? 'inline-flex' : 'none';
+            }
+        }
+
+        function openTrainingViewer(resourceId) {
+            const rid = String(resourceId || '').trim();
+            if (!rid) return;
+
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === rid);
+            if (!resource) {
+                showToast('Training not found', 'error');
+                return;
+            }
+
+            const videos = getTrainingVideosFromResource(resource);
+            if (!videos.length) {
+                const url = String(resource.URL || '').trim();
+                if (url) {
+                    window.open(url, '_blank', 'noopener');
+                    return;
+                }
+                showToast('No videos found for this training', 'error');
+                return;
+            }
+
+            currentTrainingViewerResourceId = rid;
+            trainingViewerState.resourceId = rid;
+            trainingViewerState.videos = videos;
+            trainingViewerState.visibleIndexes = videos.map((_, i) => i);
+            trainingViewerState.currentIndex = -1;
+
+            const modal = document.getElementById('trainingViewerModal');
+            const titleEl = document.getElementById('trainingViewerTitle');
+            if (titleEl) titleEl.textContent = resource.Title || 'Training Videos';
+
+            const descEl = document.getElementById('trainingViewerResourceDescription');
+            if (descEl) {
+                const d = String(resource.Description || '').trim();
+                if (d) {
+                    descEl.style.display = 'block';
+                    descEl.textContent = d;
+                    descEl.title = d;
+                } else {
+                    descEl.style.display = 'none';
+                }
+            }
+
+            const searchEl = document.getElementById('trainingViewerSearch');
+            if (searchEl) searchEl.value = '';
+
+            const list = document.getElementById('trainingViewerList');
+            if (list) {
+                list.innerHTML = videos.map((v, i) => {
+                    const watched = isTrainingVideoWatched(resource, v.url);
+                    const displayTitle = escapeHtml((v && v.title) ? v.title : `Video ${i + 1}`);
+                    const displayUrl = escapeHtml(v && v.url ? v.url : '');
+                    return `
+                        <button type="button" data-training-viewer-index="${i}" onclick="trainingViewerSelect(${i})" style="border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px 12px; cursor: pointer; display:flex; flex-direction:column; gap: 6px;">
+                            <div style="display:flex; justify-content:space-between; gap: 10px; align-items:flex-start;">
+                                <div style="font-weight: 900; color: var(--cobalt); font-size: 13px; line-height: 1.25;">${displayTitle}</div>
+                                ${watched ? '<div style="font-size: 11px; font-weight: 900; color: #166534; background:#dcfce7; border-radius: 999px; padding: 2px 8px; white-space:nowrap;">Watched</div>' : ''}
+                            </div>
+                            <div style="font-size: 11px; color: #6b7280; font-weight: 700; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${displayUrl}</div>
+                        </button>
+                    `;
+                }).join('');
+            }
+
+            const subtitle = document.getElementById('trainingViewerSubtitle');
+            if (subtitle) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+                subtitle.textContent = `${watchedCount}/${videos.length} videos | ${pct}% complete`;
+            }
+
+            const submitBtn = document.getElementById('trainingViewerSubmitLearningsBtn');
+            if (submitBtn) {
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const isCompleted = Array.isArray(resource.completions) && resource.completions.length > 0;
+                submitBtn.style.display = (!isCompleted && videos.length > 0 && watchedCount === videos.length) ? 'inline-flex' : 'none';
+            }
+
+            if (modal) {
+                modal.style.display = 'flex';
+                const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+                if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+                document.body.style.overflow = 'hidden';
+            }
+
+            trainingViewerSelect(0);
+        }
+
+        function closeTrainingViewer() {
+            const modal = document.getElementById('trainingViewerModal');
+            if (modal) modal.style.display = 'none';
+            document.body.style.overflow = '';
+            document.body.style.paddingRight = '';
+
+            trainingViewerState.resourceId = null;
+            trainingViewerState.videos = [];
+            trainingViewerState.visibleIndexes = [];
+            trainingViewerState.currentIndex = -1;
+        }
+
+        function filterTrainingViewerList() {
+            const list = document.getElementById('trainingViewerList');
+            const q = String(document.getElementById('trainingViewerSearch')?.value || '').trim().toLowerCase();
+            if (!list) return;
+
+            const visible = [];
+            Array.from(list.querySelectorAll('[data-training-viewer-index]')).forEach(el => {
+                const idx = Number(el.getAttribute('data-training-viewer-index'));
+                const v = trainingViewerState.videos[idx];
+                const hay = `${(v && v.title) || ''} ${(v && v.url) || ''}`.toLowerCase();
+                const ok = !q || hay.includes(q);
+                el.style.display = ok ? 'flex' : 'none';
+                if (ok) visible.push(idx);
+            });
+            trainingViewerState.visibleIndexes = visible;
+
+            if (visible.length) {
+                const currentVisiblePos = visible.indexOf(trainingViewerState.currentIndex);
+                if (currentVisiblePos === -1) {
+                    trainingViewerSelect(visible[0]);
+                } else {
+                    trainingViewerSelect(trainingViewerState.currentIndex);
+                }
+            }
+        }
+
+        function trainingViewerPrev() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos > 0) trainingViewerSelect(trainingViewerState.visibleIndexes[pos - 1]);
+        }
+
+        function trainingViewerNext() {
+            const pos = trainingViewerState.visibleIndexes.indexOf(trainingViewerState.currentIndex);
+            if (pos >= 0 && pos < trainingViewerState.visibleIndexes.length - 1) trainingViewerSelect(trainingViewerState.visibleIndexes[pos + 1]);
+        }
+
+        async function markTrainingViewerVideoComplete() {
+            const rid = trainingViewerState.resourceId;
+            const idx = trainingViewerState.currentIndex;
+            const resource = allTrainingResources.find(r => String(r.Resource_ID) === String(rid));
+            const video = trainingViewerState.videos[idx];
+
+            if (!rid || !resource || !video || !video.url) {
+                showToast('Select a video first', 'error');
+                return;
+            }
+            if (!currentUser) {
+                showToast('User not set; reload dashboard', 'error');
+                return;
+            }
+            if (isTrainingVideoWatched(resource, video.url)) {
+                showToast('Already marked complete', 'info');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}?action=setTrainingAssetWatched`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        resourceId: rid,
+                        completedBy: currentUser,
+                        assetUrl: video.url,
+                        watched: true
+                    })
+                });
+                const data = await res.json();
+                if (!data.ok) {
+                    showToast(data.error || 'Failed to save progress', 'error');
+                    return;
+                }
+
+                if (!Array.isArray(resource.assetProgress)) resource.assetProgress = [];
+                resource.assetProgress.push(data.result || data.progress || data.row || { Asset_URL: video.url, Watched: true });
+                showToast('Marked complete', 'success');
+
+                openTrainingViewer(rid);
+            } catch (e) {
+                showToast('Failed to save progress', 'error');
+                console.error(e);
+            }
+        }
+
+        const TRAINING_THUMB_BLANK_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+        const trainingThumbCache = new Map();
+
+        function hydrateTrainingThumbs(rootEl) {
+            try {
+                const root = rootEl || document;
+                const imgs = Array.from(root.querySelectorAll('img[data-thumb-fetch-url]'));
+                for (const img of imgs) {
+                    try {
+                        if (!img || img.getAttribute('data-thumb-hydrated') === '1') continue;
+                        const videoUrl = String(img.getAttribute('data-thumb-fetch-url') || '').trim();
+                        if (!videoUrl) continue;
+
+                        const cached = trainingThumbCache.get(videoUrl);
+                        if (cached) {
+                            img.setAttribute('src', String(cached));
+                            img.style.opacity = '1';
+                            img.style.display = 'block';
+                            img.setAttribute('data-thumb-hydrated', '1');
+                            continue;
+                        }
+
+                        img.setAttribute('data-thumb-hydrated', '1');
+
+                        // Fetch server-side oEmbed preview (works for Loom share links).
+                        fetch(`${API_URL}?action=linkPreview&url=${encodeURIComponent(videoUrl)}&_ts=${Date.now()}`, { cache: 'no-store' })
+                            .then(r => r.json())
+                            .then(data => {
+                                const payload = (data && (data.linkPreview || data.result || data.preview)) || null;
+                                const thumb = payload && (payload.thumbnailUrl || payload.thumbnail_url || payload.thumbnail) ? String(payload.thumbnailUrl || payload.thumbnail_url || payload.thumbnail).trim() : '';
+                                if (thumb) {
+                                    trainingThumbCache.set(videoUrl, thumb);
+                                    img.setAttribute('src', thumb);
+                                    img.style.opacity = '1';
+                                    img.style.display = 'block';
+                                    return;
+                                }
+
+                                // If we still only have a blank pixel, hide the image but keep the frame.
+                                if (String(img.getAttribute('src') || '').includes(TRAINING_THUMB_BLANK_PIXEL)) {
+                                    img.style.display = 'none';
+                                }
+                            })
+                            .catch(() => {
+                                if (String(img.getAttribute('src') || '').includes(TRAINING_THUMB_BLANK_PIXEL)) {
+                                    img.style.display = 'none';
+                                }
+                            });
+                    } catch {
+                        // ignore single image
+                    }
+                }
+            } catch {
+                // ignore
+            }
+        }
+
+        function renderTrainingResourcesCompact(resources) {
+            const container = document.getElementById('trainingContainer');
+            
+            if (!container) return;
+
+if (!container) return;
+
+            const html = (resources || []).map(resource => {
+                const type = (resource.Type || 'VIDEO').toUpperCase();
+                const completions = resource.completions || [];
+                const isCompleted = completions.length > 0;
+                const latestCompletion = isCompleted ? completions[0] : null;
+
+                const videos = getTrainingVideosFromResource(resource);
+                const watchedCount = computeTrainingWatchedCount(resource, videos);
+                const pct = videos.length ? Math.round((watchedCount / videos.length) * 100) : 0;
+
+                const title = escapeHtml(resource.Title || 'Untitled Training');
+                const category = escapeHtml(resource.Category || 'General');
+                const minutes = escapeHtml(resource.Estimated_Minutes || '?');
+                const description = String(resource.Description || '').trim();
+
+                let previewFallback = '';
+                const previewUrl = (() => {
+                    try {
+                        const first = (videos && videos[0]) ? videos[0] : null;
+                        if (!first) return '';
+
+                        const existing = String(first.thumbnail || '').trim();
+                        if (existing) return existing;
+
+                        const raw = String(first.url || '').trim();
+                        if (!raw) return '';
+
+                        if (raw.includes('youtube.com') || raw.includes('youtu.be')) {
+                            const ytMatch = raw.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+                            const videoId = ytMatch ? ytMatch[1] : '';
+                            if (videoId) return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+                        }
+
+                        if (raw.includes('loom.com/')) {
+                            const loomMatch = raw.match(/loom\.com\/(?:share|embed)\/([a-zA-Z0-9]+)/);
+                            const loomId = loomMatch ? loomMatch[1] : '';
+                            if (loomId) {
+                                previewFallback = [
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.png`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-00001.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}-00001.png`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}.jpg`,
+                                    `https://cdn.loom.com/sessions/thumbnails/${loomId}.png`
+                                ].join('|');
+                                return `https://cdn.loom.com/sessions/thumbnails/${loomId}-with-play.gif`;
+                            }
+                        }
+                    } catch (_) {
+                        // ignore
+                    }
+                    return '';
+                })();
+
+                const previewFallbackAttr = previewFallback ? ` data-fallback="${escapeHtml(previewFallback)}"` : '';
+                const firstVideoUrl = (videos && videos[0] && videos[0].url) ? String(videos[0].url).trim() : '';
+                const needsServerPreview = !!firstVideoUrl && (!previewUrl || firstVideoUrl.includes('loom.com/'));
+                const fetchAttr = needsServerPreview ? ` data-thumb-fetch-url="${escapeHtml(firstVideoUrl)}"` : '';
+                const src = previewUrl ? escapeHtml(previewUrl) : TRAINING_THUMB_BLANK_PIXEL;
+                const isVideo = type === 'VIDEO' || videos.length > 0;
+                const previewHtml = isVideo ? `
+                    <div data-training-thumb style="width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; background: #f3f4f6; border: 1px solid var(--border);">
+                        <img src="${src}"${fetchAttr}${previewFallbackAttr} alt="" loading="lazy" style="width:100%; height:100%; object-fit: cover; display:block; opacity:${previewUrl ? '1' : '0'};" onload="this.style.opacity='1';" onerror="(function(img){try{var s=img.getAttribute('data-fallback')||''; if(s){var parts=s.split('|'); var next=parts.shift(); img.setAttribute('data-fallback', parts.join('|')); if(next){ img.src=next; img.style.opacity='1'; img.style.display='block'; return; }}}catch(e){} img.onerror=null; img.style.display='none';})(this)" />
+                    </div>
+                ` : '';
+
+                const clickHandler = isVideo
+                    ? `openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')`
+                    : (resource.URL ? `window.open('${String(resource.URL).replace(/'/g, "\\'")}', '_blank', 'noopener')` : '');
+
+                return `
+                    <div class="training-card" data-resource-id="${resource.Resource_ID}" style="background: #fff; border-radius: 16px; padding: 18px; border: 1px solid var(--border); box-shadow: 0 2px 14px rgba(0,0,0,0.06); display:flex; flex-direction:column; gap: 12px; cursor: ${clickHandler ? 'pointer' : 'default'};" onclick="${clickHandler}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap: 10px;">
+                            <div style="min-width:0;">
+                                <div style="font-size: 15px; font-weight: 900; color: var(--cobalt); line-height: 1.25; white-space: nowrap; overflow:hidden; text-overflow: ellipsis;">${title}</div>
+                                <div style="margin-top: 6px; display:flex; gap: 8px; flex-wrap: wrap;">
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${category}</span>
+                                    <span style="background: #f3f4f6; color: #4b5563; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;">${minutes} min</span>
+                                    <span style="background: #eff6ff; color: var(--azure); padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 900;">${escapeHtml(type)}</span>
+                                </div>
+                            </div>
+                            ${isCompleted ? '<span class="training-completed-badge" style="background:#dcfce7; color:#166534; padding: 4px 8px; border-radius: 10px; font-size: 12px; font-weight: 900; white-space:nowrap;">Done</span>' : ''}
+                        </div>
+
+                        ${description ? `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${escapeHtml(description)}</div>` : ''}
+
+                        ${isVideo ? previewHtml : ''}
+                        
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap: 10px; flex-wrap: wrap;">
+                            ${videos.length ? `<div style="font-size: 12px; color: #6b7280; font-weight: 900;">${watchedCount}/${videos.length} watched | ${pct}%</div>` : `<div style="font-size: 12px; color: #9ca3af; font-weight: 900;">No videos</div>`}
+                            <div style="display:flex; gap: 8px; align-items:center;">
+                                ${isVideo ? `<button type="button" class="btn" onclick="event.stopPropagation(); openTrainingViewer('${String(resource.Resource_ID).replace(/'/g, "\\'")}')" style="height: 34px; padding: 0 12px; background: var(--cobalt); color: #fff; border: none; border-radius: 10px; font-weight: 900; font-size: 13px;">Open</button>` : (resource.URL ? `<a class="btn" href="${escapeHtml(resource.URL)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="height: 34px; padding: 0 12px; background: #fff; color: var(--cobalt); border: 1px solid var(--border); border-radius: 10px; font-weight: 900; font-size: 13px; text-decoration:none; display:inline-flex; align-items:center;">Open</a>` : '')}
+                            </div>
+                        </div>
+
+                        <div style="font-size: 12px; color: #9ca3af; font-weight: 700;">
+                            ${isCompleted ? `Submitted ${formatDate(latestCompletion && latestCompletion.Completed_At)}` : 'Not submitted yet'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = html;
+
+            // Best-effort hydrate for Loom/share previews (server-side oEmbed)
+            hydrateTrainingThumbs(container);
+
+            const allCount = (resources || []).length;
+            const completedCount = (resources || []).filter(r => (r.completions || []).length > 0).length;
+            const allCountEl = document.getElementById('allCount');
+            const inprogressCountEl = document.getElementById('inprogressCount');
+            if (allCountEl) allCountEl.textContent = allCount;
+            if (inprogressCountEl) inprogressCountEl.textContent = completedCount;
+
+            loadRecommendationsForFilter().then(() => {
+                if (currentFilterMode === 'recommended' && recommendedResourceIds.length === 0) currentFilterMode = 'all';
+                filterTrainingResources(currentFilterMode);
+            });
+        }
+
+
+
+        // Knowledge Profile Functions
         let currentFilterMode = 'all'; // Track current filter (recommended, inprogress, all)
         let recommendedResourceIds = []; // Store recommended Resource_IDs
 
@@ -18786,14 +17513,10 @@ function deliverablesBrowserRender(mode) {
         // Check if admin is authenticated
         function checkAdminAuth() {
             try {
-                const key = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim();
-                // Only treat admin as authenticated if the shared admin key exists.
-                // (Session flags alone must never bypass the shared password gate.)
-                if (!key) return false;
-
                 const authState = sessionStorage.getItem(ADMIN_AUTH_KEY);
-                if (authState === 'false') return false;
-                return true;
+                if (authState === 'true') return true;
+                const key = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim();
+                return !!key;
             } catch (e) {
                 return false;
             }
@@ -18821,16 +17544,13 @@ function deliverablesBrowserRender(mode) {
             header.textContent = 'Admin Access Required';
             body.innerHTML = `
                 <div style="padding: 24px 0;">
-                    <div style="font-size: 16px; line-height: 1.6; color: #374151; margin-bottom: 10px;">
-                        Enter the shared admin password to unlock Admin + Proof Packs.
-                    </div>
-                    <div style="font-size: 13px; line-height: 1.5; color: #6b7280; margin-bottom: 16px;">
-                        You only need to enter this once on this browser (it�s saved on this device).
+                    <div style="font-size: 16px; line-height: 1.6; color: #374151; margin-bottom: 16px;">
+                        Enter the shared admin password (same as Proof Packs admin key):
                     </div>
                     <input 
                         type="password" 
                         id="adminPasswordInput" 
-                        placeholder="Admin password" 
+                        placeholder="Password" 
                         style="width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;"
                         autocomplete="off"
                     />
@@ -18928,8 +17648,10 @@ function deliverablesBrowserRender(mode) {
                             currentUser = String(data.me.username || '').trim().toUpperCase();
                             currentRole = String(data.me.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
 
-                            // Note: ADMIN *account role* does not bypass the shared admin key gate.
-                            // Admin/Proof Packs tabs still require the shared admin key.
+                            // If they're an ADMIN account, treat as authenticated for UI guardrails.
+                            if (currentRole === 'ADMIN') {
+                                try { setAdminAuth(true); } catch (e) {}
+                            }
 
                             try {
                                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -18997,7 +17719,9 @@ function deliverablesBrowserRender(mode) {
 
                 currentUser = String(user.username || identifier || '').trim().toUpperCase();
                 currentRole = String(user.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
-                // Note: ADMIN *account role* does not bypass the shared admin key gate.
+                if (currentRole === 'ADMIN') {
+                    try { setAdminAuth(true); } catch (e) {}
+                }
 
                 try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -19772,63 +18496,71 @@ function deliverablesBrowserRender(mode) {
         // Filter training resources by mode (recommended/inprogress/all)
         function filterTrainingResources(mode) {
             currentFilterMode = mode;
-
-            document.querySelectorAll('.training-filter-tab').forEach(tab => {
-                const isActive = tab.dataset.filter === mode;
-                tab.classList.toggle('active', isActive);
-                tab.style.color = isActive ? '#0a2a5a' : '#6b7280';
-                tab.style.borderBottomColor = isActive ? '#0a2a5a' : 'transparent';
-            });
-
-            const rows = Array.from(document.querySelectorAll('.training-row'));
-            rows.forEach(row => {
-                const resourceId = String(row.dataset.resourceId || '');
-                const isCompleted = String(row.dataset.completed || '') === '1';
-                let shouldShow = false;
-
-                if (mode === 'all') {
-                    shouldShow = true;
-                } else if (mode === 'recommended') {
-                    shouldShow = recommendedResourceIds.includes(resourceId);
-                } else if (mode === 'inprogress') {
-                    shouldShow = isCompleted;
-                }
-
-                row.classList.toggle('hidden', !shouldShow);
-            });
-
-            const visibleRows = rows.filter(row => !row.classList.contains('hidden'));
-            const emptyEl = document.getElementById('trainingListEmpty');
-            if (emptyEl) {
-                if (visibleRows.length) {
-                    emptyEl.style.display = 'none';
-                    emptyEl.textContent = '';
-                } else {
-                    emptyEl.style.display = 'block';
-                    emptyEl.textContent = mode === 'recommended'
-                        ? 'No recommended training yet.'
-                        : (mode === 'inprogress' ? 'No training history found.' : 'No training resources found.');
-                }
-            }
-
-            if (visibleRows.length) {
-                const selectedVisible = visibleRows.some(row => String(row.dataset.resourceId || '') === trainingSelectedResourceId);
-                if (!selectedVisible) {
-                    trainingSelectResource(String(visibleRows[0].dataset.resourceId || ''));
-                } else {
-                    trainingRenderStage(trainingFindResource(trainingSelectedResourceId));
-                }
-            } else {
-                trainingSelectedResourceId = '';
-                trainingRenderStage(null);
-            }
+    
+    // Update tab UI
+    document.querySelectorAll('.training-filter-tab').forEach(tab => {
+        const isActive = tab.dataset.filter === mode;
+        tab.classList.toggle('active', isActive);
+        if (isActive) {
+            tab.style.color = '#0a2a5a';
+            tab.style.borderBottomColor = '#0a2a5a';
+        } else {
+            tab.style.color = '#6b7280';
+            tab.style.borderBottomColor = 'transparent';
         }
+    });
+    
+    // Filter training grid items
+    const trainingItems = document.querySelectorAll('.training-card');
+    trainingItems.forEach(item => {
+        const resourceId = item.dataset.resourceId;
+        let shouldShow = false;
+        
+        if (mode === 'all') {
+            shouldShow = true;
+        } else if (mode === 'recommended') {
+            shouldShow = recommendedResourceIds.includes(resourceId);
+        } else if (mode === 'inprogress') {
+            // In progress = has completions but not fully mastered
+            const isCompleted = item.querySelector('.training-completed-badge') !== null;
+            shouldShow = isCompleted;
+        }
+        
+        item.classList.toggle('hidden', !shouldShow);
+    });
+
+    // Show empty state if no items visible
+    const visibleCount = document.querySelectorAll('.training-card:not(.hidden)').length;
+    const container = document.querySelector('.training-grid');
+    
+    // Remove existing empty message if any
+    const existingMsg = document.getElementById('trainingEmptyMsg');
+    if (existingMsg) existingMsg.remove();
+    
+    if (visibleCount === 0 && container) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.id = 'trainingEmptyMsg';
+        emptyMsg.className = 'empty-state';
+        emptyMsg.style.gridColumn = '1 / -1';
+        emptyMsg.style.padding = '40px';
+        
+        if (mode === 'recommended') {
+            emptyMsg.innerHTML = '<div class="empty-icon">i</div><div class="empty-text">No specific recommendations yet.<br>Check out "All Training" to get started!</div>';
+        } else if (mode === 'inprogress') {
+            emptyMsg.innerHTML = '<div class="empty-icon"></div><div class="empty-text">No training history found.<br>Start a course from the "All" tab.</div>';
+        } else {
+            emptyMsg.innerHTML = '<div class="empty-icon">i</div><div class="empty-text">No training resources found.</div>';
+        }
+        container.appendChild(emptyMsg);
+    }
+}
 
 // Fetch recommendations from Analytics API and update counts
 async function loadRecommendationsForFilter() {
     if (!currentUser) return;
     
     try {
+        // Use vaKnowledgeProfile endpoint instead of missing recommendations endpoint
         const response = await fetch(`${API_URL}?action=vaKnowledgeProfile&vaName=${encodeURIComponent(currentUser)}`);
         const data = await response.json();
         
@@ -19837,10 +18569,12 @@ async function loadRecommendationsForFilter() {
             const raw = profile.Recommended_Trainings || '[]';
             const recommendations = safeParseJSON(raw, []);
             
+            // Extract Resource_IDs from recommendations
             recommendedResourceIds = recommendations
                 .filter(r => r.resourceId)
                 .map(r => r.resourceId);
             
+            // Update recommended count
             const recommendedCountEl = document.getElementById('recommendedCount');
             if (recommendedCountEl) recommendedCountEl.textContent = recommendedResourceIds.length;
         }
@@ -19849,7 +18583,6 @@ async function loadRecommendationsForFilter() {
 }
 
         // Load Training Resources
-
         async function loadTrainingResources(silent = false) {
             const container = document.getElementById('trainingContainer');
             
@@ -19931,26 +18664,21 @@ async function loadRecommendationsForFilter() {
                         return;
                     }
                     
-                    const html = resources.map(resource => {
-                        const displayCategory = resource.Resolved_Category || resource.Detected_Category || resource.Normalized_Category || resource.Category || 'General Training';
-                        const displayFocus = resource.Training_Focus || resource.Detected_Training_Type || resource.Type || 'Training Resource';
-                        const displayDifficulty = resource.Difficulty_Level || resource.Detected_Difficulty || 'BEGINNER';
-                        const displayMinutes = resource.Estimated_Minutes || resource.Detected_Estimated_Minutes || '?';
-                        return `
+                    const html = resources.map(resource => `
                         <div style="padding: 20px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; margin-bottom: 16px; transition: all 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
                             <div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
                                 <div style="flex: 1;">
                                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
                                         <h4 style="color: var(--cobalt); font-size: 16px; font-weight: 700; margin: 0;">${resource.Title}</h4>
-                                        <span style="background: #f3f4f6; color: #4b5563; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${displayFocus}</span>
+                                        <span style="background: #f3f4f6; color: #4b5563; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">${resource.Type}</span>
                                     </div>
                                     
                                     <div style="display: flex; gap: 12px; font-size: 13px; color: #6b7280; margin-bottom: 10px;">
-                                        <span>${getCategoryIcon(displayCategory)} ${displayCategory}</span>
+                                        <span>${getCategoryIcon(resource.Category)} ${resource.Category}</span>
                                         <span>&bull;</span>
-                                        <span>${displayDifficulty}</span>
+                                        <span>${resource.Difficulty_Level || 'BEGINNER'}</span>
                                         <span>&bull;</span>
-                                        <span>${displayMinutes} min</span>
+                                        <span>${resource.Estimated_Minutes || '?'} min</span>
                                     </div>
                                     
                                     <p style="font-size: 14px; color: #4b5563; margin-bottom: 12px; line-height: 1.5;">${resource.Description || 'No description'}</p>
@@ -19970,8 +18698,7 @@ async function loadRecommendationsForFilter() {
                                 </div>
                             </div>
                         </div>
-                    `;
-                    }).join('');
+                    `).join('');
                     
                     container.innerHTML = html;
                 }
@@ -19984,231 +18711,112 @@ async function loadRecommendationsForFilter() {
         // Get Category Icon
         function getCategoryIcon(category) {
             const icons = {
-                'Marketing & Lead Generation': '',
-                'CRM & Sales Management': '',
-                'Technical Implementation': '',
-                'Operations & Fulfillment': '',
-                'Home2Smart Systems': '',
-                'General Training': ''
+                'Onboarding': '',
+                'Safety': '',
+                'Technical': '',
+                'Product': '',
+                'Customer Service': '',
+                'Tools': '',
+                'Troubleshooting': '',
+                'Business': '',
+                'Home2Smart': ''
             };
             return icons[category] || '';
         }
-        function getTrainingApiEndpoint() {
-            return (typeof API_URL !== 'undefined' && API_URL) ? API_URL : `${DEFAULT_API_HOST}/api/v1`;
-        }
 
-        function getTrainingAdminHeaders() {
-            const headers = { 'Content-Type': 'application/json' };
-            try {
-                const adminKey = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim();
-                if (adminKey) headers['x-h2s-admin-key'] = adminKey;
-            } catch (_) {}
-            return headers;
-        }
-
-        function trainingManagedAssetUrl(bucket, storagePath) {
-            const safeBucket = trainingSafeTrim(bucket);
-            const safePath = trainingSafeTrim(storagePath).replace(/^\/+/, '');
-            if (!safeBucket || !safePath) return '';
-            const relative = `/api/proof-asset-media?bucket=${encodeURIComponent(safeBucket)}&path=${encodeURIComponent(safePath)}`;
-            try {
-                // Determine absolute URL because Google Docs viewer needs a full public URL
-                if (typeof window !== 'undefined') {
-                    return new URL(relative, window.location.origin).toString();
-                }
-            } catch {}
-            return relative;
-        }
-
-        function trainingAdminFileAccept(type) {
-            const upper = String(type || '').trim().toUpperCase();
-            if (upper === 'PDF') return '.pdf,application/pdf';
-            return '.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain';
-        }
-
-        function trainingAssetDisplayName(url) {
-            const raw = trainingSafeTrim(url);
-            if (!raw) return 'No attachment';
-            try {
-                const decoded = decodeURIComponent(raw);
-                const pathMatch = decoded.match(/[?&]path=([^&]+)/i);
-                if (pathMatch && pathMatch[1]) {
-                    const tail = String(pathMatch[1]).split('/').filter(Boolean).pop();
-                    if (tail) return tail;
-                }
-            } catch (_) {}
-            try {
-                const parsed = new URL(raw, window.location.origin);
-                const tail = String(parsed.pathname || '').split('/').filter(Boolean).pop();
-                if (tail) return decodeURIComponent(tail);
-            } catch (_) {}
-            return raw.length > 72 ? `${raw.slice(0, 69)}...` : raw;
-        }
-
-        async function trainingUploadAdminFile(file, opts = {}) {
-            const selectedFile = file || null;
-            if (!selectedFile) throw new Error('Choose a file first');
-
-            const onStatus = typeof opts.onStatus === 'function' ? opts.onStatus : null;
-            if (onStatus) onStatus(`Preparing upload for ${selectedFile.name}...`);
-
-            const initResp = await fetch(`${getTrainingApiEndpoint()}?action=adAssetUploadInit`, {
-                method: 'POST',
-                headers: getTrainingAdminHeaders(),
-                body: JSON.stringify({
-                    bucket: 'proof',
-                    filename: selectedFile.name || 'upload',
-                    content_type: selectedFile.type || 'application/octet-stream'
-                })
-            });
-
-            const initData = await initResp.json().catch(() => null);
-            if (!initResp.ok || !initData || initData.ok !== true || !initData.signed_url || !initData.bucket || !initData.path) {
-                throw new Error((initData && initData.error) ? initData.error : `Upload signing failed (HTTP ${initResp.status})`);
-            }
-
-            if (onStatus) onStatus(`Uploading ${selectedFile.name}...`);
-            const putResp = await fetch(String(initData.signed_url), {
-                method: 'PUT',
-                headers: { 'Content-Type': selectedFile.type || 'application/octet-stream' },
-                body: selectedFile
-            });
-            if (!putResp.ok) {
-                throw new Error(`Upload failed (HTTP ${putResp.status})`);
-            }
-
-            const url = trainingManagedAssetUrl(initData.bucket, initData.path);
-            if (!url) throw new Error('Uploaded file is missing a usable URL');
-
-            if (onStatus) onStatus(`${selectedFile.name} ready`);
-            return { url, bucket: initData.bucket, path: initData.path, name: selectedFile.name || '' };
-        }
         // Submit New Training
-                  async function submitNewTraining(event) {
+        async function submitNewTraining(event) {
             event.preventDefault();
+            
+            // Ensure API_URL is available
+            const endpoint = (typeof API_URL !== 'undefined') ? API_URL : `${DEFAULT_API_HOST}/api/v1`;
 
-            const endpoint = getTrainingApiEndpoint();
-            const editResourceId = String(document.getElementById('editResourceId')?.value || '').trim();
-            const isEditMode = !!editResourceId;
-            const fileInput = document.getElementById('newTrainingFileInput');
+            const title = String(document.getElementById('newTrainingTitle')?.value || '').trim();
+            const category = String(document.getElementById('newTrainingCategory')?.value || 'General').trim() || 'General';
+            const estimatedMinutes = parseInt(String(document.getElementById('newTrainingDuration')?.value || ''), 10);
+            const estimatedMinutesValue = Number.isFinite(estimatedMinutes) && estimatedMinutes > 0 ? estimatedMinutes : null;
+            const descriptionRaw = String(document.getElementById('newTrainingDescription')?.value || '').trim();
 
-            const typeEl = document.getElementById('newTrainingType');
-            const rawType = (typeEl && typeEl.value) ? String(typeEl.value).trim() : 'VIDEO';
-            const typeUpper = rawType.toUpperCase();
-            const isVideo = typeUpper === 'VIDEO';
-            const selectedFile = (!isVideo && fileInput && fileInput.files && fileInput.files[0]) ? fileInput.files[0] : null;
+            const rows = Array.from(document.querySelectorAll('#newTrainingUrls .training-url-row'));
+            const assets = [];
+            const assetsMeta = [];
 
-            const urlsContainer = document.getElementById('newTrainingUrls');
-            const rows = urlsContainer ? Array.from(urlsContainer.querySelectorAll('.training-url-row')) : [];
-            const urls = rows
-                .map(r => {
-                    const input = r ? r.querySelector('.training-url-input') : null;
-                    return input ? String(input.value || '').trim() : '';
-                })
-                .filter(Boolean);
+            for (const row of rows) {
+                const url = String(row && row.querySelector && row.querySelector('.training-url-input') ? row.querySelector('.training-url-input').value : '').trim();
+                if (!url) continue;
+                assets.push(url);
 
-            let primaryUrl = urls.length ? urls[0] : '';
+                const titleInput = row && row.querySelector ? row.querySelector('.training-title-input') : null;
+                const clearedEl = row && row.querySelector ? row.querySelector('.training-title-cleared') : null;
+                const titleCleared = String(clearedEl && clearedEl.value ? clearedEl.value : '0') === '1';
+                const videoTitle = titleCleared ? '' : String(titleInput && titleInput.value ? titleInput.value : '').trim();
 
-            const assetsMeta = isVideo ? (() => {
-                try {
-                    const meta = {};
-                    for (const r of rows) {
-                        const urlInput = r ? r.querySelector('.training-url-input') : null;
-                        const titleInput = r ? r.querySelector('.training-title-input') : null;
-                        const clearedInput = r ? r.querySelector('.training-title-cleared') : null;
-                        const u = urlInput ? String(urlInput.value || '').trim() : '';
-                        if (!u) continue;
-                        const title = titleInput ? String(titleInput.value || '').trim() : '';
-                        const cleared = clearedInput ? String(clearedInput.value || '').trim() === '1' : false;
-                        if (title || cleared) {
-                            meta[u] = {
-                                ...(title ? { title } : {}),
-                                ...(cleared ? { titleCleared: true } : {})
-                            };
-                        }
-                    }
-                    return Object.keys(meta).length ? meta : null;
-                } catch {
-                    return null;
-                }
-            })() : null;
-
-            if (!isVideo && selectedFile) {
-                try {
-                    showToast(isEditMode ? 'Uploading replacement file...' : 'Uploading selected file...', 'info');
-                    const uploaded = await trainingUploadAdminFile(selectedFile);
-                    primaryUrl = uploaded.url;
-                } catch (error) {
-                    showToast(error && error.message ? error.message : 'Failed to upload selected file', 'error');
-                    return;
+                if (videoTitle || titleCleared) {
+                    assetsMeta.push({ url, title: videoTitle || undefined, titleCleared });
                 }
             }
 
-            if (!primaryUrl) {
-                try { showToast(isVideo ? 'Please paste a link for this training.' : 'Choose a file or paste a direct link for this training.', 'error'); } catch (_) {}
+            if (!assets.length) {
+                showToast('Add at least one video URL', 'error');
                 return;
             }
 
-            const typedTitle = String(document.getElementById('newTrainingTitle')?.value || '').trim();
-            const fallbackFileTitle = (!typedTitle && selectedFile)
-                ? String(selectedFile.name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
-                : '';
-
-            const selectedCategory = String(document.getElementById('newTrainingCategory')?.value || 'AUTO').trim();
+            // If description is blank, generate a simple one from titles to match UI promise.
+            const derivedDescription = (() => {
+                try {
+                    const lines = [];
+                    lines.push(assets.length === 1 ? 'Video:' : `Videos (${assets.length}):`);
+                    for (let i = 0; i < assets.length; i++) {
+                        const meta = assetsMeta.find(m => m && m.url === assets[i]);
+                        const t = meta && meta.title ? String(meta.title).trim() : '';
+                        lines.push(t ? `- ${t}` : `- Video ${i + 1}`);
+                    }
+                    return lines.join('\n');
+                } catch {
+                    return null;
+                }
+            })();
 
             const formData = {
-                ...(isEditMode ? { resourceId: editResourceId } : {}),
-                title: typedTitle || fallbackFileTitle || '',
-                type: typeUpper,
-                url: primaryUrl,
-                ...(isVideo ? { assets: urls } : {}),
-                ...(isVideo && assetsMeta ? { assetsMeta } : {}),
-                description: document.getElementById('newTrainingDescription')?.value || null,
-                category: selectedCategory === 'AUTO' ? null : selectedCategory,
+                title,
+                type: 'Video',
+                assets,
+                assetsMeta: assetsMeta.length ? assetsMeta : null,
+                description: descriptionRaw ? descriptionRaw : derivedDescription,
+                category,
                 difficultyLevel: 'BEGINNER',
-                estimatedMinutes: parseInt(document.getElementById('newTrainingDuration')?.value || '') || null,
+                estimatedMinutes: estimatedMinutesValue,
                 skillsTaught: null,
                 order: 0,
-                ...(isEditMode ? {} : {
-                    createdBy: (typeof currentUser === 'string' && currentUser.trim()) ? currentUser.trim() : 'ADMIN'
-                })
+                createdBy: currentUser || 'ADMIN'
             };
-
+            
             try {
-                showToast(
-                    isEditMode
-                        ? (isVideo ? '\ud83d\udce4 Updating training video...' : (selectedFile ? '\ud83d\udce4 Replacing training file...' : '\ud83d\udce4 Updating training link...'))
-                        : (isVideo ? '\ud83d\udce4 Uploading training video...' : (selectedFile ? '\ud83d\udce4 Saving selected file...' : '\ud83d\udce4 Saving training link...')),
-                    'info'
-                );
-
-                const action = isEditMode ? 'updateTraining' : 'createTraining';
-                const response = await fetch(`${endpoint}?action=${action}`, {
+                showToast('\ud83d\udce4 Uploading training video...', 'info');
+                
+                const response = await fetch(`${endpoint}?action=createTraining`, {
                     method: 'POST',
-                    headers: getTrainingAdminHeaders(),
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 });
-
+                
                 const data = await response.json();
-
+                
                 if (data.ok) {
-                    showToast(isEditMode ? '\u2705 Training updated successfully!' : '\u2705 Training uploaded successfully!', 'success');
-                    try {
-                        if (typeof window.resetTrainingForm === 'function') window.resetTrainingForm();
-                        else document.getElementById('newTrainingForm')?.reset();
-                    } catch (_) {}
+                    showToast('\u2705 Training uploaded successfully!', 'success');
+                    document.getElementById('newTrainingForm').reset();
                     loadAdminTrainingList();
-                    loadTrainingResources(true);
+                    loadTrainingResources(true); // Refresh main view
                 } else {
                     showToast(`\u274c Error: ${data.error}`, 'error');
                 }
             } catch (error) {
-                showToast(isEditMode ? '\u274c Failed to update training' : '\u274c Failed to upload training', 'error');
+                showToast('\u274c Failed to upload training', 'error');
                 console.error(error);
             }
         }
 
-// Delete Training
+        // Delete Training
         async function deleteTraining(resourceId, title) {
             if (!confirm(`Are you sure you want to delete "${title}"? This will also delete all completion records.`)) {
                 return;
@@ -20236,220 +18844,14 @@ async function loadRecommendationsForFilter() {
             }
         }
 
-        // Edit Training (URL-only update to preserve description/title)
-                async function editTraining(resourceId) {
-            const rid = String(resourceId || '').trim();
-            if (!rid) return;
-
-            if (!checkAdminAuth()) {
-                promptAdminPassword((authenticated) => {
-                    if (authenticated) editTraining(rid);
-                });
-                return;
-            }
-
-            let resource = trainingFindResource(rid);
-            if (!resource && Array.isArray(allTrainingResources)) {
-                resource = allTrainingResources.find(r => String(r && (r.Resource_ID || r.resourceId) || '') === rid) || null;
-            }
-            if (!resource) {
-                showToast('Training resource not found', 'error');
-                return;
-            }
-
-            const type = String((resource.Type || resource.type || 'PDF')).toUpperCase();
-            const currentUrl = trainingSafeTrim(trainingGetPrimaryUrl(resource) || resource.URL || resource.url || '');
-            const title = escapeHtml(trainingSafeTrim(resource.Title || resource.title || 'Training Resource'));
-            const currentFileName = escapeHtml(trainingAssetDisplayName(currentUrl));
-            const accept = escapeHtml(trainingAdminFileAccept(type));
-
-            const html = `
-                <div style="padding: 8px 0 0;">
-                    <div style="font-size: 13px; color: #6b7280; font-weight: 700; margin-bottom: 12px;">${title} &bull; ${escapeHtml(type)}</div>
-                    <div style="font-size: 12px; font-weight: 900; color: #475569; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;">Current attachment</div>
-                    <div id="editTrainingCurrentFile" style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; border:1px solid #e5e7eb; border-radius:14px; background:#f8fafc; margin-bottom:14px;">
-                        <div style="min-width:0; flex:1;">
-                            <div style="font-size:13px; font-weight:900; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${currentUrl ? currentFileName : 'No attachment yet'}</div>
-                            <div id="editTrainingCurrentFileHelp" style="font-size:12px; color:#64748b; margin-top:4px;">Click X to remove it, then drop or choose a replacement.</div>
-                        </div>
-                        <button id="editTrainingRemoveCurrentBtn" class="btn" style="min-width:44px; width:44px; height:44px; padding:0; border-radius:12px; background:#fff; color:#dc2626; border:1px solid #fecaca; justify-content:center;"></button>
-                    </div>
-                    <input id="editTrainingFileInput" type="file" accept="${accept}" style="display:none;" />
-                    <div id="editTrainingDropzone" style="border:2px dashed color-mix(in srgb, var(--azure) 35%, var(--border)); border-radius:16px; padding:18px; background:color-mix(in srgb, var(--azure) 4%, white); margin-bottom:10px; cursor:pointer;">
-                        <div style="font-size:14px; font-weight:900; color:var(--cobalt); margin-bottom:6px;">Drop a new ${type === 'PDF' ? 'PDF' : 'file'} here</div>
-                        <div style="font-size:12px; color:#64748b; margin-bottom:12px;">Or choose one from your computer. The old attachment will be replaced.</div>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button id="editTrainingChooseFileBtn" class="btn" style="background:var(--cobalt); color:#fff; border:2px solid var(--cobalt); justify-content:center;">Choose file</button>
-                            <button id="editTrainingClearFileBtn" class="btn" style="display:none; background:#fff; color:var(--cobalt); border:2px solid var(--border); justify-content:center;">Clear selected file</button>
-                        </div>
-                    </div>
-                    <div id="editTrainingFileStatus" data-default-text="No replacement file selected yet." style="font-size:12px; color:#6b7280; margin-bottom:12px;">No replacement file selected yet.</div>
-                    <details style="margin-bottom: 12px;">
-                        <summary style="cursor:pointer; color: var(--cobalt); font-size: 12px; font-weight: 800;">Advanced: paste a direct link instead</summary>
-                        <div style="margin-top:10px;">
-                            <input id="editTrainingUrlInput" type="text" value="" placeholder="https://..." style="width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 14px; box-sizing: border-box;" />
-                        </div>
-                    </details>
-                    <div style="display:flex; gap:10px; margin-top:14px;">
-                        <button id="editTrainingCancelBtn" class="btn" style="background:#fff; color:var(--cobalt); border:2px solid var(--cobalt); flex:1; justify-content:center;">Cancel</button>
-                        <button id="editTrainingSaveBtn" class="btn" style="background:var(--cobalt); color:#fff; border:2px solid var(--cobalt); flex:1; justify-content:center;">Save</button>
-                    </div>
-                    <div style="margin-top:10px; font-size:12px; color:#6b7280;">This replaces only the attachment, so the title and description stay intact.</div>
-                </div>
-            `;
-
-            showModal(type === 'VIDEO' ? 'Edit Training Video' : 'Replace Training Attachment', html, { hideConfirm: true, hideActions: true, width: '620px', backdropClose: true });
-
-            setTimeout(() => {
-                const input = document.getElementById('editTrainingUrlInput');
-                const cancelBtn = document.getElementById('editTrainingCancelBtn');
-                const saveBtn = document.getElementById('editTrainingSaveBtn');
-                const currentFileWrap = document.getElementById('editTrainingCurrentFile');
-                const currentFileHelp = document.getElementById('editTrainingCurrentFileHelp');
-                const removeCurrentBtn = document.getElementById('editTrainingRemoveCurrentBtn');
-                const dropzone = document.getElementById('editTrainingDropzone');
-                const fileInput = document.getElementById('editTrainingFileInput');
-                const chooseFileBtn = document.getElementById('editTrainingChooseFileBtn');
-                const clearFileBtn = document.getElementById('editTrainingClearFileBtn');
-                const fileStatus = document.getElementById('editTrainingFileStatus');
-                let currentRemoved = false;
-
-                const setStatus = (message) => {
-                    if (fileStatus) fileStatus.textContent = message || fileStatus.dataset.defaultText || 'No replacement file selected yet.';
-                };
-
-                const renderCurrentFile = () => {
-                    if (currentFileWrap) {
-                        currentFileWrap.style.opacity = currentRemoved ? '0.45' : '1';
-                        currentFileWrap.style.borderStyle = currentRemoved ? 'dashed' : 'solid';
-                    }
-                    if (currentFileHelp) {
-                        currentFileHelp.textContent = currentRemoved
-                            ? 'Current attachment will be replaced when you save.'
-                            : 'Click X to remove it, then drop or choose a replacement.';
-                    }
-                    if (removeCurrentBtn) removeCurrentBtn.textContent = currentRemoved ? '' : '';
-                };
-
-                const updateSelectedFile = () => {
-                    const chosen = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-                    if (chosen) {
-                        currentRemoved = true;
-                        setStatus(`${chosen.name} (${Math.max(1, Math.round((chosen.size || 0) / 1024))} KB) selected`);
-                        if (clearFileBtn) clearFileBtn.style.display = 'inline-flex';
-                    } else {
-                        setStatus(fileStatus && fileStatus.dataset.defaultText ? fileStatus.dataset.defaultText : 'No replacement file selected yet.');
-                        if (clearFileBtn) clearFileBtn.style.display = 'none';
-                    }
-                    renderCurrentFile();
-                };
-
-                if (cancelBtn) cancelBtn.onclick = () => closeModal(false);
-                renderCurrentFile();
-                if (removeCurrentBtn) {
-                    removeCurrentBtn.onclick = () => {
-                        currentRemoved = !currentRemoved;
-                        renderCurrentFile();
-                    };
-                }
-                if (chooseFileBtn && fileInput) chooseFileBtn.onclick = () => fileInput.click();
-                if (clearFileBtn && fileInput) {
-                    clearFileBtn.onclick = () => {
-                        fileInput.value = '';
-                        updateSelectedFile();
-                    };
-                }
-                if (fileInput) fileInput.onchange = updateSelectedFile;
-                if (dropzone && fileInput) {
-                    dropzone.onclick = (e) => {
-                        if (e.target && e.target.closest('button')) return;
-                        fileInput.click();
-                    };
-                    dropzone.ondragover = (e) => {
-                        e.preventDefault();
-                        dropzone.style.borderColor = 'var(--cobalt)';
-                        dropzone.style.background = 'color-mix(in srgb, var(--azure) 9%, white)';
-                    };
-                    dropzone.ondragleave = () => {
-                        dropzone.style.borderColor = '';
-                        dropzone.style.background = 'color-mix(in srgb, var(--azure) 4%, white)';
-                    };
-                    dropzone.ondrop = (e) => {
-                        e.preventDefault();
-                        dropzone.style.borderColor = '';
-                        dropzone.style.background = 'color-mix(in srgb, var(--azure) 4%, white)';
-                        const dropped = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0] ? e.dataTransfer.files[0] : null;
-                        if (!dropped) return;
-                        const dt = new DataTransfer();
-                        dt.items.add(dropped);
-                        fileInput.files = dt.files;
-                        updateSelectedFile();
-                    };
-                }
-                if (input) {
-                    input.onkeydown = (e) => {
-                        if (e.key === 'Enter' && saveBtn) {
-                            e.preventDefault();
-                            saveBtn.click();
-                        }
-                    };
-                }
-
-                if (saveBtn) {
-                    saveBtn.onclick = async () => {
-                        try {
-                            saveBtn.disabled = true;
-                            saveBtn.textContent = 'Saving...';
-
-                            const chosenFile = fileInput && fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
-                            const manualUrl = trainingSafeTrim(input && input.value);
-                            let nextUrl = currentRemoved ? '' : currentUrl;
-
-                            if (chosenFile) {
-                                const uploaded = await trainingUploadAdminFile(chosenFile, { onStatus: setStatus });
-                                nextUrl = uploaded.url;
-                            } else if (manualUrl) {
-                                nextUrl = manualUrl;
-                            }
-
-                            if (!nextUrl) {
-                                showToast('Remove the old file, then choose or drop a replacement.', 'error');
-                                saveBtn.disabled = false;
-                                saveBtn.textContent = 'Save';
-                                return;
-                            }
-
-                            const payload = { resourceId: rid, url: nextUrl };
-                            if (type === 'VIDEO') payload.assets = [nextUrl];
-
-                            const response = await fetch(`${API_URL}?action=updateTraining`, {
-                                method: 'POST',
-                                headers: getTrainingAdminHeaders(),
-                                body: JSON.stringify(payload)
-                            });
-                            const data = await response.json();
-
-                            if (data && data.ok) {
-                                showToast('Training updated', 'success');
-                                closeModal(true);
-                                loadAdminTrainingList();
-                                loadTrainingResources(true);
-                            } else {
-                                throw new Error((data && data.error) ? data.error : 'Update failed');
-                            }
-                        } catch (error) {
-                            setStatus(error && error.message ? error.message : 'Failed to update training');
-                            showToast(`Failed to update training: ${error && error.message ? error.message : 'Unknown error'}`, 'error');
-                            saveBtn.disabled = false;
-                            saveBtn.textContent = 'Save';
-                        }
-                    };
-                }
-            }, 0);
+        // Edit Training (TODO: Add edit modal)
+        function editTraining(resourceId) {
+            showToast('Edit functionality coming soon! For now, delete and recreate.', 'info');
         }
 
-        // Filter Training by Tier
 
+
+        // Filter Training by Tier
         let allTrainingResources = [];
 
         function filterTrainingByTier(tier) {
@@ -20758,7 +19160,7 @@ async function loadRecommendationsForFilter() {
                     ${safeUrl ? `
                     <div class="task-card-link-row">
                         <a class="task-card-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation();">
-                            ${type === 'DOCUMENT' ? 'Open Doc' : 'Open Link'} <span style="opacity:0.8;">-&gt;</span>
+                            ${type === 'DOCUMENT' ? 'Open Doc' : 'Open Link'} <span style="opacity:0.8;">...—</span>
                         </a>
                         ${safeUrlHint ? `<div class="task-card-link-hint">${safeUrlHint}</div>` : ''}
                     </div>
@@ -21482,7 +19884,7 @@ async function loadRecommendationsForFilter() {
                         <div style="font-size:12px; color:#64748b;">Fetching users from the database.</div>
                     </div>
                 `;
-                showModal('Accounts', loading, { width: '1080px', hideConfirm: true, maxHeight: '82vh' });
+                showModal('Accounts', loading, { width: '980px', hideConfirm: true, maxHeight: '82vh' });
             } catch (_) {}
 
             let users = [];
@@ -21573,11 +19975,8 @@ async function loadRecommendationsForFilter() {
                 const username = escapeHtml(usernameNorm || rawUsername);
                 const display = escapeHtml(String(u.Display_Name || u.displayName || ''));
                 const email = escapeHtml(String(u.Email || u.email || ''));
-                const roleRaw = String(u.Role || u.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
-                const role = escapeHtml(roleRaw);
+                const role = escapeHtml(String(u.Role || u.role || 'VA'));
                 const disabled = !!(u.Is_Disabled || u.isDisabled);
-                const isSelf = usernameNorm && normalizeUsername(currentUser || '') === usernameNorm;
-                const emailStatus = email ? `<span class="accounts-admin-user__email">${email}</span>` : '<span class="accounts-admin-user__email is-missing">No email on file</span>';
 
                 const tstats = taskStatsByUser[usernameNorm] || { total: 0, open: 0, completed: 0 };
                 const hstats = hoursStatsByUser[usernameNorm] || { total: 0, last7: 0 };
@@ -21588,98 +19987,35 @@ async function loadRecommendationsForFilter() {
                     ? '<span style="padding:4px 8px; border-radius:999px; background:#fee2e2; color:#991b1b; font-weight:900; font-size:11px;">DISABLED</span>'
                     : '<span style="padding:4px 8px; border-radius:999px; background:#dcfce7; color:#166534; font-weight:900; font-size:11px;">ACTIVE</span>';
                 const toggleLabel = disabled ? 'Enable' : 'Disable';
-                const roleSelectId = `acctRole_${String(u.User_ID || u.userId || '').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-                const selfHint = isSelf ? '<div class="accounts-admin-inline-note">Current signed-in account</div>' : '';
                 return `
-                    <div class="accounts-admin-row">
-                        <div class="accounts-admin-user">
-                            <div class="accounts-admin-user__name">${username}</div>
-                            <div class="accounts-admin-user__display">${display || '--'}</div>
-                            ${emailStatus}
-                            ${selfHint}
+                    <div style="display:grid; grid-template-columns: 1.6fr 120px 160px 170px 260px; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid rgba(148,163,184,0.18);">
+                        <div style="min-width:0;">
+                            <div style="font-weight:900; color:#0f172a;">${username}</div>
+                            <div style="color:#334155; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${display || '...”'}</div>
+                            <div style="color:#64748b; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${email || '...”'}</div>
                         </div>
-                        <div class="accounts-admin-metric accounts-admin-metric--role" data-label="Role">
-                            <select id="${roleSelectId}" class="form-select accounts-admin-role-select" ${isSelf ? 'disabled' : ''}>
-                                <option value="VA" ${roleRaw === 'VA' ? 'selected' : ''}>VA</option>
-                                <option value="ADMIN" ${roleRaw === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
-                            </select>
-                        </div>
-                        <div class="accounts-admin-metric" data-label="Tasks">${escapeHtml(tasksText)}</div>
-                        <div class="accounts-admin-metric" data-label="Hours">${escapeHtml(hoursText)}</div>
-                        <div class="accounts-admin-actions">
-                            <div class="accounts-admin-actions__status">${statusChip}</div>
-                            <div class="accounts-admin-actions__buttons">
-                                <button class="accounts-admin-btn accounts-admin-btn--primary" ${isSelf ? 'disabled title="You cannot change your own role here."' : ''} onclick="updateDashboardUserRole('${id}', '${escapeHtml(roleSelectId)}', '${username}')">Save Role</button>
-                                <button class="accounts-admin-btn" onclick="sendDashboardLoginInviteForUser('${id}')">Send Login</button>
-                                <button class="accounts-admin-btn" onclick="resetDashboardUserPin('${id}')">Reset PIN</button>
-                                <button class="accounts-admin-btn accounts-admin-btn--danger" onclick="toggleDashboardUserDisabled('${id}', ${disabled ? 'false' : 'true'})">${toggleLabel}</button>
-                            </div>
+                        <div style="font-weight:900; color: var(--cobalt);">${role}</div>
+                        <div style="font-size:12px; color:#334155; font-weight:900;">${escapeHtml(tasksText)}</div>
+                        <div style="font-size:12px; color:#334155; font-weight:900;">${escapeHtml(hoursText)}</div>
+                        <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center;">
+                            ${statusChip}
+                            <button style="padding:7px 10px; border-radius:10px; border:1px solid rgba(148,163,184,0.35); background:#fff; cursor:pointer; font-weight:900; font-size:12px;" onclick="sendDashboardLoginInviteForUser('${id}')">Email Login</button>
+                            <button style="padding:7px 10px; border-radius:10px; border:1px solid rgba(148,163,184,0.35); background:#fff; cursor:pointer; font-weight:900; font-size:12px;" onclick="resetDashboardUserPin('${id}')">Reset PIN</button>
+                            <button style="padding:7px 10px; border-radius:10px; border:1px solid rgba(148,163,184,0.35); background:#fff; cursor:pointer; font-weight:900; font-size:12px;" onclick="toggleDashboardUserDisabled('${id}', ${disabled ? 'false' : 'true'})">${toggleLabel}</button>
                         </div>
                     </div>
                 `;
             }).join('');
 
             const html = `
-                <div class="accounts-admin-modal">
-                <style>
-                    .accounts-admin-modal { display:flex; flex-direction:column; gap:14px; }
-                    .accounts-admin-intro { display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; }
-                    .accounts-admin-intro__copy { min-width:280px; }
-                    .accounts-admin-intro__title { font-size:14px; font-weight:900; color:#0f172a; margin-bottom:4px; }
-                    .accounts-admin-intro__text { font-size:12px; color:#64748b; }
-                    .accounts-admin-create { padding:12px; border:1px solid rgba(148,163,184,0.25); border-radius:14px; background:#f8fafc; }
-                    .accounts-admin-create-grid { display:grid; grid-template-columns:1fr 1fr 160px; gap:10px; }
-                    .accounts-admin-list { border:1px solid rgba(148,163,184,0.25); border-radius:14px; overflow:hidden; background:#fff; }
-                    .accounts-admin-header, .accounts-admin-row { display:grid; grid-template-columns:1.5fr minmax(90px, auto) minmax(110px, auto) minmax(110px, auto) 280px; gap:16px; align-items:center; padding:16px; }
-                    .accounts-admin-header { background:rgba(248,250,252,0.9); border-bottom:1px solid rgba(148,163,184,0.18); font-size:12px; font-weight:900; color:#334155; }
-                    .accounts-admin-row { border-bottom:1px solid rgba(148,163,184,0.18); transition: background 0.2s; }
-                    .accounts-admin-row:hover { background:#f8fafc; }
-                    .accounts-admin-row:last-child { border-bottom:none; }
-                    .accounts-admin-user { min-width:0; }
-                    .accounts-admin-user__name { font-weight:900; color:#0f172a; font-size:14px; }
-                    .accounts-admin-user__display, .accounts-admin-user__email { display:block; font-size:12px; color:#475569; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-                    .accounts-admin-user__email { font-size:11px; color:#64748b; }
-                    .accounts-admin-user__email.is-missing { color:#b45309; font-weight:800; }
-                    .accounts-admin-inline-note { margin-top:6px; font-size:11px; color:var(--azure); font-weight:800; }
-                    .accounts-admin-metric { font-size:12px; color:#334155; font-weight:900; }
-                    .accounts-admin-metric--role { font-weight:700; width: 100%; max-width: 140px; }
-                    .accounts-admin-role-select { width:100%; min-width:80px; padding:6px 24px 6px 12px; border-radius:8px; border-color:#cbd5e1; }
-                    .accounts-admin-actions { display:flex; flex-direction:column; gap:8px; align-items:flex-end; justify-content:center; min-width:0; }
-                    .accounts-admin-actions__status { display:flex; align-items:center; justify-content:flex-end; margin-bottom: 2px; }
-                    .accounts-admin-actions__buttons { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; width: 100%; }
-                    .accounts-admin-btn { padding:6px 12px; border-radius:8px; border:1px solid rgba(148,163,184,0.35); background:#fff; cursor:pointer; font-weight:800; font-size:11px; color:#0f172a; text-align:center; transition: all 0.2s ease; white-space:nowrap; }
-                    .accounts-admin-btn:hover { background:#eff6ff; border-color:var(--cobalt); color:var(--cobalt); transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-                    .accounts-admin-btn--primary { background:var(--cobalt); color:#fff; border-color:var(--cobalt); }
-                    .accounts-admin-btn--primary:hover { background:var(--azure); color:#fff; }
-                    .accounts-admin-btn--danger { color:#991b1b; }
-                    .accounts-admin-btn--danger:hover { background:#fee2e2; border-color:#f87171; color:#991b1b; }
-                    .accounts-admin-btn:disabled { opacity:0.55; cursor:not-allowed; background:#f8fafc; color:#94a3b8; border-color:#e2e8f0; transform:none; box-shadow:none; }
-                    @media (max-width: 920px) {
-                        .accounts-admin-create-grid { grid-template-columns:1fr 1fr; }
-                        .accounts-admin-header { display:none; }
-                        .accounts-admin-row { grid-template-columns:1fr; gap:12px; }
-                        .accounts-admin-metric::before { content: attr(data-label) ': '; color:#64748b; font-weight:800; }
-                        .accounts-admin-actions { align-items:flex-start; }
-                        .accounts-admin-actions__status { justify-content:flex-start; margin-bottom:6px; }
-                        .accounts-admin-actions__buttons { justify-content:flex-start; }
-                    }
-                    @media (max-width: 640px) {
-                        .accounts-admin-create-grid { grid-template-columns:1fr; }
-                        .accounts-admin-create { padding:10px; }
-                        .accounts-admin-row { padding:10px; }
-                        .accounts-admin-actions { gap:8px; }
-                        .accounts-admin-btn { flex:1 1 auto; text-align:left; }
-                    }
-                </style>
-                <div class="accounts-admin-intro">
-                    <div class="accounts-admin-intro__copy">
-                        <div class="accounts-admin-intro__title">Dashboard accounts</div>
-                        <div class="accounts-admin-intro__text">Create a login for a VA or Admin, then send that account holder their username and temporary PIN by email. Usernames are case-insensitive and stored uppercase.</div>
+                <div style="display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; margin-bottom: 14px;">
+                    <div style="min-width: 280px;">
+                        <div style="font-size:12px; color:#64748b;">Create a login for a VA or Admin. Usernames are case-insensitive (stored uppercase).</div>
                     </div>
                 </div>
 
-                <div class="accounts-admin-create">
-                    <div class="accounts-admin-create-grid">
+                <div style="padding:12px; border:1px solid rgba(148,163,184,0.25); border-radius:14px; background:#f8fafc; margin-bottom: 14px;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr 160px; gap:10px;">
                         <input id="acctNewUsername" class="form-input" placeholder="Username (e.g., ROSEL)" />
                         <input id="acctNewDisplay" class="form-input" placeholder="Display name (e.g., Rosel)" />
                         <select id="acctNewRole" class="form-select">
@@ -21692,16 +20028,15 @@ async function loadRecommendationsForFilter() {
                     </div>
                 </div>
 
-                <div class="accounts-admin-list">
-                    <div class="accounts-admin-header">
+                <div style="border:1px solid rgba(148,163,184,0.25); border-radius:14px; overflow:hidden;">
+                    <div style="display:grid; grid-template-columns: 1.6fr 120px 160px 170px 260px; gap:10px; padding:10px 12px; background:rgba(248,250,252,0.9); border-bottom:1px solid rgba(148,163,184,0.18); font-size:12px; font-weight:900; color:#334155;">
                         <div>User</div>
                         <div>Role</div>
                         <div>Tasks</div>
                         <div>Hours</div>
-                        <div>Status &amp; actions</div>
+                        <div style="text-align:right;">Status</div>
                     </div>
                     ${rows || '<div style="padding:14px; color:#64748b;">No users found.</div>'}
-                </div>
                 </div>
             `;
 
@@ -21710,7 +20045,7 @@ async function loadRecommendationsForFilter() {
                 const body = document.getElementById('modalBody');
                 if (body) body.innerHTML = html;
             } catch (_) {
-                showModal('Accounts', html, { width: '1080px', hideConfirm: true, maxHeight: '82vh' });
+                showModal('Accounts', html, { width: '980px', hideConfirm: true, maxHeight: '82vh' });
             }
         }
 
@@ -21742,51 +20077,11 @@ async function loadRecommendationsForFilter() {
 
                 const payload = data.createDashboardUser || data.dashboardUser || data;
                 const createdPin = payload && payload.pin ? String(payload.pin) : '';
-                if (createdPin) {
-                    prompt('Account created successfully! Copy this temporary PIN to share manually:', createdPin);
-                } else {
-                    showToast('Account created', 'success');
-                }
+                showToast(createdPin ? `Account created. TEMP PIN: ${createdPin}` : 'Account created', 'success');
                 closeModal();
                 await openAccountsAdminModal();
             } catch (e) {
                 showToast('Create failed', 'error');
-            }
-        }
-
-        async function updateDashboardUserRole(userId, roleSelectId, username) {
-            try {
-                const normalizedCurrent = normalizeUsername(currentUser || '');
-                const normalizedTarget = normalizeUsername(username || '');
-                if (normalizedCurrent && normalizedTarget && normalizedCurrent === normalizedTarget) {
-                    showToast('You cannot change your own role from this window', 'warning');
-                    return;
-                }
-
-                const selectEl = document.getElementById(String(roleSelectId || ''));
-                const nextRole = String(selectEl?.value || '').trim().toUpperCase();
-                if (nextRole !== 'VA' && nextRole !== 'ADMIN') {
-                    showToast('Choose VA or ADMIN', 'error');
-                    return;
-                }
-
-                const resp = await fetch(`${API_URL}?action=updateDashboardUser`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, role: nextRole })
-                });
-                const data = await resp.json().catch(() => null);
-                if (!data || !data.ok) {
-                    const msg = (data && data.error) ? String(data.error) : 'Role update failed';
-                    showToast(msg, 'error');
-                    return;
-                }
-
-                showToast(`Role updated to ${nextRole}`, 'success');
-                closeModal();
-                await openAccountsAdminModal();
-            } catch (e) {
-                showToast('Role update failed', 'error');
             }
         }
 
@@ -21805,11 +20100,7 @@ async function loadRecommendationsForFilter() {
                 }
                 const payload = data.resetDashboardUserPin || data;
                 const pin = payload && payload.pin ? String(payload.pin) : '';
-                if (pin) {
-                    prompt('PIN Reset Successful! Copy the new PIN below to share manually:', pin);
-                } else {
-                    showToast('PIN reset successfully', 'success');
-                }
+                showToast(pin ? `PIN reset. TEMP PIN: ${pin}` : 'PIN reset', 'success');
                 closeModal();
                 await openAccountsAdminModal();
             } catch {
@@ -21836,7 +20127,7 @@ async function loadRecommendationsForFilter() {
                     const msg = (data && data.error) ? String(data.error) : `Invite failed (${resp.status})`;
                     const lower = msg.toLowerCase();
                     if (lower.includes('email is required') || lower.includes('no email')) {
-                        const email = String(prompt('Enter the account holder email address to send login details:') || '').trim();
+                        const email = String(prompt('Enter an email for this user (to send login):') || '').trim();
                         if (!email) return;
                         ({ resp, data } = await doSend(email));
                     }
@@ -21852,17 +20143,10 @@ async function loadRecommendationsForFilter() {
                 const pin = payload && payload.pin ? String(payload.pin) : '';
                 const mailOk = payload && payload.mail && payload.mail.ok === true;
                 const signOk = payload && payload.signInTest && payload.signInTest.ok === true;
-                const recipient = String(payload && (payload.email || payload.recipientEmail || payload.sentTo || ''));
 
-                const baseMsg = recipient ? `Login details processed for ${recipient}.` : `Login details processed.`;
-                let intro = mailOk ? `Email successfully sent to ${recipient}.` : `Notice: Email failed (limit exceeded).`;
-                if (!signOk) intro = "Warning: Sign-in validation failed.";
-
-                if (pin) {
-                    prompt(`${intro} You can copy this temporary PIN below to share manually:`, pin);
-                } else if (!mailOk) {
-                    const errorStr = (payload && payload.mail && payload.mail.error) ? String(payload.mail.error) : 'unknown error';
-                    showToast(`${baseMsg} (mail failed: ${errorStr})`, 'error');
+                const baseMsg = pin ? `Invite sent. TEMP PIN: ${pin}` : 'Invite sent.';
+                if (!mailOk) {
+                    showToast(`${baseMsg} (mail failed)`, 'error');
                 } else if (!signOk) {
                     showToast(`${baseMsg} (sign-in test failed)`, 'error');
                 } else {
@@ -22008,7 +20292,7 @@ async function loadRecommendationsForFilter() {
                     </div>
                 `;
 
-                showModal('Report a bug', html, { width: '600px', hideConfirm: true, hideActions: true });
+                showModal('Report a bug', html, { width: '760px', hideConfirm: true, hideActions: true });
 
                 // Don't prefill anything - let user type clean titles
                 setTimeout(() => {
@@ -22026,7 +20310,7 @@ async function loadRecommendationsForFilter() {
                 const actual = String(document.getElementById('bugReportActual')?.value || '').trim();
                 const severity = String(document.getElementById('bugReportSeverity')?.value || 'MEDIUM').trim();
 
-                if (!title || !finalDescription) {
+                if (!title || !description) {
                     showToast('Title + Details are required', 'error');
                     return;
                 }
@@ -22360,8 +20644,6 @@ async function loadRecommendationsForFilter() {
 
         const adminDashboard = {
             dateRange: '30',
-            selectedLearningUser: 'ALL',
-            _lastRenderPayload: null,
 
             // Parse dates safely across browsers/timezones.
             // Important: YYYY-MM-DD should be treated as a *local* date, not UTC.
@@ -22390,16 +20672,6 @@ async function loadRecommendationsForFilter() {
                 d.setDate(d.getDate() + diff);
                 return d;
             },
-
-            setLearningUser(value) {
-                this.selectedLearningUser = normalizeLearningProfileUser(value);
-                if (this._lastRenderPayload) {
-                    const p = this._lastRenderPayload;
-                    this.render(p.deliverables, p.trainingCompletions, p.tasks, p.candidates, p.hours, p.bugReportsPayload, p.taskCounts, p.dashboardUsers);
-                    return;
-                }
-                this.refresh();
-            },
             
             async refresh() {
                 const container = document.getElementById('adminDashboardContent');
@@ -22413,7 +20685,7 @@ async function loadRecommendationsForFilter() {
                 const adminToken = bugReportsUI.getAdminToken();
                 const adminHeaders = adminToken ? { 'x-h2s-admin-token': adminToken } : {};
 
-                const [deliverablesRes, trainingRes, tasksRes, taskCountsRes, candidatesRes, hoursRes, bugReportsRes, dashboardUsersRes] = await Promise.all([
+                const [deliverablesRes, trainingRes, tasksRes, taskCountsRes, candidatesRes, hoursRes, bugReportsRes] = await Promise.all([
                     fetch(`${API_URL}?action=deliverables&status=all`).catch((e) => { console.error('[Admin] Deliverables fetch error:', e); return { ok: false }; }),
                     fetch(`${API_URL}?action=trainingCompletions&vaName=all`).catch((e) => { console.error('[Admin] Training fetch error:', e); return { ok: false }; }),
                     fetch(`${API_URL}?action=tasks`).catch((e) => { console.error('[Admin] Tasks fetch error:', e); return { ok: false }; }),
@@ -22422,8 +20694,7 @@ async function loadRecommendationsForFilter() {
                     // CRITICAL: Use same endpoint format as Log Hours tab, but with vaName=all for admin view
                     fetch(`${API_URL}?action=hours&vaName=all`).catch((e) => { console.error('[Admin] Hours fetch error:', e); return { ok: false }; }),
                     fetch(`${API_URL}?action=bug_reports&days=${encodeURIComponent(daysParam)}&limit=50`, { headers: adminHeaders })
-                        .catch((e) => { console.error('[Admin] Bug reports fetch error:', e); return { ok: false }; }),
-                    fetch(`${API_URL}?action=dashboardUsers`, { cache: 'no-store' }).catch((e) => { console.error('[Admin] Dashboard users fetch error:', e); return { ok: false }; })
+                        .catch((e) => { console.error('[Admin] Bug reports fetch error:', e); return { ok: false }; })
                 ]);
                 
                 // Debug: Log hours response status
@@ -22437,10 +20708,6 @@ async function loadRecommendationsForFilter() {
                     const taskCountsData = taskCountsRes && taskCountsRes.ok ? await taskCountsRes.json().catch(() => null) : null;
                     const taskCounts = taskCountsData && taskCountsData.ok && taskCountsData.taskCounts ? taskCountsData.taskCounts : null;
                     const candidates = candidatesRes.ok ? await candidatesRes.json().catch(() => ({ data: [], candidates: [] })) : { data: [], candidates: [] };
-                    const dashboardUsersData = dashboardUsersRes && dashboardUsersRes.ok ? await dashboardUsersRes.json().catch(() => ({ users: [] })) : { users: [] };
-                    const dashboardUsers = Array.isArray(dashboardUsersData.users)
-                        ? dashboardUsersData.users
-                        : (Array.isArray(dashboardUsersData.dashboardUsers) ? dashboardUsersData.dashboardUsers : []);
 
                     let bugReportsPayloadForRender = { reports: [], meta: null };
                     if (bugReportsRes && bugReportsRes.ok) {
@@ -22495,32 +20762,23 @@ async function loadRecommendationsForFilter() {
                     // Date range filter is only for other context-specific views, not for hours totals
                     const hours = allHours; // Use all hours for calculations
 
-                    const trainingCompletions = (training && (training.trainingCompletions || training.completions || training.data || [])) || [];
-                    const learningUserOptions = buildLearningProfileUserOptions(dashboardUsers, trainingCompletions);
-                    if (this.selectedLearningUser !== 'ALL' && !learningUserOptions.some(opt => opt.value === this.selectedLearningUser)) {
-                        this.selectedLearningUser = 'ALL';
-                    }
-
                     this.render(
                         deliverables.deliverables || [],
-                        trainingCompletions,
+                        training.trainingCompletions || [],
                         tasks.tasks || [],
                         candidates.candidates || candidates.data || [],
                         hours,
                         bugReportsPayloadForRender,
-                        taskCounts,
-                        dashboardUsers
+                        taskCounts
                     );
                 } catch (error) {
                     container.innerHTML = `<div class="empty-state"><div class="empty-text" style="color: var(--danger);">Error: ${error.message}</div></div>`;
                 }
             },
             
-            render(deliverables, trainingCompletions, tasks, candidates, hours, bugReportsPayload, taskCounts, dashboardUsers) {
+            render(deliverables, trainingCompletions, tasks, candidates, hours, bugReportsPayload, taskCounts) {
                 const container = document.getElementById('adminDashboardContent');
                 if (!container) return;
-
-                this._lastRenderPayload = { deliverables, trainingCompletions, tasks, candidates, hours, bugReportsPayload, taskCounts, dashboardUsers };
 
                 // Don't cache bug reports during render - let View button fetch fresh data
                 // bugReportsUI.setCache(bugReportsPayload || { reports: [], meta: null });
@@ -22540,7 +20798,7 @@ async function loadRecommendationsForFilter() {
                 const pendingDeliverablesWeekly = weeklyDeliverables.filter(x => x.status === 'pending').length;
                 const deliverablesCountAllTime = (deliverables || []).length;
 
-                const trainingCount = Array.isArray(trainingCompletions) ? trainingCompletions.length : 0;
+                const trainingCount = trainingCompletions.length;
                 const totalTasks = (taskCounts && typeof taskCounts.activeTotal === 'number') ? taskCounts.activeTotal : tasks.length;
                 const completedTasks = (taskCounts && typeof taskCounts.completedActive === 'number')
                     ? taskCounts.completedActive
@@ -22717,7 +20975,6 @@ async function loadRecommendationsForFilter() {
 
                 // Intelligence: Calculate productivity ratio
                 const productivityRatio = weeklyHours > 0.5 ? (deliverablesCountWeekly / weeklyHours).toFixed(1) : 'N/A';
-                const learningKnowledgeHtml = renderAdminLearningKnowledgeSection(trainingCompletions, dashboardUsers, this.selectedLearningUser);
                 
                 // DEBUG: Final calculated values
                 console.log('[Admin Dashboard] Final calculations:', {
@@ -22756,7 +21013,7 @@ async function loadRecommendationsForFilter() {
                         <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: all 0.2s; cursor: pointer; border-left: 4px solid var(--azure);" onclick="adminDashboard.showHoursDetail()" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.05)'; this.style.transform='translateY(0)'">
                             <div style="font-size: 36px; font-weight: 900; color: var(--azure); margin-bottom: 8px; line-height: 1;">${weeklyHours.toFixed(1)}h</div>
                             <div style="font-size: 14px; font-weight: 600; color: var(--cobalt); margin-bottom: 4px;">This Week's Hours</div>
-                            <div style="font-size: 12px; color: #6b7280;">All time: ${totalHours.toFixed(1)}h | click for team detail</div>
+                            <div style="font-size: 12px; color: #6b7280;">All time: ${totalHours.toFixed(1)}h</div>
                             ${productivityRatio !== 'N/A' ? `<div style="font-size: 11px; color: var(--emerald); font-weight: 600; margin-top: 4px;">Efficiency: ${productivityRatio} deliv/hr</div>` : ''}
                         </div>
                     </div>
@@ -22785,7 +21042,7 @@ async function loadRecommendationsForFilter() {
                         <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px;">
                             <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 20px 0;">Pipeline Intelligence</h3>
                             <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                                     <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                                         <div style="font-size: 24px; font-weight: 900; color: var(--cobalt); margin-bottom: 4px;">${total}</div>
                                         <div style="font-size: 12px; color: #6b7280;">Total Candidates</div>
@@ -22795,7 +21052,7 @@ async function loadRecommendationsForFilter() {
                                         <div style="font-size: 12px; color: #6b7280;">Overall Conversion</div>
                                     </div>
                                 </div>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px;">
+                                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
                                     <div style="background: #f9fafb; padding: 12px; border-radius: 6px; text-align: center; border: 1px solid #e5e7eb;">
                                         <div style="font-size: 20px; font-weight: 700; color: var(--cobalt);">${byStage.SCREENED}</div>
                                         <div style="font-size: 10px; color: #6b7280;">Screened</div>
@@ -22833,7 +21090,7 @@ async function loadRecommendationsForFilter() {
                         <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px;">
                             <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 20px 0;">Task Ecosystem</h3>
                             <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                                     <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                                         <div style="font-size: 24px; font-weight: 900; color: var(--cobalt); margin-bottom: 4px;">${todo.length}</div>
                                         <div style="font-size: 12px; color: #6b7280;">To Do</div>
@@ -22871,7 +21128,7 @@ async function loadRecommendationsForFilter() {
                         <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px;">
                             <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 20px 0;">Productivity & Capacity</h3>
                             <div style="display: flex; flex-direction: column; gap: 20px;">
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;">
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
                                     <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; border-left: 4px solid var(--azure);">
                                         <div style="font-size: 24px; font-weight: 900; color: var(--azure); margin-bottom: 4px;">${weeklyHours.toFixed(1)}h</div>
                                         <div style="font-size: 12px; color: #6b7280; font-weight: 600;">This Week</div>
@@ -22905,7 +21162,17 @@ async function loadRecommendationsForFilter() {
                             </div>
                         </div>
 
-                        ${learningKnowledgeHtml}
+                        <!-- Learning & Knowledge -->
+                        <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px;">
+                            <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 20px 0;">Learning & Knowledge</h3>
+                            <div style="text-align: center; padding: 40px 20px;">
+                                <div style="font-size: 48px; margin-bottom: 16px;">Stats</div>
+                                <p style="color: #6b7280; margin-bottom: 20px; font-size: 15px;">Advanced learning analytics, pattern analysis, and scenario simulation</p>
+                                <a href="https://home2smart.com/analytics" target="_blank" class="btn" style="padding: 12px 24px; font-size: 14px; background: var(--cobalt); color: white; border: none; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; font-weight: 600;">
+                                    Open Analytics Dashboard >
+                                </a>
+                            </div>
+                        </div>
 
                         <!-- Forecast / Simulation -->
                         <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; margin-top: 24px;">
@@ -22956,11 +21223,11 @@ async function loadRecommendationsForFilter() {
             try {
                 const response = await fetch(`${API_URL}?action=trainingCompletions&vaName=all`);
                 const data = await response.json();
-                    const completions = data.trainingCompletions || data.completions || [];
+                    const completions = data.trainingCompletions || [];
                     
                     const byVA = {};
                     completions.forEach(c => {
-                        const va = c.Completed_By || c.completedBy || c.VA_Name || c.vaName || 'Unknown';
+                        const va = c.VA_Name || 'Unknown';
                         if (!byVA[va]) byVA[va] = [];
                         byVA[va].push(c);
                     });
@@ -22970,7 +21237,7 @@ async function loadRecommendationsForFilter() {
                         <div style="display: flex; flex-direction: column; gap: 16px;">
                                 ${Object.keys(byVA).length === 0 ? '<div style="text-align: center; padding: 40px; color: #6b7280;">No training completions found</div>' : Object.entries(byVA).map(([va, comps]) => {
                                 const totalMinutes = comps.reduce((sum, c) => sum + (c.Time_Spent_Minutes || 0), 0);
-                                const avgComprehension = comps.reduce((sum, c) => sum + (Number(c.Comprehension_Rating || c.Comprehension_Level || c.comprehensionRating || 0) || 0), 0) / comps.length;
+                                const avgComprehension = comps.reduce((sum, c) => sum + (c.Comprehension_Level || 0), 0) / comps.length;
                                 return `
                                         <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                                             <div style="font-weight: 700; font-size: 16px; color: var(--cobalt); margin-bottom: 12px;">${va}</div>
@@ -23186,7 +21453,6 @@ async function loadRecommendationsForFilter() {
                 }
             }
         };
-        window.adminDashboard = adminDashboard;
 
         /* ===== ADMIN FORECAST CALCULATOR (Inside Admin Dashboard) ===== */
         const adminForecastCalculator = {
@@ -24130,11 +22396,9 @@ async function loadRecommendationsForFilter() {
             },
             
             // GAP FIX #6: What-If Scenario Modeling
-            generateScenarios(inputsObj = null, baseCalcObj = null) {
-                const i = inputsObj || this.inputs;
-                
-                // We only calculate base if it wasn't passed, to avoid infinite recursion
-                const base = baseCalcObj || this.calculate();
+            generateScenarios() {
+                const i = this.inputs;
+                const base = this.calculate();
                 
                 // Conservative scenario (-10% conversion rates, +10% costs)
                 const conservative = {
@@ -24631,11 +22895,10 @@ async function loadRecommendationsForFilter() {
                 }
                 
                 // GAP FIX #8: Early warnings (proactive alerts)
-                const earlyWarnings = this.generateEarlyWarnings(i, {
+                const earlyWarnings = this.generateEarlyWarnings({
                     netMargin,
                     monthlyAdSpend,
-                    monthlyRevenue,
-                    leadToBookingRate: i.leadToBookingRate
+                    monthlyRevenue
                 });
                 
                 // GAP FIX #13: Auto-Optimization Engine - Rank suggestions by ROI impact
@@ -25267,7 +23530,7 @@ async function loadRecommendationsForFilter() {
         };
 
         /* ===== OFFER BUILDER - CART-BASED MULTI-SERVICE SYSTEM ===== */
-        // Ad Frameworks (TOF/BOF) - minimal reference + optional task packet creator.
+        // Ad Frameworks (TOF/BOF) ...“ minimal reference + optional task packet creator.
         // NOTE: Inline onclick handlers can reference global lexicals, but we also attach to window for safety.
         const adFrameworks = (() => {
             const state = {
@@ -25606,12 +23869,12 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'Any time someone could misunderstand the package or outcome.',
                     rule: 'If a stranger can repeat the offer in 5 seconds, rewrite it.',
                     examples: [
-                        `"${offerName}: clean, level, safe install. Quote in minutes."`,
-                        `"Includes mount + hardware check + clean finish. No surprises."`,
-                        `"Perfect for apartments and family rooms. Clean look, done right."`,
-                        `"Flat-rate options | upfront quote | clean finish."`,
-                        `"Same-day slots available | pro install | clean result."`,
-                        `"We bring the right hardware. You get a clean, safe setup."`
+                        `..."${offerName}: clean, level, safe install. Quote in minutes....`,
+                        `..."Includes mount + hardware check + clean finish. No surprises....`,
+                        `..."Perfect for apartments and family rooms. Clean look, done right....`,
+                        `..."Flat-rate options  | upfront quote  | clean finish....`,
+                        `..."Same-day slots available  | pro install  | clean result....`,
+                        `..."We bring the right hardware. You get a clean, safe setup....`
                     ],
                     recStages: ['TOF', 'BOF'],
                     optionalStages: [],
@@ -25626,12 +23889,12 @@ async function loadRecommendationsForFilter() {
                         useWhen: 'When people click but don book, or ask the same questions.',
                         rule: 'Name the objection, then answer it in one line.',
                         examples: [
-                            '"Upfront pricing. No surprises."',
-                            '"We protect floors and walls. Clean work."',
-                            '"If it is not right, we fix it."',
-                            '"Arrive on time. Respect your home."',
-                            '"Licensed + insured | pro hardware."',
-                            '"Text updates | simple scheduling."'
+                            '..."Upfront pricing. No surprises....',
+                            '..."We protect floors and walls. Clean work....',
+                            '..."If it not right, we fix it....',
+                            '..."Arrive on time. Respect your home....',
+                            '..."Licensed + insured  | pro hardware....',
+                            '..."Text updates  | simple scheduling....'
                         ],
                         recStages: ['BOF'],
                         optionalStages: ['TOF'],
@@ -25643,15 +23906,15 @@ async function loadRecommendationsForFilter() {
                     modules.push({
                         key: 'price',
                         title: 'Price anchor',
-                        purpose: 'Make the price feel reasonable via "normally vs today" (or "value vs price").',
+                        purpose: 'Make the price feel reasonable via ..."normally vs today... (or ..."value vs price...).',
                         useWhen: 'BOF retargeting, high-intent clicks, or when price sensitivity blocks conversion.',
-                        rule: 'Anchor -> clarify what is included -> give a simple CTA.',
+                        rule: 'Anchor ...-> clarify what included ...-> give a simple CTA.',
                         examples: [
-                            '"Normally $X. Today: $X - $DISCOUNT."',
-                            '"Book by $DEADLINE and we include $BONUS."',
-                            'TOF-safe fallback: "Transparent pricing | quote in minutes."',
-                            '"No hidden fees | upfront quote | pro install."',
-                            '"Bundle pricing beats a la carte."'
+                            '..."Normally $X. Today: $X ...- $DISCOUNT....',
+                            '..."Book by $DEADLINE and we include $BONUS....',
+                            'TOF-safe fallback: ..."Transparent pricing  | quote in minutes....',
+                            '..."No hidden fees  | upfront quote  | pro install....',
+                            '..."Bundle pricing beats a la carte....'
                         ],
                         recStages: ['BOF'],
                         optionalStages: ['TOF'],
@@ -25666,11 +23929,11 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'When you need urgency without discounting.',
                     rule: 'Only use real scarcity. Keep it specific.',
                     examples: [
-                        '"Limited installs this week. First come, first served."',
-                        '"Two crews | limited daily slots."',
-                        '"Spots available through $DEADLINE."',
-                        '"Next openings: today + tomorrow."',
-                        '"Schedule is filling. Grab a slot."'
+                        '..."Limited installs this week. First come, first served....',
+                        '..."Two crews  | limited daily slots....',
+                        '..."Spots available through $DEADLINE....',
+                        '..."Next openings: today + tomorrow....',
+                        '..."Schedule is filling. Grab a slot....'
                     ],
                     recStages: [],
                     optionalStages: ['BOTH'],
@@ -25684,11 +23947,11 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'TOF or when scroll-stopping is the issue.',
                     rule: 'Hook in 2 seconds. No fluff.',
                     examples: [
-                        '"Tired of a crooked / unsafe setup?"',
-                        `"Here is the cleanest way to get ${offerName}."`,
-                        `"If you want ${angle}, do this first."`,
-                        '"Stop the wobble. Make it clean + safe."',
-                        '"Make your living room look finished."'
+                        '..."Tired of a crooked / unsafe setup?...',
+                        `..."Here the cleanest way to get ${offerName}....`,
+                        `..."If you want ${angle}, do this first....`,
+                        '..."Stop the wobble. Make it clean + safe....',
+                        '..."Make your living room look finished....'
                     ],
                     recStages: ['TOF'],
                     optionalStages: ['BOF'],
@@ -25702,7 +23965,7 @@ async function loadRecommendationsForFilter() {
                     useWhen: 'Always. Proof is the easiest multiplier.',
                     rule: 'Put proof early (first 3 seconds / top third of static).',
                     examples: [
-                        '"200+ installs | clean finish | on-time."',
+                        '..."200+ installs  | clean finish  | on-time....',
                         'Use 1 review line + star visual + a proof photo.',
                         'If video: show the finished result before explaining.',
                         'Before/after: crooked ...-> clean + level.',
@@ -25763,7 +24026,7 @@ async function loadRecommendationsForFilter() {
                 const stageExplainer = (stage === 'TOF')
                     ? {
                         title: 'Top of Funnel (TOF)',
-                        para: 'TOF is for cold or warm audiences who do not know you yet. The job is to earn attention, make the problem obvious, and build trust fast, not to "close the sale" immediately.',
+                        para: 'TOF is for cold or warm audiences who do not know you yet. The job is to earn attention, make the problem obvious, and build trust fast, not to ..."close the sale... immediately.',
                         summary: 'Simple rule: TOF = hooks + proof + clarity. Keep offers light.'
                     }
                     : {
@@ -25773,10 +24036,10 @@ async function loadRecommendationsForFilter() {
                     };
 
                 const definitions = {
-                    headline: 'A short top-line promise. It answers "why should I care?" in one sentence.',
+                    headline: 'A short top-line promise. It answers ..."why should I care?... in one sentence.',
                     offer: 'What you are selling/promoting (bundle/package/promise).',
                     limitedAvailability: 'A real constraint (calendar/crew capacity). It gives urgency without discounting.',
-                    priceAnchor: 'Shows "normally vs today" (or "value vs price") so the price feels reasonable.'
+                    priceAnchor: 'Shows ..."normally vs today... (or ..."value vs price...) so the price feels reasonable.'
                 };
 
                 const vars = [
@@ -25795,12 +24058,12 @@ async function loadRecommendationsForFilter() {
 
                 const recommendedMix = (stage === 'TOF')
                     ? [
-                        'Start with: 1-2 short videos (15-30s) + 2 statics (problem/solution + proof).',
+                        'Start with: 1...“2 short videos (15...“30s) + 2 statics (problem/solution + proof).',
                         'Optional: carousel can work if it tells a simple story fast.',
                         'Avoid: hard price/discount language on cold audiences (often hurts CTR/quality).'
                     ]
                     : [
-                        'Start with: 2 offer statics + 1 objection-killer video (10-20s) + 1 proof/reviews static.',
+                        'Start with: 2 offer statics + 1 objection-killer video (10...“20s) + 1 proof/reviews static.',
                         'Optional: longer explainer video if audience is already warm.',
                         'Avoid: vague brand messaging with no terms/CTA (wastes retargeting budget).'
                     ];
@@ -25812,9 +24075,9 @@ async function loadRecommendationsForFilter() {
                     def: definitions.headline,
                     body: (stage === 'TOF')
                         ? [
-                            `"Tired of a crooked or unsafe setup?"`,
-                            `"Here is the cleanest way to get ${offerName || 'this done'}."`,
-                            `"If you want ${angle || 'a better result'}, do this first."`
+                            `..."Tired of a crooked / unsafe setup?...`,
+                            `..."Here the cleanest way to get ${offerName || 'this done'}....`,
+                            `..."If you want ${angle || 'a better result'}, do this first....`
                         ]
                         : [
                             `${offerName || 'TV Mounting Bundle'} - book this week`,
@@ -25828,8 +24091,8 @@ async function loadRecommendationsForFilter() {
                     def: definitions.offer,
                     body: [
                         `What included: ${offerName || 'TV mounting + clean cable management'} (keep it simple).`,
-                        `Who it is for: "Anyone who wants it clean, level, and safe."`,
-                        `CTA: "Get a quote" (TOF) / "Book now" (BOF).`
+                        `Who it for: ..."Anyone who wants it clean, level, and safe....`,
+                        `CTA: ..."Get a quote... (TOF) / ..."Book now... (BOF).`
                     ]
                 });
 
@@ -25837,9 +24100,9 @@ async function loadRecommendationsForFilter() {
                     title: 'Limited availability (scarcity)',
                     def: definitions.limitedAvailability,
                     body: [
-                        `"Limited installs this week. First come, first served."`,
-                        `"Spots available through $DEADLINE" (or "this week" if no hard date).`,
-                        `"Two crews | limited daily slots."`
+                        `..."Limited installs this week. First come, first served....`,
+                        `..."Spots available: $DEADLINE (or: ...˜this week...' if no hard date)....`,
+                        `..."Two crews  | limited daily slots....`
                     ]
                 });
 
@@ -25848,9 +24111,9 @@ async function loadRecommendationsForFilter() {
                         title: 'Price anchor (optional)',
                         def: definitions.priceAnchor,
                         body: [
-                            `Normally $PRICE. Today: $PRICE - $DISCOUNT (or: "Save $DISCOUNT").`,
+                            `Normally $PRICE. Today: $PRICE - $DISCOUNT (or: ..."Save $DISCOUNT...).`,
                             `Book by $DEADLINE and we include $BONUS.`,
-                            `If you cannot say numbers yet: use "Transparent pricing | quote in minutes" (TOF-friendly).`
+                            `If you can say numbers yet: use ..."Transparent pricing  | quote in minutes... (TOF-friendly).`
                         ]
                     });
                 }
@@ -25869,11 +24132,11 @@ async function loadRecommendationsForFilter() {
 
                 blocks.push({
                     title: 'Proof / reviews (trust)',
-                    def: 'Credibility fast: review snippet, before/after, "X installs", partner logos.',
+                    def: 'Credibility fast: review snippet, before/after, ..."X installs..., partner logos.',
                     body: [
                         `Use 1 review line + star visual + 1 proof photo.`,
                         `If video: 1 proof line in the first 3 seconds.`,
-                        `Example: "200+ installs | clean finish | on-time."`
+                        `Example: ..."200+ installs  | clean finish  | on-time....`
                     ]
                 });
 
@@ -25894,7 +24157,7 @@ async function loadRecommendationsForFilter() {
 
                 if (stage === 'TOF') {
                     add('UGC 30s Video (Hook + Proof)',
-                        `Stage: TOF (cold/warm).\nGoal: earn attention + build trust.\n\nStructure (30s):\n- 0-2s: Hook (problem/aspiration)\n- 2-10s: What happens if ignored\n- 10-22s: Simple solution + proof\n- 22-30s: Soft CTA (get quote / learn more)\n\nNotes:\n- Avoid heavy price/discount language on cold audiences.\n- Use proof: review line, before/after, "X installs".`);
+                        `Stage: TOF (cold/warm).\nGoal: earn attention + build trust.\n\nStructure (30s):\n- 0...“2s: Hook (problem/aspiration)\n- 2...“10s: What happens if ignored\n- 10...“22s: Simple solution + proof\n- 22...“30s: Soft CTA (get quote / learn more)\n\nNotes:\n- Avoid heavy price/discount language on cold audiences.\n- Use proof: review line, before/after, ..."X installs....`);
                     add('Static 1: Problem ...-> Solution',
                         `Stage: TOF.\nGoal: broad pain + simple promise.\n\nInclude:\n- Headline hook\n- 1 proof point\n- CTA: Get quote / Learn more\n\nNaming: ${naming.base.replace('{ASSET}', 'Static 01')}`);
                     add('Static 2: Proof / Reviews',
@@ -26034,8 +24297,8 @@ async function loadRecommendationsForFilter() {
                     }
                     : {
                         title: 'Top of Funnel (TOF) = Attention + trust',
-                        para: 'Use TOF for colder audiences. The job is to earn attention, make the problem obvious, and build trust fast, without trying to "close" too early.',
-                        doFirst: 'Headline/Hook -> Proof -> Offer clarity -> Soft CTA.',
+                        para: 'Use TOF for colder audiences. The job is to earn attention, make the problem obvious, and build trust fast, without trying to ..."close... too early.',
+                        doFirst: 'Headline/Hook ...-> Proof ...-> Offer clarity ...-> Soft CTA.',
                         avoid: 'Heavy price/discount language on cold audiences.'
                     };
 
@@ -26094,7 +24357,7 @@ async function loadRecommendationsForFilter() {
                     const showCheck = exists && !!m.checklist;
 
                     const st = (exists && showCheck) ? _getAutoChecklistStatus(stage, m.key) : null;
-                    const mark = st ? (st.complete ? '&#10003;' : (st.waiting ? '...' : '')) : '';
+                    const mark = st ? (st.complete ? '..."“' : (st.waiting ? '...|' : '')) : '';
                     const doneCls = st && st.complete ? 'is-done' : '';
                     const statusLabel = st ? (st.missing ? 'missing' : (st.complete ? 'done' : 'waiting')) : '';
                     const metaText = [String(meta || '').trim(), statusLabel].filter(Boolean).join('  | ');
@@ -26117,9 +24380,9 @@ async function loadRecommendationsForFilter() {
                         <summary>Glossary (quick definitions)</summary>
                         <div class="af-acc-body">
                             <div class="af-kv"><strong>Headline:</strong> One-sentence promise/problem that stops the scroll.</div>
-                            <div class="af-kv"><strong>Offer:</strong> What you are selling or promoting (bundle/package/promise).</div>
+                            <div class="af-kv"><strong>Offer:</strong> What youe selling/promoting (bundle/package/promise).</div>
                             <div class="af-kv"><strong>Limited availability:</strong> Real constraint (calendar/crew). Urgency without discounting.</div>
-                            <div class="af-kv"><strong>Price anchor:</strong> "Normally vs today" (or "value vs price") to make price feel reasonable.</div>
+                            <div class="af-kv"><strong>Price anchor:</strong> ..."Normally vs today... (or ..."value vs price...) to make price feel reasonable.</div>
                         </div>
                     </details>
                 `;
@@ -26161,7 +24424,7 @@ async function loadRecommendationsForFilter() {
                             <details class="af-acc" style="margin-top: 14px;">
                                 <summary>Task packet (optional)</summary>
                                 <div class="af-acc-body">
-                                    <div class="af-help">Creates tasks in Tasks -> To Do (category: Ads). Nothing touches Deliverables.</div>
+                                    <div class="af-help">Creates tasks in Tasks ...-> To Do (category: Ads). Nothing touches Deliverables.</div>
                                     <div class="af-code" style="margin-top:10px;">${escapeHtml(tasksPreview || 'No tasks yet.')}</div>
                                 </div>
                             </details>
@@ -26207,15 +24470,15 @@ async function loadRecommendationsForFilter() {
                                 <div class="af-card">
                                     <div class="af-card-title">Default build</div>
                                     <div class="af-help">${stage === 'BOF'
-                                        ? 'Start with: 2 offer statics + 1 objection-killer video (10-20s) + 1 proof/reviews static.'
-                                        : 'Start with: 1-2 short videos (15-30s) + 2 statics (problem/solution + proof).'
+                                        ? 'Start with: 2 offer statics + 1 objection-killer video (10...“20s) + 1 proof/reviews static.'
+                                        : 'Start with: 1...“2 short videos (15...“30s) + 2 statics (problem/solution + proof).'
                                     }</div>
                                     <div class="af-kv" style="margin-top:10px;"><strong>Optional:</strong> carousel can work if it tells a simple story fast.</div>
                                 </div>
                             </div>
 
                             <div class="af-grid" style="grid-template-columns: 1fr; margin-top: 14px;">
-                                ${modulesHtml || '<div class="af-card"><div class="af-card-title">Nothing to show</div><div class="af-help">Enable "Show optional" or check your inputs.</div></div>'}
+                                ${modulesHtml || '<div class="af-card"><div class="af-card-title">Nothing to show</div><div class="af-help">Enable ..."Show optional... or check your inputs.</div></div>'}
                             </div>
 
                         </div>
@@ -26482,7 +24745,7 @@ async function loadRecommendationsForFilter() {
                 const title = String(payload.title || '').trim();
                 const description = String(payload.description || '').trim();
                 const submittedBy = String(payload.submittedBy || '').trim() || 'ROSEL';
-                if (!title || !finalDescription) {
+                if (!title || !description) {
                     showToast('Missing title or description', 'error');
                     return;
                 }
@@ -27516,7 +25779,7 @@ async function loadRecommendationsForFilter() {
                             <div style="display:flex; flex-direction:column; gap: 8px;">${cards}</div>
                         </div>
                     `;
-                    showModal('Offer Title Suggestions', html, { width: '600px', maxHeight: '85vh', html: true, backdropClose: false, hideConfirm: true, hideActions: true });
+                    showModal('Offer Title Suggestions', html, { width: '760px', maxHeight: '85vh', html: true, backdropClose: false, hideConfirm: true, hideActions: true });
                 } catch (e) {
                     showToast(e && e.message ? e.message : 'Suggest title failed', 'error');
                 }
@@ -28116,7 +26379,7 @@ async function loadRecommendationsForFilter() {
                     const mm = String(t.getMinutes()).padStart(2, '0');
                     this._setAutosaveStatus(`Saved ${hh}:${mm}`, { tone: 'ok' });
 
-                    // Silent AI: refresh frameworks if the "meaningful" context changed.
+                    // Silent AI: refresh frameworks if the ..."meaningful... context changed.
                     try { this._queueSilentFrameworksRefresh(); } catch (_) {}
                 } catch (e) {
                     // Keep it quiet; don toast on autosave failures.
@@ -31873,7 +30136,7 @@ async function loadRecommendationsForFilter() {
                 const key = String(it.key || '').trim() || this._slugKey(title);
                 const checked = !!(chart && chart[st] && chart[st].checklist && key && chart[st].checklist[key]);
 
-                const dot = `<div class="fc-dot ${checked ? 'is-done' : ''}">${checked ? '&#10003;' : ''}</div>`;
+                const dot = `<div class="fc-dot ${checked ? 'is-done' : ''}">${checked ? '..."“' : ''}</div>`;
                 const action = readonly
                     ? ''
                     : `<button class="ob-btn ob-btn--tertiary ob-btn--small" onclick="offerBuilder._attachFromLibrary('${st}', { itemKey: '${String(key).replace(/'/g, "\\'")}' })" style="padding: 6px 10px; font-weight: 950;">Attach</button>`;
@@ -32230,7 +30493,7 @@ async function loadRecommendationsForFilter() {
                         base.idea_title = `Scarcity: ${offerLabel}`;
                         base.hook = `Limited slots this week.`;
                         base.primary_text = `Grab a spot before the schedule fills. Booking takes a minute and locks in your time.`;
-                        base.creative_direction = `Show a simple calendar view or "slots left" style visual with a clear deadline and CTA.`;
+                        base.creative_direction = `Show a simple calendar view or ..."slots left... style visual with a clear deadline and CTA.`;
                     } else {
                         base.idea_title = `Framework copy: ${offerLabel}`;
                         base.hook = `${offerLabel}`;
@@ -38058,7 +36321,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (!list.length) return;
 
                 if (this.state.uploadBusy) {
-                    showToast('Upload in progress - please wait', 'info');
+                    showToast('Upload in progress...”please wait', 'info');
                     return;
                 }
 
@@ -38393,7 +36656,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 let html = `
                     <div onclick="adResources.setFramework(null)" 
                         style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${active === null ? '800' : '500'}; color: ${active === null ? '#0f172a' : '#475569'}; background: ${active === null ? '#e2e8f0' : 'transparent'}; margin-bottom: 4px; display:flex; align-items:center; gap: 8px;">
-                        <span style="font-size: 16px;">All</span> All Creatives
+                        <span style="font-size: 16px;">ðŸ“‚</span> All Creatives
                     </div>
                 `;
                 
@@ -38406,7 +36669,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     html += `
                         <div onclick="adResources.setFramework('${this._esc(id)}')" 
                             style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${isActive ? '800' : '500'}; color: ${isActive ? '#0f172a' : '#475569'}; background: ${isActive ? '#e2e8f0' : 'transparent'}; margin-bottom: 2px; display:flex; align-items:center; gap: 8px;">
-                             <span style="font-size: 16px;">Fld</span> ${this._esc(title)}
+                             <span style="font-size: 16px;">ðŸ“</span> ${this._esc(title)}
                         </div>
                     `;
                 });
@@ -38416,7 +36679,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 html += `
                     <div onclick="adResources.setFramework('__uncat__')" 
                         style="cursor:pointer; padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: ${isUncat ? '800' : '500'}; color: ${isUncat ? '#0f172a' : '#475569'}; background: ${isUncat ? '#e2e8f0' : 'transparent'}; margin-top: 4px; display:flex; align-items:center; gap: 8px;">
-                        <span style="font-size: 16px;">Fld</span> Uncategorized
+                        <span style="font-size: 16px;">ðŸ“</span> Uncategorized
                     </div>
                 `;
                 
@@ -38703,7 +36966,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     <div style="padding: 14px 0; display:flex; flex-direction:column; gap: 10px;">
                         <div style="display:flex; flex-direction:column; gap: 6px;">
                             <div style="font-size: 12px; font-weight: 900; color:#0f172a;">Title</div>
-                            <input id="adNewCreativeTitle" placeholder="e.g. TV Mount Myth-bust - No studs?" style="height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
+                            <input id="adNewCreativeTitle" placeholder="e.g. TV Mount Myth-bust ...” No studs?" style="height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 13px; font-weight: 800;" />
                         </div>
                         <div style="display:flex; gap: 10px; flex-wrap:wrap;">
                             <div style="flex:1; min-width: 160px;">
@@ -38890,13 +37153,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const pane = document.getElementById('admin-pane');
                 if (pane && pane.classList.contains('active') && !pane.dataset.initialized) {
                     adminDashboard.refresh();
-                    pane.dataset.initialized = 'true';
-                }
-            } else if (tabName === 'workspace') {
-                const pane = document.getElementById('workspace-pane');
-                if (pane && pane.classList.contains('active')) {
-                    bindWorkspaceSummaryAutoRefresh();
-                    loadWorkspaceSummary(pane.dataset.initialized === 'true');
                     pane.dataset.initialized = 'true';
                 }
             } else if (tabName === 'offerbuilder') {
@@ -39524,303 +37780,3 @@ window.smsToggleDictation = function smsToggleDictation() {
         console.error(e);
     }
 };
-
-
-
-
-
-
-
-// Custom Select Injection
-const customSelectStyle = document.createElement('style');
-customSelectStyle.innerHTML = `
-/* Custom Select overriding */
-.custom-select-wrapper {
-    position: relative;
-    display: inline-block;
-    min-width: 140px;
-    font-family: inherit;
-    font-size: 13px;
-    user-select: none;
-    -webkit-user-select: none;
-}
-.custom-select-trigger {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 20px;
-    padding: 6px 14px;
-    color: #475569;
-    font-weight: 500;
-    cursor: pointer;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    transition: all 0.2s ease;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-}
-.custom-select-trigger:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
-}
-.custom-select-caret {
-    width: 14px;
-    height: 14px;
-    stroke: #94a3b8;
-    transition: transform 0.2s ease;
-}
-.custom-select-wrapper.open .custom-select-caret {
-    transform: rotate(180deg);
-}
-.custom-select-wrapper.open .custom-select-trigger {
-    border-color: var(--azure, #007aff);
-    box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
-}
-.custom-select-options {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 0;
-    right: 0;
-    background: #fff;
-    border-radius: 12px;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-    border: 1px solid #e2e8f0;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateY(-8px) scale(0.95);
-    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 9999;
-    padding: 6px;
-    min-width: 100%;
-}
-.custom-select-wrapper.open .custom-select-options {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translateY(0) scale(1);
-}
-.custom-select-option {
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    color: #334155;
-    font-weight: 500;
-    transition: background 0.15s ease, color 0.15s ease;
-    white-space: nowrap;
-}
-.custom-select-option:hover {
-    background: #f1f5f9;
-    color: #0f172a;
-}
-.custom-select-option.selected {
-    background: rgba(0, 122, 255, 0.08);
-    color: var(--azure, #007aff);
-    font-weight: 600;
-}
-  /* Mac style indicator for gallery tiles */
-.mac-select-ring {
-    position: absolute;
-    top: 12px;
-    left: 12px;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 1.5px solid rgba(255,255,255,0.8);
-    background: rgba(0,0,0,0.2);
-    cursor: pointer;
-    z-index: 10;
-    transition: all 0.2s ease;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
-}
-.gallery-tile:hover .mac-select-ring {
-    border-color: #fff;
-    background: rgba(255,255,255,0.3);
-}
-.gallery-tile.selected .mac-select-ring {
-    background: var(--azure, #007aff);
-    border-color: var(--azure, #007aff);
-}
-.gallery-tile.selected .mac-select-ring::after {
-    content: '';
-    position: absolute;
-    top: 4px;
-    left: 7px;
-    width: 4px;
-    height: 8px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-`;
-document.head.appendChild(customSelectStyle);
-
-function initializeCustomSelects() {
-    document.querySelectorAll('select:not(.customized)').forEach(select => {
-        if (select.style.display === 'none' || select.multiple) return;
-        select.classList.add('customized');
-        select.style.display = 'none';
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'custom-select-wrapper';
-        if (select.id) wrapper.id = select.id + '-wrapper';
-        if (select.style.float) wrapper.style.float = select.style.float;
-        
-        const trigger = document.createElement('div');
-        trigger.className = 'custom-select-trigger';
-        
-        const updateTriggerText = () => {
-            const opt = select.options[select.selectedIndex];
-            trigger.innerHTML = `<span>${opt ? opt.text : ''}</span><svg class="custom-select-caret" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M6 9l6 6 6-6"/></svg>`;
-        };
-        updateTriggerText();
-
-        const optionsMenu = document.createElement('div');
-        optionsMenu.className = 'custom-select-options';
-
-        const renderOptions = () => {
-            optionsMenu.innerHTML = '';
-            Array.from(select.options).forEach((opt, idx) => {
-                if (opt.value === "" && !opt.text.trim()) return;
-                
-                const optDiv = document.createElement('div');
-                optDiv.className = 'custom-select-option';
-                optDiv.textContent = opt.text;
-                if (select.selectedIndex === idx) optDiv.classList.add('selected');
-                
-                optDiv.onclick = (e) => {
-                    e.stopPropagation();
-                    select.selectedIndex = idx;
-                    select.dispatchEvent(new Event('change'));
-                    updateTriggerText();
-                    wrapper.classList.remove('open');
-                    Array.from(optionsMenu.children).forEach(c => c.classList.remove('selected'));
-                    optDiv.classList.add('selected');
-                };
-                optionsMenu.appendChild(optDiv);
-            });
-        };
-        renderOptions();
-
-        trigger.onclick = (e) => {
-            e.stopPropagation();
-            document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
-                if (w !== wrapper) w.classList.remove('open');
-            });
-            renderOptions();
-            wrapper.classList.toggle('open');
-            
-            if (wrapper.classList.contains('open')) {
-                const rect = optionsMenu.getBoundingClientRect();
-                if (rect.right > window.innerWidth) {
-                    optionsMenu.style.left = 'auto';
-                    optionsMenu.style.right = '0';
-                } else {
-                    optionsMenu.style.left = '0';
-                    optionsMenu.style.right = 'auto';
-                }
-            }
-        };
-
-        select.addEventListener('change', updateTriggerText);
-
-        wrapper.appendChild(trigger);
-        wrapper.appendChild(optionsMenu);
-        select.parentNode.insertBefore(wrapper, select.nextSibling);
-    });
-
-    document.addEventListener('click', () => {
-        document.querySelectorAll('.custom-select-wrapper.open').forEach(w => w.classList.remove('open'));
-    });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    initializeCustomSelects();
-    const observer = new MutationObserver((mutations) => {
-        let shouldInit = false;
-        for (let m of mutations) {
-            if (m.addedNodes.length) {
-                for (let n of m.addedNodes) {
-                    if (n.nodeType === 1 && (n.tagName === 'SELECT' || n.querySelector('select'))) {
-                        shouldInit = true;
-                        break;
-                    }
-                }
-            }
-            if (shouldInit) break;
-        }
-        if (shouldInit) initializeCustomSelects();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-});
-
-
-
-
-
-
-window.addDeliverableLinkFromInput = function() {
-    const input = document.getElementById('deliverableLinkInput');
-    if (!input) return;
-    
-    let url = input.value.trim();
-    if (!url) return;
-    
-    if (!/^https?:\/\//i.test(url)) {
-        url = 'https://' + url;
-    }
-    
-    const container = document.getElementById('deliverableAddedLinks');
-    if (!container) return;
-    
-    const chip = document.createElement('div');
-    chip.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #bbf7d0; animation: linkFadeIn 0.2s ease-out;';
-    
-    chip.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; max-width: 90%;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            <a href="${url}" target="_blank" class="deliverable-added-url" style="color: #15803d; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%;">${url}</a>
-        </div>
-        <button type="button" onclick="this.parentElement.remove()" style="background: none; border: none; color: #dc2626; border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(220, 38, 38, 0.1)'" onmouseout="this.style.background='transparent'" title="Remove link">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
-    `;
-    
-    container.appendChild(chip);
-    input.value = '';
-    input.focus();
-};
-
-
-window.addDeliverableLinkFromInput = function() {
-    const input = document.getElementById('deliverableLinkInput');
-    if (!input) return;
-    
-    let url = input.value.trim();
-    if (!url) return;
-    
-    if (!/^https?:\/\//i.test(url)) {
-        url = 'https://' + url;
-    }
-    
-    const container = document.getElementById('deliverableAddedLinks');
-    if (!container) return;
-    
-    const chip = document.createElement('div');
-    chip.style.cssText = 'display: flex; align-items: center; justify-content: space-between; background: #f0fdf4; padding: 10px 14px; border-radius: 6px; border: 1px solid #bbf7d0; animation: linkFadeIn 0.2s ease-out;';
-    
-    chip.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 10px; overflow: hidden; max-width: 90%;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-            <a href="${url}" target="_blank" class="deliverable-added-url" style="color: #15803d; text-decoration: none; font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 100%;">${url}</a>
-        </div>
-        <button type="button" onclick="this.parentElement.remove()" style="background: none; border: none; color: #dc2626; border-radius: 4px; padding: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='rgba(220, 38, 38, 0.1)'" onmouseout="this.style.background='transparent'" title="Remove link">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
-    `;
-    
-    container.appendChild(chip);
-    input.value = '';
-    input.focus();
-};
-
