@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home2Smart Quick Lead Funnel</title>
+  <meta name="description" content="Local-only quick lead funnel preview for Home2Smart.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./move-in-funnel.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="#top" aria-label="Home2Smart quick funnel preview home">
+        <span class="brand__mark">H2S</span>
+        <span class="brand__copy">
+          <strong>Home2Smart</strong>
+          <span>Quick lead funnel preview</span>
+        </span>
+      </a>
+      <span class="preview-badge">Local preview only</span>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero__inner">
+        <p class="eyebrow">Simple lead funnel / mobile first</p>
+        <h1>Need the new place set up right without chasing five different people?</h1>
+        <p class="hero__lede">This version stays close to the Bundles pace: one clear promise, one main action, one short form, and enough proof to make the next step feel easy.</p>
+
+        <div class="hero__actions">
+          <a class="button button-primary" href="#lead-form">Get a Quick Plan</a>
+          <a class="button button-secondary" href="#proof">Why people book</a>
+        </div>
+
+        <ul class="hero__checks" aria-label="Trust markers">
+          <li>Licensed and insured slot</li>
+          <li>Fast response slot</li>
+          <li>Warranty or no-pressure quote slot</li>
+        </ul>
+
+        <article class="hero-quote" id="proof">
+          <p class="hero-quote__stars">★★★★★</p>
+          <blockquote>“Professional, on-time, and clean installation.”</blockquote>
+          <p class="hero-quote__meta">Recent customer proof slot</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="proof-strip" aria-label="Trust stats">
+      <div class="proof-strip__inner">
+        <article>
+          <strong>500+</strong>
+          <span>Homes served slot</span>
+        </article>
+        <article>
+          <strong>4.9★</strong>
+          <span>Review score slot</span>
+        </article>
+        <article>
+          <strong>Licensed</strong>
+          <span>Credential slot</span>
+        </article>
+        <article>
+          <strong>Same-week</strong>
+          <span>Availability slot</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="intake-section">
+      <div class="intake-section__inner">
+        <div class="intake-copy">
+          <p class="section-kicker">Minimal intake</p>
+          <h2>Tell us the basics and we can shape the next step around the real job.</h2>
+          <p>This is intentionally lighter than the previous version. No extra framing, no fake complexity, just the core information you actually need to start the conversation.</p>
+
+          <ul class="simple-list">
+            <li>Good for TV mounting, cameras, locks, doorbells, and cleanup setup.</li>
+            <li>Works whether the offer ends up being quote-led, consult-led, or availability-led.</li>
+            <li>Stacks cleanly on mobile without a sticky side rail.</li>
+          </ul>
+        </div>
+
+        <div class="form-card" id="lead-form">
+          <div class="form-card__header">
+            <p class="section-kicker">Primary action</p>
+            <h2>Get a quick plan</h2>
+            <p>Final CTA text, policy language, and routing can change later. The structure is the part we are locking down now.</p>
+          </div>
+
+          <form class="lead-form" action="#" method="get">
+            <label>
+              <span>What do you need help with first?</span>
+              <select name="service">
+                <option>TV mounting</option>
+                <option>Security cameras</option>
+                <option>Doorbell or lock setup</option>
+                <option>Wi-Fi and device setup</option>
+                <option>Not sure yet</option>
+              </select>
+            </label>
+
+            <label>
+              <span>When do you need it?</span>
+              <select name="timing">
+                <option>This week</option>
+                <option>Within two weeks</option>
+                <option>This month</option>
+                <option>Just exploring</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Project details</span>
+              <textarea name="details" rows="4" placeholder="Example: one living room TV, front door camera, and I can send photos."></textarea>
+            </label>
+
+            <div class="form-row">
+              <label>
+                <span>Name</span>
+                <input type="text" name="name" placeholder="Full name">
+              </label>
+              <label>
+                <span>Phone</span>
+                <input type="tel" name="phone" placeholder="Best number">
+              </label>
+            </div>
+
+            <div class="form-row">
+              <label>
+                <span>ZIP code</span>
+                <input type="text" name="zip" placeholder="Service area">
+              </label>
+              <fieldset>
+                <legend>Best follow-up</legend>
+                <div class="pill-row">
+                  <label class="pill"><input type="radio" name="followup" checked> Text</label>
+                  <label class="pill"><input type="radio" name="followup"> Call</label>
+                </div>
+              </fieldset>
+            </div>
+
+            <button class="button button-primary button-block" type="submit">Get a Quick Plan</button>
+            <p class="form-footnote">Secondary actions can stay simple beneath this later: text photos or call now.</p>
+
+            <div class="preview-response" aria-live="polite" hidden>
+              <p class="preview-response__label">Preview state</p>
+              <p class="preview-response__message">Local preview only. This will route into your actual lead process later.</p>
+            </div>
+          </form>
+
+          <section class="intake-preview" aria-labelledby="intake-preview-title">
+            <div class="intake-preview__header">
+              <p class="section-kicker">Live summary</p>
+              <h3 id="intake-preview-title">What this lead currently says</h3>
+            </div>
+            <dl class="intake-preview__grid">
+              <div>
+                <dt>Need</dt>
+                <dd data-preview="service">TV mounting</dd>
+              </div>
+              <div>
+                <dt>Timing</dt>
+                <dd data-preview="timing">This week</dd>
+              </div>
+              <div>
+                <dt>Follow-up</dt>
+                <dd data-preview="followup">Text</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section class="reassurance-section">
+      <div class="reassurance-section__inner">
+        <div>
+          <p class="section-kicker">Why this shape works</p>
+          <h2>Small page. Clear next step. Easy to use on a phone.</h2>
+        </div>
+
+        <div class="reassurance-grid">
+          <article>
+            <h3>Fewer decisions</h3>
+            <p>The page does not ask the visitor to sort through packages before they know the next step.</p>
+          </article>
+          <article>
+            <h3>Better mobile flow</h3>
+            <p>The main form lives in the normal document flow, with full-width fields and large tap targets.</p>
+          </article>
+          <article>
+            <h3>Easy to rewrite later</h3>
+            <p>Offer promise, CTA copy, and pricing anchor can all change without rebuilding the layout.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const form = document.querySelector('.lead-form');
+      if (!form) return;
+
+      const response = form.querySelector('.preview-response');
+      const responseMessage = form.querySelector('.preview-response__message');
+      const previewTargets = {
+        service: document.querySelector('[data-preview="service"]'),
+        timing: document.querySelector('[data-preview="timing"]'),
+        followup: document.querySelector('[data-preview="followup"]')
+      };
+
+      const serviceSelect = form.querySelector('select[name="service"]');
+      const timingSelect = form.querySelector('select[name="timing"]');
+      const followupInputs = Array.from(form.querySelectorAll('input[name="followup"]'));
+
+      function readFollowup() {
+        const active = followupInputs.find((input) => input.checked);
+        return active ? active.parentElement.textContent.trim() : 'Text';
+      }
+
+      function syncPreview() {
+        previewTargets.service.textContent = serviceSelect.value;
+        previewTargets.timing.textContent = timingSelect.value;
+        previewTargets.followup.textContent = readFollowup();
+      }
+
+      form.addEventListener('input', syncPreview);
+      form.addEventListener('change', syncPreview);
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        syncPreview();
+        response.hidden = false;
+        responseMessage.textContent = 'Preview captured: ' + serviceSelect.value.toLowerCase() + ', ' + timingSelect.value.toLowerCase() + ', with ' + readFollowup().toLowerCase() + ' follow-up.';
+      });
+
+      syncPreview();
+    }());
+  </script>
+</body>
+</html>

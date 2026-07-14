@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { getSupabase } from '@/lib/supabase';
+import { getOwnerMediaAuthUser } from '@/lib/ownerMediaAuth';
+import { OWNER_MEDIA_DB_BUCKET, insertOwnerMediaUpload } from '@/lib/ownerMediaDb';
+import {
+  OWNER_MEDIA_BUCKET,
+  buildOwnerMediaObjectPath,
+  ensureOwnerMediaBucket,
+  getOwnerMediaStorageClient,
+} from '@/lib/ownerMediaStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -59,24 +67,67 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: 'file required' }, { status: 400, headers: corsHeaders(request) });
   }
 
+  const surface = String(form.get('surface') || '').trim().toLowerCase();
+  if (surface === 'owner_media') {
+    const authed = await getOwnerMediaAuthUser(request);
+    if (!authed) {
+      return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+    }
+
+    const bytes = Buffer.from(await file.arrayBuffer());
+    const saved = await insertOwnerMediaUpload({
+      filename: file.name || 'upload',
+      contentType: file.type || 'application/octet-stream',
+      mediaKind: String(form.get('media_kind') || '').trim() || (String(file.type || '').startsWith('video/') ? 'video' : 'photo'),
+      bytes,
+      uploadedByUserId: authed.userId,
+      uploadedByUsername: authed.username,
+      uploadedByDisplayName: authed.displayName,
+    });
+
+    return NextResponse.json(
+      {
+        ok: true,
+        bucket: OWNER_MEDIA_DB_BUCKET,
+        path: saved.asset_id,
+        public_url: `/api/proof-asset-media?bucket=${encodeURIComponent(OWNER_MEDIA_DB_BUCKET)}&path=${encodeURIComponent(saved.asset_id)}`,
+        content_type: saved.content_type,
+        file_size_kb: saved.file_size_kb,
+        media_kind: saved.media_kind,
+        original_name: saved.filename,
+        converted_to_mp4: false,
+        received_convert_to_mp4: String(form.get('convert_to_mp4') || ''),
+        warnings: [],
+      },
+      { headers: corsHeaders(request) },
+    );
+  }
+
   const bucket = chooseBucket(form.get('bucket'));
   const originalName = sanitizeBasename(file.name || 'upload');
   const ext = safeExtFromFilename(originalName);
-
-  const id = crypto.randomUUID();
-  const objectPath = `uploads/${id}${ext ? `.${ext}` : ''}`;
+  const objectPath = surface === 'owner_media'
+    ? buildOwnerMediaObjectPath(originalName)
+    : `uploads/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
 
   let client;
   try {
-    client = getSupabase();
+    if (surface === 'owner_media') {
+      client = getOwnerMediaStorageClient();
+      await ensureOwnerMediaBucket(client);
+    } else {
+      client = getSupabase();
+    }
   } catch {
     return NextResponse.json({ ok: false, error: 'Storage unavailable' }, { status: 503, headers: corsHeaders(request) });
   }
 
+  const targetBucket = surface === 'owner_media' ? OWNER_MEDIA_BUCKET : bucket;
+
   const bytes = Buffer.from(await file.arrayBuffer());
   const contentType = String(file.type || 'application/octet-stream');
 
-  const up = await client.storage.from(bucket).upload(objectPath, bytes, {
+  const up = await client.storage.from(targetBucket).upload(objectPath, bytes, {
     contentType,
     upsert: false,
   });
@@ -89,7 +140,7 @@ export async function POST(request: Request) {
 
   let publicUrl: string | null = null;
   try {
-    const pub = client.storage.from(bucket).getPublicUrl(objectPath);
+    const pub = client.storage.from(targetBucket).getPublicUrl(objectPath);
     publicUrl = String(pub?.data?.publicUrl || '').trim() || null;
   } catch {
     publicUrl = null;
@@ -98,7 +149,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       ok: true,
-      bucket,
+      bucket: targetBucket,
       path: objectPath,
       public_url: publicUrl,
       content_type: contentType,

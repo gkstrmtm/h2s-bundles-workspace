@@ -119,8 +119,8 @@ if ('serviceWorker' in navigator) {
   --h2s-border-strong:#1A3C6A;
   
   /* Gradients (Prompt Spec v1) */
-  --h2s-bg-root-gradient:radial-gradient(circle at top right,#0A2A5A 0%,#020617 100%);
-  --h2s-bg-card-gradient-soft:linear-gradient(135deg,#071426,#050D1A);
+  --h2s-bg-root-gradient:linear-gradient(180deg,#040a14 0%,#06101d 100%);
+  --h2s-bg-card-gradient-soft:linear-gradient(180deg,#071426,#06101c);
   
   /* ===== TYPOGRAPHY & TEXT (Prompt Spec v1) ===== */
   --h2s-text-main:#E6F2FF;
@@ -428,13 +428,13 @@ body{
   left:0;
   right:0;
   z-index:50;
-  background:rgba(5,13,26,0.95);
-  border-bottom:1px solid var(--h2s-border-subtle);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  background:rgba(5,13,26,0.98);
+  border-bottom:1px solid rgba(148,163,184,0.12);
+  backdrop-filter:blur(12px) saturate(120%);
+  -webkit-backdrop-filter:blur(12px) saturate(120%);
   height:56px;
   min-height:56px;
-  box-shadow:var(--shadow-sm);
+  box-shadow:none;
   transition:all 160ms ease-out;
 }
 .header.header-hidden{
@@ -483,11 +483,11 @@ body{
   border:1px solid var(--h2s-border-subtle);
   color:var(--h2s-text-main);
   cursor:pointer;
-  transition:all 0.2s ease;
+  transition:background-color 0.2s ease,border-color 0.2s ease,color 0.2s ease;
 }
 .h2s-header-icon:hover{
-  background:var(--h2s-bg-card);
-  border-color:var(--h2s-border-strong);
+  background:rgba(255,255,255,0.04);
+  border-color:rgba(148,163,184,0.22);
 }
 .h2s-header-icon:active{
   transform:scale(0.95);
@@ -545,9 +545,9 @@ body{
 .menu-overlay{
   position:fixed;
   inset:0;
-  background:rgba(2,6,23,0.95);
-  backdrop-filter:blur(24px) saturate(150%);
-  -webkit-backdrop-filter:blur(24px) saturate(150%);
+  background:rgba(2,6,23,0.92);
+  backdrop-filter:blur(12px) saturate(110%);
+  -webkit-backdrop-filter:blur(12px) saturate(110%);
   z-index:100;
   display:none;
   place-items:center;
@@ -558,9 +558,9 @@ body{
   display:grid;
 }
 .menu-sheet{
-  background:radial-gradient(circle at top right, rgba(20, 147, 255, 0.15), transparent 40%), rgba(2, 6, 23, 0.9);
-  backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px);
+  background:rgba(5, 13, 26, 0.98);
+  backdrop-filter:none;
+  -webkit-backdrop-filter:none;
   border:none;
   border-radius:0;
   padding:20px;
@@ -575,6 +575,8 @@ body{
   overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(148,163,184,0.36) rgba(255,255,255,0.05);
 }
 .menu-row{
   display:flex;
@@ -585,42 +587,51 @@ body{
   overflow-y:auto;
   overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
+  scrollbar-width:thin;
+  scrollbar-color:rgba(148,163,184,0.36) rgba(255,255,255,0.05);
+}
+.menu-sheet::-webkit-scrollbar,
+.menu-row::-webkit-scrollbar{
+  width:10px;
+}
+.menu-sheet::-webkit-scrollbar-track,
+.menu-row::-webkit-scrollbar-track{
+  background:rgba(255,255,255,0.05);
+  border-radius:999px;
+}
+.menu-sheet::-webkit-scrollbar-thumb,
+.menu-row::-webkit-scrollbar-thumb{
+  background:rgba(148,163,184,0.34);
+  border-radius:999px;
+  border:2px solid rgba(5,13,26,0.9);
+}
+.menu-sheet::-webkit-scrollbar-thumb:hover,
+.menu-row::-webkit-scrollbar-thumb:hover{
+  background:rgba(148,163,184,0.48);
 }
 .menu-item{
   background:transparent;
-  border:none;
+  border:1px solid transparent;
   border-radius:12px;
   padding:14px 16px;
   font-size:15px;
   font-weight:500;
   color:var(--h2s-text-main);
   cursor:pointer;
-  transition:all 0.2s ease;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-}
-.menu-item:hover{
-  background:rgba(20, 147, 255, 0.1);
-  color:#fff;
-  transition:all 0.2s ease;
-  text-align:left;
+  transition:background-color 0.2s ease,border-color 0.2s ease,color 0.2s ease;
   display:flex;
   align-items:center;
   justify-content:space-between;
   min-height:52px;
-}
-.menu-item:active{
-  background:rgba(20, 147, 255, 0.15);
+  text-align:left;
 }
 .menu-item:hover{
-  background:rgba(59, 130, 246, 0.12);
-  border-color:rgba(59, 130, 246, 0.3);
-  transform:translateX(2px);
+  background:rgba(255,255,255,0.05);
+  color:#fff;
+  border-color:rgba(148,163,184,0.16);
 }
 .menu-item:active{
-  transform:translateX(1px);
-  background:rgba(59, 130, 246, 0.18);
+  background:rgba(255,255,255,0.08);
 }
 .menu-close{
   display:flex;
@@ -1256,6 +1267,13 @@ select.input:hover,select.select:hover{
   background:color-mix(in srgb, var(--h2s-accent-danger) 90%, white);
 }
 .muted{font-size:13px;opacity:.8;margin-top:6px;color:var(--h2s-text-muted)}
+.portal-jobs-empty{
+  margin:8px 0 0;
+  padding:0;
+  font-size:13px;
+  line-height:1.5;
+  text-align:left;
+}
 .error{
   display:none;
   margin-top:12px;
@@ -6668,16 +6686,16 @@ a:focus-visible{
         <h2 style="margin-top:32px">Pending offers</h2>
         <div id="geoStatusBanner" style="display:none;margin:10px 0 14px;padding:12px 14px;border-radius:12px;border:1px solid rgba(20,147,255,0.22);background:rgba(20,147,255,0.06);color:#cfe6ff;font-size:13px;line-height:1.35"></div>
         <div id="list-offers" class="list"></div>
-        <div class="muted" id="offers-empty" style="display:none;padding:48px 24px;text-align:center;font-size:14px;line-height:1.6"></div>
+        <div class="muted portal-jobs-empty" id="offers-empty" style="display:none"></div>
 
         <h2 style="margin-top:22px">Upcoming jobs</h2>
         <div id="route-summary"></div>
         <div id="list-upcoming" class="list"></div>
-        <p class="muted" id="upcoming-empty" style="display:none">No accepted upcoming jobs.</p>
+        <p class="muted portal-jobs-empty" id="upcoming-empty" style="display:none">No accepted upcoming jobs.</p>
 
         <h2 style="margin-top:22px">Completed jobs</h2>
         <div id="list-completed" class="list"></div>
-        <p class="muted" id="completed-empty" style="display:none">No completed jobs yet.</p>
+        <p class="muted portal-jobs-empty" id="completed-empty" style="display:none">No completed jobs yet.</p>
       </div>
 
       <div id="tab-customers" style="display:none; background:transparent; border:none; box-shadow:none">

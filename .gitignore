@@ -119,6 +119,29 @@ run_patch.bat
 deleted_lines.txt
 diff.txt
 temp_head.txt
+/.patch*.js
+/_fix*.js
+/_patch*.js
+/_test*.js
+/_tmp.js
+/_update_prompt.js
+/_rollback_*/
+/apply_visual_patch.ps1
+/backend-deploys.txt
+/clean.js
+/doReplace.js
+/do_fix.js
+/h.js
+/output.txt
+/persist.js
+/portal-rollback-candidates-*.md
+/remote_dash.css
+/remote_dash.html
+/remote_dash.js
+/resource.md
+/task-css-extract.css
+/test-results/
+/tmp-owner-upload-test-*.svg
 
 # Local probes (do not commit)
 debug-*.ps1
@@ -202,6 +225,7 @@ _vercel_deployments_page*.txt
 _vercel_list_page*.txt
 *.PORTAL_BUILD_*.*
 *.map
+.html-terminal-env/
 
 # Local dashboard artifacts (do not commit)
 archive/

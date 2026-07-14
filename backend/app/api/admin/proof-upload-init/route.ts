@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server';
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { getSupabase } from '@/lib/supabase';
+import {
+  OWNER_MEDIA_BUCKET,
+  buildOwnerMediaObjectPath,
+  ensureOwnerMediaBucket,
+  getOwnerMediaStorageClient,
+} from '@/lib/ownerMediaStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -60,24 +66,30 @@ export async function POST(request: Request) {
   }
 
   const bucket = chooseBucket(body.bucket);
+  const surface = String(body.surface || '').trim().toLowerCase();
   const filename = sanitizeBasename(String(body.filename || 'upload'));
   const ext = safeExtFromFilename(filename);
-
-  // Use a stable, non-guessable storage path.
-  // Keep uploads under a raw/ prefix so we can distinguish staged items.
-  const id = crypto.randomUUID();
-  const rawPath = `raw/${id}${ext ? `.${ext}` : ''}`;
+  const rawPath = surface === 'owner_media'
+    ? buildOwnerMediaObjectPath(filename)
+    : `raw/${crypto.randomUUID()}${ext ? `.${ext}` : ''}`;
 
   let client;
   try {
-    client = getSupabase();
+    if (surface === 'owner_media') {
+      client = getOwnerMediaStorageClient();
+      await ensureOwnerMediaBucket(client);
+    } else {
+      client = getSupabase();
+    }
   } catch {
     return NextResponse.json({ ok: false, error: 'Storage unavailable' }, { status: 503, headers: corsHeaders(request) });
   }
 
+  const targetBucket = surface === 'owner_media' ? OWNER_MEDIA_BUCKET : bucket;
+
   // Supabase signed upload URL
   // https://supabase.com/docs/reference/javascript/storage-from-createsigneduploadurl
-  const signed = await client.storage.from(bucket).createSignedUploadUrl(rawPath);
+  const signed = await client.storage.from(targetBucket).createSignedUploadUrl(rawPath);
   if (signed.error || !signed.data?.signedUrl) {
     return NextResponse.json(
       { ok: false, error: signed.error?.message || 'Failed to create signed upload URL' },
@@ -88,7 +100,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       ok: true,
-      bucket,
+      bucket: targetBucket,
       raw_path: signed.data.path || rawPath,
       signed_url: signed.data.signedUrl,
       token: signed.data.token || null,

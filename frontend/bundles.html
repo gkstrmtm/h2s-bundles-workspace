@@ -112,7 +112,7 @@ body{background:#fff;}
 .hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
 .hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .btn{padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;transition:all 0.2s;}
-.btn-primary{background:#1493ff;color:#fff;}
+.btn-primary{background:var(--azure);color:#fff;}
 .btn-ghost{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);}
 </style>
 
@@ -234,7 +234,7 @@ img, video { max-width: 100%; height: auto; }
 :root {
   --hero-bg-url: url("https://ulbzmgmxrqyipclrbohi.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp");
   --cobalt: #0a2a5a;
-  --azure: #1493ff;
+  --azure: #0e6bc6;  /* Darkened for WCAG AA contrast on white (~5.3:1) */
   --ink: #0b1420;
   --bg: #ffffff;
   --border: #e1e6ed;
@@ -645,7 +645,7 @@ body.modal-open {
   top: 4px;
   right: 4px;
   background: var(--azure);
-  color: var(--cobalt);
+  color: #fff;
   font-size: 11px;
   font-weight: 900;
   padding: 2px 5px;
@@ -3735,7 +3735,7 @@ body.modal-open {
 
     <!-- Hero banner media (optional) -->
     <div class="hero-media" id="heroMedia" style="display:none;" aria-hidden="true"></div>
-    
+
     <!-- Hero Review Carousel -->
     <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
       <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
@@ -3753,8 +3753,6 @@ body.modal-open {
         <div class="hero-review-dot"></div>
       </div>
     </div>
-
-
   </div>
 </section>
 
@@ -3817,212 +3815,229 @@ body.modal-open {
           </svg>
         </div>
         <h3>Flat-rate pricing</h3>
-        <p>No hidden fees, no surprises. The price you see is the price you pay.</p>
-      </div>
+        <!-- REVIEW CAROUSEL -->
+        <section class="review-carousel">
+          <div class="review-carousel-header">
+            <h2>What our customers say</h2>
+            <p>Real reviews from real installations. See why 500+ homeowners trust Home2Smart.</p>
+          </div>
+  
+          <div class="review-track-container">
+            <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
+              <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">JM</div>
+                  <div class="review-meta">
+                    <div class="review-name">John M.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
+              </div>
       
-      <div class="why-card">
-        <div class="why-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-        </div>
-        <h3>Workmanship guaranteed</h3>
-        <p>We stand behind our work. If something's wrong, we make it right.</p>
-      </div>
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">SL</div>
+                  <div class="review-meta">
+                    <div class="review-name">Sarah L.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
+              </div>
       
-      <div class="why-card">
-        <div class="why-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
-        </div>
-        <h3>Leave it cleaner</h3>
-        <p>Professional cleanup included. We treat your home like our own.</p>
-      </div>
-      
-      <div class="why-card">
-        <div class="why-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-            <line x1="12" y1="18" x2="12.01" y2="18"></line>
-          </svg>
-        </div>
-        <h3>Tech support included</h3>
-        <p>Device setup, app config, troubleshooting. We make sure it works.</p>
-      </div>
-    </div>
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">MT</div>
+                  <div class="review-meta">
+                    <div class="review-name">Michael T.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
+              </div>
+            </div>
+          </div>
+  
+          <div class="review-controls">
+            <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button class="review-nav review-next" onclick="scrollReviews('next')" aria-label="Next reviews">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- FAQ SECTION -->
+        <section class="faq-section">
+          <div class="faq-inner">
+            <div class="section-header" style="margin-bottom: 48px;">
+              <h2>Common questions</h2>
+              <p>Quick answers about our service, pricing, and process.</p>
+            </div>
     
-    <div class="guarantee-banner">
-      <div class="guarantee-content">
-        <div class="guarantee-badge">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            <path d="M9 12l2 2 4-4"></path>
-          </svg>
+            <div class="faq-list">
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>How quickly can you install?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Most installations happen within 48-72 hours of booking (subject to availability). Check real-time availability when you checkout to pick your preferred time.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you provide the mounting hardware?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes! All mounting brackets, hardware, and materials are included in your package price. We bring commercial-grade equipment rated for your specific TV/camera weight.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What if I need to cancel or reschedule?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Cancel or reschedule anytime before 24 hours of your appointment - no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Can you hide all the wires?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes - in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What payment methods do you accept?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking - nothing due at installation.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you offer a warranty?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes. Every install includes a 90-day workmanship warranty (labor). If a mount loosens or wiring we installed needs re-secured due to workmanship, we'll come back and fix it. Excludes equipment failures, pre-existing wall issues, damage from impacts/modifications, or changes made by others after the install.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What if my walls are brick or stone?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Not a problem. We have specialized anchors and mounting hardware for masonry surfaces. Installations on brick, stone, or concrete are covered under the same flat-rate pricing.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you provide the TVs and cameras, or just install them?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>We install equipment you already own or recently purchased. If you need help choosing the right TV or camera system, we're happy to provide recommendations based on your needs.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What areas do you serve?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>We serve Greenville, Spartanburg, and the surrounding Upstate SC region. Not sure if we cover your area? Enter your address at checkout or call us at (864) 528-1475 to confirm.</p>
+                </div>
+              </div>
+            </div>
+
+            <div style="text-align:center; margin-top: 22px;">
+              <button id="faqMoreBtn" class="btn btn-ghost" type="button" onclick="toggleFaqMore()" aria-expanded="false" style="display:inline-flex;">
+                Show more questions
+              </button>
+            </div>
+    
+            <div style="text-align: center; margin-top: 36px;">
+              <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Have a question that’s not listed?</p>
+              <a href="tel:864-528-1475" class="btn btn-ghost" style="display: inline-flex;">Call (864) 528-1475</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- FINAL CTA SECTION -->
+        <section class="final-cta-section">
+          <div class="final-cta-inner">
+            <h2>Book your installation today - Next available slots filling fast</h2>
+            <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
+            <div class="final-cta-buttons">
+              <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
+                Schedule TV Installation
+              </button>
+              <button class="btn" onclick="scrollToSection('security')" style="padding: 16px 32px; font-size: 17px; background: #fff; color: var(--cobalt); border: 2px solid #fff; font-weight: 800;">
+                Schedule Camera Install
+              </button>
+            </div>
+            <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
+              <span style="margin-right: 20px;">- Book instantly online</span>
+              <span style="margin-right: 20px;">- 90-day workmanship warranty</span>
+              <span>- Same-week availability</span>
+            </div>
+          </div>
+        </section>
+
         </div>
-        <div class="guarantee-text">
-          <strong>100% Satisfaction Guarantee</strong>
-          <p>If something isn't right, tell us and we'll make it right. If we can't reasonably resolve a workmanship issue, we'll refund the labor portion.</p>
+        <!-- End Outlet -->
+        </main>
+
+        <!-- Global Loader Overlay -->
+        <div id="h2s-loader" class="h2s-loader" aria-hidden="true" style="display:none">
+          <div class="h2s-loader-stage">
+            <div id="h2sLoaderSlices" class="h2s-loader-slices"></div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
 
-<!-- PROOF RAIL (WORK HISTORY) -->
-<section class="proof-rail-section" id="proofRailSection" style="display:none;">
-  <div class="proof-rail-inner">
-    <div class="section-header" style="margin-bottom: 18px; text-align: center;">
-      <h2>Recent installs</h2>
-      <p>Recent work from local jobs. Clean installs, done right.</p>
-    </div>
-    <div id="proofLocalControls" class="proof-local-controls" style="display:none;">
-      <label class="btn btn-ghost" style="display:inline-flex; gap: 8px; align-items: center; padding: 10px 14px; font-size: 13px;">
-        Load install photos/videos
-        <input id="proofLocalFiles" type="file" multiple accept="image/*,video/*" style="display:none;">
-      </label>
-      <div class="help" style="margin-top: 8px; font-size: 12px;">Local preview only (does not upload).</div>
-    </div>
-    <div class="proof-rail" id="proofRail" aria-label="Recent installation photos">
-      <!-- Populated by bundles.js from Proof Packs -->
-    </div>
-    <div style="display:flex; justify-content:center; margin-top:14px;">
-      <a class="btn btn-ghost" href="/gallery" style="text-decoration:none; padding:10px 14px; font-size:13px;">See more photos</a>
-    </div>
-  </div>
-</section>
-
-<!-- CTA BRIDGE -->
-<section class="cta-bridge">
-  <div class="cta-bridge-inner">
-    <p>Ready to book? Pick your package below</p>
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <line x1="12" y1="5" x2="12" y2="19"></line>
-      <polyline points="19 12 12 19 5 12"></polyline>
-    </svg>
-  </div>
-</section>
-
-<!-- TV MOUNTING SECTION -->
-<section class="section content-reveal reveal-delay-2" id="tv">
-  <div class="section-header">
-    <h2>TVs: pick by TV count</h2>
-    <p>Clean installs, book instantly. First TV $249, each additional discounted.</p>
-  </div>
-
-  <div class="package-grid">
-    <!-- Single TV -->
-    <article class="package">
-      <div class="package-header">
-        <h3 class="package-name">1 TV</h3>
-        <div class="package-price">$249</div>
-      </div>
-      <p class="package-promise">One TV mounted clean and ready to watch tonight.</p>
-      <div class="package-includes">
-        <strong>What's Included</strong>
-        <ul>
-          <li>TV securely mounted</li>
-          <li>Wire concealment (in-wall when feasible)</li>
-          <li>Streaming setup</li>
-          <li>Ready to go</li>
-        </ul>
-        <div class="warranty-badge">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-          90-Day Workmanship Warranty
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_single', '1 TV', 249)">
-        Schedule Installation
-      </button>
-      <div class="urgency-text">Limited Availability</div>
-    </article>
-
-    <!-- 2-TV Package (FEATURED) -->
-    <article class="package featured">
-      <div class="package-header">
-        <h3 class="package-name">2 TVs (recommended)</h3>
-        <div class="package-price">$428 <small style="opacity:.6">(save $70)</small></div>
-      </div>
-      <p class="package-promise">Two rooms, theater-ready. Same visit, better deal.</p>
-      <div class="package-includes">
-        <strong>What's Included</strong>
-        <ul>
-          <li>Both TVs mounted</li>
-          <li>Wire concealment (in-wall when feasible)</li>
-          <li>Streaming on both</li>
-          <li>One appointment</li>
-        </ul>
-        <div class="warranty-badge">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-          90-Day Workmanship Warranty
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_2pack', '2 TVs (recommended)', 428)">
-        Schedule Installation
-      </button>
-      <div class="urgency-text">Next Available: Tomorrow</div>
-    </article>
-
-    <!-- Multi-Room -->
-    <article class="package">
-      <div class="package-header">
-        <h3 class="package-name">3-4 TVs</h3>
-        <div class="package-price">From $699</div>
-      </div>
-      <p class="package-promise">Whole-home entertainment in one visit.</p>
-      <div class="package-includes">
-        <strong>What's Included</strong>
-        <ul>
-          <li>3-4 TVs mounted</li>
-          <li>Wire concealment (in-wall when feasible)</li>
-          <li>Streaming + soundbar</li>
-          <li>Universal remote</li>
-        </ul>
-        <div class="warranty-badge">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-          </svg>
-          90-Day Workmanship Warranty
-        </div>
-      </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3-4 TVs', 699)">
-        Schedule Installation
-      </button>
-      <div class="urgency-text">4 Slots Left This Week</div>
-    </article>
-
-    <!-- Custom -->
-    <article class="package">
-      <div class="package-header">
-        <h3 class="package-name">5+ TVs (quote)</h3>
-        <div class="package-price">Request Quote</div>
-      </div>
-      <p class="package-promise">Large properties or commercial setups, we'll design a plan.</p>
-      <div class="package-includes">
-        <strong>What's Included</strong>
-        <ul>
-          <li>Site consultation</li>
-          <li>Custom wiring plan</li>
-          <li>Volume pricing</li>
-          <li>Project manager</li>
-        </ul>
-      </div>
-      <button class="btn btn-secondary" onclick="safeRequestQuote('tv_custom')">
-        Request Quote
-      </button>
-    </article>
-  </div>
-</section>
-
-<!-- SECURITY CAMERAS SECTION -->
-<section class="section" id="security">
-  <div class="section-header">
-    <h2>Cameras: pick by coverage level</h2>
+        <!-- MENU DRAWER -->
     <p>Choose coverage by outcome - faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
@@ -4378,29 +4393,45 @@ body.modal-open {
 <aside class="cart-drawer" id="cartDrawer" onclick="event.stopPropagation()" style="content-visibility: auto;">
   <div class="cart-header">
     <h3 class="cart-title">Your Cart</h3>
-    <button class="btn-subtle" onclick="toggleCart()" style="padding: 6px 10px; font-size: 13px;">Close</button>
-  </div>
-  
-  <!-- Scrollable body -->
-  <div class="cart-body">
-    <!-- Bundle recommendations (smart swap suggestions) -->
-    <div id="bundlePanel" class="bundle-panel" style="display:none;min-height:60px"></div>
-    
-    <!-- Empty state -->
-    <div id="cartEmpty" class="cart-empty" hidden>
-      <p>Your cart is empty</p>
-      <p style="font-size: 13px; margin-top: 8px;">Pick a package to get started</p>
+    <h1>TV Mounting and Camera Installs<br>This Week.</h1>
+    <p>Licensed and insured installs. Book online in minutes, we'll confirm details and handle the rest. Same-week availability.</p>
+    <div class="hero-ctas">
+      <button class="btn btn-primary" onclick="scrollToSection('tv')">
+        Browse TV Packages
+      </button>
+      <button class="btn btn-ghost" onclick="scrollToSection('security')">
+        Browse Camera Options
+      </button>
     </div>
-    
-    <!-- Cart items -->
-    <div id="cartItems" class="cart-lines">
-      <!-- Items rendered by paintCart() -->
+        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
+        <div class="hero-review-author">Recent Customer</div>
+      </div>
+
+    <!-- Hero Review Carousel -->
+    <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
+      <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
+      <!-- API will populate this on load via renderHeroReviews() -->
+      <div class="hero-review-slide active">
+        <div class="hero-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
+        <div class="hero-review-author">Recent Customer</div>
+      </div>
+      <div class="hero-review-dots">
+        <div class="hero-review-dot active"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+      </div>
     </div>
-  </div>
-  
-  <!-- Footer -->
-  <div class="cart-foot">
-    <!-- Error display -->
+      <div class="hero-review-dots">
+        <div class="hero-review-dot active"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+        <div class="hero-review-dot"></div>
+      </div>
+    </div>
     <div id="checkoutError" class="checkout-error" role="alert" aria-live="polite" hidden>
       <span id="checkoutErrorMsg"></span>
       <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">x</button>
@@ -4444,203 +4475,220 @@ body.modal-open {
       <div class="kv" style="font-size: 16px; font-weight: 700; padding-top: 12px; border-top: 1px solid var(--border);">
         <span id="totalLabel">Total</span>
         <strong id="grandTotal">$0.00</strong>
-      </div>
-      <div class="note">Flat-rate pricing. No hidden fees. 90-day workmanship warranty.</div>
-    </div>
+        <!-- REVIEW CAROUSEL -->
+        <section class="review-carousel">
+          <div class="review-carousel-header">
+            <h2>What our customers say</h2>
+            <p>Real reviews from real installations. See why 500+ homeowners trust Home2Smart.</p>
+          </div>
+  
+          <div class="review-track-container">
+            <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
+              <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">JM</div>
+                  <div class="review-meta">
+                    <div class="review-name">John M.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
+              </div>
+      
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">SL</div>
+                  <div class="review-meta">
+                    <div class="review-name">Sarah L.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
+              </div>
+      
+              <div class="review-card">
+                <div class="review-header">
+                  <div class="review-avatar">MT</div>
+                  <div class="review-meta">
+                    <div class="review-name">Michael T.</div>
+                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
+                  </div>
+                </div>
+                <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
+              </div>
+            </div>
+          </div>
+  
+          <div class="review-controls">
+            <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button class="review-nav review-next" onclick="scrollReviews('next')" aria-label="Next reviews">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </section>
 
-    <!-- Proof (pre-CTA) -->
-    <div id="proofMini" class="proof-mini" style="display:none;">
-      <div class="proof-mini-title">Check out our recent work</div>
-      <div id="proofMiniTrack" class="proof-mini-track" aria-label="Recent installation proof"></div>
-      <div style="display:flex; justify-content:center; margin-top:12px;">
-        <a class="btn btn-ghost" href="/gallery" style="text-decoration:none; padding:10px 14px; font-size:13px;">See more</a>
-      </div>
-    </div>
+        <!-- FAQ SECTION -->
+        <section class="faq-section">
+          <div class="faq-inner">
+            <div class="section-header" style="margin-bottom: 48px;">
+              <h2>Common questions</h2>
+              <p>Quick answers about our service, pricing, and process.</p>
+            </div>
     
-    <!-- Actions -->
-    <div class="foot-actions">
-      <button class="btn btn-ghost" onclick="window.location.href='tel:864-528-1475'">
-        Prefer to call?
-      </button>
-      <button id="checkoutBtn" class="btn btn-primary">
-        Checkout
-      </button>
-    </div>
-  </div>
-</aside>
-
-<!-- BACKDROP -->
-<div class="backdrop" id="backdrop"></div>
-
-<!-- QUOTE REQUEST MODAL -->
-<div class="modal" id="quoteModal">
-  <div class="modal-content" style="max-width: 520px;">
-    <div class="modal-header">
-      <h3 id="quoteModalTitle">Request Custom Quote</h3>
-      <p id="quoteModalSubtitle">Tell us what you need and we'll get back to you fast</p>
-    </div>
-    <div class="modal-body" style="padding: 24px;">
-      <!-- Smart Fields for Dynamic Quote -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Type</label>
-          <select id="quoteType" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
-            <option value="tv">TV Mounting</option>
-            <option value="camera">Security Cameras</option>
-            <option value="both">Both / Other</option>
-          </select>
-        </div>
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Quantity</label>
-          <input type="number" id="quoteQty" class="inp" value="1" min="1" max="50" style="width: 100%;" onchange="updateQuoteEstimate()" oninput="updateQuoteEstimate()">
-        </div>
-      </div>
+            <div class="faq-list">
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>How quickly can you install?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Most installations happen within 48-72 hours of booking (subject to availability). Check real-time availability when you checkout to pick your preferred time.</p>
+                </div>
+              </div>
       
-      <div style="margin-bottom: 16px;">
-        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Surface / Wall Type</label>
-        <select id="quoteSurface" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
-          <option value="drywall">Drywall (Standard)</option>
-          <option value="brick">Brick / Stone / Concrete (+$50/item)</option>
-          <option value="commercial">Commercial / High Ceiling</option>
-        </select>
-      </div>
-
-      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-weight: 600; color: #166534; font-size: 14px;">Estimated Range:</span>
-        <span id="quoteEstimateValue" style="font-weight: 800; color: #15803d; font-size: 18px;">$149 - $199</span>
-      </div>
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you provide the mounting hardware?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes! All mounting brackets, hardware, and materials are included in your package price. We bring commercial-grade equipment rated for your specific TV/camera weight.</p>
+                </div>
+              </div>
       
-      <div style="display: grid; gap: 16px;">
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Your Name *</label>
-          <input type="text" id="quoteName" class="inp" placeholder="John Smith" style="width: 100%;" required>
-        </div>
-        
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Email *</label>
-          <input type="email" id="quoteEmail" class="inp" placeholder="john@example.com" style="width: 100%;" required>
-        </div>
-        
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Phone *</label>
-          <input type="tel" id="quotePhone" class="inp" placeholder="(864) 528-1475" style="width: 100%;" required>
-        </div>
-        
-        <div>
-          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Details</label>
-          <textarea id="quoteDetails" class="inp" placeholder="Tell us about your project..." style="width: 100%; min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
-        </div>
-        
-        <div id="quoteMessage" class="help" style="margin-top: 4px;"></div>
-      </div>
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What if I need to cancel or reschedule?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Cancel or reschedule anytime before 24 hours of your appointment - no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+                </div>
+              </div>
       
-      <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
-        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">Prefer to call?</div>
-        <a href="tel:864-528-1475" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f9ff; border: 1px solid #d7eafc; border-radius: 8px; text-decoration: none; color: var(--cobalt); font-weight: 600; transition: all 0.2s;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-          </svg>
-          <span>(864) 528-1475</span>
-        </a>
-      </div>
-    </div>
-    <div class="modal-footer" style="gap: 8px;">
-      <button class="btn btn-primary" id="submitQuoteBtn" onclick="submitQuoteRequest()" style="flex: 1;">
-        Send Request
-      </button>
-      <button class="btn btn-subtle" id="cancelQuoteBtn" onclick="safeCloseQuoteModal()">Cancel</button>
-    </div>
-  </div>
-</div>
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Can you hide all the wires?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes - in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What payment methods do you accept?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking - nothing due at installation.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you offer a warranty?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Yes. Every install includes a 90-day workmanship warranty (labor). If a mount loosens or wiring we installed needs re-secured due to workmanship, we'll come back and fix it. Excludes equipment failures, pre-existing wall issues, damage from impacts/modifications, or changes made by others after the install.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What if my walls are brick or stone?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>Not a problem. We have specialized anchors and mounting hardware for masonry surfaces. Installations on brick, stone, or concrete are covered under the same flat-rate pricing.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>Do you provide the TVs and cameras, or just install them?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>We install equipment you already own or recently purchased. If you need help choosing the right TV or camera system, we're happy to provide recommendations based on your needs.</p>
+                </div>
+              </div>
+      
+              <div class="faq-item faq-more">
+                <button class="faq-question" onclick="toggleFaq(this)">
+                  <span>What areas do you serve?</span>
+                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+                <div class="faq-answer">
+                  <p>We serve Greenville, Spartanburg, and the surrounding Upstate SC region. Not sure if we cover your area? Enter your address at checkout or call us at (864) 528-1475 to confirm.</p>
+                </div>
+              </div>
+            </div>
 
-<!-- MODAL -->
-<div class="modal" id="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3 id="modalTitle">Package Selected</h3>
-      <p id="modalSubtitle">We'll finalize the details during your free consultation.</p>
-    </div>
-    <div class="modal-body" id="modalBody">
-      <!-- Dynamic content -->
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-primary" id="modalPrimaryCTA" onclick="addPackageToCart()">Add to Cart</button>
-      <button class="btn btn-subtle" onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
-</div>
+            <div style="text-align:center; margin-top: 22px;">
+              <button id="faqMoreBtn" class="btn btn-ghost" type="button" onclick="toggleFaqMore()" aria-expanded="false" style="display:inline-flex;">
+                Show more questions
+              </button>
+            </div>
+    
+            <div style="text-align: center; margin-top: 36px;">
+              <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Have a question that’s not listed?</p>
+              <a href="tel:864-528-1475" class="btn btn-ghost" style="display: inline-flex;">Call (864) 528-1475</a>
+            </div>
+          </div>
+        </section>
 
-<!-- SEO: Structured Data (JSON-LD) -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "LocalBusiness",
-  "name": "Home2Smart",
-  "description": "Professional smart home installation services including TV mounting and security camera installation",
-  "url": "https://home2smart.com",
-  "telephone": "+1-864-528-1475",
-  "priceRange": "$$",
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "4.9",
-    "reviewCount": "500"
-  },
-  "areaServed": {
-    "@type": "State",
-    "name": "South Carolina"
-  },
-  "hasOfferCatalog": {
-    "@type": "OfferCatalog",
-    "name": "Installation Services",
-    "itemListElement": [
-      {
-        "@type": "Offer",
-        "itemOffered": {
-          "@type": "Service",
-          "name": "TV Mounting Installation",
-          "description": "Professional TV mounting with wire concealment"
-        },
-        "price": "249",
-        "priceCurrency": "USD"
-      },
-      {
-        "@type": "Offer",
-        "itemOffered": {
-          "@type": "Service",
-          "name": "Security Camera Installation",
-          "description": "Complete security camera system installation"
-        },
-        "price": "599",
-        "priceCurrency": "USD"
-      }
-    ]
-  }
-}
-</script>
+        <!-- FINAL CTA SECTION -->
+        <section class="final-cta-section">
+          <div class="final-cta-inner">
+            <h2>Book your installation today - Next available slots filling fast</h2>
+            <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
+            <div class="final-cta-buttons">
+              <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
+                Schedule TV Installation
+              </button>
+              <button class="btn" onclick="scrollToSection('security')" style="padding: 16px 32px; font-size: 17px; background: #fff; color: var(--cobalt); border: 2px solid #fff; font-weight: 800;">
+                Schedule Camera Install
+              </button>
+            </div>
+            <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
+              <span style="margin-right: 20px;">- Book instantly online</span>
+              <span style="margin-right: 20px;">- 90-day workmanship warranty</span>
+              <span>- Same-week availability</span>
+            </div>
+          </div>
+        </section>
 
-<!-- Performance: Detect when Archivo font loads and apply it -->
-<!-- Font loading handled by CSS font-display: swap -->
-
-<!-- FAQ & Review Navigation Functions -->
-<script>
-// FAQ toggle
-window.toggleFaq = function(btn) {
-  try {
-    var item = btn.closest('.faq-item');
-    if (!item) return;
-    var wasOpen = item.classList.contains('open');
-    item.classList.toggle('open');
-  } catch (e) {
-    console.error('toggleFaq error:', e);
-  }
-};
-
-// FAQ show more/less
-window.toggleFaqMore = function() {
-  try {
-    var section = document.querySelector('.faq-section');
-    var btn = document.getElementById('faqMoreBtn');
-    if (!section || !btn) return;
+        </div>
+        <!-- End Outlet -->
+        </main>
 
     var isExpanded = section.classList.toggle('show-more');
     btn.textContent = isExpanded ? 'Show fewer questions' : 'Show more questions';

@@ -2,6 +2,18 @@
 
 Production backend API and frontend for Home2Smart home services business.
 
+## Collaboration Model
+
+- Stable branch: [main](docs/PORTAL_BRANCH_WORKFLOW.md)
+- Foundational media-engine branch: `retro-dev`
+- Other major portal changes should use separate feature branches, not `main`
+
+Start here before making portal changes:
+
+- [docs/PORTAL_BRANCH_WORKFLOW.md](docs/PORTAL_BRANCH_WORKFLOW.md)
+- [docs/PORTAL_WORKSTREAMS.md](docs/PORTAL_WORKSTREAMS.md)
+- [docs/OWNER_UPLOADS_ENGINE.md](docs/OWNER_UPLOADS_ENGINE.md)
+
 ## Kickoff / Handoff
 
 - Primary handoff doc: [KICKOFF_CHECKLIST.md](KICKOFF_CHECKLIST.md)

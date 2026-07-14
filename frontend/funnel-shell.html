@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home2Smart Campaign Funnel Shell</title>
+  <meta name="description" content="Local-only campaign funnel shell for Home2Smart offer exploration.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./funnel-shell.css">
+</head>
+<body>
+  <header class="shell-header">
+    <div class="shell-header__inner">
+      <a class="brand" href="./bundles.html">
+        <img src="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" alt="Home2Smart logo" class="brand__logo" width="40" height="40">
+        <span class="brand__lockup">
+          <span class="brand__name">Home2Smart</span>
+          <span class="brand__sub">Campaign funnel shell</span>
+        </span>
+      </a>
+      <div class="shell-header__actions">
+        <span class="status-pill">Local preview only</span>
+        <a class="text-link" href="#intakeCard">Jump to lead form</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="section hero">
+      <div class="section-label">Offer shell</div>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">Move-in and transition campaign</p>
+          <h1>A sharper acquisition page for customers who need the setup handled.</h1>
+          <p class="lede">
+            This is a working shell for the promise, price anchor, CTA language, and intake flow.
+            The layout is stable. The offer details are still meant to change.
+          </p>
+
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="#intakeCard">Primary CTA slot</a>
+            <a class="btn btn-subtle" href="#flow">Review funnel flow</a>
+          </div>
+
+          <div class="hero-notes">
+            <article class="note-card">
+              <span class="note-card__label">Promise slot</span>
+              <strong>[ Outcome-led promise goes here ]</strong>
+              <p>Use this block for the exact job-to-be-done statement once the offer is locked.</p>
+            </article>
+            <article class="note-card">
+              <span class="note-card__label">Price anchor slot</span>
+              <strong>[ Starting price or consult model goes here ]</strong>
+              <p>This should set expectation without forcing the page into a rigid package too early.</p>
+            </article>
+            <article class="note-card">
+              <span class="note-card__label">Risk reversal slot</span>
+              <strong>[ Warranty / quote / deposit logic goes here ]</strong>
+              <p>Keep this practical. It should reduce hesitation, not sound promotional.</p>
+            </article>
+          </div>
+        </div>
+
+        <aside class="intake-card" id="intakeCard">
+          <div class="intake-card__header">
+            <p class="intake-card__eyebrow">Primary task surface</p>
+            <h2>Request your setup plan</h2>
+            <p>Right now this is a shell for the qualification logic, field order, and CTA posture.</p>
+          </div>
+
+          <form class="intake-form">
+            <label class="form-field">
+              <span>Move timing</span>
+              <select>
+                <option>Already moved</option>
+                <option>Moving this week</option>
+                <option>Moving this month</option>
+                <option>Just exploring</option>
+              </select>
+            </label>
+
+            <div class="form-grid">
+              <label class="form-field">
+                <span>Property type</span>
+                <select>
+                  <option>Apartment</option>
+                  <option>Townhome</option>
+                  <option>Single-family</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label class="form-field">
+                <span>Ownership status</span>
+                <select>
+                  <option>Owner</option>
+                  <option>Renter</option>
+                  <option>Property manager</option>
+                  <option>Not sure yet</option>
+                </select>
+              </label>
+            </div>
+
+            <fieldset class="choice-group">
+              <legend>What needs attention first?</legend>
+              <div class="choice-grid">
+                <input type="checkbox" id="choice-tv" checked>
+                <label for="choice-tv">TV mounting</label>
+
+                <input type="checkbox" id="choice-cameras">
+                <label for="choice-cameras">Cameras</label>
+
+                <input type="checkbox" id="choice-locks">
+                <label for="choice-locks">Smart locks</label>
+
+                <input type="checkbox" id="choice-doorbell">
+                <label for="choice-doorbell">Doorbell</label>
+
+                <input type="checkbox" id="choice-wifi">
+                <label for="choice-wifi">Wi-Fi / devices</label>
+
+                <input type="checkbox" id="choice-other">
+                <label for="choice-other">Other</label>
+              </div>
+            </fieldset>
+
+            <label class="form-field">
+              <span>Project notes</span>
+              <textarea rows="4" placeholder="Examples: two TVs, one doorbell, need help deciding what to buy, can text photos"></textarea>
+            </label>
+
+            <div class="form-grid">
+              <label class="form-field">
+                <span>Name</span>
+                <input type="text" placeholder="Customer name">
+              </label>
+              <label class="form-field">
+                <span>ZIP</span>
+                <input type="text" placeholder="Service area ZIP">
+              </label>
+            </div>
+
+            <div class="form-grid">
+              <label class="form-field">
+                <span>Phone</span>
+                <input type="tel" placeholder="Best contact number">
+              </label>
+              <label class="form-field">
+                <span>Email</span>
+                <input type="email" placeholder="Email address">
+              </label>
+            </div>
+
+            <fieldset class="choice-group choice-group--single">
+              <legend>Preferred follow-up</legend>
+              <div class="choice-grid">
+                <input type="radio" id="follow-text" name="follow-up" checked>
+                <label for="follow-text">Text me</label>
+
+                <input type="radio" id="follow-call" name="follow-up">
+                <label for="follow-call">Call me</label>
+
+                <input type="radio" id="follow-quote" name="follow-up">
+                <label for="follow-quote">Send quote</label>
+              </div>
+            </fieldset>
+
+            <div class="form-footer">
+              <p class="meta-note">Consent language, routing, and final CTA copy will be set once the offer is curated.</p>
+              <button type="button" class="btn btn-primary btn-full">Primary CTA slot</button>
+            </div>
+          </form>
+        </aside>
+      </div>
+    </section>
+
+    <section class="trust-strip">
+      <div class="trust-strip__inner">
+        <article class="trust-stat">
+          <span class="trust-stat__label">Proof slot</span>
+          <strong>500+ homes</strong>
+          <p>Replace with the exact credibility number or regional proof you want to lead with.</p>
+        </article>
+        <article class="trust-stat">
+          <span class="trust-stat__label">Response model</span>
+          <strong>Fast human follow-up</strong>
+          <p>Keep this focused on the actual SLA you can hold operationally.</p>
+        </article>
+        <article class="trust-stat">
+          <span class="trust-stat__label">Positioning cue</span>
+          <strong>One team, multiple setup needs</strong>
+          <p>This is where the page should explain why the customer does not need multiple vendors.</p>
+        </article>
+        <article class="trust-stat">
+          <span class="trust-stat__label">Confidence cue</span>
+          <strong>Clear scope before booking</strong>
+          <p>Useful if the page stays lead-gen first instead of instant-book first.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <p class="section-label">Customer value</p>
+        <h2>What this page needs to make easy</h2>
+        <p>These are the core ideas the shell should communicate before we finalize exact offer language.</p>
+      </div>
+
+      <div class="card-grid card-grid--three">
+        <article class="panel-card">
+          <span class="mono-label">01</span>
+          <h3>Fast scope clarity</h3>
+          <p>The visitor should understand whether Home2Smart can handle the project without reading a long service catalog.</p>
+        </article>
+        <article class="panel-card">
+          <span class="mono-label">02</span>
+          <h3>Low-friction next step</h3>
+          <p>The form should feel like the easiest way to get a plan, not like a heavy quote intake process.</p>
+        </article>
+        <article class="panel-card">
+          <span class="mono-label">03</span>
+          <h3>Operational realism</h3>
+          <p>The page should promise a clean handoff, not automation that the current workflow does not support yet.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="flow">
+      <div class="section-header">
+        <p class="section-label">Funnel flow</p>
+        <h2>How the shell is structured to convert</h2>
+        <p>The main job is to move someone from interest to a qualified, attributable lead with minimal friction.</p>
+      </div>
+
+      <div class="process-grid">
+        <article class="process-step">
+          <span class="process-step__index">01</span>
+          <h3>Ad click meets a single promise</h3>
+          <p>Hero copy should answer what gets solved, who it is for, and why this is easier than piecing it together alone.</p>
+        </article>
+        <article class="process-step">
+          <span class="process-step__index">02</span>
+          <h3>Visitor sees the work categories</h3>
+          <p>TVs, locks, cameras, and Wi-Fi can all live under the same shell without turning the page into a service directory.</p>
+        </article>
+        <article class="process-step">
+          <span class="process-step__index">03</span>
+          <h3>Lead form qualifies the request</h3>
+          <p>Move timing, property type, scope clues, and contact path are enough to route the conversation intelligently.</p>
+        </article>
+        <article class="process-step">
+          <span class="process-step__index">04</span>
+          <h3>Operations follow through fast</h3>
+          <p>The page should support a clean response queue, not just a nice-looking front-end shell.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <p class="section-label">Offer modules</p>
+        <h2>Reusable blocks for the final offer</h2>
+        <p>These modules can survive offer changes, copy swaps, and pricing revisions without a layout rewrite.</p>
+      </div>
+
+      <div class="card-grid">
+        <article class="module-card">
+          <span class="module-card__label">What this helps with</span>
+          <h3>Category band</h3>
+          <div class="chip-row">
+            <span class="module-chip">TV mounting</span>
+            <span class="module-chip">Doorbells</span>
+            <span class="module-chip">Cameras</span>
+            <span class="module-chip">Smart locks</span>
+            <span class="module-chip">Wi-Fi setup</span>
+          </div>
+          <p>Use this zone to broaden relevance without losing the single campaign promise.</p>
+        </article>
+        <article class="module-card">
+          <span class="module-card__label">Price anchor zone</span>
+          <h3>Expectation setting</h3>
+          <ul class="module-list">
+            <li>Simple visit starting point</li>
+            <li>Credited consult version if needed</li>
+            <li>Custom scope language for larger work</li>
+          </ul>
+        </article>
+        <article class="module-card">
+          <span class="module-card__label">Risk reversal zone</span>
+          <h3>Confidence without fluff</h3>
+          <ul class="module-list">
+            <li>No-pressure quote path</li>
+            <li>Workmanship warranty slot</li>
+            <li>Scope confirmation before payment rule</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-alt" id="proof">
+      <div class="section-header">
+        <p class="section-label">Proof shell</p>
+        <h2>Proof and reassurance should feel concrete</h2>
+        <p>This page will work better with real installs, short review excerpts, and visible service expectations than with generic marketing imagery.</p>
+      </div>
+
+      <div class="proof-layout">
+        <div class="proof-wall">
+          <article class="proof-tile proof-tile--large">
+            <span class="tile-label">Install proof slot</span>
+            <strong>Before / after or completed job image</strong>
+            <p>Use real work, not stock photos.</p>
+          </article>
+          <article class="proof-tile">
+            <span class="tile-label">Review slot</span>
+            <strong>Short testimonial</strong>
+            <p>Keep it tied to visible outcome and professionalism.</p>
+          </article>
+          <article class="proof-tile">
+            <span class="tile-label">Service area slot</span>
+            <strong>Coverage note</strong>
+            <p>Helpful when the campaign is geographically targeted.</p>
+          </article>
+        </div>
+
+        <aside class="ops-rail">
+          <article class="rail-card">
+            <span class="rail-card__label">Operations note</span>
+            <h3>Response expectations</h3>
+            <p>Define the actual follow-up window here so the page stays aligned with real internal handling.</p>
+          </article>
+          <article class="rail-card">
+            <span class="rail-card__label">Intake note</span>
+            <h3>Photo text path</h3>
+            <p>If text-photo quoting is part of the offer, this rail can support it without competing with the main CTA.</p>
+          </article>
+          <article class="rail-card">
+            <span class="rail-card__label">Offer note</span>
+            <h3>Decision boundary</h3>
+            <p>Useful place to explain what gets a quick estimate versus what needs a custom scope review.</p>
+          </article>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <p class="section-label">Objections</p>
+        <h2>FAQ and hesitation handling</h2>
+        <p>These can be rewritten later, but the shell should already reserve space for the most likely objections.</p>
+      </div>
+
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary>Can this work for renters as well as homeowners?</summary>
+          <p>Yes. The final copy here should explain the practical differences in scope, permissions, and device choices.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What if the customer does not know what hardware to buy yet?</summary>
+          <p>Keep room for reassurance that planning help is available before the install is fully scoped.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can multiple services happen in one visit?</summary>
+          <p>This is where the page can reinforce the convenience of using one team for related setup work.</p>
+        </details>
+        <details class="faq-item">
+          <summary>How much detail does the customer need to submit?</summary>
+          <p>Explain the minimum useful info and position photo texting as the easiest fallback for uncertain leads.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="section-header">
+        <p class="section-label">Tracking and handoff</p>
+        <h2>Back-end checkpoints the shell should support</h2>
+        <p>The design should already make space for attribution, lead routing, and human follow-up rather than treating them as an afterthought.</p>
+      </div>
+
+      <div class="card-grid card-grid--three">
+        <article class="panel-card">
+          <span class="mono-label">track</span>
+          <h3>Hero CTA click</h3>
+          <p>Reserve this for the first clear conversion intent event tied to the campaign page.</p>
+        </article>
+        <article class="panel-card">
+          <span class="mono-label">lead</span>
+          <h3>Form start and submit</h3>
+          <p>Final implementation can reuse the existing tracking model and add campaign metadata.</p>
+        </article>
+        <article class="panel-card">
+          <span class="mono-label">ops</span>
+          <h3>Contacted and quoted</h3>
+          <p>These states matter if you want to learn which offer framing produces the strongest downstream leads.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-band">
+      <div class="final-band__inner">
+        <div>
+          <p class="section-label">Next layer</p>
+          <h2>Once the offer is curated, this shell can absorb the final copy without a layout rewrite.</h2>
+        </div>
+        <div class="final-band__actions">
+          <a class="btn btn-primary" href="#intakeCard">Review form shell</a>
+          <a class="btn btn-subtle" href="./bundles.html">Open Bundles reference</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

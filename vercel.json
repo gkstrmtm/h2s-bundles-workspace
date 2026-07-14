@@ -1,7 +1,6 @@
 {
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
@@ -24,6 +23,11 @@
         }
       ],
       "destination": "/dash",
+      "permanent": true
+    },
+    {
+      "source": "/schedule-setup",
+      "destination": "/schedule-setup.html",
       "permanent": true
     }
   ],

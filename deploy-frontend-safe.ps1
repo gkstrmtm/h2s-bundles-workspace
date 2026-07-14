@@ -23,8 +23,13 @@ function Get-VercelDeploymentUrlFromText([string]$text) {
 }
 
 function Set-VercelAlias([string]$deploymentUrl, [string]$aliasHost) {
+    if ([string]::IsNullOrWhiteSpace($deploymentUrl)) {
+        $deploymentUrl = $script:LastVercelDeploymentUrl
+    }
     if ([string]::IsNullOrWhiteSpace($deploymentUrl)) { throw "Missing deployment URL" }
     if ([string]::IsNullOrWhiteSpace($aliasHost)) { throw "Missing alias host" }
+
+    $script:LastVercelDeploymentUrl = $deploymentUrl
 
     $deploymentHost = ($deploymentUrl -replace '^https?://', '').TrimEnd('/')
     if ([string]::IsNullOrWhiteSpace($deploymentHost)) { throw "Invalid deployment URL: $deploymentUrl" }
@@ -315,7 +320,8 @@ try {
             if ($SyncShopAlias) {
                 Set-VercelAlias -deploymentUrl $deployUrl -aliasHost $ShopHost
             } else {
-                Write-Host "  INFO: Skipping shop alias (use -SyncShopAlias to enable)." -ForegroundColor DarkGray
+                Write-Host "  INFO: Syncing shop alias by default." -ForegroundColor DarkGray
+                Set-VercelAlias $deploymentUrl $ShopHost
             }
         } else {
             Write-Host "" 

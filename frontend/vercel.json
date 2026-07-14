@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
@@ -17,6 +16,21 @@
     {
       "source": "/dash.html",
       "destination": "/dash",
+      "permanent": false
+    },
+    {
+      "source": "/media.html",
+      "destination": "/media",
+      "permanent": false
+    },
+    {
+      "source": "/owner-media",
+      "destination": "/media",
+      "permanent": false
+    },
+    {
+      "source": "/owner-media.html",
+      "destination": "/media",
       "permanent": false
     },
     {
@@ -51,6 +65,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/(.*\\.(?:css|js|map|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|json|txt))",
+      "destination": "/$1"
+    },
     {
       "source": "/api/:path*",
       "destination": "https://h2s-backend.vercel.app/api/:path*"
@@ -148,6 +166,58 @@
     {
       "source": "/dash.html",
       "destination": "/dash.html"
+    },
+    {
+      "source": "/media",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/media.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/owner-media",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/owner-media.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "portal.home2smart.com"
+        }
+      ],
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/media",
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/media.html",
+      "destination": "/owner-media.html"
+    },
+    {
+      "source": "/owner-media",
+      "destination": "/owner-media.html"
     },
     {
       "source": "/funnel",
@@ -340,6 +410,16 @@
       "destination": "/bundles.html"
     },
     {
+      "source": "/schedule-setup",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/schedule-setup.html"
+    },
+    {
       "source": "/dashboard",
       "destination": "/dash.html"
     },
@@ -358,6 +438,10 @@
     {
       "source": "/bundles",
       "destination": "/bundles.html"
+    },
+    {
+      "source": "/schedule-setup",
+      "destination": "/schedule-setup.html"
     },
     {
       "source": "/reviews",

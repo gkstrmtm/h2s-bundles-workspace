@@ -3,6 +3,7 @@ import { getSupabase, getSupabaseDb1, getSupabaseDispatch, getSupabaseMgmt } fro
 import twilio from 'twilio';
 import OpenAI from 'openai';
 import taskCreator from '@/lib/task_creator';
+import trainingAdminCreate from '@/lib/training_admin_create';
 import { sendMail } from '@/lib/mail';
 import { normalizePhone } from '../_lib/phone';
 import crypto from 'node:crypto';
@@ -12,8 +13,14 @@ const {
   getMinWords,
   getTaskCategories,
   missingOutcomeQuestion,
-  normalizeText
+  normalizeText,
+  normalizeTaskSourceAnalysis,
+  validateGeneratedTaskDetails
 } = taskCreator as any;
+
+const {
+  validateCreateTrainingPayload
+} = trainingAdminCreate as any;
 
 type TrackingEventRow = {
   visitor_id?: string | null;
@@ -32,6 +39,188 @@ type TrackingEventRow = {
 const openai = process.env.OPENAI_API_KEY 
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
+
+function extractSuggestedTaskMeta(suggestedRaw: any) {
+  const suggested: any = {};
+  if (!suggestedRaw || typeof suggestedRaw !== 'object') return suggested;
+
+  const cat = typeof suggestedRaw.category === 'string' ? suggestedRaw.category.trim() : '';
+  const pri = typeof suggestedRaw.priority === 'string' ? suggestedRaw.priority.trim().toUpperCase() : '';
+  const dueDate = typeof suggestedRaw.due_date === 'string' ? suggestedRaw.due_date.trim() : '';
+  const dueTime = typeof suggestedRaw.due_time === 'string' ? suggestedRaw.due_time.trim() : '';
+  const rec = typeof suggestedRaw.recurrence === 'string' ? suggestedRaw.recurrence.trim().toLowerCase() : '';
+  const retention = typeof suggestedRaw.retention_days === 'number' ? suggestedRaw.retention_days : parseInt(String(suggestedRaw.retention_days || ''), 10);
+
+  if (cat) suggested.category = cat;
+  if (['HIGH', 'MEDIUM', 'LOW'].includes(pri)) suggested.priority = pri;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) suggested.dueDate = dueDate;
+  if (/^\d{2}:\d{2}$/.test(dueTime)) suggested.dueTime = dueTime;
+  if (['none', 'daily', 'weekly'].includes(rec)) suggested.recurrence = rec;
+  if (!Number.isNaN(retention) && retention > 0 && retention <= 365) suggested.retentionDays = retention;
+
+  return suggested;
+}
+
+function normalizeGeneratedTaskPayload(parsed: any) {
+  return {
+    aiDescription: typeof parsed?.description === 'string' ? parsed.description.trim() : '',
+    aiChecklist: Array.isArray(parsed?.checklist) ? parsed.checklist.map((item: any) => normalizeText(item)).filter(Boolean) : [],
+    aiAcceptance: Array.isArray(parsed?.acceptance) ? parsed.acceptance.map((item: any) => normalizeText(item)).filter(Boolean) : [],
+    aiDependencies: Array.isArray(parsed?.dependencies) ? parsed.dependencies.map((item: any) => normalizeText(item)).filter(Boolean) : [],
+    suggested: extractSuggestedTaskMeta(parsed?.suggested)
+  };
+}
+
+function buildTaskDetailsPrompt(fields: any, options: any = {}) {
+  const qualityFeedback = safeTrim(options?.qualityFeedback || '');
+  const previousJson = options?.previousJson ? JSON.stringify(options.previousJson, null, 2) : '';
+
+  return `You are converting a rough request into an execution-ready task for a human operator.
+
+Write it like you are handing the work to a smart new hire: spell out what needs to happen, what to prioritize first, and what the finished deliverable must contain. Do the thinking the operator would otherwise have to do alone.
+
+Hard rules:
+- Do NOT invent facts, tools, links, accounts, owners, approvals, or access.
+- If something is unknown, tell the operator to confirm it instead of guessing.
+- Use plain language. Explain the work, do not label vague topics.
+
+Quality rules:
+- The description must be 2-3 full sentences or short paragraphs that explain the real job, the order of work, and the final deliverable.
+- The checklist must contain 4-7 action steps.
+- Every checklist item must be a full sentence with a concrete action verb and enough detail that someone can execute it without guessing.
+- Do NOT output placeholder fragments such as "sequence of activities", "deliverables", "email themes", or "nurturing flow".
+- The acceptance list must contain 2-4 concrete done-state checks that describe what the final output includes or proves.
+- Dependencies must list only confirmed prerequisites or items to confirm. If there are none, return an empty array.
+- Suggested dates, times, priority, and category are optional. Return null when uncertain.
+
+Return STRICT JSON ONLY with this schema:
+{
+  "description": "string",
+  "checklist": ["string", ...],
+  "acceptance": ["string", ...],
+  "dependencies": ["string", ...],
+  "suggested": {
+    "category": "string | null",
+    "priority": "HIGH | MEDIUM | LOW | null",
+    "due_date": "YYYY-MM-DD | null",
+    "due_time": "HH:MM | null",
+    "recurrence": "none | daily | weekly | null",
+    "retention_days": "number | null"
+  }
+}
+
+INPUT:
+RAW_INPUT_TEXT:\n${normalizeText(fields?.rawInputText)}
+
+OUTCOME_TEXT (Definition of Done):\n${normalizeText(fields?.outcomeText)}
+
+CONTEXT_TEXT:\n${normalizeText(fields?.contextText)}
+
+CONSTRAINTS_TEXT:\n${normalizeText(fields?.constraintsText)}
+${qualityFeedback ? `
+
+YOUR LAST DRAFT FAILED THESE QUALITY CHECKS:
+${qualityFeedback}` : ''}
+${previousJson ? `
+
+PREVIOUS_DRAFT_JSON:
+${previousJson}` : ''}
+`;
+}
+
+function extractUrlsFromSourceText(raw: unknown): string[] {
+  try {
+    const matches = String(raw == null ? '' : raw).match(/https?:\/\/[^\s<>()"']+/gi) || [];
+    return normalizeAssets(matches).slice(0, 12);
+  } catch {
+    return [];
+  }
+}
+
+function summarizeSourceText(raw: unknown, max = 240): string {
+  const lines = String(raw == null ? '' : raw)
+    .replace(/\r\n?/g, '\n')
+    .split(/\n+/)
+    .map(line => safeTrim(line))
+    .filter(Boolean);
+
+  const joined = safeTrim(lines.slice(0, 3).join(' '));
+  if (!joined) return '';
+  return joined.length > max ? joined.slice(0, max).trim() : joined;
+}
+
+function inferTitleFromFileName(fileName: unknown): string {
+  const raw = safeTrim(fileName);
+  if (!raw) return '';
+  return raw.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+}
+
+function buildFallbackTaskSourceAnalysis(input: any) {
+  const sourceText = String(input?.sourceText == null ? '' : input.sourceText).replace(/\r\n?/g, '\n').trim();
+  const lines = sourceText.split(/\n+/).map((line: string) => safeTrim(line)).filter(Boolean);
+  const bullets = lines
+    .filter((line: string) => /^[-*\u2022]|\d+[.)]\s+/.test(line))
+    .map((line: string) => line.replace(/^[-*\u2022\d.)\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 6);
+
+  const missingFields = ['Confirm the owner, finished deliverable, and deadline before saving.'];
+  return normalizeTaskSourceAnalysis({
+    source_type: 'reference_doc',
+    confidence: 'low',
+    title: inferTitleFromFileName(input?.fileName) || (lines[0] || ''),
+    summary: summarizeSourceText(sourceText),
+    objective: summarizeSourceText(sourceText, 420),
+    checklist: bullets,
+    links: extractUrlsFromSourceText(sourceText),
+    missing_fields: missingFields
+  });
+}
+
+function buildTaskSourceAnalysisPrompt(input: any) {
+  return `You are turning an uploaded internal document into a safe, editable task draft for a human operator.
+
+Classify the source and extract only what is actually supported by the document.
+
+Hard rules:
+- Do NOT invent facts, links, tools, accounts, credentials, owners, or approvals.
+- If a detail is missing, put it in missing_fields instead of guessing.
+- If the document is meeting notes or generic reference material, produce the safest useful follow-up/review task instead of pretending the document already contains a clean assignment.
+- Never output secrets, credentials, API keys, passwords, or raw billing details. Summarize them as approved access or billing approval requirements instead.
+- If the document implies live customer communication, billing changes, production changes, or access requests, surface those as safety_rules or missing_fields when approval is not explicit.
+- Keep the summary short and plain.
+- Category must be one of: Ads, Offers, Hiring, Ops, Product, Other, or null.
+
+Return STRICT JSON ONLY with this schema:
+{
+  "source_type": "task_assignment | beta_guide | checklist | operating_plan | meeting_notes | reference_doc",
+  "confidence": "high | medium | low",
+  "summary": "string | null",
+  "title": "string | null",
+  "suggested": {
+    "category": "Ads | Offers | Hiring | Ops | Product | Other | null",
+    "priority": "HIGH | MEDIUM | LOW | null",
+    "due_date": "YYYY-MM-DD | null",
+    "due_time": "HH:MM | null"
+  },
+  "business_context": "string | null",
+  "assignee_guidance": "string | null",
+  "objective": "string | null",
+  "instructions": ["string", ...],
+  "checklist": ["string", ...],
+  "safety_rules": ["string", ...],
+  "expected_output": ["string", ...],
+  "validation_proof": ["string", ...],
+  "links": ["https://...", ...],
+  "missing_fields": ["string", ...]
+}
+
+INPUT:
+FILE_NAME: ${safeTrim(input?.fileName || '') || '(unknown)'}
+MIME_TYPE: ${safeTrim(input?.mimeType || '') || '(unknown)'}
+SOURCE_TEXT:
+${String(input?.sourceText || '').trim()}`;
+}
 
 function tryParseJsonObject(raw: unknown): { ok: true; value: any } | { ok: false; error: string } {
   const text = String(raw || '').trim();
@@ -105,6 +294,146 @@ function normalizeAssets(raw: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+function normalizeStringArray(raw: unknown): string[] {
+  try {
+    const items = Array.isArray(raw)
+      ? raw
+      : String(raw == null ? '' : raw)
+          .split(/\r?\n|\u2022|\u2023|\u25E6/)
+          .map(item => item.replace(/^[-*\d.)\s]+/, '').trim())
+          .filter(Boolean);
+
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of items) {
+      const value = String(item == null ? '' : item).trim();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function normalizeTaskSourceDocument(raw: unknown): Record<string, any> | null {
+  try {
+    const source = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+    if (!source) return null;
+
+    const normalized: Record<string, any> = {};
+    const sourceKind = normalizeText(source.sourceKind);
+    const sourceReference = normalizeText(source.sourceReference);
+    const sourceUrl = normalizeHttpUrl(source.sourceUrl ?? source.sourceReference);
+    const fileName = normalizeText(source.fileName);
+    const mimeType = normalizeText(source.mimeType);
+    const sourceType = normalizeText(source.sourceType);
+    const confidence = normalizeText(source.confidence);
+    const summary = normalizeText(source.summary ?? source.sourceSummary);
+    const previewText = normalizeText(source.previewText ?? source.sourcePreviewText ?? source.sourceText);
+    const previewMimeType = normalizeText(source.previewMimeType ?? source.previewMime ?? source.mimeType);
+    const sizeBytes = Number(source.sizeBytes);
+    const analyzedChars = Number(source.analyzedChars);
+
+    if (sourceKind) normalized.sourceKind = sourceKind;
+    if (sourceReference) normalized.sourceReference = sourceReference;
+    if (sourceUrl) normalized.sourceUrl = sourceUrl;
+    if (fileName) normalized.fileName = fileName;
+    if (mimeType) normalized.mimeType = mimeType;
+    if (sourceType) normalized.sourceType = sourceType;
+    if (confidence) normalized.confidence = confidence;
+    if (summary) normalized.summary = String(summary).slice(0, 400);
+    if (previewText) normalized.previewText = String(previewText).slice(0, 12000);
+    if (previewMimeType) normalized.previewMimeType = previewMimeType;
+    if (Number.isFinite(sizeBytes) && sizeBytes >= 0) normalized.sizeBytes = Math.round(sizeBytes);
+    if (Number.isFinite(analyzedChars) && analyzedChars >= 0) normalized.analyzedChars = Math.round(analyzedChars);
+    if (source.wasTruncated != null) normalized.wasTruncated = !!source.wasTruncated;
+
+    return Object.keys(normalized).length ? normalized : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeScheduledDateTime(dateRaw: unknown, timeRaw: unknown): string | null {
+  const date = normalizeText(dateRaw);
+  const time = normalizeText(timeRaw);
+  if (!date) return null;
+  if (String(date).includes('T')) return String(date);
+  return time ? `${String(date)}T${String(time)}:00` : `${String(date)}T00:00:00`;
+}
+
+const TASK_CLIENT_REQUEST_KEY_MAX_LENGTH = 160;
+
+function normalizeTaskClientRequestKey(raw: unknown): string | null {
+  const value = safeTrim(raw);
+  if (!value) return null;
+  return value.slice(0, TASK_CLIENT_REQUEST_KEY_MAX_LENGTH);
+}
+
+function isPgUniqueViolation(error: any): boolean {
+  return safeTrim(error?.code || '') === '23505';
+}
+
+function isTaskClientRequestKeyUniqueViolation(error: any): boolean {
+  if (!isPgUniqueViolation(error)) return false;
+  const details = [error?.message, error?.details, error?.hint]
+    .map((value) => safeTrim(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  return /client_request_key/.test(details);
+}
+
+async function findTaskByTaskId(tasksDb: any, taskIdRaw: unknown) {
+  const taskId = normalizeText(taskIdRaw);
+  if (!taskId) return { row: null, error: null };
+
+  const { data, error } = await tasksDb
+    .from('Tasks')
+    .select('*')
+    .eq('Task_ID', taskId)
+    .maybeSingle();
+
+  return { row: data || null, error };
+}
+
+async function findTaskByClientRequestKey(tasksDb: any, requestKeyRaw: unknown) {
+  const requestKey = normalizeTaskClientRequestKey(requestKeyRaw);
+  if (!requestKey) return { row: null, error: null };
+
+  const { data, error } = await tasksDb
+    .from('Tasks')
+    .select('*')
+    .eq('Client_Request_Key', requestKey)
+    .maybeSingle();
+
+  return { row: data || null, error };
+}
+
+async function findTaskForIdempotentWrite(tasksDb: any, taskIdRaw: unknown, requestKeyRaw: unknown) {
+  const taskId = normalizeText(taskIdRaw);
+  const requestKey = normalizeTaskClientRequestKey(requestKeyRaw);
+
+  const byTaskId = await findTaskByTaskId(tasksDb, taskId);
+  if (byTaskId.error) return { row: null, error: byTaskId.error, matchedBy: null };
+
+  const byRequestKey = await findTaskByClientRequestKey(tasksDb, requestKey);
+  if (byRequestKey.error) return { row: null, error: byRequestKey.error, matchedBy: null };
+
+  if (byTaskId.row && byRequestKey.row && String(byTaskId.row.Task_ID || '') !== String(byRequestKey.row.Task_ID || '')) {
+    return {
+      row: null,
+      error: new Error('taskId and idempotencyKey reference different task rows'),
+      matchedBy: null
+    };
+  }
+
+  if (byTaskId.row) return { row: byTaskId.row, error: null, matchedBy: 'taskId' };
+  if (byRequestKey.row) return { row: byRequestKey.row, error: null, matchedBy: 'idempotencyKey' };
+  return { row: null, error: null, matchedBy: null };
 }
 
 function normalizeAssetsMeta(raw: unknown, assets: string[]): Record<string, any> | null {
@@ -558,6 +887,421 @@ function buildTrainingVideos(resource: any): Array<{
   } catch {
     return [];
   }
+}
+
+const TRAINING_CATEGORY_CHOICES = [
+  'Marketing & Lead Generation',
+  'CRM & Sales Management',
+  'Technical Implementation',
+  'Operations & Fulfillment',
+  'Home2Smart Systems',
+  'General Training'
+] as const;
+
+function isWeakTrainingTitle(title: unknown, type?: unknown): boolean {
+  const value = safeTrim(title);
+  const normalizedType = safeTrim(type).toUpperCase();
+  if (!value) return true;
+  const lower = value.toLowerCase();
+  if (/^(training( resource| video| pdf| sop)?|video|untitled)(\s*\(\d+ videos?\))?$/.test(lower)) return true;
+  if (normalizedType === 'PDF' && lower === 'training pdf') return true;
+  if (normalizedType === 'SOP' && lower === 'training sop') return true;
+  return false;
+}
+
+function decodeTrainingFileName(rawUrl: unknown): string {
+  const raw = safeTrim(rawUrl);
+  if (!raw) return '';
+  try {
+    const parsed = new URL(raw);
+    const pathValue = parsed.searchParams.get('path');
+    if (pathValue) {
+      const tail = String(pathValue).split('/').filter(Boolean).pop();
+      if (tail) return decodeURIComponent(tail);
+    }
+    const tail = String(parsed.pathname || '').split('/').filter(Boolean).pop();
+    return tail ? decodeURIComponent(tail) : '';
+  } catch {
+    return raw;
+  }
+}
+
+function tryParseTrainingProxyStorageUrl(rawUrl: unknown): { bucket: string; path: string } | null {
+  const raw = safeTrim(rawUrl);
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (!String(parsed.pathname || '').includes('/api/proof-asset-media')) return null;
+    const bucket = safeTrim(parsed.searchParams.get('bucket') || '');
+    const path = safeTrim(parsed.searchParams.get('path') || '').replace(/^\/+/, '');
+    if (!bucket || !path || path.includes('..')) return null;
+    return { bucket, path };
+  } catch {
+    return null;
+  }
+}
+
+function tryParseTrainingPublicStorageUrl(rawUrl: unknown): { bucket: string; path: string } | null {
+  const raw = safeTrim(rawUrl);
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    const marker = '/storage/v1/object/public/';
+    const pathname = String(parsed.pathname || '');
+    const idx = pathname.indexOf(marker);
+    if (idx < 0) return null;
+    const tail = pathname.slice(idx + marker.length).replace(/^\/+/, '');
+    const parts = tail.split('/').filter(Boolean).map(seg => decodeURIComponent(seg));
+    if (parts.length < 2) return null;
+    const bucket = safeTrim(parts.shift() || '');
+    const path = parts.join('/').replace(/^\/+/, '');
+    if (!bucket || !path || path.includes('..')) return null;
+    return { bucket, path };
+  } catch {
+    return null;
+  }
+}
+
+function tryParseTrainingStorageLocator(rawUrl: unknown): { bucket: string; path: string } | null {
+  return tryParseTrainingProxyStorageUrl(rawUrl) || tryParseTrainingPublicStorageUrl(rawUrl);
+}
+
+function humanizeTrainingLabel(rawValue: unknown): string {
+  const raw = safeTrim(rawValue);
+  if (!raw) return '';
+  const stripped = raw
+    .replace(/\.[A-Za-z0-9]{1,8}$/g, '')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b(copy|final|v\d+|rev\d+|draft)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!stripped) return '';
+  return stripped.replace(/\b\w+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+}
+
+function normalizePreviewText(raw: unknown): string {
+  return String(raw == null ? '' : raw)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]+/g, ' ')
+    .replace(/\\[rn]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPdfPreviewText(buf: Buffer): string {
+  try {
+    const latin = buf.toString('latin1');
+    const matches: string[] = [];
+    const regex = /\(([^()\\]{3,240}(?:\\.[^()\\]{0,240})*)\)/g;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(latin)) && matches.length < 120) {
+      const candidate = normalizePreviewText(match[1]
+        .replace(/\\\(/g, '(')
+        .replace(/\\\)/g, ')')
+        .replace(/\\n/g, ' ')
+        .replace(/\\r/g, ' ')
+        .replace(/\\t/g, ' '));
+      if (!candidate) continue;
+      if (/^[A-Za-z0-9 ,.:;()'"/%#&+-]{4,}$/.test(candidate)) matches.push(candidate);
+    }
+    return normalizePreviewText(matches.join(' ')).slice(0, 5000);
+  } catch {
+    return '';
+  }
+}
+
+function extractTrainingPreviewText(buf: Buffer, contentType: string, sourceUrl: string): string {
+  const lowerType = safeTrim(contentType).toLowerCase();
+  const lowerUrl = safeTrim(sourceUrl).toLowerCase();
+  if (lowerType.includes('pdf') || lowerUrl.includes('.pdf')) {
+    return extractPdfPreviewText(buf);
+  }
+
+  const looksText = lowerType.startsWith('text/')
+    || lowerType.includes('json')
+    || lowerType.includes('xml')
+    || lowerType.includes('csv')
+    || /\.(txt|md|csv|json|xml|html?)($|[?#])/i.test(lowerUrl);
+
+  if (!looksText) return '';
+  try {
+    return normalizePreviewText(buf.toString('utf8')).slice(0, 5000);
+  } catch {
+    return '';
+  }
+}
+
+const TRAINING_METADATA_REMOTE_PREVIEW_ENABLED = false;
+const TRAINING_METADATA_BACKFILL_DEFAULT_LIMIT = 25;
+const TRAINING_METADATA_BACKFILL_MAX_LIMIT = 50;
+
+async function fetchTrainingResourcePreviewFromStorage(url: string): Promise<{ fileName: string; contentType: string; text: string } | null> {
+  if (!TRAINING_METADATA_REMOTE_PREVIEW_ENABLED) return null;
+  const locator = tryParseTrainingStorageLocator(url);
+  if (!locator) return null;
+
+  const fileName = decodeTrainingFileName(locator.path);
+  const clients = [getSupabase(), getDeliverablesDb(), getSupabaseMgmt()].filter(Boolean);
+  for (const client of clients) {
+    try {
+      const { data, error } = await (client as any).storage.from(locator.bucket).download(locator.path);
+      if (error || !data) continue;
+
+      const contentType = safeTrim((data as any).type || '');
+      const arrayBuffer = await (data as Blob).arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      return {
+        fileName,
+        contentType,
+        text: extractTrainingPreviewText(buffer, contentType, locator.path)
+      };
+    } catch {
+      // Try the next configured client.
+    }
+  }
+
+  return null;
+}
+
+async function fetchTrainingResourcePreview(url: string): Promise<{ fileName: string; contentType: string; text: string }> {
+  const fileName = decodeTrainingFileName(url);
+  if (!TRAINING_METADATA_REMOTE_PREVIEW_ENABLED) {
+    return { fileName, contentType: '', text: '' };
+  }
+  const storagePreview = await fetchTrainingResourcePreviewFromStorage(url);
+  if (storagePreview) return storagePreview;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 9000);
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          accept: 'application/pdf,text/plain,text/csv,application/json,text/html,*/*',
+          range: 'bytes=0-1048575'
+        },
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        return { fileName, contentType: safeTrim(response.headers.get('content-type') || ''), text: '' };
+      }
+      const contentType = safeTrim(response.headers.get('content-type') || '');
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return {
+        fileName,
+        contentType,
+        text: extractTrainingPreviewText(buffer, contentType, url)
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return { fileName, contentType: '', text: '' };
+  }
+}
+
+function inferTrainingCategory(text: string, type: string): string {
+  const haystack = safeTrim(text).toLowerCase();
+  const normalizedType = safeTrim(type).toUpperCase();
+  if (!haystack) {
+    if (normalizedType === 'PDF' || normalizedType === 'SOP') return 'Operations & Fulfillment';
+    return 'General Training';
+  }
+
+  if (/(facebook|ad copy|lead|campaign|creative|landing page|funnel|seo|offer)/.test(haystack)) return 'Marketing & Lead Generation';
+  if (/(crm|gohighlevel|hubspot|sales|pipeline|follow up|appointment|close)/.test(haystack)) return 'CRM & Sales Management';
+  if (/(api|webhook|javascript|typescript|code|deploy|technical|integration|database|automation)/.test(haystack)) return 'Technical Implementation';
+  if (/(sop|process|workflow|operations|fulfillment|onboarding|qa|quality|dispatch)/.test(haystack)) return 'Operations & Fulfillment';
+  if (/(home2smart|purestay|service area|company|internal|pricing|brand|service listing)/.test(haystack)) return 'Home2Smart Systems';
+  return 'General Training';
+}
+
+function isWeakTrainingPreviewSummary(rawValue: unknown): boolean {
+  const value = safeTrim(rawValue);
+  if (!value) return true;
+  const lower = value.toLowerCase();
+  if (/^d:\d{8,}/i.test(value)) return true;
+  if (/^(adobe|acrobat|xmp|creator|producer|title|subject|author|keywords)\b/.test(lower)) return true;
+
+  const words = value.split(/\s+/).filter(Boolean);
+  const alphaWords = words.filter(word => /[a-z]{3,}/i.test(word)).length;
+  if (alphaWords < 4) return true;
+  if (value.length < 28) return true;
+  return false;
+}
+
+function buildTrainingFallbackDescription(opts: { type: string; title: string; fileName: string; text: string; assets?: string[]; assetsMeta?: Record<string, TrainingAssetMeta> | null }): string {
+  const typeUpper = safeTrim(opts.type).toUpperCase() || 'TRAINING';
+  const title = safeTrim(opts.title) || humanizeTrainingLabel(opts.fileName) || 'Training Resource';
+  const previewText = normalizePreviewText(opts.text);
+
+  if (typeUpper === 'VIDEO') {
+    const assets = Array.isArray(opts.assets) ? opts.assets.filter(Boolean) : [];
+    const meta = (opts.assetsMeta && typeof opts.assetsMeta === 'object') ? opts.assetsMeta : null;
+    const lines = assets.slice(0, 8).map((assetUrl, index) => {
+      const row = meta && meta[assetUrl] ? meta[assetUrl] : null;
+      const bits = [safeTrim(row?.title || `Video ${index + 1}`), safeTrim(row?.provider || '')].filter(Boolean);
+      return `- ${bits.join(' | ')}`;
+    });
+    return lines.length
+      ? ['Training video series:', ...lines, 'Review each linked resource and capture the key concepts, practical application, and next actions.'].join('\n')
+      : `${title} is a training video resource. Review the material, capture the key concepts, and document the practical application plus next actions.`;
+  }
+
+  if (previewText) {
+    const sentences = previewText.match(/[^.!?]+[.!?]?/g) || [];
+    const summary = sentences.slice(0, 2).join(' ').trim();
+    if (summary && !isWeakTrainingPreviewSummary(summary)) return summary.slice(0, 420);
+  }
+
+  const docLabel = typeUpper === 'PDF' ? 'PDF' : (typeUpper === 'SOP' ? 'SOP' : 'document');
+  return `${title} is a ${docLabel.toLowerCase()} training resource. Review it for the main concepts, workflows, and practical application before documenting what to do next.`;
+}
+
+async function deriveTrainingMetadata(opts: {
+  type: string;
+  url: string;
+  fileNameHint?: string | null;
+  title?: string | null;
+  description?: string | null;
+  category?: string | null;
+  assets?: string[];
+  assetsMeta?: Record<string, TrainingAssetMeta> | null;
+}): Promise<{ title: string; description: string | null; category: string | null; source: 'ai' | 'fallback' }> {
+  const typeUpper = safeTrim(opts.type).toUpperCase() || 'VIDEO';
+  const providedTitle = safeTrim(opts.title);
+  const providedDescription = safeTrim(opts.description);
+  const providedCategory = safeTrim(opts.category);
+  const assets = Array.isArray(opts.assets) ? opts.assets.filter(Boolean) : [];
+  const assetsMeta = (opts.assetsMeta && typeof opts.assetsMeta === 'object') ? opts.assetsMeta : null;
+
+  let baseTitle = providedTitle;
+  if (!baseTitle || isWeakTrainingTitle(baseTitle, typeUpper)) {
+    if (typeUpper === 'VIDEO' && assets.length) {
+      const firstMeta = assetsMeta && assetsMeta[assets[0]] ? assetsMeta[assets[0]] : null;
+      baseTitle = safeTrim(firstMeta?.title) || baseTitle;
+    }
+    if (!baseTitle || isWeakTrainingTitle(baseTitle, typeUpper)) {
+      baseTitle = humanizeTrainingLabel(opts.fileNameHint) || humanizeTrainingLabel(decodeTrainingFileName(opts.url)) || baseTitle;
+    }
+  }
+
+  if (!baseTitle || isWeakTrainingTitle(baseTitle, typeUpper)) {
+    baseTitle = typeUpper === 'PDF'
+      ? 'Training PDF'
+      : typeUpper === 'SOP'
+        ? 'Training SOP'
+        : (assets.length > 1 ? `Training (${assets.length} Videos)` : 'Training Resource');
+  }
+
+  const preview = (typeUpper === 'VIDEO' || !TRAINING_METADATA_REMOTE_PREVIEW_ENABLED)
+    ? { fileName: '', contentType: '', text: '' }
+    : await fetchTrainingResourcePreview(opts.url);
+  const excerpt = normalizePreviewText(preview.text).slice(0, 4000);
+  const previewFileName = safeTrim(preview.fileName) || safeTrim(opts.fileNameHint);
+  const fallbackCategory = providedCategory || inferTrainingCategory([baseTitle, excerpt, previewFileName].filter(Boolean).join(' '), typeUpper);
+  const fallbackDescription = providedDescription || buildTrainingFallbackDescription({
+    type: typeUpper,
+    title: baseTitle,
+    fileName: previewFileName,
+    text: excerpt,
+    assets,
+    assetsMeta
+  });
+
+  if (openai && (!providedDescription || isWeakTrainingTitle(providedTitle, typeUpper) || !providedCategory) && (excerpt || preview.fileName || baseTitle)) {
+    try {
+      const prompt = `You write clean metadata for internal training resources. Return JSON only with keys title, description, category.\n\nAllowed categories: ${TRAINING_CATEGORY_CHOICES.join(' | ')}\n\nType: ${typeUpper}\nCurrent title: ${baseTitle}\nCurrent description: ${providedDescription || '(blank)'}\nFile name: ${previewFileName || '(unknown)'}\nURL: ${opts.url}\n\nExcerpt:\n${excerpt || '(no extracted text available)'}\n\nRules:\n- Title must be concise and human, max 8 words.\n- Description must be 1-3 sentences explaining what the resource covers and how someone should use it.\n- Category must be exactly one allowed category.\n- If the excerpt is weak, infer from the file name and URL.`;
+
+      const completion = await openai.chat.completions.create({
+        messages: [
+          { role: 'system', content: 'You generate internal training metadata and always return valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        model: 'gpt-4o',
+        response_format: { type: 'json_object' }
+      });
+
+      const parsed = tryParseJsonObject(completion.choices[0]?.message?.content || '');
+      if (parsed.ok && parsed.value && typeof parsed.value === 'object') {
+        const nextTitle = safeTrim(parsed.value.title) || baseTitle;
+        const nextDescription = safeTrim(parsed.value.description) || fallbackDescription;
+        const nextCategoryRaw = safeTrim(parsed.value.category);
+        const nextCategory = TRAINING_CATEGORY_CHOICES.includes(nextCategoryRaw as any) ? nextCategoryRaw : fallbackCategory;
+        return {
+          title: nextTitle,
+          description: nextDescription || null,
+          category: nextCategory || null,
+          source: 'ai'
+        };
+      }
+    } catch {
+      // Fall back to deterministic metadata generation.
+    }
+  }
+
+  return {
+    title: baseTitle,
+    description: fallbackDescription || null,
+    category: fallbackCategory || null,
+    source: 'fallback'
+  };
+}
+
+function inferTaskResourceType(opts: { providedType?: string | null; fileNameHint?: string | null; url?: string | null }): string | null {
+  const provided = safeTrim(opts.providedType);
+  if (provided) return provided;
+  const lower = safeTrim(opts.fileNameHint || decodeTrainingFileName(opts.url || '')).toLowerCase();
+  if (!lower) return 'Reference';
+  if (/\.pdf$/i.test(lower)) return 'PDF';
+  if (/\.(doc|docx)$/i.test(lower)) return 'Doc';
+  if (/\.(xls|xlsx|csv)$/i.test(lower)) return 'Sheet';
+  if (/\.(ppt|pptx)$/i.test(lower)) return 'Slides';
+  if (/\.(txt|md)$/i.test(lower)) return 'Text';
+  return 'Reference';
+}
+
+function buildTaskResourceFallbackDescription(opts: { title: string; fileName: string; resourceType: string; text: string }): string {
+  const title = safeTrim(opts.title) || humanizeTrainingLabel(opts.fileName) || 'Shared Resource';
+  const resourceType = safeTrim(opts.resourceType) || 'Reference';
+  const previewText = normalizePreviewText(opts.text);
+  if (previewText) {
+    const sentences = previewText.match(/[^.!?]+[.!?]?/g) || [];
+    const summary = sentences.slice(0, 2).join(' ').trim();
+    if (summary && !isWeakTrainingPreviewSummary(summary)) return summary.slice(0, 320);
+  }
+  return `${title} is a shared ${resourceType.toLowerCase()} resource for task work. Open it when you need source material, company context, or execution details while completing a task.`;
+}
+
+async function deriveTaskResourceMetadata(opts: {
+  url: string;
+  fileNameHint?: string | null;
+  title?: string | null;
+  description?: string | null;
+  resourceType?: string | null;
+}): Promise<{ title: string; description: string | null; resourceType: string | null }> {
+  const providedTitle = safeTrim(opts.title);
+  const providedDescription = safeTrim(opts.description);
+  const preview = TRAINING_METADATA_REMOTE_PREVIEW_ENABLED
+    ? await fetchTrainingResourcePreview(opts.url)
+    : { fileName: '', contentType: '', text: '' };
+  const previewFileName = safeTrim(opts.fileNameHint) || safeTrim(preview.fileName) || decodeTrainingFileName(opts.url);
+  const title = providedTitle || humanizeTrainingLabel(previewFileName) || 'Shared Resource';
+  const resourceType = inferTaskResourceType({
+    providedType: opts.resourceType,
+    fileNameHint: previewFileName,
+    url: opts.url
+  });
+  const description = providedDescription || buildTaskResourceFallbackDescription({
+    title,
+    fileName: previewFileName,
+    resourceType: resourceType || 'Reference',
+    text: preview.text
+  });
+  return {
+    title,
+    description: description || null,
+    resourceType: resourceType || null
+  };
 }
 
 function invalidActionResponse(request: Request, method: 'GET' | 'POST', action: unknown) {
@@ -1455,6 +2199,204 @@ function getDeliverablesDb() {
   }
 }
 
+function normalizeTaskReminderPriority(value: any): string {
+  if (typeof value === 'number') {
+    if (value === 1) return 'HIGH';
+    if (value === 3) return 'LOW';
+    return 'MEDIUM';
+  }
+
+  const priority = safeTrim(value).toUpperCase();
+  if (priority === 'HIGH' || priority === 'LOW') return priority;
+  return 'MEDIUM';
+}
+
+function normalizeTaskReminderStatus(value: any): string {
+  const status = safeTrim(value).toUpperCase();
+  return status || 'PENDING';
+}
+
+function buildTaskReminderSignature(task: any): string {
+  const taskId = safeTrim(task?.Task_ID || task?.taskId || '');
+  const priority = normalizeTaskReminderPriority(task?.Priority || task?.priority);
+  const updatedAt = safeTrim(task?.Updated_At || task?.updatedAt || '');
+  const dueDate = safeTrim(task?.Due_Date || task?.dueDate || '');
+  const status = normalizeTaskReminderStatus(task?.Status || task?.status);
+  return [taskId, priority, updatedAt, dueDate, status].join('|');
+}
+
+function normalizeTaskReminderAction(value: any): string {
+  const action = safeTrim(value).toLowerCase();
+  switch (action) {
+    case 'open_task':
+    case 'deliverables_open':
+    case 'task_interaction':
+    case 'mark_seen':
+      return action;
+    default:
+      return 'mark_seen';
+  }
+}
+
+function getTaskReminderAssignedIdentity(task: any): string {
+  return normalizeDashboardIdentity(task?.Assigned_To || task?.assignedTo || '');
+}
+
+function getTaskReminderTargetIdentity(task: any): string {
+  const assignedTo = getTaskReminderAssignedIdentity(task);
+  if (assignedTo) return assignedTo;
+  return normalizeDashboardIdentity(task?.Created_By || task?.createdBy || '');
+}
+
+function canDashboardUserAcknowledgeTaskReminder(task: any, user: DashboardAuthUser | null): boolean {
+  if (!task || !user) return false;
+  if (user.role === 'ADMIN') return true;
+
+  const username = normalizeDashboardIdentity(user.username);
+  if (!username) return false;
+
+  const assignedTo = getTaskReminderAssignedIdentity(task);
+  if (assignedTo) return assignedTo === username;
+
+  const createdBy = normalizeDashboardIdentity(task?.Created_By || task?.createdBy || '');
+  return !!createdBy && createdBy === username;
+}
+
+function mapTaskReminderReceiptApiShape(row: any, usersById: Map<string, any> = new Map()) {
+  const userId = safeTrim(row?.User_ID || row?.user_id || '');
+  const linkedUser = userId ? usersById.get(userId) : null;
+  const username = normalizeDashboardIdentity(row?.Username || row?.username || linkedUser?.Username || linkedUser?.username || '');
+  const displayName = safeTrim(linkedUser?.Display_Name || linkedUser?.display_name || linkedUser?.displayName || username);
+
+  return {
+    receiptId: safeTrim(row?.Receipt_ID || row?.receipt_id || ''),
+    taskId: safeTrim(row?.Task_ID || row?.task_id || ''),
+    signature: safeTrim(row?.Task_Signature || row?.task_signature || ''),
+    seenAt: safeTrim(row?.Seen_At || row?.seen_at || ''),
+    seenByAction: normalizeTaskReminderAction(row?.Seen_By_Action || row?.seen_by_action || ''),
+    userId,
+    username,
+    displayName,
+    taskAssignedTo: normalizeDashboardIdentity(row?.Task_Assigned_To || row?.task_assigned_to || ''),
+    taskUpdatedAt: safeTrim(row?.Task_Updated_At || row?.task_updated_at || ''),
+    taskPriority: normalizeTaskReminderPriority(row?.Task_Priority || row?.task_priority || ''),
+    taskStatus: normalizeTaskReminderStatus(row?.Task_Status || row?.task_status || ''),
+    taskDueDate: safeTrim(row?.Task_Due_Date || row?.task_due_date || ''),
+    createdAt: safeTrim(row?.Created_At || row?.created_at || ''),
+    updatedAt: safeTrim(row?.Updated_At || row?.updated_at || '')
+  };
+}
+
+async function listViewerTaskReminderReceipts(db: any, userId: string, taskIds: string[]) {
+  const normalizedUserId = safeTrim(userId);
+  const ids = Array.from(new Set((taskIds || []).map((value) => safeTrim(value)).filter(Boolean)));
+  if (!normalizedUserId || !ids.length) return [];
+
+  const { data, error } = await db
+    .from('Task_Reminder_Receipts')
+    .select('Receipt_ID, Task_ID, Task_Signature, Seen_At, Seen_By_Action, User_ID, Username, Task_Assigned_To, Task_Updated_At, Task_Priority, Task_Status, Task_Due_Date, Created_At, Updated_At')
+    .eq('User_ID', normalizedUserId)
+    .in('Task_ID', ids)
+    .order('Seen_At', { ascending: false });
+
+  if (error) throw new Error(error.message || 'Failed to load task reminder receipts');
+  return Array.isArray(data) ? data.map((row) => mapTaskReminderReceiptApiShape(row)) : [];
+}
+
+async function buildTaskReminderAdminStatus(db: any, task: any) {
+  const taskId = safeTrim(task?.Task_ID || task?.taskId || '');
+  if (!taskId) {
+    return {
+      taskId: '',
+      signature: '',
+      assignedTo: null,
+      currentReceipts: [],
+      assignedReceipt: null,
+      lastAssignedReceipt: null,
+      history: []
+    };
+  }
+
+  const signature = buildTaskReminderSignature(task);
+  const assignedTo = getTaskReminderAssignedIdentity(task) || null;
+
+  const [currentResponse, historyResponse] = await Promise.all([
+    db
+      .from('Task_Reminder_Receipts')
+      .select('Receipt_ID, Task_ID, Task_Signature, Seen_At, Seen_By_Action, User_ID, Username, Task_Assigned_To, Task_Updated_At, Task_Priority, Task_Status, Task_Due_Date, Created_At, Updated_At')
+      .eq('Task_ID', taskId)
+      .eq('Task_Signature', signature)
+      .order('Seen_At', { ascending: false }),
+    db
+      .from('Task_Reminder_Receipts')
+      .select('Receipt_ID, Task_ID, Task_Signature, Seen_At, Seen_By_Action, User_ID, Username, Task_Assigned_To, Task_Updated_At, Task_Priority, Task_Status, Task_Due_Date, Created_At, Updated_At')
+      .eq('Task_ID', taskId)
+      .order('Seen_At', { ascending: false })
+      .limit(12)
+  ]);
+
+  if (currentResponse.error) {
+    throw new Error(currentResponse.error.message || 'Failed to load current task reminder receipts');
+  }
+  if (historyResponse.error) {
+    throw new Error(historyResponse.error.message || 'Failed to load task reminder history');
+  }
+
+  const currentRows = Array.isArray(currentResponse.data) ? currentResponse.data : [];
+  const historyRows = Array.isArray(historyResponse.data) ? historyResponse.data : [];
+  const userIds = Array.from(
+    new Set(
+      [...currentRows, ...historyRows]
+        .map((row) => safeTrim(row?.User_ID || ''))
+        .filter(Boolean)
+    )
+  );
+
+  const usersById = new Map<string, any>();
+  if (userIds.length) {
+    const { data: users, error: usersError } = await db
+      .from('Dashboard_Users')
+      .select('User_ID, Username, Display_Name')
+      .in('User_ID', userIds);
+
+    if (usersError) {
+      throw new Error(usersError.message || 'Failed to load dashboard users for reminder status');
+    }
+
+    for (const user of (users || [])) {
+      const nextId = safeTrim(user?.User_ID || '');
+      if (nextId) usersById.set(nextId, user);
+    }
+  }
+
+  const currentReceipts = currentRows.map((row: any) => mapTaskReminderReceiptApiShape(row, usersById));
+  const history = historyRows.map((row: any) => ({
+    ...mapTaskReminderReceiptApiShape(row, usersById),
+    matchesCurrent: safeTrim(row?.Task_Signature || '') === signature
+  }));
+
+  const assignedReceipt = assignedTo
+    ? currentReceipts.find((row: any) => normalizeDashboardIdentity(row?.username || '') === assignedTo) || null
+    : null;
+  const lastAssignedReceipt = assignedTo
+    ? history.find((row: any) => normalizeDashboardIdentity(row?.username || '') === assignedTo) || null
+    : null;
+
+  return {
+    taskId,
+    signature,
+    assignedTo,
+    taskUpdatedAt: safeTrim(task?.Updated_At || task?.updatedAt || ''),
+    taskDueDate: safeTrim(task?.Due_Date || task?.dueDate || ''),
+    taskPriority: normalizeTaskReminderPriority(task?.Priority || task?.priority),
+    taskStatus: normalizeTaskReminderStatus(task?.Status || task?.status),
+    currentReceipts,
+    assignedReceipt,
+    lastAssignedReceipt,
+    history
+  };
+}
+
 function parseDeliverableAttachments(fileLink: any): any[] {
   if (Array.isArray(fileLink)) return fileLink.map((item) => ({ ...(item || {}) }));
   if (fileLink && typeof fileLink === 'object') return [{ ...(fileLink || {}) }];
@@ -1764,6 +2706,32 @@ function parseDeliverableMetadata(raw: any): Record<string, any> {
   } catch {
     return {};
   }
+}
+
+function appendDeliverableRevisionHistory(metadataRaw: any, eventRaw: any): Record<string, any> {
+  const metadata = parseDeliverableMetadata(metadataRaw);
+  const history = Array.isArray(metadata.revisionHistory)
+    ? metadata.revisionHistory.filter((entry: any) => entry && typeof entry === 'object' && !Array.isArray(entry)).map((entry: any) => ({ ...entry }))
+    : [];
+
+  const event = {
+    type: safeTrim(eventRaw?.type || ''),
+    status: safeTrim(eventRaw?.status || ''),
+    actor: safeTrim(eventRaw?.actor || ''),
+    notes: safeTrim(eventRaw?.notes || ''),
+    at: safeTrim(eventRaw?.at || '') || new Date().toISOString(),
+    fileCount: Number.isFinite(Number(eventRaw?.fileCount)) ? Math.max(0, Math.trunc(Number(eventRaw.fileCount))) : null,
+    title: safeTrim(eventRaw?.title || '')
+  };
+
+  history.push(event);
+  metadata.revisionHistory = history.slice(-24);
+  metadata.revisionLoop = {
+    ...(metadata.revisionLoop && typeof metadata.revisionLoop === 'object' && !Array.isArray(metadata.revisionLoop) ? metadata.revisionLoop : {}),
+    lastUpdatedAt: event.at,
+    lastStatus: event.status || null
+  };
+  return metadata;
 }
 
 function clampDeliverableGradeScore(value: unknown): number | null {
@@ -2482,6 +3450,7 @@ export async function GET(request: Request) {
   // Force fresh build - v2
   try {
     let result;
+    const extraPayload: any = {};
 
     // Some features (training, candidates, tasks, hours, etc.) live in the Mgmt DB.
     // Prefer Mgmt creds when present, but don't hard-fail if they're not configured.
@@ -4399,6 +5368,85 @@ export async function GET(request: Request) {
           }
 
           result = tasks || [];
+
+          const sessionUser = await getDashboardAuthUserFromSession(request);
+          if (sessionUser?.userId && Array.isArray(result) && result.length) {
+            try {
+              extraPayload.viewerTaskReminderSeen = await listViewerTaskReminderReceipts(
+                tasksDb,
+                sessionUser.userId,
+                result.map((task: any) => safeTrim(task?.Task_ID || ''))
+              );
+            } catch (receiptError: any) {
+              console.warn('[tasks] viewer reminder receipt load failed:', receiptError?.message || receiptError);
+              extraPayload.viewerTaskReminderSeen = [];
+            }
+          } else {
+            extraPayload.viewerTaskReminderSeen = [];
+          }
+        }
+        break;
+
+      case 'taskReminderStatus':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json(
+              { ok: false, error: auth.error },
+              { status: auth.status, headers: corsHeaders(request) }
+            );
+          }
+
+          const taskId = normalizeText(searchParams.get('taskId'));
+          if (!taskId) {
+            return NextResponse.json(
+              { ok: false, error: 'taskId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const tasksDb = getDeliverablesDb();
+          const { data: task, error: taskError } = await tasksDb
+            .from('Tasks')
+            .select('*')
+            .eq('Task_ID', taskId)
+            .maybeSingle();
+
+          if (taskError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load task: ${taskError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+          if (!task) {
+            return NextResponse.json(
+              { ok: false, error: 'Task not found' },
+              { status: 404, headers: corsHeaders(request) }
+            );
+          }
+
+          result = await buildTaskReminderAdminStatus(tasksDb, task);
+        }
+        break;
+
+      case 'taskResources':
+        {
+          const tasksDb = getDeliverablesDb();
+          const { data: resources, error: resourcesError } = await tasksDb
+            .from('Task_Resources')
+            .select('*')
+            .eq('Is_Active', true)
+            .order('Sort_Order', { ascending: false })
+            .order('Created_At', { ascending: false });
+
+          if (resourcesError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load task resources: ${resourcesError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = resources || [];
         }
         break;
 
@@ -5492,10 +6540,17 @@ export async function GET(request: Request) {
           // Call OpenAI
           const completion = await openai.chat.completions.create({
             messages: [
-              { role: "system", content: "You are an expert SOP writer. Convert rough notes into a clear, step-by-step Standard Operating Procedure." },
-              { role: "user", content: `Task: ${title}\nNotes: ${description}` }
+              {
+                role: "system",
+                content: "You rewrite rough task notes into concrete operator instructions. Explain the work in plain language, define what must happen first, and state what the finished deliverable must include. Do not use vague topic fragments or placeholder phrases."
+              },
+              {
+                role: "user",
+                content: `TASK TITLE: ${title}\nROUGH NOTES: ${description}\n\nRewrite this as a clear task description for a smart new hire. Use 2 short paragraphs. Make the task specific, explain the actual work that needs to happen, and define the final deliverable in plain language.`
+              }
             ],
             model: "gpt-4o",
+            temperature: 0.1
           });
           result = { refinedDescription: completion.choices[0].message.content };
         } else if (!openai) {
@@ -5518,10 +6573,17 @@ export async function GET(request: Request) {
 
           const completion = await openai.chat.completions.create({
             messages: [
-              { role: "system", content: "You are a Revenue Operations Director. Clarify tasks to ensure high performance." },
-              { role: "user", content: `CURRENT TASK:\nTitle: ${task.Title}\nDescription: ${task.Description}\n\nFEEDBACK: ${feedback}\n\nRewrite the description.` }
+              {
+                role: "system",
+                content: "You improve task descriptions so they are concrete, explainable, and execution-ready. Preserve known facts, but remove vagueness and shorthand."
+              },
+              {
+                role: "user",
+                content: `CURRENT TASK:\nTitle: ${task.Title}\nDescription: ${task.Description}\n\nFEEDBACK: ${feedback}\n\nRewrite the description in plain language for a smart new hire. Explain what needs to happen, what should be prioritized first, and what the finished deliverable must contain. Avoid vague fragments and generic labels.`
+              }
             ],
             model: "gpt-4o",
+            temperature: 0.1
           });
           
           const newDescription = completion.choices[0].message.content;
@@ -7679,7 +8741,7 @@ Be realistic and conservative. If unsure, use medium confidence.`;
       return NextResponse.json(result, { headers });
     }
     
-    return NextResponse.json({ ok: true, [responseKey]: result }, { headers });
+    return NextResponse.json({ ok: true, [responseKey]: result, ...extraPayload }, { headers });
 
   } catch (error: any) {
     console.error('API Error:', error);
@@ -9552,33 +10614,31 @@ export async function POST(request: Request) {
                   );
                 }
 
-                const taskId = normalizeText(body?.taskId) || crypto.randomUUID();
+                const requestedTaskId = normalizeText(body?.taskId);
+                const requestKey = normalizeTaskClientRequestKey(body?.idempotencyKey ?? body?.clientRequestKey ?? requestedTaskId);
+                const existingLookup = await findTaskForIdempotentWrite(tasksDb, requestedTaskId, requestKey);
+                if (existingLookup.error) {
+                  return NextResponse.json(
+                    { ok: false, error: `Failed to resolve idempotent task draft write: ${existingLookup.error.message}` },
+                    { status: 409, headers: corsHeaders(request) }
+                  );
+                }
+
+                const existing = existingLookup.row;
+                const taskId = normalizeText(existing?.Task_ID) || requestedTaskId || crypto.randomUUID();
+                const clientRequestKey = requestKey || normalizeTaskClientRequestKey(taskId);
                 const now = new Date().toISOString();
 
                 // Optional due date/time support (same logic as addTask)
-                let dueDateValue = null;
-                if (body?.dueDate) {
-                  try {
-                    if (String(body.dueDate).includes('T')) {
-                      dueDateValue = new Date(body.dueDate).toISOString();
-                    } else if (body?.dueTime) {
-                      dueDateValue = new Date(`${body.dueDate}T${body.dueTime}:00`).toISOString();
-                    } else {
-                      dueDateValue = new Date(`${body.dueDate}T23:59:59`).toISOString();
-                    }
-                  } catch {
-                    return NextResponse.json(
-                      { ok: false, error: 'Invalid date format' },
-                      { status: 400, headers: corsHeaders(request) }
-                    );
-                  }
-                }
+                const dueDateValue = normalizeScheduledDateTime(body?.dueDate, body?.dueTime ? body?.dueTime : '23:59');
+                const availableFromValue = normalizeScheduledDateTime(body?.availableDate, body?.availableTime);
 
                 const upsertPayload: any = {
                   Task_ID: taskId,
                   Title: title,
                   Assets: normalizeAssets(body?.assets),
                   Priority: body?.priority || 'MEDIUM',
+                  Available_From: availableFromValue,
                   Due_Date: dueDateValue,
                   Category: body?.category || null,
                   Assigned_To: body?.assignedTo || null,
@@ -9588,43 +10648,141 @@ export async function POST(request: Request) {
                   Outcome_Text: body?.outcomeText ?? null,
                   Context_Text: body?.contextText ?? null,
                   Constraints_Text: body?.constraintsText ?? null,
+                  Quick_Notes: normalizeStringArray(body?.quickNotes),
                   Recurrence: body?.recurrence || null,
                   Retention_Days: body?.retentionDays ?? null,
                   Updated_At: now
                 };
 
-                // If row doesn't exist yet, set Created_At.
-                const { data: existing, error: existingError } = await tasksDb
-                  .from('Tasks')
-                  .select('Task_ID')
-                  .eq('Task_ID', taskId)
-                  .maybeSingle();
+                if (clientRequestKey) upsertPayload.Client_Request_Key = clientRequestKey;
 
-                if (existingError) {
-                  return NextResponse.json(
-                    { ok: false, error: `Failed to check task: ${existingError.message}` },
-                    { status: 500, headers: corsHeaders(request) }
-                  );
-                }
+                if (body?.sourceDocument !== undefined) upsertPayload.Source_Document = normalizeTaskSourceDocument(body?.sourceDocument);
+
+                if (body?.aiDescription !== undefined) upsertPayload.AI_Description = normalizeText(body?.aiDescription) || null;
+                if (body?.aiChecklist !== undefined) upsertPayload.AI_Checklist = normalizeStringArray(body?.aiChecklist);
+                if (body?.aiAcceptance !== undefined) upsertPayload.AI_Acceptance = normalizeStringArray(body?.aiAcceptance);
+                if (body?.aiDependencies !== undefined) upsertPayload.AI_Dependencies = normalizeStringArray(body?.aiDependencies);
 
                 if (!existing) {
                   upsertPayload.Created_At = now;
                 }
 
-                const { data: saved, error } = await tasksDb
+                let saved = null;
+                let reused = !!existing;
+
+                const initialSave = await tasksDb
                   .from('Tasks')
                   .upsert(upsertPayload, { onConflict: 'Task_ID' })
                   .select('*')
                   .single();
 
-                if (error) {
+                if (initialSave.error) {
+                  if (!clientRequestKey || !isTaskClientRequestKeyUniqueViolation(initialSave.error)) {
+                    return NextResponse.json(
+                      { ok: false, error: `Failed to save task draft: ${initialSave.error.message}` },
+                      { status: 500, headers: corsHeaders(request) }
+                    );
+                  }
+
+                  const racedLookup = await findTaskByClientRequestKey(tasksDb, clientRequestKey);
+                  if (racedLookup.error || !racedLookup.row) {
+                    return NextResponse.json(
+                      { ok: false, error: `Failed to reuse task draft after idempotency collision: ${racedLookup.error?.message || 'Task not found'}` },
+                      { status: 500, headers: corsHeaders(request) }
+                    );
+                  }
+
+                  reused = true;
+                  const retryPayload = {
+                    ...upsertPayload,
+                    Task_ID: racedLookup.row.Task_ID
+                  };
+                  delete retryPayload.Created_At;
+
+                  const retrySave = await tasksDb
+                    .from('Tasks')
+                    .upsert(retryPayload, { onConflict: 'Task_ID' })
+                    .select('*')
+                    .single();
+
+                  if (retrySave.error) {
+                    return NextResponse.json(
+                      { ok: false, error: `Failed to reuse task draft after collision: ${retrySave.error.message}` },
+                      { status: 500, headers: corsHeaders(request) }
+                    );
+                  }
+
+                  saved = retrySave.data;
+                } else {
+                  saved = initialSave.data;
+                }
+
+                extraPayload.idempotency = {
+                  key: clientRequestKey,
+                  reused,
+                  matchedBy: existingLookup.matchedBy || (reused ? 'idempotencyKey' : 'created'),
+                  taskId: saved?.Task_ID || taskId
+                };
+
+                result = saved;
+              }
+              break;
+
+            case 'taskCreatorAnalyzeSource':
+              {
+                const sourceTextRaw = String(body?.sourceText == null ? '' : body?.sourceText).replace(/\r\n?/g, '\n').trim();
+                const fileName = safeTrim(body?.fileName || '');
+                const mimeType = safeTrim(body?.mimeType || '');
+
+                if (!sourceTextRaw) {
                   return NextResponse.json(
-                    { ok: false, error: `Failed to save task draft: ${error.message}` },
-                    { status: 500, headers: corsHeaders(request) }
+                    { ok: false, error: 'sourceText is required' },
+                    { status: 400, headers: corsHeaders(request) }
                   );
                 }
 
-                result = saved;
+                const sourceText = sourceTextRaw.length > 24000 ? sourceTextRaw.slice(0, 24000) : sourceTextRaw;
+                const fallback = buildFallbackTaskSourceAnalysis({ fileName, mimeType, sourceText });
+
+                if (!openai) {
+                  result = fallback;
+                  extraPayload.taskCreatorSourceAnalysis = result;
+                  break;
+                }
+
+                const completion = await openai.chat.completions.create({
+                  model: 'gpt-4o',
+                  messages: [
+                    { role: 'system', content: 'You extract safe task drafts from uploaded internal documents without guessing or leaking sensitive content.' },
+                    { role: 'user', content: buildTaskSourceAnalysisPrompt({ fileName, mimeType, sourceText }) }
+                  ],
+                  response_format: { type: 'json_object' },
+                  temperature: 0.1
+                });
+
+                const raw = completion.choices?.[0]?.message?.content || '';
+                const parsedAttempt = tryParseJsonObject(raw);
+                if (!parsedAttempt.ok) {
+                  result = fallback;
+                  extraPayload.taskCreatorSourceAnalysis = result;
+                  extraPayload.taskCreatorSourceAnalysisError = {
+                    code: 'AI_JSON_PARSE_FAILED',
+                    message: 'AI analysis failed to return valid JSON. A fallback draft was created instead.',
+                    error: parsedAttempt.error
+                  };
+                  break;
+                }
+
+                const normalized = normalizeTaskSourceAnalysis(parsedAttempt.value);
+                const mergedLinks = Array.from(new Set([...(normalized.links || []), ...extractUrlsFromSourceText(sourceText)])).slice(0, 12);
+
+                result = {
+                  ...normalized,
+                  links: mergedLinks,
+                  fileName: fileName || null,
+                  mimeType: mimeType || null
+                };
+                extraPayload.taskCreatorSourceAnalysis = result;
               }
               break;
 
@@ -9673,44 +10831,11 @@ export async function POST(request: Request) {
                   );
                 }
 
-                const prompt = `You are helping create a task for a human operator.
-
-      Hard rules:
-      - Do NOT invent facts, tools, links, accounts, or access.
-      - If something is unknown, phrase the step as an instruction to confirm it (e.g., "Confirm X") rather than guessing.
-      - Keep it actionable and concrete.
-
-      Return STRICT JSON ONLY with this schema:
-      {
-        "description": "string (1-3 short paragraphs)",
-        "checklist": ["string", ...],
-        "acceptance": ["string", ...],
-        "dependencies": ["string", ...],
-        "suggested": {
-          "category": "string | null",
-          "priority": "HIGH | MEDIUM | LOW | null",
-          "due_date": "YYYY-MM-DD | null",
-          "due_time": "HH:MM | null",
-          "recurrence": "none | daily | weekly | null",
-          "retention_days": "number | null"
-        }
-      }
-
-      INPUT:
-      RAW_INPUT_TEXT:\n${normalizeText(fields.rawInputText)}
-
-      OUTCOME_TEXT (Definition of Done):\n${normalizeText(fields.outcomeText)}
-
-      CONTEXT_TEXT:\n${normalizeText(fields.contextText)}
-
-      CONSTRAINTS_TEXT:\n${normalizeText(fields.constraintsText)}
-      `;
-
                 const completion = await openai.chat.completions.create({
                   model: 'gpt-4o',
                   messages: [
-                    { role: 'system', content: 'You write tasks with zero guessing.' },
-                    { role: 'user', content: prompt }
+                    { role: 'system', content: 'You write tasks with zero guessing and no vague filler.' },
+                    { role: 'user', content: buildTaskDetailsPrompt(fields) }
                   ],
                   response_format: { type: 'json_object' },
                   temperature: 0.2
@@ -9730,30 +10855,73 @@ export async function POST(request: Request) {
                   );
                 }
 
-                const parsed: any = parsedAttempt.value;
+                let parsed: any = parsedAttempt.value;
+                let normalized = normalizeGeneratedTaskPayload(parsed);
+                let quality = validateGeneratedTaskDetails({
+                  description: normalized.aiDescription,
+                  checklist: normalized.aiChecklist,
+                  acceptance: normalized.aiAcceptance,
+                  dependencies: normalized.aiDependencies
+                });
 
-                const aiDescription = typeof parsed?.description === 'string' ? parsed.description : '';
-                const aiChecklist = Array.isArray(parsed?.checklist) ? parsed.checklist : [];
-                const aiAcceptance = Array.isArray(parsed?.acceptance) ? parsed.acceptance : [];
-                const aiDependencies = Array.isArray(parsed?.dependencies) ? parsed.dependencies : [];
+                if (!quality.ok) {
+                  const retryCompletion = await openai.chat.completions.create({
+                    model: 'gpt-4o',
+                    messages: [
+                      { role: 'system', content: 'You rewrite weak task drafts into execution-ready instructions with no vague filler.' },
+                      {
+                        role: 'user',
+                        content: buildTaskDetailsPrompt(fields, {
+                          qualityFeedback: quality.issues.map((issue: string) => `- ${issue}`).join('\n'),
+                          previousJson: parsed
+                        })
+                      }
+                    ],
+                    response_format: { type: 'json_object' },
+                    temperature: 0.1
+                  });
 
-                const suggestedRaw = parsed?.suggested && typeof parsed.suggested === 'object' ? parsed.suggested : null;
-                const suggested: any = {};
-                if (suggestedRaw) {
-                  const cat = typeof suggestedRaw.category === 'string' ? suggestedRaw.category.trim() : '';
-                  const pri = typeof suggestedRaw.priority === 'string' ? suggestedRaw.priority.trim().toUpperCase() : '';
-                  const dueDate = typeof suggestedRaw.due_date === 'string' ? suggestedRaw.due_date.trim() : '';
-                  const dueTime = typeof suggestedRaw.due_time === 'string' ? suggestedRaw.due_time.trim() : '';
-                  const rec = typeof suggestedRaw.recurrence === 'string' ? suggestedRaw.recurrence.trim().toLowerCase() : '';
-                  const retention = typeof suggestedRaw.retention_days === 'number' ? suggestedRaw.retention_days : parseInt(String(suggestedRaw.retention_days || ''), 10);
+                  const retryRaw = retryCompletion.choices?.[0]?.message?.content || '';
+                  const retryParsedAttempt = tryParseJsonObject(retryRaw);
+                  if (!retryParsedAttempt.ok) {
+                    return NextResponse.json(
+                      {
+                        ok: false,
+                        code: 'AI_JSON_PARSE_FAILED',
+                        message: 'AI returned an invalid JSON payload while improving the task. Please try again.',
+                        error: retryParsedAttempt.error
+                      },
+                      { status: 200, headers: corsHeaders(request) }
+                    );
+                  }
 
-                  if (cat) suggested.category = cat;
-                  if (['HIGH', 'MEDIUM', 'LOW'].includes(pri)) suggested.priority = pri;
-                  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) suggested.dueDate = dueDate;
-                  if (/^\d{2}:\d{2}$/.test(dueTime)) suggested.dueTime = dueTime;
-                  if (['none', 'daily', 'weekly'].includes(rec)) suggested.recurrence = rec;
-                  if (!Number.isNaN(retention) && retention > 0 && retention <= 365) suggested.retentionDays = retention;
+                  parsed = retryParsedAttempt.value;
+                  normalized = normalizeGeneratedTaskPayload(parsed);
+                  quality = validateGeneratedTaskDetails({
+                    description: normalized.aiDescription,
+                    checklist: normalized.aiChecklist,
+                    acceptance: normalized.aiAcceptance,
+                    dependencies: normalized.aiDependencies
+                  });
                 }
+
+                if (!quality.ok) {
+                  return NextResponse.json(
+                    {
+                      ok: false,
+                      code: 'AI_OUTPUT_TOO_VAGUE',
+                      message: 'AI generated task details were still too vague. Add a bit more context and try again.',
+                      issues: quality.issues
+                    },
+                    { status: 200, headers: corsHeaders(request) }
+                  );
+                }
+
+                const aiDescription = normalized.aiDescription;
+                const aiChecklist = normalized.aiChecklist;
+                const aiAcceptance = normalized.aiAcceptance;
+                const aiDependencies = normalized.aiDependencies;
+                const suggested = normalized.suggested;
 
                 // Return suggestions as a separate payload key so Dash can choose whether to apply.
                 extraPayload.taskCreatorSuggestions = suggested;
@@ -9820,6 +10988,8 @@ Hard rules:
 - Do NOT invent facts, tools, links, accounts, or access.
 - Return suggestions only. If uncertain, return null.
 - Keep the title short and specific (max ~70 chars). No fluff.
+- The title should name the actual work or deliverable, not a vague topic bucket.
+- Prefer titles that tell the operator what is being created, reviewed, or delivered.
 
 Return STRICT JSON ONLY with this schema:
 {
@@ -9872,23 +11042,7 @@ CONSTRAINTS_TEXT:\n${constraintsText}
                 const parsed: any = parsedAttempt.value;
 
                 const title = typeof parsed?.title === 'string' ? parsed.title.trim() : '';
-                const suggestedRaw = parsed?.suggested && typeof parsed.suggested === 'object' ? parsed.suggested : null;
-                const suggested: any = {};
-                if (suggestedRaw) {
-                  const cat = typeof suggestedRaw.category === 'string' ? suggestedRaw.category.trim() : '';
-                  const pri = typeof suggestedRaw.priority === 'string' ? suggestedRaw.priority.trim().toUpperCase() : '';
-                  const dueDate = typeof suggestedRaw.due_date === 'string' ? suggestedRaw.due_date.trim() : '';
-                  const dueTime = typeof suggestedRaw.due_time === 'string' ? suggestedRaw.due_time.trim() : '';
-                  const rec = typeof suggestedRaw.recurrence === 'string' ? suggestedRaw.recurrence.trim().toLowerCase() : '';
-                  const retention = typeof suggestedRaw.retention_days === 'number' ? suggestedRaw.retention_days : parseInt(String(suggestedRaw.retention_days || ''), 10);
-
-                  if (cat) suggested.category = cat;
-                  if (['HIGH', 'MEDIUM', 'LOW'].includes(pri)) suggested.priority = pri;
-                  if (/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) suggested.dueDate = dueDate;
-                  if (/^\d{2}:\d{2}$/.test(dueTime)) suggested.dueTime = dueTime;
-                  if (['none', 'daily', 'weekly'].includes(rec)) suggested.recurrence = rec;
-                  if (!Number.isNaN(retention) && retention > 0 && retention <= 365) suggested.retentionDays = retention;
-                }
+                const suggested = extractSuggestedTaskMeta(parsed?.suggested);
 
                 result = { title: title ? title.slice(0, 90) : null, suggested };
                 extraPayload.taskCreatorIntake = result;
@@ -10448,21 +11602,43 @@ CHECKLIST:
             error: 'Task title is required' 
           }, { status: 400, headers: corsHeaders(request) });
         }
+
+        const requestedTaskId = normalizeText(body?.taskId);
+        const requestKey = normalizeTaskClientRequestKey(body?.idempotencyKey ?? body?.clientRequestKey ?? requestedTaskId);
+        const existingLookup = await findTaskForIdempotentWrite(tasksDb, requestedTaskId, requestKey);
+        if (existingLookup.error) {
+          return NextResponse.json({
+            ok: false,
+            error: `Failed to resolve idempotent task create: ${existingLookup.error.message}`
+          }, { status: 409, headers: corsHeaders(request) });
+        }
+
+        if (existingLookup.row) {
+          extraPayload.idempotency = {
+            key: requestKey,
+            reused: true,
+            matchedBy: existingLookup.matchedBy,
+            taskId: existingLookup.row.Task_ID
+          };
+          result = existingLookup.row;
+          break;
+        }
         
         // Handle due date - support both date string and ISO datetime
         let dueDateValue = null;
+        let availableFromValue = null;
         if (body.dueDate) {
           try {
             // If it's already an ISO string with time, use it directly
             if (body.dueDate.includes('T')) {
-              dueDateValue = new Date(body.dueDate).toISOString();
+              dueDateValue = normalizeText(body.dueDate);
             } else {
               // If it's just a date, combine with time if provided
               if (body.dueTime) {
-                dueDateValue = new Date(`${body.dueDate}T${body.dueTime}:00`).toISOString();
+                dueDateValue = `${normalizeText(body.dueDate)}T${normalizeText(body.dueTime)}:00`;
               } else {
                 // Just date, set to end of day
-                dueDateValue = new Date(`${body.dueDate}T23:59:59`).toISOString();
+                dueDateValue = `${normalizeText(body.dueDate)}T23:59:59`;
               }
             }
           } catch (e) {
@@ -10472,50 +11648,157 @@ CHECKLIST:
             }, { status: 400, headers: corsHeaders(request) });
           }
         }
+        if (body.availableDate) {
+          try {
+            availableFromValue = normalizeScheduledDateTime(body.availableDate, body.availableTime);
+          } catch (e) {
+            return NextResponse.json({ 
+              ok: false, 
+              error: 'Invalid available/show-on date format' 
+            }, { status: 400, headers: corsHeaders(request) });
+          }
+        }
         
         // Generate Task_ID
-        const taskId = crypto.randomUUID();
+        const taskId = requestedTaskId || crypto.randomUUID();
         const nowUpdate = new Date().toISOString();
+        const normalizedTitle = normalizeText(body.title);
+        const normalizedDescription = normalizeText(body.description);
+        const normalizedAssets = normalizeAssets(body.assets ?? body.assetsText);
+        const normalizedCategory = normalizeText(body.category);
+        const normalizedAssignedTo = normalizeText(body.assignedTo);
+        const normalizedType = normalizeText(body.type);
+        const normalizedUrl = normalizeText(body.url);
+        const normalizedContent = normalizeText(body.content);
+        const normalizedRecurrence = normalizeText(body.recurrence);
+        const normalizedCreatorMode = normalizeText(body.creatorMode);
         
         // Insert task
         const insertPayload: any = {
           Task_ID: taskId,
-          Title: body.title.trim(),
-          Description: body.description || null,
-          Assets: normalizeAssets(body.assets),
+          Title: normalizedTitle,
+          Description: normalizedDescription || null,
+          Assets: normalizedAssets,
           Priority: body.priority || 'MEDIUM',
+          Available_From: availableFromValue,
           Due_Date: dueDateValue,
           Status: 'PENDING',
-          Category: body.category || null,
-          Assigned_To: body.assignedTo || null,
-          Type: body.type || null,
-          URL: body.url || null,
-          Content: body.content || null,
-          Recurrence: body.recurrence || null,
+          Category: normalizedCategory || null,
+          Assigned_To: normalizedAssignedTo || null,
+          Type: normalizedType || null,
+          URL: normalizedUrl || null,
+          Content: normalizedContent || null,
+          Recurrence: normalizedRecurrence || null,
           Retention_Days: body.retentionDays ?? null,
-          Creator_Mode: body.creatorMode || 'QUICK',
-          Raw_Input_Text: body.rawInputText ?? null,
-          Outcome_Text: body.outcomeText ?? null,
-          Context_Text: body.contextText ?? null,
-          Constraints_Text: body.constraintsText ?? null,
+          Creator_Mode: normalizedCreatorMode || 'QUICK',
+          Raw_Input_Text: normalizeText(body.rawInputText) || null,
+          Outcome_Text: normalizeText(body.outcomeText) || null,
+          Context_Text: normalizeText(body.contextText) || null,
+          Constraints_Text: normalizeText(body.constraintsText) || null,
+          Quick_Notes: normalizeStringArray(body?.quickNotes),
           Created_At: nowUpdate,
           Updated_At: nowUpdate
         };
 
-        const { data: newTask, error: taskError } = await tasksDb
+        if (requestKey) insertPayload.Client_Request_Key = requestKey;
+
+        if (body?.sourceDocument !== undefined) insertPayload.Source_Document = normalizeTaskSourceDocument(body?.sourceDocument);
+
+        if (body?.aiDescription !== undefined) insertPayload.AI_Description = normalizeText(body.aiDescription) || null;
+        if (body?.aiChecklist !== undefined) insertPayload.AI_Checklist = normalizeStringArray(body.aiChecklist);
+        if (body?.aiAcceptance !== undefined) insertPayload.AI_Acceptance = normalizeStringArray(body.aiAcceptance);
+        if (body?.aiDependencies !== undefined) insertPayload.AI_Dependencies = normalizeStringArray(body.aiDependencies);
+
+        let newTask = null;
+        const createAttempt = await tasksDb
           .from('Tasks')
           .insert(insertPayload)
           .select()
           .single();
-        
-        if (taskError) {
-          return NextResponse.json({ 
-            ok: false, 
-            error: `Failed to create task: ${taskError.message}` 
-          }, { status: 500, headers: corsHeaders(request) });
+
+        if (createAttempt.error) {
+          if (!isPgUniqueViolation(createAttempt.error)) {
+            return NextResponse.json({ 
+              ok: false, 
+              error: `Failed to create task: ${createAttempt.error.message}` 
+            }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          const racedLookup = await findTaskForIdempotentWrite(tasksDb, taskId, requestKey);
+          if (racedLookup.error || !racedLookup.row) {
+            return NextResponse.json({ 
+              ok: false, 
+              error: `Failed to reuse task after duplicate create: ${racedLookup.error?.message || 'Task not found'}` 
+            }, { status: 500, headers: corsHeaders(request) });
+          }
+
+          newTask = racedLookup.row;
+          extraPayload.idempotency = {
+            key: requestKey,
+            reused: true,
+            matchedBy: racedLookup.matchedBy || (requestKey ? 'idempotencyKey' : 'taskId'),
+            taskId: newTask.Task_ID
+          };
+        } else {
+          newTask = createAttempt.data;
+          extraPayload.idempotency = {
+            key: requestKey,
+            reused: false,
+            matchedBy: 'created',
+            taskId: newTask?.Task_ID || taskId
+          };
         }
         
         result = newTask;
+        break;
+
+      case 'addTaskResource':
+        {
+          const tasksDb = getDeliverablesDb();
+          const url = normalizeText(body?.url);
+          if (!url) {
+            return NextResponse.json(
+              { ok: false, error: 'url is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const derivedMeta = await deriveTaskResourceMetadata({
+            url,
+            fileNameHint: normalizeText(body?.uploadedFileName),
+            title: normalizeText(body?.title),
+            description: normalizeText(body?.description),
+            resourceType: normalizeText(body?.resourceType)
+          });
+
+          const nowUpdate = new Date().toISOString();
+          const insertPayload: any = {
+            Title: derivedMeta.title,
+            Description: derivedMeta.description || null,
+            URL: url,
+            Resource_Type: derivedMeta.resourceType || null,
+            Sort_Order: Number.isFinite(Number(body?.sortOrder)) ? Number(body?.sortOrder) : 0,
+            Created_By: normalizeText(body?.createdBy) || null,
+            Is_Active: true,
+            Created_At: nowUpdate,
+            Updated_At: nowUpdate
+          };
+
+          const { data: createdResource, error: createError } = await tasksDb
+            .from('Task_Resources')
+            .insert(insertPayload)
+            .select('*')
+            .single();
+
+          if (createError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to add task resource: ${createError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = createdResource;
+        }
         break;
 
       case 'updateTask':
@@ -10545,6 +11828,10 @@ CHECKLIST:
           }
 
           if (body?.description !== undefined) updatePayload.Description = normalizeText(body?.description) || null;
+          if (body?.aiDescription !== undefined) updatePayload.AI_Description = normalizeText(body?.aiDescription) || null;
+          if (body?.aiChecklist !== undefined) updatePayload.AI_Checklist = normalizeStringArray(body?.aiChecklist);
+          if (body?.aiAcceptance !== undefined) updatePayload.AI_Acceptance = normalizeStringArray(body?.aiAcceptance);
+          if (body?.aiDependencies !== undefined) updatePayload.AI_Dependencies = normalizeStringArray(body?.aiDependencies);
           if (body?.assets !== undefined) updatePayload.Assets = normalizeAssets(body?.assets);
           if (body?.priority !== undefined) updatePayload.Priority = normalizeText(body?.priority) || null;
           if (body?.category !== undefined) updatePayload.Category = normalizeText(body?.category) || null;
@@ -10563,6 +11850,13 @@ CHECKLIST:
           if (body?.outcomeText !== undefined) updatePayload.Outcome_Text = normalizeText(body?.outcomeText) || null;
           if (body?.contextText !== undefined) updatePayload.Context_Text = normalizeText(body?.contextText) || null;
           if (body?.constraintsText !== undefined) updatePayload.Constraints_Text = normalizeText(body?.constraintsText) || null;
+          if (body?.quickNotes !== undefined) updatePayload.Quick_Notes = normalizeStringArray(body?.quickNotes);
+          if (body?.sourceDocument !== undefined) updatePayload.Source_Document = normalizeTaskSourceDocument(body?.sourceDocument);
+
+          // Due date/time support
+          if (body?.availableDate !== undefined || body?.availableTime !== undefined) {
+            updatePayload.Available_From = normalizeScheduledDateTime(body?.availableDate, body?.availableTime);
+          }
 
           // Due date/time support
           if (body?.dueDate !== undefined || body?.dueTime !== undefined) {
@@ -10575,11 +11869,11 @@ CHECKLIST:
             } else {
               try {
                 if (String(dueDate).includes('T')) {
-                  dueDateValue = new Date(dueDate).toISOString();
+                  dueDateValue = String(dueDate);
                 } else if (dueTime) {
-                  dueDateValue = new Date(`${dueDate}T${dueTime}:00`).toISOString();
+                  dueDateValue = `${String(dueDate)}T${String(dueTime)}:00`;
                 } else {
-                  dueDateValue = new Date(`${dueDate}T23:59:59`).toISOString();
+                  dueDateValue = `${String(dueDate)}T23:59:59`;
                 }
               } catch {
                 return NextResponse.json(
@@ -10613,6 +11907,273 @@ CHECKLIST:
           }
 
           result = updatedTask;
+        }
+        break;
+
+      case 'taskReminderSeen':
+        {
+          const sessionUser = await getDashboardAuthUserFromSession(request);
+          if (!sessionUser) {
+            return NextResponse.json(
+              { ok: false, error: 'Not authenticated' },
+              { status: 401, headers: corsHeaders(request) }
+            );
+          }
+
+          const taskId = normalizeText(body?.taskId);
+          const providedSignature = normalizeText(body?.signature);
+          if (!taskId) {
+            return NextResponse.json(
+              { ok: false, error: 'taskId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const { data: task, error: taskError } = await tasksDb
+            .from('Tasks')
+            .select('*')
+            .eq('Task_ID', taskId)
+            .maybeSingle();
+
+          if (taskError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load task: ${taskError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+          if (!task) {
+            return NextResponse.json(
+              { ok: false, error: 'Task not found' },
+              { status: 404, headers: corsHeaders(request) }
+            );
+          }
+          if (!canDashboardUserAcknowledgeTaskReminder(task, sessionUser)) {
+            return NextResponse.json(
+              { ok: false, error: 'You are not allowed to acknowledge this task reminder' },
+              { status: 403, headers: corsHeaders(request) }
+            );
+          }
+
+          const currentSignature = buildTaskReminderSignature(task);
+          if (providedSignature && providedSignature !== currentSignature) {
+            return NextResponse.json(
+              {
+                ok: false,
+                error: 'Reminder changed before it was acknowledged',
+                stale: true,
+                currentSignature
+              },
+              { status: 409, headers: corsHeaders(request) }
+            );
+          }
+
+          const nowUpdate = new Date().toISOString();
+          const receiptPayload = {
+            Task_ID: taskId,
+            Task_Signature: currentSignature,
+            Seen_At: nowUpdate,
+            Seen_By_Action: normalizeTaskReminderAction(body?.action),
+            User_ID: sessionUser.userId,
+            Username: normalizeDashboardIdentity(sessionUser.username),
+            Task_Assigned_To: getTaskReminderAssignedIdentity(task) || null,
+            Task_Updated_At: safeTrim(task?.Updated_At || '') || null,
+            Task_Priority: normalizeTaskReminderPriority(task?.Priority),
+            Task_Status: normalizeTaskReminderStatus(task?.Status),
+            Task_Due_Date: safeTrim(task?.Due_Date || '') || null,
+            Updated_At: nowUpdate
+          };
+
+          const { data: receipt, error: receiptError } = await tasksDb
+            .from('Task_Reminder_Receipts')
+            .upsert(receiptPayload, { onConflict: 'Task_ID,User_ID,Task_Signature' })
+            .select('Receipt_ID, Task_ID, Task_Signature, Seen_At, Seen_By_Action, User_ID, Username, Task_Assigned_To, Task_Updated_At, Task_Priority, Task_Status, Task_Due_Date, Created_At, Updated_At')
+            .single();
+
+          if (receiptError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to save task reminder receipt: ${receiptError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = mapTaskReminderReceiptApiShape(receipt);
+        }
+        break;
+
+      case 'taskReminderTrigger':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json(
+              { ok: false, error: auth.error },
+              { status: auth.status, headers: corsHeaders(request) }
+            );
+          }
+
+          const taskId = normalizeText(body?.taskId);
+          if (!taskId) {
+            return NextResponse.json(
+              { ok: false, error: 'taskId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const { data: task, error: taskError } = await tasksDb
+            .from('Tasks')
+            .select('*')
+            .eq('Task_ID', taskId)
+            .maybeSingle();
+
+          if (taskError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load task: ${taskError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+          if (!task) {
+            return NextResponse.json(
+              { ok: false, error: 'Task not found' },
+              { status: 404, headers: corsHeaders(request) }
+            );
+          }
+
+          const targetIdentity = getTaskReminderTargetIdentity(task);
+          if (!targetIdentity) {
+            return NextResponse.json(
+              { ok: false, error: 'Assign this task before triggering a worker reminder.' },
+              { status: 409, headers: corsHeaders(request) }
+            );
+          }
+
+          const nowUpdate = new Date().toISOString();
+          const { data: updatedTask, error: updateError } = await tasksDb
+            .from('Tasks')
+            .update({ Updated_At: nowUpdate })
+            .eq('Task_ID', taskId)
+            .select('*')
+            .single();
+
+          if (updateError || !updatedTask) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to trigger task reminder: ${updateError?.message || 'Unknown error'}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = {
+            taskId,
+            triggeredAt: nowUpdate,
+            signature: buildTaskReminderSignature(updatedTask),
+            assignedTo: getTaskReminderAssignedIdentity(updatedTask) || null,
+            targetIdentity,
+            nextPollSeconds: 30,
+            task: updatedTask,
+            taskReminderStatus: await buildTaskReminderAdminStatus(tasksDb, updatedTask)
+          };
+        }
+        break;
+
+      case 'updateTaskResource':
+        {
+          const tasksDb = getDeliverablesDb();
+          const resourceId = normalizeText(body?.resourceId);
+          if (!resourceId) {
+            return NextResponse.json(
+              { ok: false, error: 'resourceId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const updatePayload: any = {
+            Updated_At: new Date().toISOString()
+          };
+
+          const { data: existingResource, error: existingError } = await tasksDb
+            .from('Task_Resources')
+            .select('*')
+            .eq('Resource_ID', resourceId)
+            .single();
+
+          if (existingError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load task resource: ${existingError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          if (body?.title !== undefined) updatePayload.Title = normalizeText(body?.title) || null;
+          if (body?.description !== undefined) updatePayload.Description = normalizeText(body?.description) || null;
+          if (body?.url !== undefined) updatePayload.URL = normalizeText(body?.url) || null;
+          if (body?.resourceType !== undefined) updatePayload.Resource_Type = normalizeText(body?.resourceType) || null;
+          if (body?.sortOrder !== undefined) {
+            const sortOrder = Number(body?.sortOrder);
+            updatePayload.Sort_Order = Number.isFinite(sortOrder) ? sortOrder : 0;
+          }
+          if (body?.isActive !== undefined) updatePayload.Is_Active = !!body?.isActive;
+
+          const effectiveUrl = normalizeText(updatePayload.URL ?? existingResource?.URL);
+          const needsGeneratedTitle = body?.title !== undefined ? !normalizeText(body?.title) : !safeTrim(existingResource?.Title);
+          const needsGeneratedDescription = body?.description !== undefined ? !normalizeText(body?.description) : !safeTrim(existingResource?.Description);
+          const needsGeneratedType = body?.resourceType !== undefined ? !normalizeText(body?.resourceType) : !safeTrim(existingResource?.Resource_Type);
+
+          if (effectiveUrl && (needsGeneratedTitle || needsGeneratedDescription || needsGeneratedType)) {
+            const derivedMeta = await deriveTaskResourceMetadata({
+              url: effectiveUrl,
+              fileNameHint: normalizeText(body?.uploadedFileName),
+              title: needsGeneratedTitle ? null : normalizeText(updatePayload.Title ?? existingResource?.Title),
+              description: needsGeneratedDescription ? null : normalizeText(updatePayload.Description ?? existingResource?.Description),
+              resourceType: needsGeneratedType ? null : normalizeText(updatePayload.Resource_Type ?? existingResource?.Resource_Type)
+            });
+
+            if (needsGeneratedTitle && derivedMeta.title) updatePayload.Title = derivedMeta.title;
+            if (needsGeneratedDescription && derivedMeta.description) updatePayload.Description = derivedMeta.description;
+            if (needsGeneratedType && derivedMeta.resourceType) updatePayload.Resource_Type = derivedMeta.resourceType;
+          }
+
+          const { data: updatedResource, error: updateError } = await tasksDb
+            .from('Task_Resources')
+            .update(updatePayload)
+            .eq('Resource_ID', resourceId)
+            .select('*')
+            .single();
+
+          if (updateError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to update task resource: ${updateError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = updatedResource;
+        }
+        break;
+
+      case 'deleteTaskResource':
+        {
+          const tasksDb = getDeliverablesDb();
+          const resourceId = normalizeText(body?.resourceId);
+          if (!resourceId) {
+            return NextResponse.json(
+              { ok: false, error: 'resourceId is required' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const { data: deletedResource, error: deleteError } = await tasksDb
+            .from('Task_Resources')
+            .update({ Is_Active: false, Updated_At: new Date().toISOString() })
+            .eq('Resource_ID', resourceId)
+            .select('*')
+            .single();
+
+          if (deleteError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to delete task resource: ${deleteError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          result = deletedResource;
         }
         break;
 
@@ -10873,25 +12434,19 @@ Format: JSON only, no markdown.
       case 'createTraining':
         // body: { title, type, url, description, category, skillsTaught, difficultyLevel, estimatedMinutes, createdBy }
         {
-          const rawType = safeTrim(body.type || 'Video');
-          const typeUpper = rawType.toUpperCase();
+          const normalizedInput = validateCreateTrainingPayload(body);
+          if (!normalizedInput?.ok) {
+            return NextResponse.json(
+              { ok: false, error: normalizedInput?.error || 'Invalid training payload' },
+              { status: 400, headers: corsHeaders(request) }
+            );
+          }
+
+          const typeUpper = safeTrim(normalizedInput.typeUpper || 'VIDEO');
           const isVideo = typeUpper === 'VIDEO';
+          const primaryUrl = safeTrim(normalizedInput.primaryUrl || '');
 
-          const primaryUrl = normalizeHttpUrl(body.url) || safeTrim(body.url);
-          if (!primaryUrl) {
-            return NextResponse.json(
-              { ok: false, error: 'url is required' },
-              { status: 400, headers: corsHeaders(request) }
-            );
-          }
-
-          const assets = isVideo ? sanitizeTrainingAssets(body.assets ?? body.urls ?? body.url) : [];
-          if (isVideo && (!assets || assets.length === 0)) {
-            return NextResponse.json(
-              { ok: false, error: 'VIDEO resources must be a valid YouTube or Loom link.' },
-              { status: 400, headers: corsHeaders(request) }
-            );
-          }
+          const assets = isVideo ? (Array.isArray(normalizedInput.assets) ? normalizedInput.assets : []) : [];
           const assetsMetaIncoming = isVideo ? normalizeTrainingAssetsMeta(body.assetsMeta || body.assets_meta, assets) : null;
           const assetsMeta = isVideo
             ? (mergeTrainingAssetsMeta({ existing: null, incoming: assetsMetaIncoming, assets }) || {}) as any
@@ -10922,67 +12477,24 @@ Format: JSON only, no markdown.
           }));
           // ------------------------------------------------------------------
 
-          const generateDescription = (): string | null => {
-            try {
-              const list = Array.isArray(assets) ? assets.filter(Boolean) : [];
-              if (!list.length) return null;
-
-              const lines: string[] = [];
-              if (list.length === 1) {
-                lines.push('Video:');
-              } else {
-                lines.push(`Videos (${list.length}):`);
-              }
-
-              const slice = list.slice(0, 12);
-              for (let i = 0; i < slice.length; i++) {
-                const u = slice[i];
-                const key = normalizeHttpUrl(u) || u;
-                const m = assetsMeta && key ? (assetsMeta as any)[key] : null;
-                const title = safeTrim(m && (m.title || m.Title) || '');
-                const provider = safeTrim(m && (m.provider || m.Provider) || '');
-                const label = [title, provider].filter(Boolean).join(' · ');
-                lines.push(label ? `- ${label}` : `- Video ${i + 1}`);
-              }
-
-              return lines.join('\n');
-            } catch {
-              return null;
-            }
-          };
-
-          const normalizedDescription = safeTrim(body.description || '');
-          const derivedDescription = normalizedDescription
-            ? normalizedDescription
-            : (isVideo ? generateDescription() : null);
-
-          const normalizedTitle = safeTrim(body.title || '');
-          const derivedTitle = (() => {
-            if (normalizedTitle) return normalizedTitle;
-
-            if (!isVideo) {
-              return typeUpper === 'PDF'
-                ? 'Training PDF'
-                : typeUpper === 'SOP'
-                  ? 'Training SOP'
-                  : 'Training Resource';
-            }
-
-            const primary = assets && assets.length ? String(assets[0] || '').trim() : '';
-            const m = assetsMeta && primary ? (assetsMeta as any)[primary] : null;
-            const t = safeTrim(m && (m.title || m.Title) || '');
-            if (t) return t;
-            const count = assets && assets.length ? assets.length : 1;
-            return count > 1 ? `Training (${count} videos)` : 'Training Video';
-          })();
+          const derivedMeta = await deriveTrainingMetadata({
+            type: typeUpper,
+            url: isVideo ? (assets[0] || primaryUrl) : primaryUrl,
+            fileNameHint: body?.uploadedFileName,
+            title: body.title,
+            description: body.description,
+            category: body.category,
+            assets,
+            assetsMeta
+          });
 
           const insertPayload: any = {
             Resource_ID: crypto.randomUUID(),
-            Title: derivedTitle,
+            Title: derivedMeta.title,
             Type: typeUpper || 'VIDEO',
             URL: isVideo ? (assets.length ? assets[0] : primaryUrl) : primaryUrl,
-            Description: derivedDescription || null,
-            Category: body.category || 'General',
+            Description: derivedMeta.description || null,
+            Category: derivedMeta.category || 'General Training',
             Skills_Taught: body.skillsTaught || null,
             Difficulty_Level: body.difficultyLevel || 'BEGINNER',
             Estimated_Minutes: body.estimatedMinutes || null,
@@ -11111,6 +12623,33 @@ Format: JSON only, no markdown.
           updateData.Assets_Meta = Object.keys(mergedMeta).length ? mergedMeta : null;
         }
 
+        const needsGeneratedTitle = body.title === undefined && isWeakTrainingTitle(existingRow?.Title, effectiveType);
+        const needsGeneratedDescription = body.description === undefined && !safeTrim(existingRow?.Description);
+        const needsGeneratedCategory = body.category === undefined && !safeTrim(existingRow?.Category);
+
+        if (needsGeneratedTitle || needsGeneratedDescription || needsGeneratedCategory) {
+          const effectiveUrl = safeTrim(updateData.URL ?? existingRow?.URL ?? body?.url);
+          const effectiveAssets = isVideo
+            ? sanitizeTrainingAssets(updateData.Assets ?? existingAssets)
+            : [];
+          const effectiveAssetsMeta = isVideo
+            ? normalizeTrainingAssetsMeta(updateData.Assets_Meta ?? existingMeta, effectiveAssets)
+            : null;
+          const derivedMeta = await deriveTrainingMetadata({
+            type: effectiveType,
+            url: effectiveUrl,
+            title: needsGeneratedTitle ? existingRow?.Title : updateData.Title,
+            description: needsGeneratedDescription ? existingRow?.Description : updateData.Description,
+            category: needsGeneratedCategory ? existingRow?.Category : updateData.Category,
+            assets: effectiveAssets,
+            assetsMeta: effectiveAssetsMeta
+          });
+
+          if (needsGeneratedTitle && derivedMeta.title) updateData.Title = derivedMeta.title;
+          if (needsGeneratedDescription && derivedMeta.description) updateData.Description = derivedMeta.description;
+          if (needsGeneratedCategory && derivedMeta.category) updateData.Category = derivedMeta.category;
+        }
+
         let updatedTraining: any = null;
         try {
           const { data } = await supabaseMgmt
@@ -11136,6 +12675,89 @@ Format: JSON only, no markdown.
         result = updatedTraining;
         break;
         }
+
+      case 'backfillTrainingMetadata':
+        {
+          const requestedLimit = Number(body?.limit);
+          const backfillLimit = Number.isFinite(requestedLimit)
+            ? Math.min(Math.max(Math.trunc(requestedLimit), 1), TRAINING_METADATA_BACKFILL_MAX_LIMIT)
+            : TRAINING_METADATA_BACKFILL_DEFAULT_LIMIT;
+          const { data: resources, error: loadError } = await supabaseMgmt
+            .from('Training_Resources')
+            .select('*')
+            .order('Created_At', { ascending: false, nullsFirst: false })
+            .limit(backfillLimit);
+
+          if (loadError) {
+            return NextResponse.json(
+              { ok: false, error: `Failed to load training resources: ${loadError.message}` },
+              { status: 500, headers: corsHeaders(request) }
+            );
+          }
+
+          const updated: Array<{ resourceId: string; title: string; category: string | null }> = [];
+          const skipped: string[] = [];
+
+          for (const row of resources || []) {
+            const resourceId = safeTrim(row?.Resource_ID);
+            if (!resourceId) continue;
+
+            const type = safeTrim(row?.Type || 'VIDEO').toUpperCase();
+            const needsTitle = isWeakTrainingTitle(row?.Title, type);
+            const needsDescription = !safeTrim(row?.Description);
+            const needsCategory = !safeTrim(row?.Category);
+            if (!needsTitle && !needsDescription && !needsCategory) {
+              skipped.push(resourceId);
+              continue;
+            }
+
+            const assets = type === 'VIDEO'
+              ? sanitizeTrainingAssets(row?.Assets ?? row?.URL)
+              : [];
+            const assetsMeta = type === 'VIDEO'
+              ? normalizeTrainingAssetsMeta(row?.Assets_Meta ?? row?.assets_meta, assets)
+              : null;
+            const derivedMeta = await deriveTrainingMetadata({
+              type,
+              url: safeTrim(row?.URL),
+              title: needsTitle ? null : row?.Title,
+              description: needsDescription ? null : row?.Description,
+              category: needsCategory ? null : row?.Category,
+              assets,
+              assetsMeta
+            });
+
+            const patch: any = {};
+            if (needsTitle && derivedMeta.title) patch.Title = derivedMeta.title;
+            if (needsDescription && derivedMeta.description) patch.Description = derivedMeta.description;
+            if (needsCategory && derivedMeta.category) patch.Category = derivedMeta.category;
+            if (!Object.keys(patch).length) {
+              skipped.push(resourceId);
+              continue;
+            }
+
+            const { error: updateError } = await supabaseMgmt
+              .from('Training_Resources')
+              .update(patch)
+              .eq('Resource_ID', resourceId);
+
+            if (!updateError) {
+              updated.push({
+                resourceId,
+                title: safeTrim(patch.Title || row?.Title || ''),
+                category: safeTrim(patch.Category || row?.Category || '') || null
+              });
+            }
+          }
+
+          result = {
+            limitUsed: backfillLimit,
+            updatedCount: updated.length,
+            skippedCount: skipped.length,
+            updated
+          };
+        }
+        break;
 
       case 'setTrainingAssetWatched':
         {
@@ -11586,6 +13208,23 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
         
         const deliverableId = crypto.randomUUID();
+        const submissionAt = new Date().toISOString();
+        const parsedBodyMetadata = (() => {
+          try {
+            if (body.metadata === undefined || body.metadata === null) return {};
+            if (body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)) return { ...body.metadata };
+            return parseDeliverableMetadata(body.metadata);
+          } catch {
+            return {};
+          }
+        })();
+        const submitMetadata = appendDeliverableRevisionHistory(parsedBodyMetadata, {
+          type: 'submitted',
+          status: 'PENDING',
+          actor: body.submittedBy,
+          at: submissionAt,
+          title: body.title
+        });
 
         const wantsTaskLink = Boolean(body.taskId || body.taskTitle || body.taskUrl);
         if (wantsTaskLink) {
@@ -11620,22 +13259,17 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
 
         // Optional metadata for UI/workflow filtering (safe if column exists).
         if (body.metadata !== undefined && body.metadata !== null) {
-          try {
-            const mdObj = typeof body.metadata === 'string' ? JSON.parse(String(body.metadata || '').trim() || '{}') : body.metadata;
-            insertRow.Metadata = typeof body.metadata === 'string' ? body.metadata : JSON.stringify(body.metadata);
+          // handled below through submitMetadata
+        }
+        insertRow.Metadata = JSON.stringify(submitMetadata);
 
-            // Derive first-class linkage from metadata when present.
-            if (!insertRow.Offer_ID) {
-              const mdOfferId = safeTrim(mdObj?.offerId || mdObj?.offer_id || mdObj?.Offer_ID || mdObj?.offerID || '');
-              if (mdOfferId && isUuid(mdOfferId)) insertRow.Offer_ID = mdOfferId;
-            }
-            if (!insertRow.Deliverable_Type) {
-              const mdType = safeTrim(mdObj?.type || mdObj?.deliverableType || mdObj?.kind || '');
-              if (mdType) insertRow.Deliverable_Type = mdType.toLowerCase();
-            }
-          } catch {
-            // Ignore serialization errors; keep submission working.
-          }
+        if (!insertRow.Offer_ID) {
+          const mdOfferId = safeTrim(submitMetadata?.offerId || submitMetadata?.offer_id || submitMetadata?.Offer_ID || submitMetadata?.offerID || '');
+          if (mdOfferId && isUuid(mdOfferId)) insertRow.Offer_ID = mdOfferId;
+        }
+        if (!insertRow.Deliverable_Type) {
+          const mdType = safeTrim(submitMetadata?.type || submitMetadata?.deliverableType || submitMetadata?.kind || '');
+          if (mdType) insertRow.Deliverable_Type = mdType.toLowerCase();
         }
 
         if (body.taskId) insertRow.Task_ID = body.taskId;
@@ -11844,18 +13478,42 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
 
         const mergedAttachments = [...existingAttachments, ...newAttachments];
-        const { data: updatedDeliverable, error: appendError } = await getDeliverablesDb()
+        const revisionMetadata = appendDeliverableRevisionHistory(deliverableRow.Metadata, {
+          type: 'resubmitted',
+          status: 'PENDING',
+          actor: uploadedBy,
+          at: nowIso,
+          fileCount: newAttachments.length,
+          title: deliverableRow.Title
+        });
+
+        let appendPayload: any = {
+          File_Link: JSON.stringify(mergedAttachments),
+          Status: 'PENDING',
+          Reviewed_By: null,
+          Reviewed_At: null,
+          Review_Notes: null,
+          Metadata: JSON.stringify(revisionMetadata)
+        };
+
+        let { data: updatedDeliverable, error: appendError } = await getDeliverablesDb()
           .from('Deliverables')
-          .update({
-            File_Link: JSON.stringify(mergedAttachments),
-            Status: 'PENDING',
-            Reviewed_By: null,
-            Reviewed_At: null,
-            Review_Notes: null
-          })
+          .update(appendPayload)
           .eq('Deliverable_ID', body.deliverableId)
           .select()
           .single();
+
+        if (appendError && isMissingDeliverablesColumnError(appendError, 'Metadata')) {
+          delete appendPayload.Metadata;
+          const retry = await getDeliverablesDb()
+            .from('Deliverables')
+            .update(appendPayload)
+            .eq('Deliverable_ID', body.deliverableId)
+            .select()
+            .single();
+          updatedDeliverable = retry.data;
+          appendError = retry.error;
+        }
 
         if (appendError) {
           return NextResponse.json({
@@ -12084,24 +13742,58 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
             error: 'Missing required fields: deliverableId, reviewedBy' 
           }, { status: 400, headers: corsHeaders(request) });
         }
+
+        const { data: reviewTarget, error: reviewLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (reviewLoadError || !reviewTarget) {
+          return NextResponse.json({
+            ok: false,
+            error: reviewLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
         
         const newStatus = action === 'approveDeliverable' ? 'APPROVED' : 'REJECTED';
+        const reviewAt = new Date().toISOString();
         const deliverableUpdateData: any = {
           Status: newStatus,
           Reviewed_By: body.reviewedBy,
-          Reviewed_At: new Date().toISOString()
+          Reviewed_At: reviewAt
         };
         
         if (body.reviewNotes) {
           deliverableUpdateData.Review_Notes = body.reviewNotes;
         }
+        deliverableUpdateData.Metadata = JSON.stringify(appendDeliverableRevisionHistory(reviewTarget.Metadata, {
+          type: action === 'approveDeliverable' ? 'approved' : 'feedback',
+          status: newStatus,
+          actor: body.reviewedBy,
+          notes: body.reviewNotes,
+          at: reviewAt,
+          title: reviewTarget.Title
+        }));
         
-        const { data: updatedDeliverable, error: updateError } = await getDeliverablesDb()
+        let { data: updatedDeliverable, error: updateError } = await getDeliverablesDb()
           .from('Deliverables')
           .update(deliverableUpdateData)
           .eq('Deliverable_ID', body.deliverableId)
           .select()
           .single();
+
+        if (updateError && isMissingDeliverablesColumnError(updateError, 'Metadata')) {
+          delete deliverableUpdateData.Metadata;
+          const retry = await getDeliverablesDb()
+            .from('Deliverables')
+            .update(deliverableUpdateData)
+            .eq('Deliverable_ID', body.deliverableId)
+            .select()
+            .single();
+          updatedDeliverable = retry.data;
+          updateError = retry.error;
+        }
         
         if (updateError) {
           return NextResponse.json({ 
@@ -12111,6 +13803,133 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         }
         
         result = updatedDeliverable;
+        break;
+
+      case 'archiveDeliverable':
+        if (!body.deliverableId) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required field: deliverableId'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const { data: archiveTarget, error: archiveLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (archiveLoadError || !archiveTarget) {
+          return NextResponse.json({
+            ok: false,
+            error: archiveLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const archivedAt = new Date().toISOString();
+        const archivePayload: any = {
+          Status: 'ARCHIVED',
+          Metadata: JSON.stringify(appendDeliverableRevisionHistory(archiveTarget.Metadata, {
+            type: 'archived',
+            status: 'ARCHIVED',
+            actor: body.archivedBy || body.reviewedBy || body.updatedBy || '',
+            notes: body.reason || '',
+            at: archivedAt,
+            title: archiveTarget.Title
+          }))
+        };
+
+        let { data: archivedDeliverable, error: archiveError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update(archivePayload)
+          .eq('Deliverable_ID', body.deliverableId)
+          .select()
+          .single();
+
+        if (archiveError && isMissingDeliverablesColumnError(archiveError, 'Metadata')) {
+          delete archivePayload.Metadata;
+          const retry = await getDeliverablesDb()
+            .from('Deliverables')
+            .update(archivePayload)
+            .eq('Deliverable_ID', body.deliverableId)
+            .select()
+            .single();
+          archivedDeliverable = retry.data;
+          archiveError = retry.error;
+        }
+
+        if (archiveError) {
+          return NextResponse.json({
+            ok: false,
+            error: `Database error: ${archiveError.message}`
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        result = archivedDeliverable;
+        break;
+
+      case 'addDeliverableReviewNote':
+        if (!body.deliverableId || !safeTrim(body.note || '')) {
+          return NextResponse.json({
+            ok: false,
+            error: 'Missing required fields: deliverableId, note'
+          }, { status: 400, headers: corsHeaders(request) });
+        }
+
+        const { data: noteTarget, error: noteLoadError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .select('*')
+          .eq('Deliverable_ID', body.deliverableId)
+          .single();
+
+        if (noteLoadError || !noteTarget) {
+          return NextResponse.json({
+            ok: false,
+            error: noteLoadError?.message || 'Deliverable not found'
+          }, { status: 404, headers: corsHeaders(request) });
+        }
+
+        const noteAt = new Date().toISOString();
+        const nextStatus = safeTrim(noteTarget.Status || '') || 'PENDING';
+        const notePayload: any = {
+          Review_Notes: safeTrim(body.note || ''),
+          Metadata: JSON.stringify(appendDeliverableRevisionHistory(noteTarget.Metadata, {
+            type: 'note',
+            status: nextStatus,
+            actor: body.reviewedBy || body.author || body.addedBy || '',
+            notes: body.note,
+            at: noteAt,
+            title: noteTarget.Title
+          }))
+        };
+
+        let { data: notedDeliverable, error: noteError } = await getDeliverablesDb()
+          .from('Deliverables')
+          .update(notePayload)
+          .eq('Deliverable_ID', body.deliverableId)
+          .select()
+          .single();
+
+        if (noteError && isMissingDeliverablesColumnError(noteError, 'Metadata')) {
+          delete notePayload.Metadata;
+          const retry = await getDeliverablesDb()
+            .from('Deliverables')
+            .update(notePayload)
+            .eq('Deliverable_ID', body.deliverableId)
+            .select()
+            .single();
+          notedDeliverable = retry.data;
+          noteError = retry.error;
+        }
+
+        if (noteError) {
+          return NextResponse.json({
+            ok: false,
+            error: `Database error: ${noteError.message}`
+          }, { status: 500, headers: corsHeaders(request) });
+        }
+
+        result = notedDeliverable;
         break;
 
       case 'publishDeliverable':
@@ -15285,6 +17104,9 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
       case 'tasks':
         payload.tasks = result;
         break;
+        case 'taskResources':
+          payload.taskResources = result;
+          break;
       case 'candidates':
         payload.candidates = result;
         break;
@@ -15341,6 +17163,12 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
         break;
       case 'smsHideConversation':
         payload.smsHideConversation = result;
+        break;
+      case 'taskReminderSeen':
+        payload.taskReminderSeen = result;
+        break;
+      case 'taskReminderTrigger':
+        payload.taskReminderTrigger = result;
         break;
       default:
         break;

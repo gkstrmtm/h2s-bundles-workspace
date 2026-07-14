@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home2Smart Media Upload</title>
+  <meta name="description" content="Fast Home2Smart media upload for job photos and videos.">
+  <link rel="icon" type="image/png" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="./owner-media.css">
+</head>
+<body>
+  <div class="owner-shell">
+    <header class="owner-topbar">
+      <div class="owner-topbar__brand">
+        <img src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" alt="Home2Smart" width="40" height="40">
+        <div>
+          <p class="owner-topbar__eyebrow">Fast media upload</p>
+          <h1>Media upload</h1>
+        </div>
+      </div>
+      <div class="owner-topbar__actions">
+        <div class="owner-topbar__status" id="sessionBadge">Signed out</div>
+        <button class="owner-topbar__logout is-hidden" id="logoutButton" type="button" aria-label="Sign out">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 17l5-5-5-5"></path>
+            <path d="M20 12H9"></path>
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          </svg>
+          <span>Sign out</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="owner-main">
+      <div class="owner-sync-strip" id="syncStrip">
+        <div>
+          <strong>Quick check: make sure these are the right photos and videos.</strong>
+        </div>
+        <div id="syncStripMeta">Enter the owner PIN to continue.</div>
+      </div>
+
+      <div class="owner-stage" id="ownerStage" data-view="boot" aria-live="polite">
+        <section class="owner-stage-panel owner-stage-panel--boot is-active" id="bootPanel" aria-hidden="false">
+          <div class="owner-panel owner-panel--boot">
+            <div class="owner-panel__header owner-panel__header--tight">
+              <p class="owner-panel__eyebrow">Preparing</p>
+              <h2>Opening media upload.</h2>
+              <p>Checking access and loading your upload space.</p>
+            </div>
+            <div class="owner-boot-shell" aria-hidden="true">
+              <div class="owner-skeleton owner-skeleton--banner"></div>
+              <div class="owner-skeleton owner-skeleton--field"></div>
+              <div class="owner-skeleton owner-skeleton--button"></div>
+              <div class="owner-boot-list">
+                <div class="owner-upload-card owner-upload-card--skeleton">
+                  <div class="owner-upload-card__preview"></div>
+                  <div class="owner-upload-card__body">
+                    <div class="owner-skeleton owner-skeleton--line owner-skeleton--line-strong"></div>
+                    <div class="owner-skeleton owner-skeleton--line"></div>
+                    <div class="owner-skeleton owner-skeleton--chip-row"></div>
+                  </div>
+                </div>
+                <div class="owner-upload-card owner-upload-card--skeleton">
+                  <div class="owner-upload-card__preview"></div>
+                  <div class="owner-upload-card__body">
+                    <div class="owner-skeleton owner-skeleton--line owner-skeleton--line-strong"></div>
+                    <div class="owner-skeleton owner-skeleton--line"></div>
+                    <div class="owner-skeleton owner-skeleton--chip-row"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="owner-stage-panel owner-stage-panel--auth" id="authPanel" aria-hidden="true">
+          <div class="owner-panel owner-panel--auth">
+            <div class="owner-panel__header">
+              <p class="owner-panel__eyebrow">Access</p>
+              <h2>Open media upload.</h2>
+              <p>This page is for sending finished-job photos and videos as fast as possible.</p>
+            </div>
+            <form id="loginForm" class="owner-auth-form">
+              <div class="owner-auth-note">
+                <strong>Shared upload access</strong>
+                <span>Enter the owner PIN to open the upload flow and shared gallery.</span>
+              </div>
+              <label>
+                <span>PIN</span>
+                <input id="loginPin" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN" required>
+              </label>
+              <button class="owner-btn owner-btn--primary" id="loginSubmit" type="submit">Open uploads</button>
+              <p class="owner-inline-status" id="loginStatus"></p>
+            </form>
+          </div>
+        </section>
+
+        <section class="owner-stage-panel owner-stage-panel--workbench" id="workbench" aria-hidden="true">
+          <div class="owner-workbench">
+            <section class="owner-panel owner-panel--stage">
+              <div class="owner-panel__header owner-panel__header--split owner-panel__header--status">
+                <div>
+                  <p class="owner-panel__eyebrow">Upload</p>
+                  <h2 id="userDisplay">Add photos or videos</h2>
+                  <p>Choose files, take a photo, or record a video. Upload starts immediately.</p>
+                </div>
+                <div class="owner-session-actions">
+                  <p class="owner-session-meta" id="sessionMeta">No uploads sent yet.</p>
+                </div>
+              </div>
+
+              <form id="uploadForm" class="owner-upload-form">
+                <div class="owner-dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose files to upload">
+                  <div>
+                    <p class="owner-dropzone__title">Drop files here or tap to choose</p>
+                    <p class="owner-dropzone__copy">Choose files, take a photo, or record a video. Upload starts immediately.</p>
+                  </div>
+                  <div class="owner-dropzone__actions">
+                    <button class="owner-btn owner-btn--primary" type="button" id="browseButton">Choose files</button>
+                    <button class="owner-btn owner-btn--ghost" type="button" id="photoCaptureButton">Take photo</button>
+                    <button class="owner-btn owner-btn--ghost" type="button" id="videoCaptureButton">Record video</button>
+                  </div>
+                  <input id="fileInput" type="file" accept="image/*,video/*" multiple hidden>
+                  <input id="cameraPhotoInput" type="file" accept="image/*" capture="environment" hidden>
+                  <input id="cameraVideoInput" type="file" accept="video/*" capture="environment" hidden>
+                </div>
+                <p class="owner-inline-status" id="uploadStatus"></p>
+              </form>
+
+              <div class="owner-stage-divider"></div>
+
+              <section class="owner-history">
+                <div class="owner-history__header">
+                  <div>
+                    <p class="owner-panel__eyebrow">Gallery</p>
+                    <h3>Your uploads</h3>
+                    <p class="owner-recent-meta" id="recentSyncStatus">Everything sent with this PIN stays here until it is removed.</p>
+                  </div>
+                </div>
+                <div class="owner-recent-list owner-recent-list--compact" id="recentUploadsList">
+                  <div class="owner-empty-state">No uploads yet.</div>
+                </div>
+                <div class="owner-gallery-footer">
+                  <p class="owner-gallery-footer__meta" id="ownerGalleryMeta">No uploads yet.</p>
+                  <button class="owner-btn owner-btn--ghost owner-gallery-footer__action is-hidden" type="button" id="ownerGalleryLoadMore">Load more</button>
+                </div>
+              </section>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="./owner-media.js" defer></script>
+</body>
+</html>

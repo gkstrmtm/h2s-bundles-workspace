@@ -1,9 +1,14 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
+  "crons": [
+    {
+      "path": "/api/owner-media-reminder",
+      "schedule": "0 15 * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/hub",

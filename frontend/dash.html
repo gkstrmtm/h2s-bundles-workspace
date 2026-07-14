@@ -3,241 +3,234 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="format-detection" content="telephone=no">
-    <meta name="color-scheme" content="light">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Home2Smart">
-    <meta name="h2s-source-file" content="Dash.html">
-    <meta name="h2s-dash-build" content="PORTAL_BUILD_20260317_191711_5150b8a">
-        <title>Home2Smart - Service Tech Hiring Dashboard</title>
-        <script>
-            const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260317_191711_5150b8a';
-            const H2S_SOURCE_FILE = 'Dash.html';
-            // Suppress vendor console spam
-            (function() {
-                const originalError = console.error;
-                const originalWarn = console.warn;
-                const originalLog = console.log;
-                
-                const filterPatterns = [
-                    'ApolloClient',
-                    'FeatureGateClients',
-                    'vendor-',
-                    'Failed to load resource',
-                    '400 (Bad Request)',
-                    'go.apollo.dev',
-                    'msgsndr.com',
-                    'Deprecated API',
-                    'useLazyQuery',
-                    'useQuery',
-                    'onError',
-                    'onCompleted',
-                    'An error occurred!',
-                    'err#%7B'
-                ];
+    <title>Home2Smart - Service Tech Hiring Dashboard</title>
+    <script>
+        const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260528_120652_4d5c78f';
+        const H2S_SOURCE_FILE = 'Dash.html';
 
-                function shouldSuppress(args) {
-                    const msg = args.map(a => String(a)).join(' ');
-                    return filterPatterns.some(p => msg.includes(p));
-                }
+        // Suppress vendor console spam
+        (function() {
+            const originalError = console.error;
+            const originalWarn = console.warn;
+            const originalLog = console.log;
 
-                console.error = function(...args) {
-                    if (!shouldSuppress(args)) originalError.apply(console, args);
-                };
-                
-                console.warn = function(...args) {
-                    if (!shouldSuppress(args)) originalWarn.apply(console, args);
-                };
+            const filterPatterns = [
+                'ApolloClient',
+                'FeatureGateClients',
+                'Deprecated API',
+                'useLazyQuery',
+                'useQuery',
+                'onError',
+                'onCompleted',
+                'An error occurred!',
+            ];
 
-                console.log = function(...args) {
-                    if (!shouldSuppress(args)) originalLog.apply(console, args);
-                };
-            })();
+            function shouldSuppress(args) {
+                const msg = args.map(a => String(a)).join(' ');
+                return filterPatterns.some(p => msg.includes(p));
+            }
 
-            // Server-injected API base URL (available when served via Apps Script template)
-            // Falls back on client if not injected.
-            try { window.API_URL = '<?= API_URL ?>'; } catch (e) { /* not templated */ }
-
-            // Canonical backend selection (dash.html is the source of truth)
-            // - If templated injection provides an absolute URL, keep it.
-            // - If hosted on home2smart.com / *.vercel.app, use same-origin (so rewrites/proxies work).
-            // - Otherwise (local file / random host), default to the public backend.
-            (function normalizeDashApiUrl() {
-                try {
-                    const DEFAULT_API_HOST = 'https://h2s-backend.vercel.app';
-                    const raw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
-                    const isAbsolute = raw && !raw.includes('<?') && /^https?:\/\//i.test(raw);
-                    if (isAbsolute) {
-                        window.__H2S_API_URL_SOURCE = 'injected';
-                        return;
-                    }
-
-                    const host = String(location.hostname || '').toLowerCase();
-                    const isPortalHosted = host.endsWith('home2smart.com') || host.endsWith('.vercel.app');
-                    if (isPortalHosted) {
-                        // IMPORTANT: store base (origin), not /api/v1, because dash.js derives /api/v1.
-                        window.API_URL = String(location.origin || '').trim();
-                        window.__H2S_API_URL_SOURCE = 'same-origin';
-                        return;
-                    }
-
-                    window.API_URL = DEFAULT_API_HOST;
-                    window.__H2S_API_URL_SOURCE = 'default';
-                } catch {
-                    // Best-effort only.
-                    try { window.API_URL = 'https://h2s-backend.vercel.app'; } catch { /* ignore */ }
-                    try { window.__H2S_API_URL_SOURCE = 'default'; } catch { /* ignore */ }
-                }
-            })();
-
-            // Sidebar group collapse/expand
-            // dash.html uses inline onclick handlers, so this must exist on window.
-            // Some stamped JS bundles have regressed and shipped without the global.
-            (function ensureToggleSidebarGroupGlobal() {
-                try {
-                    if (typeof window === 'undefined') return;
-                    if (typeof window.toggleSidebarGroup === 'function') return;
-
-                    const STORAGE_PREFIX = 'h2s_sidebar_group_';
-
-                    const setSidebarGroupOpen = (groupEl, open, opts = {}) => {
-                        try {
-                            if (!groupEl) return;
-                            const groupId = String(groupEl.getAttribute('data-group-id') || '').trim();
-                            groupEl.classList.toggle('open', !!open);
-                            const headerBtn = groupEl.querySelector('.app-sidebar-group-header');
-                            if (headerBtn) headerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-
-                            if (opts && opts.persist && groupId) {
-                                try {
-                                    localStorage.setItem(`${STORAGE_PREFIX}${groupId}`, open ? 'open' : 'closed');
-                                } catch (_) {}
-                            }
-                        } catch (_) {}
-                    };
-
-                    const findGroupElById = (groupId) => {
-                        try {
-                            const gid = String(groupId || '').trim();
-                            if (!gid) return null;
-                            const groups = document.querySelectorAll('.app-sidebar-group[data-group-id]');
-                            for (const g of groups) {
-                                if (String(g.getAttribute('data-group-id') || '').trim() === gid) return g;
-                            }
-                            return null;
-                        } catch {
-                            return null;
-                        }
-                    };
-
-                    window.toggleSidebarGroup = (groupId) => {
-                        try {
-                            const groupEl = findGroupElById(groupId);
-                            if (!groupEl) return;
-                            const isOpen = groupEl.classList.contains('open');
-                            setSidebarGroupOpen(groupEl, !isOpen, { persist: true });
-                        } catch (e) {
-                            try { console.warn('toggleSidebarGroup failed:', e); } catch (_) {}
-                        }
-                    };
-
-                    const restoreSidebarGroups = () => {
-                        try {
-                            document.querySelectorAll('.app-sidebar-group[data-group-id]').forEach((groupEl) => {
-                                const gid = String(groupEl.getAttribute('data-group-id') || '').trim();
-                                if (!gid) return;
-                                let saved = null;
-                                try { saved = localStorage.getItem(`${STORAGE_PREFIX}${gid}`); } catch (_) {}
-                                if (saved === 'open') setSidebarGroupOpen(groupEl, true, { persist: false });
-                                if (saved === 'closed') setSidebarGroupOpen(groupEl, false, { persist: false });
-                            });
-                        } catch (_) {}
-                    };
-
-                    if (document.readyState === 'loading') {
-                        document.addEventListener('DOMContentLoaded', restoreSidebarGroups);
-                    } else {
-                        restoreSidebarGroups();
-                    }
-                } catch (_) {
-                    // Best-effort only.
-                }
-            })();
-
-            // Tangible "which file is this?" marker
-            // Visit /dash?about=1 (or add &about=1) to show.
-            window.__h2sShowAboutBadge = function __h2sShowAboutBadge() {
-                try {
-                    const badge = document.getElementById('h2sAboutBadge');
-                    const lines = document.getElementById('h2sAboutLines');
-                    if (!badge || !lines) return;
-                    const build = document.querySelector('meta[name="h2s-dash-build"]')?.getAttribute('content') || DASH_BUILD_STAMP || '';
-                    const src = document.querySelector('meta[name="h2s-source-file"]')?.getAttribute('content') || H2S_SOURCE_FILE || '';
-                    const host = location.host;
-                    const path = location.pathname + location.search + location.hash;
-
-                    const apiUrlRaw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
-                    const apiSource = (typeof window.__H2S_API_URL_SOURCE === 'string') ? window.__H2S_API_URL_SOURCE : '';
-                    let apiBase = '';
-                    try {
-                        if (apiUrlRaw && /^https?:\/\//i.test(apiUrlRaw) && !apiUrlRaw.includes('<?')) {
-                            apiBase = new URL(apiUrlRaw).origin;
-                        } else {
-                            // Mirror dash.js logic: same-origin on portal hosts.
-                            const hn = String(location.hostname || '').toLowerCase();
-                            const portal = hn.endsWith('home2smart.com') || hn.endsWith('.vercel.app');
-                            apiBase = portal ? '(same-origin)' : 'https://h2s-backend.vercel.app';
-                        }
-                    } catch {
-                        apiBase = '(unknown)';
-                    }
-
-                    const apiV1 = apiBase === '(same-origin)' ? '/api/v1' : `${apiBase.replace(/\/$/, '')}/api/v1`;
-                    lines.textContent = [
-                        `host: ${host}`,
-                        `path: ${path}`,
-                        `source: ${src}`,
-                        `build: ${build}`,
-                        `api_source: ${apiSource || 'n/a'}`,
-                        `api_base: ${apiBase}`,
-                        `api_v1: ${apiV1}`,
-                    ].join('\n');
-                    badge.style.display = 'block';
-                } catch { /* ignore */ }
+            console.error = function(...args) {
+                if (!shouldSuppress(args)) originalError.apply(console, args);
             };
 
-            document.addEventListener('DOMContentLoaded', () => {
+            console.warn = function(...args) {
+                if (!shouldSuppress(args)) originalWarn.apply(console, args);
+            };
+
+            console.log = function(...args) {
+                if (!shouldSuppress(args)) originalLog.apply(console, args);
+            };
+        })();
+
+        // Server-injected API base URL (available when served via Apps Script template)
+        // Falls back on client if not injected.
+        try { window.API_URL = '<?= API_URL ?>'; } catch (e) { /* not templated */ }
+
+        // Canonical backend selection (dash.html is the source of truth)
+        // - If templated injection provides an absolute URL, keep it.
+        // - If hosted on home2smart.com / *.vercel.app, use same-origin (so rewrites/proxies work).
+        // - Otherwise (local file / random host), default to the public backend.
+        (function normalizeDashApiUrl() {
+            try {
+                const DEFAULT_API_HOST = 'https://h2s-backend.vercel.app';
+                const raw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
+                const isAbsolute = raw && !raw.includes('<?') && /^https?:\/\//i.test(raw);
+                if (isAbsolute) {
+                    window.__H2S_API_URL_SOURCE = 'injected';
+                    return;
+                }
+
+                const host = String(location.hostname || '').toLowerCase();
+                const isPortalHosted = host.endsWith('home2smart.com') || host.endsWith('.vercel.app');
+                if (isPortalHosted) {
+                    // IMPORTANT: store base (origin), not /api/v1, because dash.js derives /api/v1.
+                    window.API_URL = String(location.origin || '').trim();
+                    window.__H2S_API_URL_SOURCE = 'same-origin';
+                    return;
+                }
+
+                window.API_URL = DEFAULT_API_HOST;
+                window.__H2S_API_URL_SOURCE = 'default';
+            } catch {
+                try { window.API_URL = 'https://h2s-backend.vercel.app'; } catch { /* ignore */ }
+                try { window.__H2S_API_URL_SOURCE = 'default'; } catch { /* ignore */ }
+            }
+        })();
+
+        // Sidebar group collapse/expand
+        // dash.html uses inline onclick handlers, so this must exist on window.
+        // Some stamped JS bundles have regressed and shipped without the global.
+        (function ensureToggleSidebarGroupGlobal() {
+            try {
+                if (typeof window === 'undefined') return;
+                if (typeof window.toggleSidebarGroup === 'function') return;
+
+                const STORAGE_PREFIX = 'h2s_sidebar_group_';
+
+                const setSidebarGroupOpen = (groupEl, open, opts = {}) => {
+                    try {
+                        if (!groupEl) return;
+                        const groupId = String(groupEl.getAttribute('data-group-id') || '').trim();
+                        groupEl.classList.toggle('open', !!open);
+                        const headerBtn = groupEl.querySelector('.app-sidebar-group-header');
+                        if (headerBtn) headerBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+
+                        if (opts && opts.persist && groupId) {
+                            try {
+                                localStorage.setItem(`${STORAGE_PREFIX}${groupId}`, open ? 'open' : 'closed');
+                            } catch (_) {}
+                        }
+                    } catch (_) {}
+                };
+
+                const findGroupElById = (groupId) => {
+                    try {
+                        const gid = String(groupId || '').trim();
+                        if (!gid) return null;
+                        const groups = document.querySelectorAll('.app-sidebar-group[data-group-id]');
+                        for (const groupEl of groups) {
+                            if (String(groupEl.getAttribute('data-group-id') || '').trim() === gid) return groupEl;
+                        }
+                        return null;
+                    } catch {
+                        return null;
+                    }
+                };
+
+                window.toggleSidebarGroup = (groupId) => {
+                    try {
+                        const groupEl = findGroupElById(groupId);
+                        if (!groupEl) return;
+                        const isOpen = groupEl.classList.contains('open');
+                        setSidebarGroupOpen(groupEl, !isOpen, { persist: true });
+                    } catch (e) {
+                        try { console.warn('toggleSidebarGroup failed:', e); } catch (_) {}
+                    }
+                };
+
+                const restoreSidebarGroups = () => {
+                    try {
+                        document.querySelectorAll('.app-sidebar-group[data-group-id]').forEach((groupEl) => {
+                            const gid = String(groupEl.getAttribute('data-group-id') || '').trim();
+                            if (!gid) return;
+                            let saved = null;
+                            try { saved = localStorage.getItem(`${STORAGE_PREFIX}${gid}`); } catch (_) {}
+                            if (saved === 'open') setSidebarGroupOpen(groupEl, true, { persist: false });
+                            if (saved === 'closed') setSidebarGroupOpen(groupEl, false, { persist: false });
+                        });
+                    } catch (_) {}
+                };
+
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', restoreSidebarGroups);
+                } else {
+                    restoreSidebarGroups();
+                }
+            } catch (_) {
+                // Best-effort only.
+            }
+        })();
+
+        // Tangible "which file is this?" marker
+        // Visit /dash?about=1 (or add &about=1) to show.
+        window.__h2sShowAboutBadge = function __h2sShowAboutBadge() {
+            try {
+                const badge = document.getElementById('h2sAboutBadge');
+                const lines = document.getElementById('h2sAboutLines');
+                if (!badge || !lines) return;
+                const build = document.querySelector('meta[name="h2s-dash-build"]')?.getAttribute('content') || DASH_BUILD_STAMP || '';
+                const src = document.querySelector('meta[name="h2s-source-file"]')?.getAttribute('content') || H2S_SOURCE_FILE || '';
+                const host = location.host;
+                const path = location.pathname + location.search + location.hash;
+
+                const apiUrlRaw = (typeof window.API_URL === 'string') ? String(window.API_URL).trim() : '';
+                const apiSource = (typeof window.__H2S_API_URL_SOURCE === 'string') ? window.__H2S_API_URL_SOURCE : '';
+                let apiBase = '';
                 try {
-                    if (location.search.includes('about=1')) window.__h2sShowAboutBadge();
-                } catch { /* ignore */ }
-            });
-        </script>
-    
+                    if (apiUrlRaw && /^https?:\/\//i.test(apiUrlRaw) && !apiUrlRaw.includes('<?')) {
+                        apiBase = new URL(apiUrlRaw).origin;
+                    } else {
+                        const hn = String(location.hostname || '').toLowerCase();
+                        const portal = hn.endsWith('home2smart.com') || hn.endsWith('.vercel.app');
+                        apiBase = portal ? '(same-origin)' : 'https://h2s-backend.vercel.app';
+                    }
+                } catch {
+                    apiBase = '(unknown)';
+                }
+
+                const apiV1 = apiBase === '(same-origin)' ? '/api/v1' : `${apiBase.replace(/\/$/, '')}/api/v1`;
+                lines.textContent = [
+                    `host: ${host}`,
+                    `path: ${path}`,
+                    `source: ${src}`,
+                    `build: ${build}`,
+                    `api_source: ${apiSource || 'n/a'}`,
+                    `api_base: ${apiBase}`,
+                    `api_v1: ${apiV1}`,
+                ].join('\n');
+                badge.style.display = 'block';
+            } catch { /* ignore */ }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (location.search.includes('about=1')) window.__h2sShowAboutBadge();
+            } catch { /* ignore */ }
+        });
+    </script>
+
     <!-- Preconnect -->
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;600;900&display=swap" rel="stylesheet">
 
     <!-- Dashboard Design System (single source of truth) -->
     <link rel="stylesheet" href="/dashboard-design-system.css">
-    
+
     <!-- App Icons -->
-    <link rel="icon" type="image/png" sizes="180x180" 
-      href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
-        <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+    <link rel="icon" type="image/png" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
-        <link rel="stylesheet" href="/dash.PORTAL_BUILD_20260317_191711_5150b8a.css">
-<!-- jsPDF Library for PDF Export -->
+    <script>
+        (function writeDashStylesheet() {
+            const host = String(location.hostname || '').toLowerCase();
+            const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1' || location.protocol === 'file:';
+            const href = isLocalHost ? './dash.css' : '/dash.PORTAL_BUILD_20260528_120652_4d5c78f.css';
+            document.write(`<link rel="stylesheet" href="${href}" data-h2s-app-styles="true">`);
+        })();
+    </script>
+
+    <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
     <style>
-        /* Training UI: keep cards compact + scanable (dash.html only) */
         #trainingResourcesCard {
             width: 100%;
             max-width: none;
@@ -474,31 +467,48 @@
         }
 
         #deliverables-pane .deliverables-switcher {
-            display: inline-flex !important;
-            gap: 8px !important;
-            padding: 8px;
-            background: rgba(255, 255, 255, 0.82);
-            border: 1px solid rgba(148, 163, 184, 0.22);
-            border-radius: 18px;
-            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
-            backdrop-filter: blur(14px);
+            display: flex !important;
+            gap: 0 !important;
+            padding: 0;
+            background: transparent;
+            border: none;
+            border-bottom: 1.5px solid var(--border);
+            border-radius: 0;
+            box-shadow: none;
+            backdrop-filter: none;
+            margin-bottom: 20px;
         }
 
         #deliverables-pane .deliverables-tab-btn {
-            min-width: 108px;
-            box-shadow: none;
+            flex: 0 0 auto;
+            min-width: 0;
+            padding: 8px 18px 7px !important;
+            background: transparent !important;
+            border: none !important;
+            border-bottom: 2px solid transparent !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            color: var(--gray-500) !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            margin-bottom: -1.5px;
+            transition: color 0.15s, border-color 0.15s !important;
         }
 
-        #deliverables-pane .deliverables-tab-btn:not([style*="background: var(--cobalt)"]) {
-            background: transparent;
-            border-color: transparent;
-            color: var(--cobalt);
+        #deliverables-pane .deliverables-tab-btn:hover {
+            background: transparent !important;
+            color: var(--cobalt) !important;
+            border-bottom-color: rgba(26, 54, 93, 0.3) !important;
+            box-shadow: none !important;
+            transform: none !important;
         }
 
-        #deliverables-pane .deliverables-tab-btn:not([style*="background: var(--cobalt)"]):hover {
-            background: rgba(15, 23, 42, 0.06);
-            border-color: rgba(148, 163, 184, 0.18);
-            color: var(--cobalt);
+        #deliverables-pane .deliverables-tab-btn.is-active {
+            color: var(--cobalt) !important;
+            border-bottom-color: var(--cobalt) !important;
+            background: transparent !important;
         }
 
         #h2s-app select,
@@ -510,10 +520,10 @@
             -webkit-appearance: none;
             -moz-appearance: none;
             background-color: rgba(255, 255, 255, 0.96) !important;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5 6 8.25 9.75 4.5' stroke='%230f172a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 14px center;
-            background-size: 12px 12px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M2.25 4.5 6 8.25 9.75 4.5' stroke='%230f172a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 14px center !important;
+            background-size: 12px 12px !important;
             padding-right: 42px !important;
             border: 1px solid rgba(148, 163, 184, 0.38) !important;
             border-radius: 14px !important;
@@ -890,26 +900,74 @@
         }
 
         .task-creator-modal {
-            max-width: 920px;
+            display: flex;
+            flex-direction: column;
+            max-width: 960px;
+            max-height: min(90vh, 920px);
+        }
+
+        #addTaskModal .task-modal-header {
+            position: sticky;
+            top: 0;
+            z-index: 3;
+            padding: 22px 24px 18px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(10px);
+        }
+
+        #addTaskModal .task-modal-body {
+            padding: 0 18px 24px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            scroll-behavior: smooth;
+            scroll-padding-top: 18px;
+            scroll-padding-bottom: 36px;
+            scrollbar-gutter: stable;
+            background: #fff;
+        }
+
+        #addTaskForm {
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+        }
+
+        .task-creator-flow {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding-top: 16px;
+        }
+
+        #addTaskForm > *,
+        .task-creator-flow > * {
+            min-width: 0;
+        }
+
+        .task-creator-header-copy {
+            margin-top: 6px;
+            color: #475569;
+            font-size: 13px;
+            line-height: 1.5;
         }
 
         .task-creator-hero {
             display: grid;
-            grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.95fr);
-            gap: 16px;
-            margin-bottom: 16px;
-            padding: 18px;
-            border: 1px solid rgba(20, 147, 255, 0.18);
-            border-radius: 18px;
-            background: linear-gradient(135deg, rgba(20,147,255,0.08), rgba(14,165,233,0.05) 58%, rgba(255,255,255,0.96));
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+            grid-template-columns: minmax(0, 1fr);
+            gap: 12px;
+            margin: 0;
+            padding: 14px 16px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 16px;
+            background: #fff;
         }
 
         .task-creator-hero__eyebrow {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             color: var(--cobalt);
             font-size: 11px;
             font-weight: 900;
@@ -919,37 +977,41 @@
 
         .task-creator-hero__title {
             margin: 0;
-            font-size: 28px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 22px;
             font-weight: 900;
             color: #0f172a;
             letter-spacing: -0.02em;
+            line-height: 1.2;
         }
 
         .task-creator-hero__sub {
-            margin-top: 10px;
-            color: #334155;
-            font-size: 14px;
-            line-height: 1.6;
+            margin-top: 6px;
+            color: #475569;
+            font-size: 12px;
+            line-height: 1.5;
         }
 
         .task-creator-hero__meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 14px;
+            gap: 8px;
+            margin-top: 12px;
         }
 
         .task-creator-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 8px 12px;
+            padding: 7px 11px;
             border-radius: 999px;
-            background: rgba(255,255,255,0.9);
+            background: #f8fafc;
             border: 1px solid rgba(148, 163, 184, 0.18);
-            color: #0f172a;
-            font-size: 12px;
+            color: #334155;
+            font-size: 11px;
             font-weight: 800;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
 
         .task-creator-chip svg {
@@ -960,13 +1022,19 @@
 
         .task-creator-mode-rail {
             display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 10px;
             align-content: start;
+            padding: 0;
+            border-radius: 0;
+            border: 0;
+            background: transparent;
         }
 
         .task-creator-mode-rail__label {
+            grid-column: 1 / -1;
             color: #64748b;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             letter-spacing: 0.08em;
             text-transform: uppercase;
@@ -975,21 +1043,19 @@
         .task-creator-mode-btn {
             width: 100%;
             text-align: left;
-            padding: 14px 16px;
-            border-radius: 16px;
+            padding: 10px 12px;
+            border-radius: 12px;
             border: 1px solid #dbe4f0;
-            background: rgba(255,255,255,0.92);
+            background: #fff;
             color: #0f172a;
             cursor: pointer;
-            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease;
         }
 
         .task-creator-mode-btn:hover,
         .task-creator-mode-btn.active {
-            border-color: rgba(20,147,255,0.4);
-            background: #fff;
-            box-shadow: 0 14px 28px rgba(20,147,255,0.12);
-            transform: translateY(-1px);
+            border-color: rgba(37, 99, 235, 0.34);
+            background: rgba(239, 246, 255, 0.7);
         }
 
         .task-creator-mode-btn strong {
@@ -1007,12 +1073,17 @@
         }
 
         .task-creator-section-card {
-            padding: 16px;
-            margin-bottom: 14px;
-            border-radius: 16px;
+            padding: 16px 18px;
+            margin: 0;
+            border-radius: 18px;
             border: 1px solid rgba(148, 163, 184, 0.18);
-            background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
-            box-shadow: 0 8px 22px rgba(15,23,42,0.04);
+            background: #fff;
+        }
+
+        .task-creator-section-card--optional {
+            padding: 16px 18px;
+            border-color: rgba(148, 163, 184, 0.14);
+            background: rgba(255, 255, 255, 0.94);
         }
 
         .task-creator-section-card__head {
@@ -1026,7 +1097,8 @@
         .task-creator-section-card__title {
             margin: 0;
             color: #0f172a;
-            font-size: 16px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 17px;
             font-weight: 900;
         }
 
@@ -1040,13 +1112,16 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 16px;
-            margin-bottom: 14px;
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid rgba(20,147,255,0.16);
-            background: linear-gradient(180deg, rgba(239,246,255,0.96), rgba(255,255,255,0.98));
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            margin: 0;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(248, 250, 252, 0.96);
+            backdrop-filter: blur(8px);
         }
 
         .task-creator-stickybar-left {
@@ -1075,27 +1150,25 @@
             font-weight: 900;
             letter-spacing: 0.01em;
             cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
         }
 
         .btn-ghost:hover,
         .btn-ai:hover,
         .btn-mic:hover {
-            transform: translateY(-1px);
+            transform: none;
         }
 
         .btn-ghost {
             background: #fff;
             color: #0f172a;
             border-color: rgba(148, 163, 184, 0.24);
-            box-shadow: 0 8px 18px rgba(15,23,42,0.05);
         }
 
         .btn-ai {
-            background: linear-gradient(135deg, #0f172a, var(--cobalt));
+            background: var(--cobalt);
             color: #fff;
-            border-color: rgba(20,147,255,0.25);
-            box-shadow: 0 12px 24px rgba(20,147,255,0.18);
+            border-color: rgba(15, 23, 42, 0.1);
         }
 
         .btn-ai[disabled],
@@ -1116,9 +1189,8 @@
             border: 1px solid rgba(148, 163, 184, 0.24);
             background: #fff;
             color: var(--cobalt);
-            box-shadow: 0 8px 18px rgba(15,23,42,0.05);
             cursor: pointer;
-            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
         }
 
         .btn-mic svg {
@@ -1128,9 +1200,8 @@
 
         .btn-mic.is-listening {
             color: #fff;
-            background: linear-gradient(135deg, #ef4444, #f97316);
+            background: #dc2626;
             border-color: rgba(239, 68, 68, 0.24);
-            box-shadow: 0 12px 24px rgba(239,68,68,0.22);
         }
 
         .task-brief-label-row {
@@ -1143,29 +1214,32 @@
 
         .task-creator-manual-meta summary,
         #taskCreatorBuiltAdvanced summary,
-        #taskCreatorAiAssistDetails summary {
+        .task-creator-toggle-card summary {
             list-style: none;
         }
 
         .task-creator-manual-meta summary::-webkit-details-marker,
         #taskCreatorBuiltAdvanced summary::-webkit-details-marker,
-        #taskCreatorAiAssistDetails summary::-webkit-details-marker {
+        .task-creator-toggle-card summary::-webkit-details-marker {
             display: none;
         }
 
-        .task-creator-manual-meta > summary {
+        .task-creator-manual-meta > summary,
+        .task-creator-toggle-card > summary {
             cursor: pointer;
             font-size: 13px;
             font-weight: 900;
             color: #0a2a5a;
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             justify-content: space-between;
+            gap: 10px;
+            min-height: 42px;
         }
 
         .task-creator-manual-meta > summary::after,
         #taskCreatorBuiltAdvanced summary::after,
-        #taskCreatorAiAssistDetails summary::after {
+        .task-creator-toggle-card summary::after {
             content: '+';
             font-size: 18px;
             line-height: 1;
@@ -1174,8 +1248,19 @@
 
         .task-creator-manual-meta[open] > summary::after,
         #taskCreatorBuiltAdvanced[open] summary::after,
-        #taskCreatorAiAssistDetails[open] summary::after {
+        .task-creator-toggle-card[open] summary::after {
             content: '-';
+        }
+
+        .task-creator-manual-meta > summary span:last-child {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .task-creator-toggle-card > div,
+        .task-creator-manual-meta > div {
+            margin-top: 10px;
         }
 
         .task-creator-quickhead {
@@ -1194,9 +1279,191 @@
         }
 
         .task-creator-mode-hint {
-            margin-top: 8px;
+            grid-column: 1 / -1;
+            margin-top: 0;
+            padding: 10px 12px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 12px;
+            background: #f8fafc;
             font-size: 12px;
             color: #64748b;
+        }
+
+        .task-creator-source-trigger {
+            min-height: 38px;
+            padding: 0 12px;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+
+        .task-creator-source-trigger.active {
+            border-color: rgba(37, 99, 235, 0.34);
+            background: rgba(239, 246, 255, 0.7);
+        }
+
+        .task-creator-source-card {
+            padding-bottom: 16px;
+        }
+
+        .task-creator-source-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+            gap: 14px;
+            margin-top: 10px;
+        }
+
+        .task-creator-upload-zone {
+            display: grid;
+            gap: 8px;
+            align-content: start;
+            min-height: 100%;
+            padding: 14px;
+            border: 1px dashed rgba(148, 163, 184, 0.5);
+            border-radius: 14px;
+            background: #f8fafc;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .task-creator-upload-zone.is-dragover,
+        .task-creator-upload-zone:hover {
+            border-color: rgba(37, 99, 235, 0.38);
+            background: rgba(239, 246, 255, 0.72);
+        }
+
+        .task-creator-upload-zone.is-busy {
+            opacity: 0.72;
+            cursor: progress;
+        }
+
+        .task-creator-upload-zone__eyebrow {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .task-creator-upload-zone__headline {
+            color: #0f172a;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .task-creator-upload-zone__copy,
+        .task-creator-source-note {
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
+        .task-creator-upload-zone__status {
+            padding-top: 8px;
+            border-top: 1px solid rgba(148, 163, 184, 0.18);
+            color: #0f172a;
+            font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+
+        .task-creator-source-paste {
+            display: grid;
+            gap: 12px;
+        }
+
+        .task-creator-source-paste__actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .task-creator-extracted-panel {
+            margin-top: 14px;
+            padding: 14px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 14px;
+            background: #f8fafc;
+        }
+
+        .task-creator-extract-topline {
+            display: grid;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .task-creator-extract-topline__title {
+            color: #0f172a;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .task-creator-extract-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .task-creator-extract-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: #f8fafc;
+            color: #334155;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .task-creator-extract-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .task-creator-extract-block {
+            min-width: 0;
+            padding: 10px 12px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+
+        .task-creator-extract-block--full {
+            grid-column: 1 / -1;
+        }
+
+        .task-creator-extract-block__label {
+            margin-bottom: 6px;
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .task-creator-extract-block__value {
+            color: #0f172a;
+            font-size: 13px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+        }
+
+        .task-creator-extract-list {
+            margin: 0;
+            padding-left: 18px;
+            color: #0f172a;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .task-creator-extract-list li + li {
+            margin-top: 6px;
         }
 
         .task-creator-footer-note {
@@ -1205,6 +1472,408 @@
             color: #64748b;
             font-size: 12px;
             line-height: 1.5;
+        }
+
+        .task-creator-cluster {
+            display: grid;
+            gap: 10px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(148, 163, 184, 0.14);
+        }
+
+        .task-creator-cluster:first-child {
+            padding-top: 0;
+            border-top: 0;
+        }
+
+        .task-creator-cluster__eyebrow {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .task-creator-inline-fields {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .task-creator-schedule-stack {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            width: 100%;
+            min-width: 0;
+            margin-top: 8px;
+            align-items: stretch;
+        }
+
+        .task-creator-schedule-field {
+            position: relative;
+            display: grid;
+            grid-template-rows: auto minmax(46px, auto);
+            gap: 6px;
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.42);
+            border-radius: 10px;
+            background: #ffffff;
+            box-shadow: none;
+        }
+
+        .task-creator-schedule-field__label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 18px;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            line-height: 1;
+        }
+
+        .task-creator-schedule-field__label svg {
+            flex-shrink: 0;
+            color: #64748b;
+        }
+
+        .task-creator-schedule-field > .form-input,
+        .task-creator-schedule-field > .flatpickr-input,
+        .task-creator-schedule-field > .h2s-flatpickr-alt-input,
+        .task-creator-schedule-field > input.input,
+        .task-creator-schedule-field > input[type="date"],
+        .task-creator-schedule-field > input[type="time"],
+        .task-creator-schedule-field > input[type="text"] {
+            min-width: 0;
+            width: 100%;
+            min-height: 46px;
+            height: 46px;
+            padding: 0 10px !important;
+            border: 1px solid rgba(203, 213, 225, 0.95) !important;
+            border-radius: 10px !important;
+            background: #f8fafc !important;
+            box-shadow: none !important;
+            color: #0f172a !important;
+            font-size: 14px;
+            font-weight: 750;
+            line-height: 46px;
+            font-variant-numeric: tabular-nums;
+            color-scheme: light;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+
+        .task-creator-schedule-field > .form-input:focus,
+        .task-creator-schedule-field > .flatpickr-input:focus,
+        .task-creator-schedule-field > .h2s-flatpickr-alt-input:focus,
+        .task-creator-schedule-field > input.input:focus,
+        .task-creator-schedule-field > input[type="date"]:focus,
+        .task-creator-schedule-field > input[type="time"]:focus,
+        .task-creator-schedule-field > input[type="text"]:focus {
+            outline: none;
+            background: #ffffff !important;
+            border-color: var(--azure) !important;
+            box-shadow: 0 0 0 3px rgba(20, 147, 255, 0.14) !important;
+        }
+
+        .task-creator-schedule-actions {
+            grid-column: 1 / -1;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            min-width: 0;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+
+        .task-creator-schedule-actions .btn-icon {
+            width: auto;
+            min-width: 54px;
+            height: 40px;
+            padding: 0 12px;
+            border-radius: 10px;
+            justify-content: center;
+        }
+
+        .task-creator-schedule-actions .btn-ghost {
+            min-height: 40px;
+            justify-content: center;
+        }
+
+        .task-creator-schedule-note {
+            margin-top: 8px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .task-creator-hero {
+            order: 1;
+        }
+
+        #taskCreatorSourceDetails {
+            order: 2;
+        }
+
+        #taskCreatorAiAssistDetails {
+            order: 3;
+        }
+
+        #taskCreatorStickyBar {
+            order: 4;
+        }
+
+        #taskCreatorBuiltSection,
+        #taskCreatorQuickSection {
+            order: 5;
+        }
+
+        #taskCreatorManualMeta {
+            order: 6;
+        }
+
+        .task-creator-actions {
+            margin: 0;
+            padding: 18px 0 0;
+            border-top: 1px solid rgba(148, 163, 184, 0.18);
+            background: transparent;
+        }
+
+        .task-creator-actions-right {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-left: auto;
+        }
+
+        #addTaskModal .task-creator-actions {
+            position: static;
+            bottom: auto;
+            z-index: auto;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        #addTaskModal .task-creator-stickybar {
+            position: static;
+            top: auto;
+            padding: 14px 16px;
+            border-radius: 14px;
+            background: #f8fafc;
+            box-shadow: none;
+        }
+
+        #addTaskModal .task-title.task-creator-title {
+            margin-bottom: 6px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 23px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        #addTaskModal .task-creator-hero__eyebrow,
+        #addTaskModal .task-creator-hero__meta {
+            display: none;
+        }
+
+        #addTaskModal .task-creator-hero {
+            grid-template-columns: minmax(0, 1fr);
+            gap: 10px;
+            padding: 0 0 2px;
+        }
+
+        #addTaskModal .task-creator-hero__title,
+        #addTaskModal .task-creator-section-card__title,
+        #addTaskModal .task-creator-mode-btn strong,
+        #addTaskModal .task-creator-manual-meta > summary,
+        #addTaskModal .task-creator-toggle-card > summary,
+        #addTaskModal #taskCreatorBuiltAdvanced summary {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+        }
+
+        #addTaskModal .task-creator-hero__title,
+        #addTaskModal .task-creator-hero__sub {
+            display: none;
+        }
+
+        #addTaskModal .task-creator-section-card__title {
+            font-size: 15px;
+        }
+
+        #addTaskModal .task-creator-mode-rail {
+            gap: 8px;
+            padding: 6px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 14px;
+            background: #f8fafc;
+        }
+
+        #addTaskModal .task-creator-mode-rail__label {
+            padding: 0 4px 2px;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        }
+
+        #addTaskModal .task-creator-mode-btn {
+            min-height: 74px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            box-shadow: none;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        #addTaskModal #taskModeBuiltBtn,
+        #addTaskModal #taskModeQuickBtn {
+            border-radius: 10px;
+            border-bottom: 1px solid transparent;
+        }
+
+        #addTaskModal .task-creator-mode-btn:hover {
+            border-color: rgba(148, 163, 184, 0.34);
+            background: #ffffff;
+        }
+
+        #addTaskModal .task-creator-mode-btn.active,
+        #addTaskModal .task-creator-mode-btn[aria-pressed="true"] {
+            border-color: rgba(37, 99, 235, 0.34);
+            background: #ffffff;
+            box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.12);
+        }
+
+        #addTaskModal .task-creator-mode-btn strong {
+            margin-bottom: 3px;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            font-weight: 800;
+        }
+
+        #addTaskModal .task-creator-mode-btn span,
+        #addTaskModal .task-creator-section-card__sub,
+        #addTaskModal .form-label,
+        #addTaskModal .task-creator-cluster__eyebrow,
+        #addTaskModal .task-creator-schedule-note,
+        #addTaskModal #taskCreatorManualMetaSummary {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        }
+
+        #addTaskModal .task-creator-mode-hint {
+            margin-top: 2px;
+            padding: 10px 12px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 10px;
+            background: #ffffff;
+        }
+
+        #addTaskModal .task-creator-section-card,
+        #addTaskModal .task-creator-section-card--optional {
+            padding: 14px 16px;
+            border-radius: 14px;
+        }
+
+        #addTaskModal .task-creator-section-summary {
+            min-height: 0;
+            gap: 12px;
+            align-items: flex-start;
+        }
+
+        #addTaskModal .task-creator-section-summary__copy {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        #addTaskModal .task-creator-manual-meta > summary,
+        #addTaskModal .task-creator-toggle-card > summary {
+            gap: 12px;
+            min-height: 0;
+        }
+
+        #addTaskModal .task-creator-manual-meta > summary::after,
+        #addTaskModal .task-creator-toggle-card > summary::after {
+            content: '';
+            width: 10px;
+            height: 10px;
+            margin-top: 6px;
+            flex: 0 0 auto;
+            border-right: 1.75px solid #64748b;
+            border-bottom: 1.75px solid #64748b;
+            transform: rotate(45deg);
+            transition: transform 0.15s ease;
+        }
+
+        #addTaskModal .task-creator-manual-meta[open] > summary::after,
+        #addTaskModal .task-creator-toggle-card[open] > summary::after {
+            transform: rotate(225deg);
+        }
+
+        #addTaskModal .task-creator-toggle-card > div,
+        #addTaskModal .task-creator-manual-meta > div {
+            margin-top: 12px;
+        }
+
+        #addTaskModal .task-creator-manual-meta > div {
+            display: grid;
+            gap: 16px;
+        }
+
+        #addTaskModal .task-creator-cluster {
+            gap: 12px;
+            padding-top: 0;
+            border-top: 0;
+        }
+
+        #addTaskModal .task-creator-quickhead {
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        #addTaskModal .task-creator-quickhead__actions {
+            align-items: center;
+        }
+
+        #addTaskModal .task-creator-ai-polish-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 42px;
+            padding: 0 14px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            background: rgba(248, 250, 252, 0.95);
+            color: #0f172a;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+        }
+
+        #addTaskModal .task-creator-ai-polish-btn:hover {
+            border-color: rgba(37, 99, 235, 0.28);
+            background: rgba(239, 246, 255, 0.9);
+            color: var(--cobalt);
+        }
+
+        @media (max-width: 640px) {
+            .task-creator-schedule-stack {
+                grid-template-columns: 1fr;
+            }
+
+            .task-creator-inline-fields {
+                grid-template-columns: 1fr;
+            }
         }
 
         .deliverables-image-ai-card {
@@ -1261,6 +1930,19 @@
         }
 
         @media (max-width: 768px) {
+            #addTaskModal .task-modal-header {
+                padding: 18px 20px 16px;
+            }
+
+            #addTaskModal .task-modal-body {
+                padding: 0 22px 26px;
+            }
+
+            .task-creator-flow {
+                gap: 16px;
+                padding-top: 16px;
+            }
+
             #logHoursQuickBtn {
                 right: 16px;
                 bottom: 16px;
@@ -1275,12 +1957,12 @@
 
             #deliverables-pane .deliverables-switcher {
                 width: 100%;
-                display: grid !important;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                flex-wrap: wrap;
             }
 
             #deliverables-pane .deliverables-tab-btn {
-                min-width: 0;
+                flex: 1 1 auto;
+                justify-content: center;
             }
 
             #workspace-pane .workspace-shell {
@@ -1305,14 +1987,71 @@
                 flex: 1 1 180px;
             }
 
-            .task-creator-hero {
+            .task-creator-hero,
+            .task-creator-source-grid,
+            .task-creator-extract-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .task-creator-section-card,
+            .task-creator-section-card--optional {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+
+            .task-creator-mode-rail {
+                grid-template-columns: 1fr;
+            }
+
+            .task-creator-stickybar,
+            .task-creator-actions {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .task-creator-stickybar {
+                padding: 16px 18px;
+            }
+
+            .task-creator-stickybar-right,
+            .task-creator-actions-right {
+                width: 100%;
+                margin-left: 0;
+            }
+
+            .task-creator-stickybar-right > *,
+            .task-creator-actions-right > * {
+                flex: 1 1 160px;
             }
 
             .task-creator-footer-note {
                 max-width: none;
                 margin-right: 0;
                 margin-bottom: 10px;
+            }
+        }
+
+        @media (max-width: 640px) {
+            #addTaskModal .task-modal-header {
+                padding: 16px;
+            }
+
+            #addTaskModal .task-modal-body {
+                padding: 0 20px 24px;
+            }
+
+            .task-creator-hero,
+            .task-creator-section-card,
+            .task-creator-section-card--optional {
+                padding: 16px;
+            }
+
+            .task-creator-mode-rail {
+                grid-template-columns: 1fr;
+            }
+
+            .task-creator-actions {
+                padding: 16px 0 0;
             }
         }
     </style>
@@ -1338,13 +2077,47 @@
             <p class="user-gate-subtitle">Sign in with your assigned username/email + PIN</p>
 
             <div style="margin-top: 14px; display:flex; flex-direction:column; gap:10px;">
-                <input id="dashLoginUser" class="user-gate-select" placeholder="Username or email (e.g., ROSEL)" autocomplete="username" />
-                <input id="dashLoginPin" class="user-gate-select" type="password" placeholder="PIN" autocomplete="current-password" />
+                <input id="dashLoginUser" class="user-gate-select" placeholder="Username or email (e.g., ROSEL)" autocomplete="username" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
+                <input id="dashLoginPin" class="user-gate-select" type="password" placeholder="PIN" autocomplete="current-password" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
                 <button id="dashLoginBtn" class="user-gate-btn" disabled onclick="dashboardAccountLogin()">
                     <span>Sign in</span>
                 </button>
                 <div class="user-gate-mini" id="dashLoginStatus" style="min-height: 16px;"></div>
             </div>
+
+            <script>
+                (function bindDashboardLoginGate() {
+                    const userInput = document.getElementById('dashLoginUser');
+                    const pinInput = document.getElementById('dashLoginPin');
+                    const loginBtn = document.getElementById('dashLoginBtn');
+                    if (!userInput || !pinInput || !loginBtn) return;
+
+                    window.syncDashboardLoginEnabled = function syncDashboardLoginEnabled() {
+                        const hasUser = !!String(userInput.value || '').trim();
+                        const hasPin = !!String(pinInput.value || '').trim();
+                        loginBtn.disabled = !(hasUser && hasPin);
+                    };
+
+                    if (!userInput.dataset.loginBound) {
+                        userInput.addEventListener('input', window.syncDashboardLoginEnabled);
+                        userInput.addEventListener('change', window.syncDashboardLoginEnabled);
+                        userInput.dataset.loginBound = 'true';
+                    }
+
+                    if (!pinInput.dataset.loginBound) {
+                        pinInput.addEventListener('input', window.syncDashboardLoginEnabled);
+                        pinInput.addEventListener('change', window.syncDashboardLoginEnabled);
+                        pinInput.addEventListener('keydown', (event) => {
+                            if (event.key === 'Enter') {
+                                window.syncDashboardLoginEnabled();
+                            }
+                        });
+                        pinInput.dataset.loginBound = 'true';
+                    }
+
+                    window.syncDashboardLoginEnabled();
+                })();
+            </script>
 
             <div class="user-gate-mini" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,0.25);">
                 No account yet? Ask Admin to create one and send you a temporary PIN.
@@ -1439,7 +2212,7 @@
             <nav class="app-sidebar-nav">
                 <div class="app-sidebar-group open" data-group-id="hiringpipeline">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('hiringpipeline')" aria-expanded="true">
-                        <span>Hiring Pipeline</span>
+                        <span>Pipeline</span>
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
@@ -1450,27 +2223,28 @@
                     </div>
                 </div>
 
-                <div class="app-sidebar-group" data-group-id="training">
-                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('training')" aria-expanded="false">
-                        <span>Training</span>
+                <div class="app-sidebar-group" data-group-id="workflow">
+                    <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('workflow')" aria-expanded="false">
+                        <span>Workflow</span>
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
-                        <a class="app-sidebar-nav-item" data-tab="training" onclick="switchToTab('training')">Training</a>
                         <a class="app-sidebar-nav-item" data-tab="tasks" onclick="switchToTab('tasks')">Tasks</a>
+                        <a class="app-sidebar-nav-item" data-tab="training" onclick="switchToTab('training')">Training</a>
                         <a class="app-sidebar-nav-item" data-tab="workspace" onclick="switchToTab('workspace')">My Summary</a>
                     </div>
                 </div>
 
                 <div class="app-sidebar-group" data-group-id="salestools">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('salestools')" aria-expanded="false">
-                        <span>Sales Tools</span>
+                        <span>Deliverables &amp; Offers</span>
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">Deliverables</a>
                         <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">Offer Builder</a>
                         <a class="app-sidebar-nav-item" href="#" onclick="openOfferLibraryFromNav(); return false;">Offer Library</a>
-                        <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">Deliverables</a>
+                        <a class="app-sidebar-nav-item" data-tab="owneruploads" onclick="switchToTab('owneruploads')">Owner Uploads</a>
                     </div>
                 </div>
 
@@ -1481,7 +2255,7 @@
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">Admin Dashboard</a>
-                        <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Proof Packs</a>
+                        <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Website Media</a>
                     </div>
                 </div>
 
@@ -1507,7 +2281,7 @@
                 <div class="h2s-build" style="padding: 6px 16px 14px 16px;">
                     <button class="h2s-build-pill" id="sidebarBuildPill" type="button" onclick="copyBuildIdFromEl('sidebarBuildId','sidebarBuildPill')" aria-label="Copy build ID">
                         <span class="h2s-build-pill__label">Version</span>
-                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260317_191711_5150b8a</span>
+                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260528_120652_4d5c78f</span>
                         <span class="h2s-build-pill__copy">Copy</span>
                     </button>
                 </div>
@@ -2068,8 +2842,8 @@
 
                 <!-- DELIVERABLES PANE -->
                 <div class="pane" id="deliverables-pane">
-            <div class="deliverables-switcher" style="display: flex; gap: var(--gap-2); margin-bottom: var(--gap-2); flex-wrap: wrap;">
-                <button class="btn deliverables-tab-btn is-active" onclick="switchDeliverablesView('submission')" id="deliverablesTabSubmission" style="background: var(--cobalt); color: white;">
+            <div class="deliverables-switcher">
+                <button class="btn deliverables-tab-btn is-active" onclick="switchDeliverablesView('submission')" id="deliverablesTabSubmission">
                     Submit
                 </button>
                 <button class="btn deliverables-tab-btn" onclick="switchDeliverablesView('review')" id="deliverablesTabReview">
@@ -2103,11 +2877,39 @@
                             <input type="text" id="deliverableTitle" class="deliverables-field__control" required placeholder="e.g. Camera ad hero image - revision 2">
                         </div>
                         <div class="deliverables-field deliverables-field--full">
-                            <label class="deliverables-field__label">Description</label>
+                            <div class="deliverables-metadata-grid">
+                                <div class="deliverables-field">
+                                    <label class="deliverables-field__label">Business or Brand</label>
+                                    <input type="text" id="deliverableBusiness" class="deliverables-field__control" placeholder="e.g. Home2Smart, PureStay, Internal">
+                                </div>
+                                <div class="deliverables-field">
+                                    <label class="deliverables-field__label">Platform or Placement</label>
+                                    <input type="text" id="deliverablePlatform" class="deliverables-field__control" placeholder="e.g. Meta Feed, Canva, Website Hero, Internal Deck">
+                                </div>
+                                <div class="deliverables-field">
+                                    <label class="deliverables-field__label">Asset Type</label>
+                                    <select id="deliverableAssetType" class="form-select deliverables-field__control">
+                                        <option value="">Select asset type...</option>
+                                        <option value="Ad Creative">Ad Creative</option>
+                                        <option value="Canva Export">Canva Export</option>
+                                        <option value="AI Visual">AI Visual</option>
+                                        <option value="Research Notes">Research Notes</option>
+                                        <option value="Creative Reference">Creative Reference</option>
+                                        <option value="Short-Form Concept">Short-Form Concept</option>
+                                        <option value="Social Graphic">Social Graphic</option>
+                                        <option value="Campaign Asset">Campaign Asset</option>
+                                        <option value="Internal Review Material">Internal Review Material</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="deliverables-field__hint">Optional. Add only the business, placement, and asset type that will help reviewers identify the work faster.</div>
+                        </div>
+                        <div class="deliverables-field deliverables-field--full">
+                            <label class="deliverables-field__label">Notes / Review Context</label>
                             <textarea id="deliverableDescription" class="deliverables-field__control deliverables-field__control--textarea" placeholder="Explain what was uploaded, what reviewers should check, and whether it is final or still in revision. (Will be auto-generated by AI if left blank based on your links and files)"></textarea>
                         </div>
                                                 <div class="deliverables-field deliverables-field--full">
-                            <label class="deliverables-field__label">External Links (Loom, Figma, YouTube, etc.)</label>
+                            <label class="deliverables-field__label">Source / Final Links (Loom, Figma, Canva, Drive, YouTube, etc.)</label>
                             <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: start;">
                                 <input type="text" id="deliverableLinkInput" class="deliverables-field__control" placeholder="Paste a link here and press Enter" onkeydown="if(event.key==='Enter'){event.preventDefault(); window.addDeliverableLinkFromInput();}">
                                 <button type="button" class="btn btn-secondary" onclick="window.addDeliverableLinkFromInput()" style="padding: 10px 20px; white-space: nowrap; font-weight: 600; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; cursor: pointer; color: #0f172a;">Add Link</button>
@@ -2116,7 +2918,7 @@
                                 @keyframes linkFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
                             </style>
                             <div id="deliverableAddedLinks" style="display: flex; flex-direction: column; gap: 8px;"></div>
-                            <div class="deliverables-field__hint" style="margin-top: 6px;">Added links will automatically convert to playable videos or cards.</div>
+                            <div class="deliverables-field__hint" style="margin-top: 6px;">Use this for source files, final exports, or review links. Added links will automatically convert to playable videos or cards when possible.</div>
                         </div>
                         <div class="deliverables-field deliverables-field--full">
                             <label class="deliverables-field__label">Attach File (optional)</label>
@@ -2236,17 +3038,19 @@
                 <div class="tasks-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                     <div>
                         <h2 class="card-title">Tasks</h2>
-                        <p style="color: var(--cobalt); margin: 0;">Active tasks, documents, and action items.</p>
+                            <p style="color: var(--cobalt); margin: 0;">Active assignments and due work.</p>
                     </div>
                     <div style="display:flex; gap: 10px; align-items:center; flex-wrap: wrap; justify-content:flex-end;">
-                        <button onclick="openAddTaskModal()" class="btn" style="padding: 10px 20px; font-size: 14px; background: var(--azure); color: white;">
+                            <button id="tasksAddTaskBtn" onclick="openAddTaskModal()" class="btn" style="display: none; padding: 10px 20px; font-size: 14px; background: var(--azure); color: white;">
                             + Add Task
                         </button>
                     </div>
                 </div>
+                    <div id="tasksPrimarySupport"></div>
                 <div id="tasksContainer">
                     <div class="spinner"></div>
                 </div>
+                    <div id="tasksWorkflowSupport"></div>
             </div>
         </div>
 
@@ -2410,12 +3214,12 @@
                     <div class="ds-content">
                         <div class="ds-page-header" style="padding: 32px 0; margin-bottom: 32px;">
                             <div>
-                                <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Proof Packs</div>
-                                <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload proof photos and videos for your bundles page. The system handles rotation automatically.</div>
+                                <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Website Media</div>
+                                <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload and organize the photos and videos that can be used across the website. The system handles rotation automatically.</div>
                                 <div style="margin-top: 10px;">
                                     <button class="h2s-build-pill h2s-build-pill--inline" id="ppBuildPill" type="button" onclick="copyBuildIdFromEl('ppBuildId','ppBuildPill')" aria-label="Copy version ID">
                                         <span class="h2s-build-pill__label">Version</span>
-                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260317_191711_5150b8a</span>
+                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260528_120652_4d5c78f</span>
                                         <span class="h2s-build-pill__copy">Copy</span>
                                     </button>
                                 </div>
@@ -2432,12 +3236,10 @@
                                     <label for="ppService" style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:6px; letter-spacing:0.5px; text-transform:uppercase;">
                                         Service
                                     </label>
-                                    <div class="custom-select-wrapper" style="position:relative;">
-                                        <select id="ppService" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
-                                            <option value="tv_mounting" selected>TV Mounting</option>
-                                            <option value="cameras">Cameras</option>
-                                        </select>
-                                    </div>
+                                    <select id="ppService" class="form-select" style="width:100%; border-radius:8px; border-color:#cbd5e1; height:42px; font-weight:500;">
+                                        <option value="tv_mounting" selected>TV Mounting</option>
+                                        <option value="cameras">Cameras</option>
+                                    </select>
                                 </div>
 
                                 <!-- Proof Type Select -->
@@ -2466,7 +3268,7 @@
                         <div class="card u-mt-3 pp-upload-card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                             <div class="card-header u-mb-2 pp-upload-card__header" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 16px;">
                                 <div>
-                                    <div class="pp-upload-card__eyebrow">Proof Packs</div>
+                                    <div class="pp-upload-card__eyebrow">Website Media</div>
                                     <div id="ppHeroTitle">Upload Proof | TV Mounting</div>
                                 </div>
                                 <div class="pp-upload-card__meta" id="ppQuickMeta">Drop files or click to browse. Supports bulk upload.</div>
@@ -2646,7 +3448,7 @@
 
                         <div id="ppLibraryWorkspace" class="u-mt-4">
                             <div class="card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
-                                <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Bundles Page</div>
+                                <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Website</div>
                                 <div id="ppLivePreviewContent" style="min-height:100px;">
                                     <div style="text-align:center;padding:40px;color:#94a3b8;">
                                         <div class="spinner" style="margin:0 auto;"></div>
@@ -2787,12 +3589,10 @@
                                     <!-- Row 3: Controls -->
                                     <div class="pp-controls-row">
                                         <!-- Sort Dropdown (Custom Style) -->
-                                        <div class="pp-select-wrapper">
-                                            <select class="pp-select-custom" onchange="proofPacks.sortLibrary(this.value)">
-                                                <option value="date-desc">Newest First</option>
-                                                <option value="date-asc">Oldest First</option>
-                                            </select>
-                                        </div>
+                                        <select class="pp-select-custom" onchange="proofPacks.sortLibrary(this.value)">
+                                            <option value="date-desc">Newest First</option>
+                                            <option value="date-asc">Oldest First</option>
+                                        </select>
                                         
                                         <!-- View Toggles & Count -->
                                         <div class="pp-view-group">
@@ -2834,7 +3634,7 @@
                                     <div class="form-field">
                                         <label class="form-label" for="ppBackendUrl">Backend URL</label>
                                         <input id="ppBackendUrl" class="form-input" placeholder="https://h2s-backend.vercel.app" />
-                                        <span class="form-help">Where the Proof Packs API is hosted.</span>
+                                        <span class="form-help">Where the Website Media API is hosted.</span>
                                         <span class="form-help" id="ppDashBuildStamp" style="display:block; margin-top:6px;">Dash build: 2026-02-02T00:00:00Z</span>
                                     </div>
                                     <div class="form-field u-mt-2">
@@ -2850,6 +3650,31 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pane" id="owneruploads-pane">
+                    <div style="max-width: 1480px; margin: 0 auto; padding: 24px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+                            <div>
+                                <h2 style="margin:0; font-size:28px; font-weight:700; color:var(--cobalt); letter-spacing:-0.03em;">Owner Uploads</h2>
+                                <p style="margin:6px 0 0; color:#64748b; font-size:14px; max-width:680px;">Every photo and video lands here. Open it or download it whenever you need it.</p>
+                            </div>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                                <select id="ownerUploadsStateFilter" class="form-select" onchange="ownerUploadsUI.handleFilterChange()" style="min-width:150px;">
+                                    <option value="all" selected>All media</option>
+                                    <option value="new">Only new</option>
+                                </select>
+                                <button class="btn btn-tonal" onclick="ownerUploadsUI.refresh()">Reload</button>
+                            </div>
+                        </div>
+
+                        <div id="ownerUploadsStatus" style="margin-bottom:12px; font-size:13px; color:#64748b;"></div>
+                        <div id="ownerUploadsList" style="display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); align-items:start;"></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px;">
+                            <div id="ownerUploadsFooterMeta" style="font-size:12px; color:#64748b; line-height:1.45;">No uploads in gallery yet.</div>
+                            <button id="ownerUploadsLoadMore" class="btn btn-tonal" onclick="ownerUploadsUI.loadMore()" style="min-height:32px; padding:6px 12px; border-radius:999px; display:none;">Load more</button>
                         </div>
                     </div>
                 </div>
@@ -3691,47 +4516,95 @@
         <div class="task-modal-overlay" id="addTaskModal" onclick="closeAddTaskModal(event)">
             <div class="task-modal task-creator-modal" onclick="event.stopPropagation()">
                 <div class="task-modal-header">
-                    <div style="flex: 1;">
-                        <div class="task-title" style="font-size: 24px; margin-bottom: 8px;">Add New Task</div>
-                        <div style="color: var(--cobalt); font-size: 14px;">Voice-first capture with quick manual fallback</div>
+                        <div style="flex: 1;">
+                        <div class="task-title task-creator-title">Add Task</div>
+                        <div class="task-creator-header-copy">Choose the capture mode, work through the brief, then route schedule and ownership before saving.</div>
                     </div>
                     <button class="task-modal-close" onclick="attemptCloseAddTaskModal('x')"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
                 <div class="task-modal-body">
                     <form id="addTaskForm" onsubmit="submitTaskCreator(event)">
+                        <div class="task-creator-flow">
                         <div class="task-creator-hero">
                             <div>
-                                <div class="task-creator-hero__eyebrow">AI task intake</div>
-                                <h3 class="task-creator-hero__title">Start by talking through the work.</h3>
-                                <div class="task-creator-hero__sub">Use the mic to dump the job in plain language, define what &ldquo;done&rdquo; means, then let AI suggest the structure. If you already know the task, switch to quick manual mode and save fast.</div>
+                                <div class="task-creator-hero__eyebrow">Start here</div>
+                                <h3 class="task-creator-hero__title">Pick how you want to capture this task.</h3>
+                                <div class="task-creator-hero__sub">Use Structured Assist when the work needs a clearer brief or generated detail. Use Quick Manual when you already know the task and want the fastest route to save.</div>
                                 <div class="task-creator-hero__meta">
-                                    <span class="task-creator-chip">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Z" stroke-linecap="round" stroke-linejoin="round"></path><path d="M19 11a7 7 0 0 1-14 0" stroke-linecap="round"></path><path d="M12 18v3" stroke-linecap="round"></path><path d="M8 21h8" stroke-linecap="round"></path></svg>
-                                        Dictate into the brief
-                                    </span>
-                                    <span class="task-creator-chip">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
-                                        AI suggestions stay opt-in
-                                    </span>
+                                    <div class="task-creator-chip">1. Choose mode</div>
+                                    <div class="task-creator-chip">2. Capture the ask</div>
+                                    <div class="task-creator-chip">3. Route and save</div>
                                 </div>
                             </div>
                             <div class="task-creator-mode-rail">
-                                <div class="task-creator-mode-rail__label">Creation mode</div>
-                                <button type="button" id="taskModeBuiltBtn" class="task-creator-mode-btn" onclick="setTaskCreatorMode('built')">
-                                    <strong>AI Capture + Mic</strong>
-                                    <span>Talk through the task, define outcome, and generate cleaner details after intake.</span>
+                                <div class="task-creator-mode-rail__label">Capture mode</div>
+                                <button type="button" id="taskModeBuiltBtn" class="task-creator-mode-btn active" aria-pressed="true" onclick="setTaskCreatorMode('built')">
+                                    <strong>Structured assist</strong>
+                                    <span>Talk through the task, define the outcome, and generate cleaner details after intake.</span>
                                 </button>
-                                <button type="button" id="taskModeQuickBtn" class="task-creator-mode-btn" onclick="setTaskCreatorMode('quick')">
-                                    <strong>Quick Manual</strong>
-                                    <span>Type title and rough notes directly, then optionally polish the description.</span>
+                                <button type="button" id="taskModeQuickBtn" class="task-creator-mode-btn" aria-pressed="false" onclick="setTaskCreatorMode('quick')">
+                                    <strong>Quick manual</strong>
+                                    <span>Type the title and rough notes directly, then save fast or polish the description.</span>
                                 </button>
-                                <div class="task-creator-mode-hint"><strong id="taskCreatorModeLabel">Voice-first AI capture</strong><br><span id="taskCreatorModeHint">Built Task: autosaves. Generate stays locked until Outcome + minimum detail are provided.</span></div>
+                                <div class="task-creator-mode-hint"><strong id="taskCreatorModeLabel">Structured assist</strong><br><span id="taskCreatorModeHint">Built Task: autosaves. Generate stays locked until Outcome + minimum detail are provided.</span></div>
                             </div>
                         </div>
 
-                        <details id="taskCreatorAiAssistDetails" style="margin-bottom: 14px;">
-                            <summary style="cursor:pointer; font-weight: 900; color: #0a2a5a; font-size: 13px;">AI Assist (optional)</summary>
-                            <div style="margin-top: 8px; font-size: 12px; color: #6b7280;">AI intake helps draft titles, due fields, and structured task details, but nothing applies unless you keep it.</div>
+                        <details id="taskCreatorSourceDetails" class="task-creator-section-card task-creator-section-card--optional task-creator-toggle-card task-creator-source-card">
+                            <summary class="task-creator-section-summary">
+                                <div class="task-creator-section-summary__copy">
+                                    <div class="task-creator-section-card__title">Source document</div>
+                                    <div class="task-creator-section-card__sub">Optional. Analyze a PDF, DOCX, TXT, Markdown, HTML, CSV, JSON, or pasted text, then apply the extracted draft into the editable task fields.</div>
+                                </div>
+                                <button type="button" id="taskModeUploadBtn" class="btn-ghost task-creator-source-trigger" onclick="event.preventDefault(); event.stopPropagation(); taskCreatorOpenSourceDetails(true); taskCreatorOpenUploadPicker()">Choose file</button>
+                            </summary>
+                            <div class="task-creator-source-grid">
+                                <input type="file" id="taskCreatorUploadInput" style="display:none;" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.html,.htm,.csv,.json,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/html,text/csv,application/json" onchange="taskCreatorHandleUploadInput(event)">
+                                <div id="taskCreatorUploadZone" class="task-creator-upload-zone" role="button" tabindex="0" onclick="taskCreatorOpenSourceDetails(true); taskCreatorOpenUploadPicker()" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); taskCreatorOpenSourceDetails(true); taskCreatorOpenUploadPicker(); }" ondragenter="taskCreatorOpenSourceDetails(true); taskCreatorHandleUploadDrag(event)" ondragover="taskCreatorHandleUploadDrag(event)" ondragleave="taskCreatorHandleUploadDrag(event)" ondrop="taskCreatorOpenSourceDetails(true); taskCreatorHandleUploadDrop(event)">
+                                    <div class="task-creator-upload-zone__eyebrow">Drop or browse</div>
+                                    <div class="task-creator-upload-zone__headline">Bring in the source file when the brief already exists.</div>
+                                    <div class="task-creator-upload-zone__copy">Accepted for local analysis: PDF, DOCX, TXT, Markdown, HTML, CSV, and JSON. Legacy .doc files are not parsed in-browser here. This step does not store the original file.</div>
+                                    <div id="taskCreatorUploadMeta" class="task-creator-upload-zone__status">Nothing uploaded yet.</div>
+                                </div>
+                                <div class="task-creator-source-paste">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Source label (optional)</label>
+                                        <input type="text" id="taskCreatorSourceLabel" class="form-input" placeholder="e.g., Client brief, SOP excerpt, meeting notes">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Paste source text</label>
+                                        <textarea id="taskCreatorSourceText" class="form-textarea" placeholder="Paste text here when the source is not in a supported file format or when you only need a short excerpt." style="min-height: 120px;"></textarea>
+                                    </div>
+                                    <div class="task-creator-source-paste__actions">
+                                        <button type="button" class="btn-ghost" onclick="taskCreatorAnalyzeSourceText()">Analyze pasted text</button>
+                                        <button type="button" class="btn-clean-link" onclick="taskCreatorClearSourceText()">Clear text</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="taskCreatorExtractedPanel" class="task-creator-extracted-panel" style="display:none;">
+                                <div class="task-creator-section-card__head">
+                                    <div>
+                                        <div class="task-creator-section-card__title">Extracted draft</div>
+                                        <div id="taskCreatorExtractedSummary" class="task-creator-section-card__sub">Review the draft, then apply it into the editable task fields if it looks right.</div>
+                                    </div>
+                                    <div class="task-creator-source-paste__actions">
+                                        <button type="button" class="btn-ghost" onclick="taskCreatorApplyExtractedDraft()">Apply draft</button>
+                                        <button type="button" class="btn-ghost" onclick="taskCreatorRegenerateExtractedDraft()">Analyze again</button>
+                                        <button type="button" class="btn-clean-link" onclick="taskCreatorClearExtractedDraft()">Clear</button>
+                                    </div>
+                                </div>
+                                <div id="taskCreatorExtractedDetails"></div>
+                            </div>
+                            <div class="task-creator-source-note">Need the original file stored for the wider team after the task is created? Add it to the shared task resource bucket from the tasks board.</div>
+                        </details>
+
+                        <details id="taskCreatorAiAssistDetails" class="task-creator-section-card task-creator-section-card--optional task-creator-toggle-card">
+                            <summary>
+                                <div>
+                                    <div class="task-creator-section-card__title">AI Assist</div>
+                                    <div class="task-creator-section-card__sub">Optional. Suggestions can refine titles, due fields, and structured details, but nothing applies unless you keep it.</div>
+                                </div>
+                            </summary>
                         </details>
 
                         <div id="taskCreatorStickyBar" class="task-creator-stickybar" style="display:none;">
@@ -3808,77 +4681,135 @@
                         </div>
 
                         <details id="taskCreatorManualMeta" class="task-creator-manual-meta task-creator-section-card" open>
-                            <summary>Manual details</summary>
-                            <div style="margin-top: 12px;">
-                                <div class="form-group">
-                                    <label class="form-label">Task Title</label>
-                                    <input type="text" id="newTaskTitle" class="form-input" placeholder="e.g., Check candidate emails" required>
+                            <summary class="task-creator-section-summary">
+                                <div class="task-creator-section-summary__copy">
+                                    <div class="task-creator-section-card__title">Manual details</div>
+                                    <div id="taskCreatorManualMetaSummary">Routing, schedule, and links</div>
                                 </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">Category</label>
-                                    <select id="newTaskCategory" class="form-select">
-                                        <option value="">Select...</option>
-                                        <option value="Ads">Ads</option>
-                                        <option value="Offers">Offers</option>
-                                        <option value="Hiring">Hiring</option>
-                                        <option value="Ops">Ops</option>
-                                        <option value="Product">Product</option>
-                                        <option value="Other">Other</option>
-                                    </select>
-                                </div>
-                                
-                                <div class="form-row">
-                                    <div class="form-group" style="flex: 1;">
-                                        <label class="form-label">Priority</label>
-                                        <select id="newTaskPriority" class="form-select">
-                                            <option value="HIGH">High</option>
-                                            <option value="MEDIUM" selected>Medium</option>
-                                            <option value="LOW">Low</option>
-                                        </select>
+                            </summary>
+                            <div>
+                                <div class="task-creator-cluster">
+                                    <div class="task-creator-cluster__eyebrow">Identity</div>
+                                    <div class="form-group">
+                                        <label class="form-label">Task Title</label>
+                                        <input type="text" id="newTaskTitle" class="form-input" placeholder="e.g., Check candidate emails" required>
                                     </div>
-                                    <div class="form-group" style="flex: 1;">
-                                        <label class="form-label">Due Date</label>
-                                        <div class="task-creator-due-row">
-                                            <input type="date" id="newTaskDueDate" class="form-input" style="flex:1;">
-                                            <input type="time" id="newTaskDueTime" class="form-input" style="flex:1;">
-                                            <button type="button" class="btn-secondary btn-icon" onclick="openCalendarModal()" title="Schedule" aria-label="Schedule">
-                                                <span style="font-weight:900;">Cal</span>
-                                            </button>
+
+                                    <div class="task-creator-inline-fields">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label class="form-label">Category</label>
+                                            <select id="newTaskCategory" class="form-select" data-native-select="true">
+                                                <option value="">Select...</option>
+                                                <option value="Ads">Ads</option>
+                                                <option value="Offers">Offers</option>
+                                                <option value="Hiring">Hiring</option>
+                                                <option value="Ops">Ops</option>
+                                                <option value="Product">Product</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label class="form-label">Priority</label>
+                                            <select id="newTaskPriority" class="form-select" data-native-select="true">
+                                                <option value="HIGH">High</option>
+                                                <option value="MEDIUM" selected>Medium</option>
+                                                <option value="LOW">Low</option>
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div class="form-group">
-                                    <label class="form-label">Assigned To</label>
-                                    <select id="newTaskAssignedTo" class="form-select"></select>
-                                    <div style="margin-top: 6px; font-size: 12px; color: #64748b;">Only active employees are selectable (prevents typos).</div>
-                                </div>
-
-                                <div class="form-group">
-                                    <label class="form-label">Assets / Links</label>
-                                    <textarea id="newTaskAssets" class="form-textarea" placeholder="Paste one or more links (one per line).\nExample: https://youtu.be/..." style="min-height: 90px;"></textarea>
-                                    <div style="margin-top: 6px; font-size: 12px; color: #64748b;">These show up as clickable links in the task popup.</div>
-                                </div>
-
-                                <div class="form-row" style="display: flex; gap: 16px; flex-wrap: wrap;">
-                                    <div class="form-group" style="flex: 1;">
-                                        <label class="form-label">Recurrence</label>
-                                        <select id="newTaskRecurrence" class="form-select">
-                                            <option value="none" selected>None</option>
-                                            <option value="daily">Daily</option>
-                                            <option value="weekly">Weekly</option>
-                                        </select>
+                                <div class="task-creator-cluster">
+                                    <div class="task-creator-cluster__eyebrow">Scheduling</div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Due date and time</label>
+                                        <div class="task-creator-schedule-stack">
+                                            <div class="task-creator-schedule-field" onclick="taskCreatorOpenDueField('newTaskDueDate')">
+                                                <div class="task-creator-schedule-field__label">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                                    Date
+                                                </div>
+                                                <input type="date" id="newTaskDueDate" class="form-input" placeholder="Pick a date">
+                                            </div>
+                                            <div class="task-creator-schedule-field" onclick="taskCreatorOpenDueField('newTaskDueTime')">
+                                                <div class="task-creator-schedule-field__label">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                                    Time
+                                                </div>
+                                                <input type="time" id="newTaskDueTime" class="form-input" placeholder="Pick a time">
+                                            </div>
+                                            <div class="task-creator-schedule-actions">
+                                                <button type="button" class="btn-secondary btn-icon task-creator-calendar-btn" onclick="openCalendarModal()" title="Open calendar" aria-label="Open calendar">
+                                                    Calendar
+                                                </button>
+                                                <button type="button" class="btn-ghost" onclick="taskCreatorClearDueDate()">Clear</button>
+                                            </div>
+                                        </div>
+                                        <div class="task-creator-schedule-note">Leave this blank when the task does not have a firm deadline yet.</div>
                                     </div>
-                                    <div class="form-group" style="flex: 1;">
-                                        <label class="form-label">Retention (days in Done)</label>
-                                        <select id="newTaskRetention" class="form-select">
-                                            <option value="1">1 day</option>
-                                            <option value="3">3 days</option>
-                                            <option value="7" selected>7 days</option>
-                                            <option value="14">14 days</option>
-                                            <option value="30">30 days</option>
-                                        </select>
+
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Show On (optional)</label>
+                                        <div class="task-creator-schedule-stack">
+                                            <div class="task-creator-schedule-field" onclick="taskCreatorOpenDueField('newTaskAvailableDate')">
+                                                <div class="task-creator-schedule-field__label">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                                    Date
+                                                </div>
+                                                <input type="date" id="newTaskAvailableDate" class="form-input" placeholder="Pick a date">
+                                            </div>
+                                            <div class="task-creator-schedule-field" onclick="taskCreatorOpenDueField('newTaskAvailableTime')">
+                                                <div class="task-creator-schedule-field__label">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                                    Time
+                                                </div>
+                                                <input type="time" id="newTaskAvailableTime" class="form-input" placeholder="Pick a time">
+                                            </div>
+                                        </div>
+                                        <div class="task-creator-schedule-note">Leave blank to make the task visible immediately.</div>
+                                    </div>
+                                </div>
+
+                                <div class="task-creator-cluster">
+                                    <div class="task-creator-cluster__eyebrow">Ownership</div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Assigned To</label>
+                                        <select id="newTaskAssignedTo" class="form-select" data-native-select="true"></select>
+                                        <div style="margin-top: 6px; font-size: 12px; color: #64748b;">Only active employees are selectable (prevents typos).</div>
+                                    </div>
+                                </div>
+
+                                <div class="task-creator-cluster">
+                                    <div class="task-creator-cluster__eyebrow">References</div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label class="form-label">Assets / Links</label>
+                                        <textarea id="newTaskAssets" class="form-textarea" placeholder="Paste one or more links (one per line).&#10;Example: https://youtu.be/..." style="min-height: 90px;"></textarea>
+                                        <div style="margin-top: 6px; font-size: 12px; color: #64748b;">These show up as clickable links in the task popup.</div>
+                                    </div>
+                                </div>
+
+                                <div class="task-creator-cluster">
+                                    <div class="task-creator-cluster__eyebrow">Lifecycle</div>
+                                    <div class="task-creator-inline-fields">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label class="form-label">Recurrence</label>
+                                            <select id="newTaskRecurrence" class="form-select" data-native-select="true">
+                                                <option value="none" selected>None</option>
+                                                <option value="daily">Daily</option>
+                                                <option value="weekly">Weekly</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label class="form-label">Retention (days in Done)</label>
+                                            <select id="newTaskRetention" class="form-select" data-native-select="true">
+                                                <option value="1">1 day</option>
+                                                <option value="3">3 days</option>
+                                                <option value="7" selected>7 days</option>
+                                                <option value="14">14 days</option>
+                                                <option value="30">30 days</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -3903,11 +4834,13 @@
                                                 <path d="M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                                             </svg>
                                         </button>
-                                        <button type="button" onclick="polishTaskDescription()" class="btn-magic">AI Polish</button>
+                                        <button type="button" onclick="polishTaskDescription()" class="task-creator-ai-polish-btn">Polish with AI</button>
                                     </div>
                                 </div>
-                                <textarea id="newTaskDescription" class="form-textarea" placeholder="Type a rough idea here (e.g., 'Check emails and reply to candidates') and click AI Polish to turn it into a full SOP."></textarea>
+                                <textarea id="newTaskDescription" class="form-textarea" placeholder="Type a rough idea here, then use Polish with AI if you want a cleaner task description before saving."></textarea>
                             </div>
+                        </div>
+
                         </div>
 
                         <div class="task-modal-actions task-creator-actions">
@@ -3923,8 +4856,8 @@
         </div>
 
         <!-- CALENDAR SCHEDULING MODAL -->
-        <div class="calendar-modal-overlay" id="calendarModal" onclick="closeCalendarModal(event)" style="display: none; position: fixed; inset: 0; background: rgba(10, 42, 90, 0.4); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-            <div class="calendar-modal" onclick="event.stopPropagation()" style="background: white; padding: 24px; border-radius: 12px; width: 100%; max-width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+        <div class="calendar-modal-overlay" id="calendarModal" onclick="closeCalendarModal(event)">
+            <div class="calendar-modal" onclick="event.stopPropagation()">
                 <div class="calendar-modal-header">Schedule Task</div>
                 <div class="calendar-modal-body">
                     <div class="form-group">
@@ -3958,10 +4891,20 @@
                     <div id="modalTaskContent"></div>
                 </div>
                 <div class="task-modal-actions">
-                    <button id="modalTaskEditBtn" class="task-action-btn" type="button">Edit</button>
-                    <button id="modalTaskDeleteBtn" class="task-action-btn" type="button" style="background: #fee2e2; color: #991b1b;">Delete</button>
-                    <button id="modalTaskAction" class="task-action-btn"></button>
-                    <button class="task-action-btn task-close-btn" onclick="closeTaskModal()">Close</button>
+                    <div class="task-modal-actions__group">
+                        <button id="modalTaskDeleteBtn" class="task-action-btn task-delete-btn" type="button">Delete</button>
+                    </div>
+                    <div class="task-modal-actions__group task-modal-actions__group--secondary">
+                        <button class="task-action-btn task-close-btn" onclick="closeTaskModal()">Close</button>
+                        <button id="modalTaskEditBtn" class="task-action-btn task-edit-btn" type="button">Edit</button>
+                        <button id="modalTaskImproveBtn" class="task-action-btn task-improve-btn" type="button" style="display:none;">Improve Task</button>
+                        <button id="modalTaskTriggerReminderBtn" class="task-action-btn task-deliverables-btn" type="button" style="display:none;">Trigger Reminder</button>
+                        <button id="modalTaskDeliverablesBtn" class="task-action-btn task-deliverables-btn" type="button" style="display:none;">Open Deliverables</button>
+                        <div id="taskModalFooterNote" class="task-modal-actions__note" style="display:none;"></div>
+                    </div>
+                    <div class="task-modal-actions__group task-modal-actions__group--primary">
+                        <button id="modalTaskAction" class="task-action-btn"></button>
+                    </div>
                 </div>
             </div>
             </div>
@@ -4303,11 +5246,73 @@
                 // Run once on load.
                 try { window.onNewTrainingTypeChange(); } catch (_) { }
             }
+
+            if (typeof window.openAddTaskModal !== 'function') {
+                window.openAddTaskModal = function () {
+                    const overlay = document.getElementById('addTaskModal');
+                    if (!overlay) return false;
+                    overlay.classList.add('active');
+                    return false;
+                };
+            }
+
+            if (typeof window.closeAddTaskModal !== 'function') {
+                window.closeAddTaskModal = function (event) {
+                    const overlay = document.getElementById('addTaskModal');
+                    if (!overlay) return false;
+                    if (event && event.target && event.target !== overlay) return false;
+                    overlay.classList.remove('active');
+                    return false;
+                };
+            }
+
+            if (typeof window.attemptCloseAddTaskModal !== 'function') {
+                window.attemptCloseAddTaskModal = function () {
+                    return window.closeAddTaskModal();
+                };
+            }
+
+            window.addEventListener('load', () => {
+                const host = String(location.hostname || '').toLowerCase();
+                const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+                if (!isLocalHost) return;
+
+                const forceOpen = () => {
+                    const overlay = document.getElementById('addTaskModal');
+                    if (overlay) overlay.classList.add('active');
+                };
+
+                const originalOpen = window.openAddTaskModal;
+                window.openAddTaskModal = function (...args) {
+                    if (typeof originalOpen === 'function') {
+                        try { originalOpen.apply(this, args); } catch (_) { }
+                    }
+                    const overlay = document.getElementById('addTaskModal');
+                    if (!overlay || !overlay.classList.contains('active')) forceOpen();
+                    try {
+                        if (typeof window.h2sInitDateInputs === 'function') {
+                            window.h2sInitDateInputs(document.getElementById('addTaskModal'));
+                        }
+                    } catch (_) { }
+                    return false;
+                };
+            });
         })();
     </script>
-    <script src="/dash.PORTAL_BUILD_20260317_191711_5150b8a.js" defer></script>
-    <script src="/dash-messages.js?v=PORTAL_BUILD_20260317_191711_5150b8a" defer></script>
-    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260317_191711_5150b8a" defer></script>
+    <script>
+        (function loadDashScript() {
+            // file:// protocol support: treat as localhost so ./dash.js loads
+            const script = document.createElement('script');
+            script.defer = true;
+            const host = String(location.hostname || '').toLowerCase();
+            const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+            const isLocalScript = isLocalHost || location.protocol === 'file:';
+            script.src = isLocalScript ? './dash.js' : '/dash.PORTAL_BUILD_20260528_120652_4d5c78f.js';
+            document.head.appendChild(script);
+        })();
+    </script>
+    <script src="/dash-messages.js?v=PORTAL_BUILD_20260528_120652_4d5c78f" defer></script>
+    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260528_120652_4d5c78f" defer></script>
     <script>
         window.addEventListener('load', () => {
             const installTrainingOverrides = () => {
@@ -4405,6 +5410,8 @@
                         .replace(/\r?\n/g, ' ');
 
                     let mediaHtml = '';
+                    let videoPrimaryAction = '';
+                    let videoCompletionHint = '';
                     if (type === 'VIDEO' && primaryUrl) {
                         let videoId = '';
                         let platform = 'loom';
@@ -4420,23 +5427,36 @@
                         }
 
                         if (videoId && platform === 'youtube') {
+                            const youtubeHref = window.escapeHtml(`https://www.youtube.com/watch?v=${videoId}`);
+                            const thumbSrc = window.escapeHtml(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
                             mediaHtml = `
-                                <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
-                                    <iframe src="https://www.youtube.com/embed/${videoId}" style="position:absolute; inset:0; width:100%; height:100%; border:0;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                                <div class="training-stage-media training-stage-media--video-shell">
+                                    <img src="${thumbSrc}" alt="${title}" class="training-stage-video-shell__thumb" onerror="this.style.display='none'">
+                                    <div class="training-stage-video-shell__shade"></div>
+                                    <div class="training-stage-video-shell__body">
+                                        <svg width="52" height="52" viewBox="0 0 68 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="opacity:0.92;"><rect width="68" height="48" rx="10" fill="#FF0000"></rect><path d="M27 14l20 10-20 10V14z" fill="#fff"></path></svg>
+                                        <div class="training-stage-video-shell__title">${title}</div>
+                                    </div>
                                 </div>
                             `;
+                            videoPrimaryAction = `<a class="btn training-stage-btn training-stage-btn--primary" href="${youtubeHref}" target="_blank" rel="noopener noreferrer">Watch on YouTube</a>`;
+                            videoCompletionHint = `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Open this training on YouTube when you are ready to watch it, then submit your learnings here when you finish.</div>`;
                         } else if (videoId && platform === 'loom') {
                             mediaHtml = `
                                 <div class="training-stage-media" style="position: relative; aspect-ratio: 16 / 9; background: #000;">
                                     <iframe src="https://www.loom.com/embed/${videoId}?hide_title=true&hide_owner=true" allow="fullscreen; picture-in-picture" style="position:absolute; inset:0; width:100%; height:100%; border:0;"></iframe>
                                 </div>
                             `;
+                            videoPrimaryAction = `<a class="btn training-stage-btn training-stage-btn--primary" href="${window.escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">Open in Loom</a>`;
+                            videoCompletionHint = `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Watch the training here or open it in Loom, then submit your learnings when you're done.</div>`;
                         } else {
                             mediaHtml = `
                                 <div class="training-stage-media" style="padding: 18px; background: #f8f9fa; color: #6b7280; font-weight: 700; line-height: 1.5; text-align: center;">
                                     This video preview is unavailable here. Submit your learnings after reviewing the training.
                                 </div>
                             `;
+                            videoPrimaryAction = `<a class="btn training-stage-btn training-stage-btn--primary" href="${window.escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">Open Video Link</a>`;
+                            videoCompletionHint = `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Open the training in a new tab, then submit your learnings here when you are done.</div>`;
                         }
                     } else if (type === 'PDF' && primaryUrl) {
                         const embedUrl = window.trainingBuildPdfEmbedUrl(primaryUrl);
@@ -4466,14 +5486,16 @@
                     }
 
                     const openLabel = type === 'PDF' ? 'Open PDF' : (type === 'SOP' ? 'Open SOP' : 'Open Resource');
-                    const primaryAction = (type !== 'VIDEO' && primaryUrl)
-                        ? `<a class="btn training-stage-btn training-stage-btn--primary" href="${window.escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">${openLabel}</a>`
-                        : '';
+                    const primaryAction = type === 'VIDEO'
+                        ? videoPrimaryAction
+                        : ((primaryUrl)
+                            ? `<a class="btn training-stage-btn training-stage-btn--primary" href="${window.escapeHtml(primaryUrl)}" target="_blank" rel="noopener noreferrer">${openLabel}</a>`
+                            : '');
                     const secondaryAction = !isCompleted
                         ? `<button class="btn training-stage-btn training-stage-btn--secondary" onclick="openCompletionModal('${resourceId}', '${safeTitleForJs}')">Complete Learnings</button>`
                         : `<button class="btn training-stage-btn training-stage-btn--secondary" disabled style="opacity:.65; cursor:not-allowed;">Completed</button>`;
                     const completionHint = type === 'VIDEO'
-                        ? `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Watch the training here, then submit your learnings when you're done.</div>`
+                        ? (videoCompletionHint || `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Open the training in a new tab, then submit your learnings when you're done.</div>`)
                         : `<div style="font-size: 12px; color: #6b7280; font-weight: 700; line-height: 1.5;">Review the resource, then submit your learnings to update your progress.</div>`;
 
                     stage.innerHTML = `
@@ -4504,6 +5526,7 @@
     </script>
 </body>
 </html>
+
 
 
 

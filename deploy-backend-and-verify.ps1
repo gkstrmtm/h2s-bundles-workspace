@@ -22,7 +22,7 @@ param(
   [switch]$RunMigrations,
   # Comma-separated list of migration files in backend/migrations.
   # Keep these idempotent (IF NOT EXISTS) so it's safe to re-run every deploy.
-  [string]$MigrationFile = "007_create_dashboard_accounts.sql,008_create_offers.sql,009_alter_deliverables_add_metadata.sql,013_create_sms_inbox.sql,014_sms_inbox_sender_and_contacts.sql,015_create_sms_groups.sql,016_create_sms_hidden_conversations.sql,017_add_sms_messages_group_id.sql",
+  [string]$MigrationFile = "007_create_dashboard_accounts.sql,008_create_offers.sql,009_alter_deliverables_add_metadata.sql,013_create_sms_inbox.sql,014_sms_inbox_sender_and_contacts.sql,015_create_sms_groups.sql,016_create_sms_hidden_conversations.sql,017_add_sms_messages_group_id.sql,018_add_tasks_assets.sql,019_training_asset_progress.sql,020_add_training_assets_meta.sql,021_training_asset_progress_video_fields.sql,022_training_asset_progress_add_video_id.sql,023_create_dashboard_messages.sql,024_add_tasks_available_from.sql,025_create_task_resources.sql",
   [int]$BundlePriceDollars = 2100,
   # UPDATED: Use dynamic date to avoid 409 conflicts on repeated runs
   [string]$DeliveryDate = (Get-Date).AddDays(2).ToString("yyyy-MM-dd"),
@@ -271,6 +271,12 @@ try {
     } catch {
       Warn "Could not delete backend/.next (will still try to build): $($_.Exception.Message)"
     }
+  }
+
+  try {
+    New-Item -ItemType Directory -Path ".next\server\pages" -Force | Out-Null
+  } catch {
+    Warn "Could not pre-create backend/.next/server/pages: $($_.Exception.Message)"
   }
 
   npm run build

@@ -54,6 +54,15 @@
         "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "HTML Edit Shell",
+      "type": "shell",
+      "command": "powershell -NoProfile -ExecutionPolicy Bypass -NoExit -File .\\tools\\html-terminal-env\\enter-html-terminal-env.ps1",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }

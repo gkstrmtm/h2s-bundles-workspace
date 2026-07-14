@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import {
+  OWNER_MEDIA_BUCKET,
+  ensureOwnerMediaBucket,
+  getOwnerMediaStorageClient,
+} from '@/lib/ownerMediaStore';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -40,10 +45,13 @@ export async function POST(request: Request) {
   }
 
   const bucket = chooseBucket(body.bucket);
+  const surface = String(body.surface || '').trim().toLowerCase();
   const rawPath = String(body.raw_path || '').trim();
   if (!rawPath) {
     return NextResponse.json({ ok: false, error: 'raw_path required' }, { status: 400, headers: corsHeaders(request) });
   }
+
+  const targetBucket = surface === 'owner_media' ? OWNER_MEDIA_BUCKET : bucket;
 
   // For now: treat the staged raw object as the final object.
   // This unblocks large uploads immediately; conversion can be layered on later.
@@ -51,11 +59,12 @@ export async function POST(request: Request) {
 
   // Optional sanity check: object exists.
   try {
-    const sb = getSupabase();
-    const signed = await sb.storage.from(bucket).createSignedUrl(finalPath, 60);
+    const sb = surface === 'owner_media' ? getOwnerMediaStorageClient() : getSupabase();
+    if (surface === 'owner_media') await ensureOwnerMediaBucket(sb);
+    const signed = await sb.storage.from(targetBucket).createSignedUrl(finalPath, 60);
     if (signed.error) {
       return NextResponse.json(
-        { ok: false, error: `Uploaded object not found at ${bucket}/${finalPath}` },
+        { ok: false, error: `Uploaded object not found at ${targetBucket}/${finalPath}` },
         { status: 400, headers: corsHeaders(request) },
       );
     }
@@ -75,8 +84,8 @@ export async function POST(request: Request) {
 
   let publicUrl: string | null = null;
   try {
-    const sb = getSupabase();
-    const pub = sb.storage.from(bucket).getPublicUrl(finalPath);
+    const sb = surface === 'owner_media' ? getOwnerMediaStorageClient() : getSupabase();
+    const pub = sb.storage.from(targetBucket).getPublicUrl(finalPath);
     publicUrl = String(pub?.data?.publicUrl || '').trim() || null;
   } catch {
     publicUrl = null;
@@ -85,7 +94,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       ok: true,
-      bucket,
+      bucket: targetBucket,
       path: finalPath,
       public_url: publicUrl,
       content_type: mime || null,
