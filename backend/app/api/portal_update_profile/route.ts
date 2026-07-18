@@ -57,6 +57,15 @@ function asNumOrNull(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function asBoolOrNull(v: any): boolean | null {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  if (s === 'true' || s === '1' || s === 'yes' || s === 'on') return true;
+  if (s === 'false' || s === '0' || s === 'no' || s === 'off') return false;
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -99,6 +108,7 @@ export async function POST(request: Request) {
     const home_state = body?.state !== undefined ? String(body.state || '').trim() : null;
     const home_zip = body?.zip !== undefined ? String(body.zip || '').trim() : null;
     const name = body?.name !== undefined ? String(body.name || '').trim() : null;
+    const is_available_now = asBoolOrNull(body?.is_available_now ?? body?.available_now ?? body?.active_now);
 
     const dispatch = getSupabaseDispatch();
     if (!dispatch) {
@@ -139,6 +149,9 @@ export async function POST(request: Request) {
       ...(home_state !== null ? { home_state } : {}),
       ...(home_zip !== null ? { home_zip } : {}),
       ...(name !== null ? { name } : {}),
+      ...(is_available_now !== null ? { is_available_now } : {}),
+      ...(is_available_now !== null ? { available_now: is_available_now } : {}),
+      ...(is_available_now !== null ? { active_now: is_available_now } : {}),
       ...(geo_lat !== null ? { geo_lat } : {}),
       ...(geo_lng !== null ? { geo_lng } : {}),
     });
@@ -173,6 +186,9 @@ export async function POST(request: Request) {
       ...(name !== null ? { name } : {}),
       ...(name !== null ? { full_name: name } : {}),
       ...(name !== null ? { pro_name: name } : {}),
+      ...(is_available_now !== null ? { is_available_now } : {}),
+      ...(is_available_now !== null ? { available_now: is_available_now } : {}),
+      ...(is_available_now !== null ? { active_now: is_available_now } : {}),
     });
 
     // Minimal fallbacks.
@@ -184,6 +200,9 @@ export async function POST(request: Request) {
     patches.push({ ...(home_state !== null ? { home_state } : {}) });
     patches.push({ ...(home_zip !== null ? { home_zip } : {}) });
     patches.push({ ...(name !== null ? { name } : {}) });
+    patches.push({ ...(is_available_now !== null ? { is_available_now } : {}) });
+    patches.push({ ...(is_available_now !== null ? { available_now: is_available_now } : {}) });
+    patches.push({ ...(is_available_now !== null ? { active_now: is_available_now } : {}) });
     patches.push({ ...(geo_lat !== null ? { geo_lat } : {}) });
     patches.push({ ...(geo_lng !== null ? { geo_lng } : {}) });
 
