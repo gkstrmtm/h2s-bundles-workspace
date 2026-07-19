@@ -73,6 +73,33 @@ function normalizeRow(row: any) {
   };
 }
 
+function buildDemoFallbackRows() {
+  const now = Date.now();
+  const iso = (deltaMs: number) => new Date(now + deltaMs).toISOString();
+  return [
+    normalizeRow({
+      payout_id: 'demo-payout-approved-1',
+      job_id: 'DEMO-JOB-1001',
+      amount: 185,
+      total_amount: 185,
+      state: 'approved',
+      service_name: 'Window cleaning',
+      created_at: iso(-2 * 24 * 60 * 60 * 1000),
+      earned_at: iso(-2 * 24 * 60 * 60 * 1000),
+    }),
+    normalizeRow({
+      payout_id: 'demo-payout-pending-1',
+      job_id: 'DEMO-JOB-1002',
+      amount: 120,
+      total_amount: 120,
+      state: 'pending',
+      service_name: 'Gutter cleanup',
+      created_at: iso(-24 * 60 * 60 * 1000),
+      earned_at: iso(-24 * 60 * 60 * 1000),
+    }),
+  ];
+}
+
 async function tryFetchFromTable(sb: any, opts: { table: string; proId: string }): Promise<{ ok: boolean; rows?: any[]; source?: string; error?: string }> {
   const { table, proId } = opts;
 
@@ -177,11 +204,31 @@ async function handle(request: Request, token: string) {
 
   const finalHit = bestHit || firstOkEmpty;
   if (finalHit) {
+    const email = String(payload?.email || payload?.pro_email || '').trim().toLowerCase();
+    const isDemoAccount = email === 'tech.demo+june10@home2smart.com';
+    const hasRows = Array.isArray(finalHit.rows) && finalHit.rows.length > 0;
+    const rows = !hasRows && isDemoAccount ? buildDemoFallbackRows() : (finalHit.rows || []);
+
     return NextResponse.json(
       {
         ok: true,
-        rows: finalHit.rows || [],
+        rows,
         source: finalHit.source,
+        fallback: !hasRows && isDemoAccount ? 'demo_seed_rows' : null,
+        debug_report,
+      },
+      { headers: corsHeaders(request) }
+    );
+  }
+
+  const email = String(payload?.email || payload?.pro_email || '').trim().toLowerCase();
+  if (email === 'tech.demo+june10@home2smart.com') {
+    return NextResponse.json(
+      {
+        ok: true,
+        rows: buildDemoFallbackRows(),
+        source: { client: 'fallback', table: 'demo_seed_rows' },
+        fallback: 'demo_seed_rows',
         debug_report,
       },
       { headers: corsHeaders(request) }
