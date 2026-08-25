@@ -7,22 +7,18 @@
   <meta name="description" content="Home2Smart Realtor Partner Program for Upstate South Carolina." />
   <style>
     :root {
-      --bg: #fbfaf8;
+      --bg: #fafaf8;
       --surface: #ffffff;
-      --surface-soft: #f2efe9;
-      --text: #1f2730;
-      --muted: #69717a;
-      --muted-2: #8a9198;
-      --navy: #173b61;
-      --navy-2: #234f78;
-      --navy-soft: #e9eff4;
-      --border: #dedbd5;
-      --border-strong: #ccd0d4;
+      --surface-soft: #f0f2f3;
+      --text: #19222b;
+      --muted: #55616c;
+      --muted-2: #6c7781;
+      --navy: #163a5f;
+      --navy-soft: #eef3f6;
+      --border: #e1e5e8;
+      --border-strong: #d1d7db;
       --success-bg: #eef5ef;
-      --success-text: #295e36;
-      --radius-sm: 7px;
-      --radius-md: 12px;
-      --radius-lg: 22px;
+      --success-text: #285d36;
       --content: 1160px;
     }
 
@@ -32,7 +28,7 @@
       margin: 0;
       background: var(--bg);
       color: var(--text);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: "Segoe UI", Inter, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
 
@@ -41,56 +37,56 @@
     .wrap { width: min(var(--content), calc(100% - 30px)); margin: 0 auto; }
 
     .nav {
-      min-height: 76px;
+      min-height: 74px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      border-bottom: 1px solid #e8e5df;
+      border-bottom: 1px solid var(--border);
     }
 
     .brand {
-      font-size: 22px;
-      font-weight: 850;
-      letter-spacing: -.045em;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -.035em;
       color: var(--navy);
     }
 
-    .brand span { font-weight: 550; color: #727982; }
-    .nav-note { font-size: 12px; color: #747b83; }
+    .brand span { font-weight: 500; color: var(--muted-2); }
+    .nav-note { font-size: 12px; color: var(--muted-2); }
 
     .hero {
       display: grid;
-      grid-template-columns: 1.06fr .94fr;
+      grid-template-columns: 1.08fr .92fr;
       gap: 58px;
       align-items: center;
-      padding: 66px 0 76px;
+      padding: 62px 0 70px;
     }
 
     .eyebrow,
     .section-label {
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: .13em;
-      color: #697583;
+      letter-spacing: .12em;
+      color: #586672;
       font-weight: 800;
     }
 
     h1, h2, h3, p { margin-top: 0; }
 
     .hero h1 {
-      font-size: clamp(43px, 6vw, 70px);
-      line-height: .99;
-      letter-spacing: -.06em;
-      font-weight: 790;
+      font-size: clamp(42px, 5.8vw, 64px);
+      line-height: 1;
+      letter-spacing: -.052em;
+      font-weight: 800;
       max-width: 760px;
-      margin: 16px 0 22px;
+      margin: 14px 0 20px;
     }
 
     .hero-copy {
       font-size: 18px;
-      line-height: 1.58;
-      color: #626a73;
+      line-height: 1.56;
+      color: var(--muted);
       max-width: 650px;
     }
 
@@ -98,122 +94,103 @@
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 22px;
+      margin-top: 20px;
     }
 
     .service-row span {
       font-size: 13px;
       font-weight: 700;
       padding: 9px 12px;
-      border-radius: 8px;
+      border-radius: 7px;
       background: var(--surface-soft);
-      color: #3f4851;
+      color: #35414c;
     }
 
     .actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 11px;
-      margin-top: 29px;
+      gap: 10px;
+      margin-top: 26px;
     }
 
     .btn {
-      min-height: 50px;
-      padding: 0 20px;
-      border-radius: 8px;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 7px;
       border: 1px solid var(--border-strong);
       background: var(--surface);
-      color: #25303a;
-      font-weight: 780;
-      transition: transform .16s ease, background .16s ease, border-color .16s ease;
+      color: #26333e;
+      font-weight: 800;
+      transition: transform .16s ease, border-color .16s ease;
     }
 
     .btn:hover { transform: translateY(-1px); }
-    .btn.primary { background: var(--navy); border-color: var(--navy); color: #fff; }
+    .btn.primary { background: var(--navy); border-color: var(--navy); color: white; }
     .btn:focus-visible, .market:focus-visible, input:focus-visible {
-      outline: 3px solid rgba(35, 79, 120, .18);
+      outline: 3px solid rgba(22,58,95,.16);
       outline-offset: 2px;
     }
 
     .hero-art { position: relative; }
     .install-photo {
-      height: 470px;
-      border-radius: 6px;
-      background: linear-gradient(145deg, #e2dcd2 0%, #f1ede6 55%, #d2d8dc 100%);
+      height: 450px;
+      border-radius: 8px;
+      background: linear-gradient(145deg,#dfe2e1,#f0f1ef 58%,#d6dadc);
       position: relative;
       overflow: hidden;
-    }
-
-    .wall-shadow {
-      position: absolute;
-      right: 0;
-      top: 0;
-      width: 34%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(60,72,80,.08));
     }
 
     .tv {
       position: absolute;
       left: 20%;
       top: 21%;
-      width: 61%;
+      width: 60%;
       height: 38%;
-      background: #111417;
-      border: 8px solid #25292c;
-      box-shadow: 0 18px 38px rgba(24, 33, 43, .14);
+      background: #101316;
+      border: 7px solid #22272b;
+      box-shadow: 0 18px 38px rgba(24,33,43,.13);
     }
 
     .console {
       position: absolute;
       left: 15%;
-      bottom: 16%;
+      bottom: 17%;
       width: 70%;
-      height: 12px;
-      background: #876e57;
+      height: 10px;
+      background: #6e7477;
     }
 
     .console::after {
       content: "";
       position: absolute;
-      left: 9%;
-      right: 9%;
-      top: 12px;
-      height: 54px;
-      background: #a68a70;
-    }
-
-    .plant {
-      position: absolute;
-      width: 48px;
-      height: 90px;
-      right: 8%;
-      bottom: 13%;
-      border-left: 5px solid #69755e;
-      transform: rotate(7deg);
+      left: 10%;
+      right: 10%;
+      top: 10px;
+      height: 48px;
+      background: #949a9d;
     }
 
     .badge {
       position: absolute;
-      left: 18px;
-      top: 18px;
-      background: #fff;
-      padding: 10px 13px;
-      border-radius: 4px;
-      box-shadow: 0 6px 18px rgba(32,37,43,.12);
+      left: 16px;
+      top: 16px;
+      background: white;
+      padding: 9px 11px;
+      border-radius: 5px;
+      box-shadow: 0 5px 16px rgba(18,31,42,.10);
     }
 
     .badge strong {
       display: block;
-      font-size: 10px;
-      letter-spacing: .12em;
+      font-size: 9px;
+      letter-spacing: .13em;
       color: var(--navy);
     }
 
     .badge div {
-      font-size: 17px;
-      font-weight: 760;
-      letter-spacing: -.025em;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -.02em;
       margin-top: 3px;
     }
 
@@ -221,108 +198,107 @@
       display: flex;
       justify-content: space-between;
       gap: 12px;
-      padding: 15px 0;
+      padding: 13px 0;
       font-size: 12px;
-      color: #777e85;
+      color: var(--muted-2);
     }
 
-    .photo-caption strong { color: #3e464e; }
-    .rule { border-top: 1px solid #e4e1dc; }
-    .section { padding: 78px 0; }
+    .photo-caption strong { color: #3f4952; }
+    .section { padding: 68px 0; border-top: 1px solid var(--border); }
 
     .section-head {
       display: grid;
-      grid-template-columns: .75fr 1.25fr;
-      gap: 45px;
-      margin-bottom: 38px;
+      grid-template-columns: .7fr 1.3fr;
+      gap: 36px;
+      margin-bottom: 34px;
     }
 
-    .section h2 {
-      font-size: clamp(34px, 4.4vw, 50px);
-      font-weight: 780;
-      line-height: 1.04;
-      letter-spacing: -.05em;
+    .section h2,
+    .partner h2 {
+      font-size: clamp(32px, 4vw, 46px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -.045em;
       margin-bottom: 0;
     }
 
     .services {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 1px;
-      background: var(--border);
-      border: 1px solid var(--border);
     }
 
-    .service { background: var(--bg); padding: 27px; }
-    .service-index { font-size: 11px; color: #8a9095; }
+    .service { padding: 8px 28px 8px 0; }
+    .service + .service { padding-left: 28px; border-left: 1px solid var(--border); }
+    .service-index { font-size: 10px; font-weight: 750; color: #7c8791; }
+
     .service h3 {
-      font-size: 23px;
-      font-weight: 780;
-      letter-spacing: -.035em;
-      margin: 34px 0 11px;
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -.03em;
+      margin: 24px 0 9px;
     }
 
     .service p {
       font-size: 14px;
-      line-height: 1.62;
-      color: #6a7076;
+      line-height: 1.58;
+      color: var(--muted);
       margin-bottom: 0;
     }
 
     .service strong {
       display: block;
-      font-size: 12px;
-      margin-top: 22px;
-      color: #31445a;
+      font-size: 11px;
+      margin-top: 18px;
+      color: var(--navy);
     }
 
-    .partner { background: var(--navy); color: white; }
-    .partner .section-label { color: #b8c9d9; }
+    .partner {
+      background: var(--navy);
+      color: white;
+      padding: 68px 0;
+    }
+
+    .partner .section-label { color: #c5d1db; }
     .partner h2 { color: white; }
 
     .partner-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 52px;
+      margin-top: 30px;
     }
 
-    .process { display: grid; }
     .process-row {
-      padding: 20px 0;
-      border-top: 1px solid rgba(255,255,255,.18);
+      padding: 18px 0;
+      border-top: 1px solid rgba(255,255,255,.17);
       display: grid;
-      grid-template-columns: 35px 1fr;
+      grid-template-columns: 38px 1fr;
       gap: 14px;
     }
 
-    .process-row:first-child { border-top: 0; }
-    .process-num { font-size: 12px; color: #c7d5e2; padding-top: 4px; }
+    .process-row:first-child { border-top: 0; padding-top: 0; }
+    .process-num { font-size: 11px; color: #c8d3dc; padding-top: 3px; }
     .process-row h3 { font-size: 16px; margin-bottom: 6px; }
-    .process-row p { font-size: 13px; line-height: 1.55; color: #c0ccda; margin-bottom: 0; }
+    .process-row p { font-size: 13px; line-height: 1.55; color: #d2dbe3; margin-bottom: 0; }
 
-    .handoff {
-      align-self: end;
-      border-left: 1px solid rgba(255,255,255,.22);
-      padding-left: 34px;
-    }
-
+    .handoff { border-left: 1px solid rgba(255,255,255,.22); padding-left: 32px; }
     .handoff small {
       text-transform: uppercase;
       font-size: 10px;
-      letter-spacing: .13em;
-      color: #b8c9d9;
+      letter-spacing: .12em;
+      color: #c5d1db;
       font-weight: 800;
     }
 
     .handoff blockquote {
-      font-size: 27px;
-      font-weight: 720;
-      line-height: 1.35;
-      letter-spacing: -.035em;
+      font-size: 25px;
+      font-weight: 760;
+      line-height: 1.36;
+      letter-spacing: -.03em;
       margin: 17px 0 13px;
     }
 
-    .handoff p { font-size: 13px; color: #c3cfdb; line-height: 1.55; }
+    .handoff p { font-size: 13px; color: #d0d9e1; line-height: 1.55; }
 
     .trust-grid {
       display: grid;
@@ -331,7 +307,7 @@
       align-items: start;
     }
 
-    .trust-copy p { font-size: 16px; line-height: 1.65; color: #687079; }
+    .trust-copy p { font-size: 16px; line-height: 1.65; color: var(--muted); }
     .proof-list { border-top: 1px solid var(--border); }
     .proof-item {
       padding: 17px 0;
@@ -343,35 +319,38 @@
     }
 
     .proof-item strong { font-size: 14px; }
-    .proof-item span { font-size: 12px; color: #747b82; }
+    .proof-item span { font-size: 12px; color: var(--muted-2); }
 
-    .review { background: var(--surface-soft); padding: 27px; }
-    .review .stars { font-size: 13px; letter-spacing: 4px; color: #725f43; }
+    .review { background: var(--surface-soft); padding: 27px; border-radius: 8px; }
+    .review .stars { font-size: 13px; letter-spacing: 4px; color: #53616d; }
     .review blockquote {
-      font-size: 22px;
-      font-weight: 680;
+      font-size: 21px;
+      font-weight: 700;
       line-height: 1.42;
       letter-spacing: -.025em;
       margin: 18px 0;
     }
-    .review small { color: #70777e; }
-    .placeholder { font-style: italic; color: #90959a; font-size: 11px; margin-top: 11px; }
 
-    .application { background: var(--surface); border-top: 1px solid #e4e1dc; }
-    .apply-grid { display: grid; grid-template-columns: .8fr 1.2fr; gap: 56px; }
-    .application-copy { font-size: 16px; line-height: 1.65; color: #687079; }
+    .review small { color: var(--muted); }
+    .placeholder { font-style: italic; color: var(--muted-2); font-size: 11px; margin-top: 11px; }
+
+    .application { background: var(--surface); border-top: 1px solid var(--border); }
+    .apply-grid { display: grid; grid-template-columns: .85fr 1.15fr; gap: 56px; }
+    .application-copy { font-size: 16px; line-height: 1.65; color: var(--muted); }
 
     .apply-points { margin-top: 29px; border-top: 1px solid var(--border); }
-    .apply-point { padding: 16px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: #697078; }
+    .apply-point { padding: 16px 0; border-bottom: 1px solid var(--border); font-size: 14px; color: var(--muted); }
 
-    .form { padding: 30px; border: 1px solid #ddd9d3; background: var(--bg); }
+    .form { padding: 30px; border: 1px solid var(--border); background: var(--bg); border-radius: 9px; }
     .field { display: grid; gap: 7px; margin-bottom: 16px; }
-    .field label, .market-label {
+
+    .field label,
+    .market-label {
       font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: .07em;
-      color: #68717a;
+      color: #55616c;
     }
 
     .field input {
@@ -386,31 +365,32 @@
     }
 
     .markets { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 9px 0 17px; }
+
     .market {
       min-height: 46px;
       border-radius: 6px;
-      border: 1px solid #d0d1d1;
+      border: 1px solid var(--border-strong);
       background: var(--surface);
-      color: #4e575f;
+      color: #46525d;
       text-align: left;
       padding: 0 12px;
       font-weight: 700;
     }
 
-    .market[aria-pressed="true"] { background: var(--navy-soft); color: var(--navy); border-color: #637f9b; }
+    .market[aria-pressed="true"] { background: var(--navy-soft); color: var(--navy); border-color: #6b8298; }
     .submit { width: 100%; }
-    .fine { font-size: 10px; line-height: 1.5; color: #8b9094; margin: 12px 0 0; }
+    .fine { font-size: 10px; line-height: 1.5; color: var(--muted-2); margin: 12px 0 0; }
     .success { display: none; background: var(--success-bg); padding: 18px; color: var(--success-text); line-height: 1.5; }
 
     .footer {
       padding: 29px 0;
-      border-top: 1px solid #e4e1dc;
+      border-top: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
       gap: 15px;
       flex-wrap: wrap;
       font-size: 11px;
-      color: #81868b;
+      color: var(--muted-2);
     }
 
     @media (max-width: 820px) {
@@ -418,6 +398,8 @@
       .hero { gap: 36px; padding: 42px 0 55px; }
       .hero-art { max-width: 540px; }
       .services { grid-template-columns: 1fr; }
+      .service { padding: 20px 0; }
+      .service + .service { padding-left: 0; border-left: 0; border-top: 1px solid var(--border); }
       .section { padding: 58px 0; }
       .section-head { gap: 13px; }
       .handoff { border-left: 0; border-top: 1px solid rgba(255,255,255,.22); padding: 28px 0 0; }
@@ -427,20 +409,14 @@
     @media (max-width: 480px) {
       .wrap { width: calc(100% - 22px); }
       .nav-note { display: none; }
-      .hero h1 { font-size: 42px; }
+      .hero h1 { font-size: 40px; }
       .hero-copy { font-size: 17px; }
       .actions { display: grid; }
       .actions .btn { width: 100%; }
       .install-photo { height: 310px; }
       .markets { grid-template-columns: 1fr; }
       .form { padding: 20px; }
-      .service { padding: 22px; }
       .photo-caption { display: grid; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      .btn { transition: none; }
     }
   </style>
 </head>
@@ -468,12 +444,9 @@
       </div>
 
       <div class="hero-art">
-        <!-- Replace this CSS illustration with a real completed install image before production. -->
         <div class="install-photo" aria-label="Placeholder for a real Home2Smart completed TV installation">
-          <div class="wall-shadow"></div>
           <div class="tv"></div>
           <div class="console"></div>
-          <div class="plant"></div>
           <div class="badge"><strong>HOME2SMART</strong><div>Completed Install</div></div>
         </div>
         <div class="photo-caption"><strong>Residential TV installation</strong><span>Real job photography goes here</span></div>
@@ -481,39 +454,37 @@
     </section>
   </div>
 
-  <div class="rule"></div>
-
   <section id="services" class="section">
     <div class="wrap">
       <div class="section-head">
         <div class="section-label">Client services</div>
-        <h2>The things buyers often want handled first.</h2>
+        <h2>The installs buyers often want handled first.</h2>
       </div>
 
       <div class="services">
         <article class="service">
           <div class="service-index">01</div>
           <h3>TV Mounting</h3>
-          <p>Clean residential mounting for living rooms, bedrooms and larger displays, including the details that make the install feel finished.</p>
+          <p>Clean residential mounting for living rooms, bedrooms and larger displays.</p>
           <strong>Primary service</strong>
         </article>
         <article class="service">
           <div class="service-index">02</div>
           <h3>Security Cameras</h3>
-          <p>Doorbells, exterior cameras and multi-camera residential setups for homeowners who want the property secured after move-in.</p>
+          <p>Doorbells, exterior cameras and multi-camera residential setups.</p>
           <strong>Primary service</strong>
         </article>
         <article class="service">
           <div class="service-index">03</div>
           <h3>Smart Locks</h3>
-          <p>Connected entry and lock installation for buyers updating access to their new home.</p>
+          <p>Connected entry and lock installation for buyers updating access.</p>
           <strong>Supporting service</strong>
         </article>
       </div>
     </div>
   </section>
 
-  <section class="section partner">
+  <section class="partner">
     <div class="wrap">
       <div class="section-head">
         <div class="section-label">For Realtors</div>
@@ -524,22 +495,22 @@
         <div class="process">
           <div class="process-row">
             <div class="process-num">01</div>
-            <div><h3>Join the partner group</h3><p>A short application lets us identify your market, team and referral relationship.</p></div>
+            <div><h3>Join the partner group</h3><p>A short application identifies your market, team and referral relationship.</p></div>
           </div>
           <div class="process-row">
             <div class="process-num">02</div>
-            <div><h3>Send one link when it makes sense</h3><p>Your client can see available services and contact Home2Smart directly.</p></div>
+            <div><h3>Send one link when it makes sense</h3><p>Your client sees the services and contacts Home2Smart directly.</p></div>
           </div>
           <div class="process-row">
             <div class="process-num">03</div>
-            <div><h3>We handle the install</h3><p>No scheduling, quoting or technical back-and-forth needs to run through you.</p></div>
+            <div><h3>We handle the install</h3><p>No scheduling, quoting or technical back-and-forth through you.</p></div>
           </div>
         </div>
 
         <div class="handoff">
-          <small>What the handoff should sound like</small>
+          <small>The handoff</small>
           <blockquote>“I have a local team for TVs, cameras and smart locks. I’ll send you their info.”</blockquote>
-          <p>Simple enough to be useful. Professional enough that you feel comfortable attaching your name to the referral.</p>
+          <p>Simple enough to be useful. Professional enough that you can feel comfortable attaching your name to the referral.</p>
         </div>
       </div>
     </div>
@@ -550,7 +521,7 @@
       <div class="trust-copy">
         <div class="section-label">Why Home2Smart</div>
         <h2>Trust should come from the work itself.</h2>
-        <p>The production version should rely on actual installs, actual customer feedback and recognizable local service areas. No follower-count flexing and no manufactured social proof.</p>
+        <p>The production version should rely on actual installs, customer feedback and recognizable local service areas.</p>
         <div class="proof-list">
           <div class="proof-item"><strong>Completed residential installs</strong><span>Real photography</span></div>
           <div class="proof-item"><strong>Upstate service footprint</strong><span>Real locations</span></div>
@@ -625,6 +596,7 @@
   <script>
     (() => {
       const root = document;
+
       root.querySelectorAll('[data-scroll]').forEach((button) => {
         button.addEventListener('click', () => {
           const target = root.querySelector('#' + button.dataset.scroll);
