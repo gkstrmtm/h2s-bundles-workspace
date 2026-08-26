@@ -30,8 +30,7 @@
   </script>
   <script>
     (() => {
-      const PROOF_API = 'https://h2s-backend.vercel.app/api/proof-slots';
-      const MEDIA_BASE = 'https://ngnskohzqijcmyhzmwnm.supabase.co/storage/v1/object/public';
+      const HERO_IMAGE = 'https://ngnskohzqijcmyhzmwnm.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp';
       const frame = document.querySelector('.install');
       const caption = document.querySelector('.caption strong');
       const captionMeta = document.querySelector('.caption span');
@@ -39,99 +38,17 @@
 
       const image = document.createElement('img');
       image.className = 'install-photo';
-      image.alt = 'A completed Home2Smart residential installation';
-      const controls = document.createElement('div');
-      controls.className = 'carousel-controls';
-      controls.innerHTML = '<button type="button" data-prev aria-label="Previous completed install">‹</button><span class="carousel-count">1 / 1</span><button type="button" data-next aria-label="Next completed install">›</button>';
+      image.alt = 'A Home2Smart technician installing a residential security camera';
+      image.style.objectPosition = '50% 50%';
+      image.onload = () => {
+        frame.classList.add('has-photo');
+        frame.setAttribute('aria-label', image.alt);
+        image.classList.add('ready');
+      };
+      image.src = HERO_IMAGE;
       frame.prepend(image);
-      frame.append(controls);
-
-      let assets = [
-        { asset_id:'89a3e35c-8b87-408e-bb91-a2b576add28c', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/c91e36b8-a901-4e44-846b-f5aee56ff93c.webp', updated_at:'2026-02-06T00:05:49.233Z' },
-        { asset_id:'5567b6cd-a06c-46d1-b219-f86dfd6c6930', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/1917f4d8-d40e-4b90-b1a3-c9c85b4bfaab__crop_55e62b32__crop_71750b7f.jpg', updated_at:'2026-02-22T01:33:44.068Z' },
-        { asset_id:'0f7946bb-6640-491c-b426-6f675bf29756', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/8b8ccbb6-df61-4879-accf-03aa013917ae.webp', updated_at:'2026-02-06T00:05:29.992Z' },
-        { asset_id:'609d7360-8519-4471-a6f1-982d7772ae99', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/33cd7bb5-d768-4d00-81eb-fae08ab7ccb8.webp', updated_at:'2026-02-06T00:05:23.742Z' },
-        { asset_id:'9e5383ac-5011-4042-a0a8-5ae5be15ac87', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/3fa72205-98f7-404c-afb9-4b0d8a2818a4.webp', updated_at:'2026-02-06T00:05:18.485Z' },
-        { asset_id:'2689b469-d31b-41bd-b83b-58631b725527', service:'tv_mounting', media_kind:'photo', storage_bucket:'proof', storage_path:'uploads/0d4c96e1-bd61-440f-a134-7dc7c76f1888.webp', updated_at:'2026-02-06T00:05:11.247Z' }
-      ];
-      let active = 0;
-      let timer = null;
-      let failedLoads = 0;
-      const mediaUrl = (asset) => `${MEDIA_BASE}/${encodeURIComponent(asset.storage_bucket)}/${asset.storage_path.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(asset.updated_at || asset.asset_id)}`;
-      const cropPosition = (asset) => asset?.smart_crop_details?.hero_banner?.objectPosition || asset?.smart_crop_details?.objectPosition || '50% 50%';
-
-      function preload(index) {
-        if (assets.length < 2) return;
-        const next = new Image();
-        next.src = mediaUrl(assets[(index + 1) % assets.length]);
-      }
-
-      function render(index) {
-        if (!assets.length) return;
-        active = (index + assets.length) % assets.length;
-        const asset = assets[active];
-        image.classList.remove('ready');
-        image.style.objectPosition = cropPosition(asset);
-        image.onload = () => {
-          failedLoads = 0;
-          frame.classList.add('has-photo');
-          image.classList.add('ready');
-          frame.setAttribute('aria-label', image.alt);
-          preload(active);
-        };
-        image.onerror = () => {
-          failedLoads += 1;
-          if (failedLoads < assets.length) render(active + 1);
-        };
-        image.src = mediaUrl(asset);
-        controls.querySelector('.carousel-count').textContent = `${active + 1} / ${assets.length}`;
-        const isCamera = ['camera', 'cameras', 'security_camera'].includes(asset.service);
-        image.alt = isCamera ? 'A completed Home2Smart residential security installation' : 'A completed Home2Smart residential TV installation';
-        caption.textContent = isCamera ? 'Completed security installation' : 'Completed TV installation';
-        captionMeta.textContent = 'Real Home2Smart job photography';
-      }
-
-      function start() {
-        clearInterval(timer);
-        if (assets.length > 1 && !matchMedia('(prefers-reduced-motion: reduce)').matches) timer = setInterval(() => render(active + 1), 5600);
-      }
-
-      controls.querySelector('[data-prev]').addEventListener('click', () => { render(active - 1); start(); });
-      controls.querySelector('[data-next]').addEventListener('click', () => { render(active + 1); start(); });
-      frame.addEventListener('mouseenter', () => clearInterval(timer));
-      frame.addEventListener('mouseleave', start);
-      frame.addEventListener('focusin', () => clearInterval(timer));
-      frame.addEventListener('focusout', start);
-
-      render(0);
-      start();
-
-      async function loadSlots(surface) {
-        const response = await fetch(`${PROOF_API}?surface=${encodeURIComponent(surface)}&limit=6`, { credentials:'omit', cache:'no-store' });
-        if (!response.ok) throw new Error(`proof slots unavailable: ${response.status}`);
-        return response.json();
-      }
-
-      loadSlots('realtor-partner')
-        .then(async (data) => {
-          const hasRealtorSlots = Object.values(data?.slots || {}).some((services) => Object.values(services || {}).some((items) => items?.length));
-          return hasRealtorSlots ? data : loadSlots('bundles');
-        })
-        .then((data) => {
-          const slots = data?.slots || {};
-          const selected = [
-            ...(slots.hero?.tv_mounting || []),
-            ...(slots.hero?.cameras || []),
-            ...(slots.mid_proof_rail?.tv_mounting || []),
-            ...(slots.mid_proof_rail?.cameras || [])
-          ].filter((asset, index, list) => asset?.media_kind === 'photo' && list.findIndex((item) => item.asset_id === asset.asset_id) === index).slice(0, 6);
-          if (!selected.length) return;
-          assets = selected;
-          failedLoads = 0;
-          render(0);
-          start();
-        })
-        .catch(() => { /* Keep the migrated, verified image manifest as the fallback. */ });
+      caption.textContent = 'Residential security camera installation';
+      captionMeta.textContent = 'Real Home2Smart job photography';
     })();
   </script>
 </body>
