@@ -30,18 +30,17 @@ export async function GET(request: Request) {
       }, { status: 503, headers: corsHeaders() });
     }
 
-    // Query reviews from h2s_public_reviews table
-    // TEMP: Skip filters to verify connection works, then re-add filters
+    // Public review surfaces must never return records explicitly hidden by moderation.
     let query = client
       .from('h2s_public_reviews')
       .select('*', { count: 'exact' })
+      .or('is_visible.eq.true,is_visible.is.null')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    // Skip moderation filters temporarily to diagnose
-    // if (onlyVerified) {
-    //   query = query.eq('verified', true);
-    // }
+    if (onlyVerified) {
+      query = query.or('verified.eq.true,verified.is.null');
+    }
 
     const { data: reviews, error, count } = await query;
 
@@ -119,6 +118,8 @@ export async function GET(request: Request) {
       review_text: review.review_text || review.comment_tech || review.text || '',
       display_name: review.display_name || review.name || 'Customer',
       services_selected: review.services_selected || review.service || '',
+      location: review.location || review.city || review.customer_city || review.service_city || '',
+      city: review.city || review.customer_city || review.service_city || review.location || '',
       timestamp_iso: review.timestamp_iso || review.created_at || new Date().toISOString(),
       verified: review.verified || false,
 
