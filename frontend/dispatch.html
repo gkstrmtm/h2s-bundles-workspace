@@ -224,25 +224,47 @@ body {
 }
 
 @media (max-width: 768px) {
-    .main-content {
-        padding: 16px;
-    }
-    
-    .sidebar {
-        position: fixed;
-        left: -260px;
-        top: 0;
-        height: 100vh;
-        z-index: 1000;
-        transition: left 0.3s ease;
-    }
-    
-    .sidebar.mobile-open {
-        left: 0;
-    }
-    
-    body {
+    .h2s-dispatch-root {
         flex-direction: column;
+    }
+
+    .h2s-dispatch-root .main-content {
+        padding: 16px;
+        min-height: 0;
+    }
+    
+    .h2s-dispatch-root .sidebar {
+        width: 100%;
+        min-height: auto;
+        height: auto;
+        padding: 10px 12px;
+        position: relative;
+        left: auto;
+        top: auto;
+        z-index: 10;
+        border-right: 0;
+        border-bottom: 1px solid #334155;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .h2s-dispatch-root .logo-container {
+        display: none;
+    }
+
+    .h2s-dispatch-root .nav-menu {
+        flex-direction: row;
+        gap: 6px;
+        width: max-content;
+    }
+
+    .h2s-dispatch-root .nav-item {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .h2s-dispatch-root .nav-item[style] {
+        margin-top: 0 !important;
     }
 }
 
@@ -1202,9 +1224,7 @@ body {
             <div class="info-item">
                 <label>Company</label>
                 <div id="pro-modal-company">N/A</div>
-            </div>Alright, what you need to do for the dispatch is make the prompt that's essentially going to establish continuity in the backend with rev tracking and all the metrics on our frontend for the dashboard area. The pro management is able to click on each name, pull their profile, all the detail of the data points in the database associated with the pro images, all that type of shit. Basically just tell it to audit that this dispatch.html and go deeper on everything, how it could be a little bit better or how I can make more sense.
-
-Make sure the pro payouts details show up in a style card that shows images, other jobs that the payouts were requested for, shit like that. Oh, never mind, it might already work. Let me see if you make sure the view card, you see the actual detail of the job that is relative to the payments, so you can see images and shit associated with it. It has to go down a rabbit hole of doing all that, the jobs being to click those cars, see all the details of jobs, and make sure it's completely connected to the ecosystem now, because it's rendering old data is not really showing any other bullshit. It's definitely some issues, so let's get under that all under control. 
+            </div>
             <div class="info-item">
                 <label>Status</label>
                 <div id="pro-modal-status">
@@ -1283,13 +1303,14 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     console.log('[DISPATCH] Loaded build', window.__DISPATCH_BUILD_ID);
     // --- CONFIGURATION ---
     let API_BASE = localStorage.getItem('h2s_api_base') || 'https://h2s-backend.vercel.app/api';
-    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || '';
+    const LOCAL_DISPATCH_PREVIEW = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
     
     // Clear invalid tokens (empty strings from old sessions)
-    if (ADMIN_TOKEN === '' || ADMIN_TOKEN === 'null' || ADMIN_TOKEN === 'undefined') {
-        console.warn('[DISPATCH] Clearing invalid stored token, using default');
+    if (ADMIN_TOKEN === 'null' || ADMIN_TOKEN === 'undefined') {
+        console.warn('[DISPATCH] Clearing invalid stored token');
         localStorage.removeItem('h2s_admin_token');
-        ADMIN_TOKEN = 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+        ADMIN_TOKEN = '';
     }
     
     let currentJobs = [];
@@ -1469,7 +1490,7 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     }
 
     // --- MOVE-IN ADVANTAGE PARTNERS ---
-    const LOCAL_PARTNER_PREVIEW = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    const LOCAL_PARTNER_PREVIEW = LOCAL_DISPATCH_PREVIEW;
     const PARTNER_PREVIEW_ROWS = [
         { id: 1001, first_name: 'Jordan', last_name: 'Taylor', name: 'Jordan Taylor', brokerage: 'Palmetto Key Realty', market: 'Greenville', email: 'jordan@example.com', phone: '(864) 555-0142', status: 'pending', created_at: new Date(Date.now()-86400000).toISOString(), brokerage_approval_confirmed: true },
         { id: 1002, first_name: 'Sarah', last_name: 'Jones', name: 'Sarah Jones', brokerage: 'Upstate Homes Group', market: 'Spartanburg', email: 'sarah@example.com', phone: '(864) 555-0188', status: 'approved', created_at: new Date(Date.now()-604800000).toISOString(), approved_at: new Date(Date.now()-518400000).toISOString(), public_slug: 'sarah-jones', referral_token: 'H2S-A7X4K2', brokerage_approval_confirmed: true }
@@ -1934,7 +1955,6 @@ Make sure the pro payouts details show up in a style card that shows images, oth
         
         console.log('[LOAD METRICS] Starting API call...');
         console.log('[LOAD METRICS] API_BASE:', API_BASE);
-        console.log('[LOAD METRICS] ADMIN_TOKEN:', ADMIN_TOKEN);
         
         try {
             const res = await fetchWithRetry(`${API_BASE}/admin_business_intelligence`, {
@@ -5117,7 +5137,6 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     function init() {
         console.log('==================== DASHBOARD INIT ====================');
         console.log('API_BASE:', API_BASE);
-        console.log('ADMIN_TOKEN:', ADMIN_TOKEN);
         console.log('=======================================================');
         
         checkConnection().then(() => {
@@ -5137,12 +5156,16 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     }
 
     // Auto-bypass login if token already stored
+    const requestedInitialView = new URLSearchParams(location.search).get('view');
     if (ADMIN_TOKEN) {
         document.getElementById('login-overlay').style.display = 'none';
         init();
-        if (new URLSearchParams(location.search).get('view') === 'partners') {
+        if (requestedInitialView === 'partners') {
             setTimeout(() => switchView('partners', document.getElementById('nav-partners')), 0);
         }
+    } else if (LOCAL_DISPATCH_PREVIEW && requestedInitialView === 'partners') {
+        document.getElementById('login-overlay').style.display = 'none';
+        switchView('partners', document.getElementById('nav-partners'));
     }
 
 </script>
