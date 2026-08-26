@@ -30,11 +30,11 @@
   </script>
   <script>
     (() => {
-      const SLOTS_API = 'https://h2s-backend.vercel.app/api/proof-slots?surface=bundles&limit=6';
-      // Existing public proof-media origin used by the live bundles page.
+      const PROOF_API = 'https://h2s-backend.vercel.app/api/proof-slots';
       const MEDIA_BASE = 'https://ngnskohzqijcmyhzmwnm.supabase.co/storage/v1/object/public';
       const frame = document.querySelector('.install');
       const caption = document.querySelector('.caption strong');
+      const captionMeta = document.querySelector('.caption span');
       if (!frame) return;
 
       const image = document.createElement('img');
@@ -56,8 +56,15 @@
       ];
       let active = 0;
       let timer = null;
+      let failedLoads = 0;
       const mediaUrl = (asset) => `${MEDIA_BASE}/${encodeURIComponent(asset.storage_bucket)}/${asset.storage_path.split('/').map(encodeURIComponent).join('/')}?v=${encodeURIComponent(asset.updated_at || asset.asset_id)}`;
       const cropPosition = (asset) => asset?.smart_crop_details?.hero_banner?.objectPosition || asset?.smart_crop_details?.objectPosition || '50% 50%';
+
+      function preload(index) {
+        if (assets.length < 2) return;
+        const next = new Image();
+        next.src = mediaUrl(assets[(index + 1) % assets.length]);
+      }
 
       function render(index) {
         if (!assets.length) return;
@@ -65,10 +72,23 @@
         const asset = assets[active];
         image.classList.remove('ready');
         image.style.objectPosition = cropPosition(asset);
-        image.onload = () => { frame.classList.add('has-photo'); image.classList.add('ready'); };
+        image.onload = () => {
+          failedLoads = 0;
+          frame.classList.add('has-photo');
+          image.classList.add('ready');
+          frame.setAttribute('aria-label', image.alt);
+          preload(active);
+        };
+        image.onerror = () => {
+          failedLoads += 1;
+          if (failedLoads < assets.length) render(active + 1);
+        };
         image.src = mediaUrl(asset);
         controls.querySelector('.carousel-count').textContent = `${active + 1} / ${assets.length}`;
-        caption.textContent = asset.service === 'cameras' ? 'Completed security installation' : 'Completed TV installation';
+        const isCamera = ['camera', 'cameras', 'security_camera'].includes(asset.service);
+        image.alt = isCamera ? 'A completed Home2Smart residential security installation' : 'A completed Home2Smart residential TV installation';
+        caption.textContent = isCamera ? 'Completed security installation' : 'Completed TV installation';
+        captionMeta.textContent = 'Real Home2Smart job photography';
       }
 
       function start() {
@@ -86,18 +106,32 @@
       render(0);
       start();
 
-      fetch(SLOTS_API, { credentials:'omit', cache:'no-store' })
-        .then((response) => response.ok ? response.json() : Promise.reject(new Error('proof slots unavailable')))
+      async function loadSlots(surface) {
+        const response = await fetch(`${PROOF_API}?surface=${encodeURIComponent(surface)}&limit=6`, { credentials:'omit', cache:'no-store' });
+        if (!response.ok) throw new Error(`proof slots unavailable: ${response.status}`);
+        return response.json();
+      }
+
+      loadSlots('realtor-partner')
+        .then(async (data) => {
+          const hasRealtorSlots = Object.values(data?.slots || {}).some((services) => Object.values(services || {}).some((items) => items?.length));
+          return hasRealtorSlots ? data : loadSlots('bundles');
+        })
         .then((data) => {
           const slots = data?.slots || {};
-          const tv = slots.mid_proof_rail?.tv_mounting || [];
-          const cameras = slots.hero?.cameras || [];
-          assets = [...tv, ...cameras].filter((asset, index, list) => asset?.media_kind === 'photo' && list.findIndex((item) => item.asset_id === asset.asset_id) === index).slice(0, 6);
-          if (!assets.length) return;
+          const selected = [
+            ...(slots.hero?.tv_mounting || []),
+            ...(slots.hero?.cameras || []),
+            ...(slots.mid_proof_rail?.tv_mounting || []),
+            ...(slots.mid_proof_rail?.cameras || [])
+          ].filter((asset, index, list) => asset?.media_kind === 'photo' && list.findIndex((item) => item.asset_id === asset.asset_id) === index).slice(0, 6);
+          if (!selected.length) return;
+          assets = selected;
+          failedLoads = 0;
           render(0);
           start();
         })
-        .catch(() => { /* Keep the neutral illustration as a funnel-safe fallback. */ });
+        .catch(() => { /* Keep the migrated, verified image manifest as the fallback. */ });
     })();
   </script>
 </body>
