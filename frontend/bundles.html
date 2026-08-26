@@ -4729,6 +4729,8 @@ window.scrollReviews = function(direction) {
     const utm_campaign = urlParams.get('utm_campaign') || null;
     const utm_term = urlParams.get('utm_term') || null;
     const utm_content = urlParams.get('utm_content') || null;
+    const partner_referral_slug = (urlParams.get('ref') || '').toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 100) || null;
+    const referral_source = urlParams.get('source') === 'realtor_partner' ? 'realtor_partner' : null;
     
     function normalizePathname(p) {
       const s = (p || '').toString().trim();
@@ -4751,7 +4753,14 @@ window.scrollReviews = function(direction) {
       utm_campaign,
       utm_term,
       utm_content,
-      ...params
+      partner_referral_slug,
+      referral_source,
+      ...params,
+      metadata: {
+        partner_referral_slug,
+        referral_source,
+        ...(params.metadata || {})
+      }
     };
     
     const endpoint = 'https://h2s-backend.vercel.app/api/track';
