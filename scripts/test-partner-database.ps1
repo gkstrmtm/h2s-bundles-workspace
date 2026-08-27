@@ -1,6 +1,6 @@
 param(
   [switch]$SmokeWrite,
-  [string]$ExpectedProjectRef = 'ulbzmgmxrqyipclrbohi'
+  [string]$ExpectedProjectRef = 'nkccbnrduojnzjfrpwva'
 )
 
 $ErrorActionPreference = 'Stop'
