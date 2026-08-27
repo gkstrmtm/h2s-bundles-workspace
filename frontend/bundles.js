@@ -5997,7 +5997,7 @@ async function loadOrders(){
     }
     orders.sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
     box.innerHTML = orders.map(o=>{
-      const oid = o.order_id || o.stripe_session_id || '—';
+      const oid = o.order_id || o.stripe_session_id || 'Not available';
       
       // Parse items JSON if available
       let itemsHTML = '';
