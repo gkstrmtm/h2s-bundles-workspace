@@ -3,9 +3,10 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { getSupabase, getSupabaseDispatch } from '../../../lib/supabase';
+import { recordPartnerEvent } from '../../../lib/partnerAttribution';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-12-15.clover',
+  apiVersion: '2026-02-25.clover',
 });
 
 export const dynamic = 'force-dynamic';
@@ -297,6 +298,27 @@ export async function POST(req: NextRequest) {
           console.error('[Stripe Webhook] Job creation exception:', jobCreateErr);
           // Continue - webhook should not fail if job creation fails
         }
+
+        const dispatchClient = getSupabaseDispatch() || getSupabase();
+        const { data: attributedJob } = await dispatchClient
+          .from('h2s_dispatch_jobs')
+          .select('job_id')
+          .eq('order_id', orderId)
+          .maybeSingle();
+
+        await recordPartnerEvent(getSupabase(), {
+          eventType: 'booking_created',
+          idempotencyKey: `booking_created:${session.id}`,
+          partnerSlug: session.metadata?.partner_referral_slug,
+          source: session.metadata?.referral_source,
+          orderId,
+          jobId: attributedJob?.job_id || null,
+          sessionId: session.id,
+          metadata: {
+            payment_status: session.payment_status,
+            amount_total_cents: session.amount_total || 0,
+          },
+        });
       }
 
       // Get cart items for notification
