@@ -660,14 +660,16 @@
         color: var(--muted);
       }
       .referral {
+        display: grid;
+        gap: 10px;
         margin: 20px 0;
-        padding: 17px;
+        padding: 18px;
         border-radius: 8px;
         background: #f1f4f6;
       }
       .referral label {
         display: block;
-        margin-bottom: 8px;
+        margin: 0;
         color: #64727d;
         text-transform: uppercase;
         letter-spacing: 0.08em;
@@ -677,12 +679,16 @@
       .referral-row {
         display: flex;
         gap: 10px;
+        align-items: stretch;
       }
       .referral code {
+        display: flex;
+        align-items: center;
         flex: 1;
         min-width: 0;
+        min-height: 50px;
         overflow: hidden;
-        padding: 12px;
+        padding: 0 13px;
         border: 1px solid var(--line);
         border-radius: 6px;
         background: #fff;
