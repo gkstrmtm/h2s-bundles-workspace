@@ -1544,7 +1544,7 @@ body {
         if (!rows.length) { container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--text-muted)">No partner applications match this view.</div>'; return; }
         container.innerHTML = `<div style="display:grid;gap:12px">${rows.map(row => {
             const statusColor = row.status === 'approved' ? 'var(--brand-green)' : row.status === 'pending' ? 'var(--brand-gold)' : '#94a3b8';
-            const publicUrl = row.public_slug ? (LOCAL_PARTNER_PREVIEW ? `http://127.0.0.1:4173/realtor-partner.html?state=approved&partner=${encodeURIComponent(row.public_slug)}` : `https://home2smart.com/move-in/${encodeURIComponent(row.public_slug)}`) : '';
+            const publicUrl = row.public_slug ? (LOCAL_PARTNER_PREVIEW ? `http://127.0.0.1:4173/realtor-partner.html?state=client&partner=${encodeURIComponent(row.public_slug)}` : `https://partners.home2smart.com/r/${encodeURIComponent(row.public_slug)}`) : '';
             return `<article style="display:grid;grid-template-columns:minmax(220px,1.25fr) minmax(180px,.8fr) minmax(210px,1fr) auto;gap:20px;align-items:center;padding:18px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card)">
                 <div><div style="font-weight:700;color:#fff">${escapeHtml(row.name || `${row.first_name||''} ${row.last_name||''}`.trim())}</div><div style="margin-top:5px;color:var(--text-muted);font-size:12px">${escapeHtml(row.email || '')}</div></div>
                 <div><div style="color:#fff;font-size:13px">${escapeHtml(row.brokerage || '')}</div><div style="margin-top:5px;color:var(--text-muted);font-size:12px">${escapeHtml(row.market || '')}</div></div>

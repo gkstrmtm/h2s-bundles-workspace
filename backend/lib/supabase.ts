@@ -16,6 +16,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // ═══════════════════════════════════════════════════════════════════════════
 
 let supabaseInstance: SupabaseClient | null = null;
+let supabasePublicInstance: SupabaseClient | null = null;
 let supabaseMgmtInstance: SupabaseClient | null = null;
 let supabaseInstanceDb1: SupabaseClient | null = null;
 
@@ -37,6 +38,20 @@ export function getSupabase(): SupabaseClient {
   }
   
   return supabaseInstance;
+}
+
+export function getSupabasePublic(): SupabaseClient {
+  if (!supabasePublicInstance) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabasePublicKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabasePublicKey) {
+      throw new Error(`Missing Supabase public credentials: URL=${!!supabaseUrl}, KEY=${!!supabasePublicKey}`);
+    }
+    supabasePublicInstance = createClient(supabaseUrl, supabasePublicKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return supabasePublicInstance;
 }
 
 // Get Supabase client for Management Database (Candidates, Tasks, Hours, Training, VA Knowledge)

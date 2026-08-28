@@ -42,3 +42,15 @@ export function publicPartner(row: any) {
     approved_at: row.approved_at || null,
   };
 }
+
+export function clientPartner(row: any) {
+  return {
+    name: [row.first_name, row.last_name].filter(Boolean).join(' '),
+    first_name: row.first_name,
+    last_name: row.last_name,
+    brokerage: row.brokerage,
+    market: row.market,
+    headshot_url: row.headshot_url || null,
+    public_slug: row.public_slug,
+  };
+}
