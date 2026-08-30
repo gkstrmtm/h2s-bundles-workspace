@@ -22,6 +22,20 @@ export function createReferralToken(): string {
   return `H2S-${crypto.randomBytes(6).toString('base64url').toUpperCase()}`;
 }
 
+export function escapePartnerText(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function partnerProgramUrl(path = ''): string {
+  const origin = String(process.env.PARTNER_PROGRAM_URL || 'https://partners.home2smart.com').replace(/\/$/, '');
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export function publicPartner(row: any) {
   return {
     id: row.id,

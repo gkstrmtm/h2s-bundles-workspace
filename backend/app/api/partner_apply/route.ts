@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabase, getSupabasePublic } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/adminAuth';
-import { normalizeEmail, publicPartner } from '@/lib/partnerProgram';
+import { escapePartnerText, normalizeEmail, partnerProgramUrl, publicPartner } from '@/lib/partnerProgram';
+import { sendMail } from '@/lib/mail';
 
 export async function OPTIONS(request: Request) {
   return NextResponse.json({}, { headers: corsHeaders(request) });
@@ -70,6 +71,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'An application already exists for this email', error_code: 'partner_email_exists' }, { status: 409, headers: corsHeaders(request) });
     }
     if (error) throw error;
+    const adminEmail = String(process.env.PARTNER_PROGRAM_ADMIN_EMAIL || process.env.PORTAL_ADMIN_EMAIL || 'dispatch@home2smart.com').trim();
+    await sendMail({
+      to: adminEmail,
+      subject: `Partner application: ${row.first_name} ${row.last_name}`,
+      category: 'partner_application_received',
+      idempotencyKey: `partner_application_received:${data.id}`,
+      html: `<h2>New Realtor Partner application</h2><p><strong>${escapePartnerText(row.first_name)} ${escapePartnerText(row.last_name)}</strong> applied from ${escapePartnerText(row.brokerage)} in ${escapePartnerText(row.market)}.</p><p>Email: ${escapePartnerText(email)}<br>Phone: ${escapePartnerText(row.phone)}</p><p><a href="${partnerProgramUrl('/dispatch?view=partners')}">Review partner applications</a></p>`,
+      meta: { partnerId: data.id, market: row.market, brokerage: row.brokerage },
+    }).catch(error => console.warn('[Partner Apply] Admin notification failed:', error));
     const publicClient = getSupabasePublic();
     const { data: signedIn, error: signInError } = await publicClient.auth.signInWithPassword({ email, password });
     if (signInError || !signedIn.session) throw signInError || new Error('Partner session was not created');

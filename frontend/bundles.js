@@ -5088,6 +5088,33 @@ function h2sGetReferralContext(){
   return context;
 }
 
+function h2sRenderPartnerBenefit(){
+  const referral = h2sGetReferralContext();
+  if(!referral.partner_referral_slug || referral.referral_source !== 'realtor_partner') return;
+  if(document.getElementById('h2sPartnerBenefit')) return;
+  const name = referral.partner_referral_slug
+    .split('-')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  const banner = document.createElement('aside');
+  banner.id = 'h2sPartnerBenefit';
+  banner.setAttribute('aria-label', 'Move-In Advantage referral');
+  banner.innerHTML = `<div><strong>Move-In Advantage</strong><span>Connected by ${escapeHtml(name || 'your real-estate professional')}</span></div><p>Eligible partner pricing and scheduling benefits are shown before checkout.</p>`;
+  banner.style.cssText = 'display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;padding:12px 20px;background:#eaf6ef;border-bottom:1px solid #bddbc8;color:#12372a;font:600 13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;text-align:center';
+  const strong = banner.querySelector('strong');
+  const span = banner.querySelector('span');
+  const message = banner.querySelector('p');
+  if(strong) strong.style.cssText = 'display:block;color:#087a54;font-size:11px;letter-spacing:.11em;text-transform:uppercase';
+  if(span) span.style.cssText = 'display:block;margin-top:2px';
+  if(message) message.style.cssText = 'margin:0;font-weight:500';
+  const target = document.querySelector('header') || document.body.firstElementChild;
+  if(target?.parentNode) target.parentNode.insertBefore(banner, target.nextSibling);
+}
+
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', h2sRenderPartnerBenefit, { once:true });
+else h2sRenderPartnerBenefit();
+
 function h2sCoSetStep(step){
   const s1 = byId('coStepIntake');
   const s2 = byId('coStepSchedule');

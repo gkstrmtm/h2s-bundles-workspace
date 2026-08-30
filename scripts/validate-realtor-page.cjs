@@ -15,6 +15,13 @@ assert.match(html, /api\(\s*"partner_apply"/);
 assert.match(html, /api\(\s*"partner_session"/);
 assert.match(html, /api\(\s*`partner_public\?slug=/);
 assert.match(html, /api\(\s*"partner_headshot"/);
+assert.match(html, /api\(\s*"partner_password_reset"/);
+assert.match(html, /api\(\s*"partner_password_update"/);
+assert.match(html, /api\(\s*"partner_profile"/);
+assert.match(html, /id="share-native"/);
+assert.match(html, /id="metric-introductions"/);
+assert.match(html, /class="client-advantage"/);
+assert.match(html, /recoveryMode && session\?\.access_token/);
 assert.doesNotMatch(html, /Preview only: profile details persist/);
 assert.doesNotMatch(html, /—/);
 
@@ -25,4 +32,13 @@ assert.match(dispatch, /admin_partners/);
 assert.match(dispatch, /admin_partner_status/);
 assert.match(dispatch, /state=client&partner=/);
 assert.match(dispatch, /https:\/\/partners\.home2smart\.com\/r\//);
+assert.match(dispatch, /partnerSummary/);
+assert.match(dispatch, /Waiting \$\{ageDays/);
 console.log('dispatch partner approval and public-link wiring OK');
+
+const bundles = fs.readFileSync('frontend/bundles.js', 'utf8');
+assert.match(bundles, /function h2sRenderPartnerBenefit/);
+assert.match(bundles, /Eligible partner pricing and scheduling benefits/);
+assert.match(bundles, /partner_referral_slug/);
+assert.doesNotMatch(bundles, /—/);
+console.log('booking referral continuity OK');

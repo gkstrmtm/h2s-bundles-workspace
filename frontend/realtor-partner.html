@@ -711,6 +711,46 @@
         max-width: 390px;
         margin: auto;
       }
+      .share-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 9px;
+      }
+      .share-actions .btn {
+        display: grid;
+        place-items: center;
+        min-height: 44px;
+        padding: 0 12px;
+        text-decoration: none;
+      }
+      .partner-metrics {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        margin-top: 18px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--line);
+      }
+      .partner-metrics div {
+        display: grid;
+        gap: 4px;
+        padding: 14px 10px;
+        background: #fff;
+        text-align: center;
+      }
+      .partner-metrics strong {
+        color: var(--navy);
+        font-size: 20px;
+      }
+      .partner-metrics span {
+        color: var(--muted);
+        font-size: 9px;
+        line-height: 1.3;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
       .footer {
         display: flex;
         justify-content: space-between;
@@ -807,6 +847,9 @@
         }
         .referral-row {
           flex-direction: column;
+        }
+        .partner-metrics {
+          grid-template-columns: 1fr 1fr;
         }
       }
       .install:after {
@@ -1164,6 +1207,24 @@
         font-weight: 850;
         text-transform: uppercase;
         letter-spacing: 0.1em;
+      }
+      .client-advantage {
+        display: grid;
+        gap: 4px;
+        max-width: 620px;
+        margin-top: 20px;
+        padding: 14px 16px;
+        border: 1px solid #c7dfd0;
+        border-radius: 8px;
+        background: #eef7f1;
+        color: #235f3d;
+      }
+      .client-advantage strong {
+        font-size: 13px;
+      }
+      .client-advantage span {
+        font-size: 12px;
+        line-height: 1.45;
       }
       .client-proof:before {
         content: "✓";
@@ -1868,6 +1929,17 @@
                 ><button id="copy" class="btn">Copy link</button>
               </div>
             </div>
+            <div class="share-actions" aria-label="Share partner link">
+              <button id="share-native" class="btn">Share</button>
+              <a id="share-text" class="btn" href="#">Text</a>
+              <a id="share-email" class="btn" href="#">Email</a>
+            </div>
+            <div class="partner-metrics" aria-label="Referral activity">
+              <div><strong id="metric-introductions">0</strong><span>Introductions</span></div>
+              <div><strong id="metric-bookings">0</strong><span>Bookings</span></div>
+              <div><strong id="metric-completed">0</strong><span>Completed</span></div>
+              <div><strong id="metric-follow-up">0</strong><span>Follow-up ready</span></div>
+            </div>
             <div class="empty">
               <strong>No referrals yet</strong>
               <p>
@@ -1913,6 +1985,13 @@
             >
               View client-facing page
             </button>
+            <button
+              id="edit-profile"
+              class="btn"
+              style="width: 100%; margin-top: 10px"
+            >
+              Edit partner profile
+            </button>
           </aside>
         </div>
       </div>
@@ -1930,6 +2009,13 @@
               for professional TV mounting, security cameras and smart-lock
               installation after move-in.
             </p>
+            <div class="client-advantage">
+              <strong>Your Move-In Advantage</strong>
+              <span
+                >Eligible partner pricing and scheduling benefits are shown
+                before booking.</span
+              >
+            </div>
             <div class="actions">
               <a class="btn primary" id="client-book" href="bundles.html"
                 >View services &amp; book</a
@@ -2082,7 +2168,62 @@
           />
         </div>
         <button class="btn primary submit">Sign in</button>
+        <button id="forgot-password" type="button" class="text-link login-help">
+          Forgot password?
+        </button>
         <p id="login-status" class="fine" role="status"></p>
+      </form>
+    </dialog>
+    <dialog
+      id="password-dialog"
+      class="terms-dialog login-dialog"
+      aria-labelledby="password-title"
+    >
+      <div class="terms-head">
+        <div>
+          <div class="terms-kicker">Secure partner access</div>
+          <h2 id="password-title">Reset your password</h2>
+        </div>
+        <button type="button" class="terms-close" data-close-password aria-label="Close password reset">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+        </button>
+      </div>
+      <form id="password-form" class="terms-body">
+        <p id="password-instructions">Enter your work email and we will send a secure recovery link.</p>
+        <div class="field" id="recovery-email-field">
+          <label for="recovery-email">Work email</label>
+          <input id="recovery-email" name="email" type="email" autocomplete="email" required />
+        </div>
+        <div class="field" id="new-password-field" hidden>
+          <label for="new-password">New password</label>
+          <input id="new-password" name="password" type="password" minlength="8" autocomplete="new-password" />
+        </div>
+        <button class="btn primary submit">Send recovery link</button>
+        <p id="password-status" class="fine" role="status"></p>
+      </form>
+    </dialog>
+    <dialog
+      id="profile-dialog"
+      class="terms-dialog login-dialog"
+      aria-labelledby="profile-title"
+    >
+      <div class="terms-head">
+        <div>
+          <div class="terms-kicker">Client-facing information</div>
+          <h2 id="profile-title">Edit partner profile</h2>
+        </div>
+        <button type="button" class="terms-close" data-close-profile aria-label="Close profile editor">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+        </button>
+      </div>
+      <form id="profile-form" class="terms-body">
+        <div class="field-row"><div class="field"><label for="profile-first">First name</label><input id="profile-first" name="first_name" required /></div><div class="field"><label for="profile-last">Last name</label><input id="profile-last" name="last_name" required /></div></div>
+        <div class="field"><label for="profile-brokerage">Brokerage or team</label><input id="profile-brokerage" name="brokerage" required /></div>
+        <div class="field"><label for="profile-market">Primary market</label><input id="profile-market" name="market" required /></div>
+        <div class="field"><label for="profile-phone">Mobile number</label><input id="profile-phone" name="phone" type="tel" required /></div>
+        <div class="field"><label for="profile-instagram">Instagram, optional</label><input id="profile-instagram" name="instagram" /></div>
+        <button class="btn primary submit">Save profile</button>
+        <p id="profile-status" class="fine" role="status"></p>
       </form>
     </dialog>
     <dialog
@@ -2189,6 +2330,10 @@
       .login-dialog .submit {
         margin-top: 4px;
       }
+      .login-help {
+        display: block;
+        margin: 14px auto 0;
+      }
       .fine[data-error="true"],
       #login-status[data-error="true"] {
         color: #9f2f2f;
@@ -2260,6 +2405,16 @@
             ? localStorage.setItem(SESSION_KEY, JSON.stringify(value))
             : localStorage.removeItem(SESSION_KEY);
         };
+        const recoveryParams = new URLSearchParams(location.hash.slice(1));
+        const recoveryMode = recoveryParams.get("type") === "recovery";
+        if (recoveryMode && recoveryParams.get("access_token")) {
+          saveSession({
+            access_token: recoveryParams.get("access_token"),
+            refresh_token: recoveryParams.get("refresh_token"),
+            expires_at: Math.floor(Date.now() / 1000) + Number(recoveryParams.get("expires_in") || 3600),
+          });
+          history.replaceState(null, "", `${location.pathname}${location.search}`);
+        }
         const api = async (path, options = {}, retry = true) => {
           const headers = new Headers(options.headers || {});
           if (!(options.body instanceof FormData))
@@ -2314,6 +2469,12 @@
             : location.host;
           if ($("#referral"))
             $("#referral").textContent = `${referralHost}/r/${partnerSlug()}`;
+          const referralUrl = `https://${referralHost}/r/${partnerSlug()}`;
+          const shareMessage = `${partnerName()} shared Home2Smart for TV mounting, security cameras and smart-lock installation: ${referralUrl}`;
+          if ($("#share-text"))
+            $("#share-text").href = `sms:${/iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?"}body=${encodeURIComponent(shareMessage)}`;
+          if ($("#share-email"))
+            $("#share-email").href = `mailto:?subject=${encodeURIComponent("A dependable local installation option")}&body=${encodeURIComponent(shareMessage)}`;
           const destination = `${local ? "/bundles.html" : "/bundles"}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner`;
           if ($("#client-book")) $("#client-book").href = destination;
           if ($("#client-book-bottom"))
@@ -2350,6 +2511,10 @@
               empty.querySelector("p").textContent =
                 `${activity.bookings || 0} booked, ${activity.completed || 0} completed, ${activity.follow_up_ready || 0} ready for follow-up.`;
             }
+            $("#metric-introductions").textContent = activity?.introductions || 0;
+            $("#metric-bookings").textContent = activity?.bookings || 0;
+            $("#metric-completed").textContent = activity?.completed || 0;
+            $("#metric-follow-up").textContent = activity?.follow_up_ready || 0;
           } else if (state === "pending") {
             $("#heading").textContent = "Application received.";
             $("#intro").textContent =
@@ -2387,6 +2552,14 @@
         const closeLogin = () => {
           $("#partner-login").close();
           document.body.classList.remove("modal-open");
+        };
+        const openDialog = (selector) => {
+          document.body.classList.add("modal-open");
+          $(selector).showModal();
+        };
+        const closeDialog = (selector) => {
+          $(selector).close();
+          if (!$("dialog[open]")) document.body.classList.remove("modal-open");
         };
 
         $$("[data-scroll]").forEach(
@@ -2490,6 +2663,101 @@
           }
         });
         $("[data-close-login]").onclick = closeLogin;
+        $("#forgot-password").onclick = () => {
+          const email = $("#login-email").value.trim();
+          closeLogin();
+          $("#recovery-email-field").hidden = false;
+          $("#new-password-field").hidden = true;
+          $("#password-instructions").textContent =
+            "Enter your work email and we will send a secure recovery link.";
+          $("#password-form .submit").textContent = "Send recovery link";
+          $("#recovery-email").value = email;
+          openDialog("#password-dialog");
+        };
+        $("[data-close-password]").onclick = () =>
+          closeDialog("#password-dialog");
+        $("#password-form").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const button = event.currentTarget.querySelector(".submit");
+          const status = $("#password-status");
+          const form = new FormData(event.currentTarget);
+          button.disabled = true;
+          status.textContent = "";
+          status.dataset.error = "false";
+          try {
+            if ($("#new-password-field").hidden) {
+              const data = await api(
+                "partner_password_reset",
+                {
+                  method: "POST",
+                  body: JSON.stringify({ email: form.get("email") }),
+                },
+                false,
+              );
+              status.textContent = data.message;
+            } else {
+              await api("partner_password_update", {
+                method: "POST",
+                body: JSON.stringify({ password: form.get("password") }),
+              });
+              status.textContent = "Password updated. Your partner account is ready.";
+              setTimeout(() => {
+                closeDialog("#password-dialog");
+                loadMe().catch(openLogin);
+              }, 900);
+            }
+          } catch (error) {
+            status.textContent = error.message;
+            status.dataset.error = "true";
+          } finally {
+            button.disabled = false;
+          }
+        });
+        $("#edit-profile").onclick = () => {
+          $("#profile-first").value = profile.first_name || "";
+          $("#profile-last").value = profile.last_name || "";
+          $("#profile-brokerage").value = profile.brokerage || "";
+          $("#profile-market").value = profile.market || "";
+          $("#profile-phone").value = profile.phone || "";
+          $("#profile-instagram").value = profile.instagram || "";
+          $("#profile-status").textContent = "";
+          openDialog("#profile-dialog");
+        };
+        $("[data-close-profile]").onclick = () => closeDialog("#profile-dialog");
+        $("#profile-form").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const button = event.currentTarget.querySelector(".submit");
+          const status = $("#profile-status");
+          const raw = Object.fromEntries(new FormData(event.currentTarget));
+          const form = {
+            first_name: raw.first_name,
+            last_name: raw.last_name,
+            brokerage: raw.brokerage,
+            market: raw.market,
+            phone: raw.phone,
+            instagram: raw.instagram,
+          };
+          button.disabled = true;
+          button.textContent = "Saving…";
+          status.textContent = "";
+          status.dataset.error = "false";
+          try {
+            const data = await api("partner_profile", {
+              method: "POST",
+              body: JSON.stringify(form),
+            });
+            profile = normalizeProfile(data.partner);
+            fill();
+            status.textContent = "Profile saved.";
+            setTimeout(() => closeDialog("#profile-dialog"), 700);
+          } catch (error) {
+            status.textContent = error.message;
+            status.dataset.error = "true";
+          } finally {
+            button.disabled = false;
+            button.textContent = "Save profile";
+          }
+        });
         $("#access").onclick = async () => {
           if (["pending", "approved"].includes(document.body.dataset.state)) {
             saveSession(null);
@@ -2521,6 +2789,24 @@
             );
           } catch {
             event.currentTarget.textContent = "Select link";
+          }
+        };
+        $("#share-native").onclick = async (event) => {
+          const url = `https://${$("#referral").textContent}`;
+          const shareData = {
+            title: "Home2Smart Move-In Advantage",
+            text: `${partnerName()} shared a dependable local installation option.`,
+            url,
+          };
+          try {
+            if (navigator.share) await navigator.share(shareData);
+            else {
+              await navigator.clipboard.writeText(url);
+              event.currentTarget.textContent = "Link copied";
+              setTimeout(() => (event.currentTarget.textContent = "Share"), 1400);
+            }
+          } catch (error) {
+            if (error.name !== "AbortError") event.currentTarget.textContent = "Try Copy link";
           }
         };
         $("[data-public]").onclick = (event) => {
@@ -2592,6 +2878,15 @@
         );
 
         const params = new URLSearchParams(location.search);
+        if (recoveryMode && session?.access_token) {
+          $("#recovery-email-field").hidden = true;
+          $("#new-password-field").hidden = false;
+          $("#new-password").required = true;
+          $("#password-instructions").textContent =
+            "Choose a new password for your Home2Smart partner account.";
+          $("#password-form .submit").textContent = "Update password";
+          openDialog("#password-dialog");
+        }
         const pathAlias = location.pathname.match(/^\/r\/([^/]+)\/?$/)?.[1];
         const requestedAlias = pathAlias || params.get("partner");
         if (requestedAlias && (pathAlias || params.get("state") === "client")) {
