@@ -3777,7 +3777,7 @@ function renderHeroReviews(){
     <div class="hero-review-slide ${index === currentHeroReviewIndex ? 'active' : ''}" data-index="${index}">
       <div class="hero-review-stars">${'&#9733;'.repeat(review.stars)}</div>
       ${hasText ? `<div class="hero-review-text">"${escapeHtml(review.text)}"</div>` : ''}
-      <div class="hero-review-author">&mdash; ${escapeHtml(review.author)}</div>
+      <div class="hero-review-author">${escapeHtml(review.author)}</div>
     </div>
   `;
   }).join('');

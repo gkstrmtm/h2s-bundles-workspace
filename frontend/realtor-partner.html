@@ -583,6 +583,9 @@
         grid-template-columns: 1.25fr 0.75fr;
         gap: 20px;
       }
+      .account-grid > * {
+        min-width: 0;
+      }
       .panel {
         padding: 27px;
         border: 1px solid var(--line);
@@ -2210,6 +2213,7 @@
           );
         const $ = (selector) => document.querySelector(selector);
         const $$ = (selector) => [...document.querySelectorAll(selector)];
+        if (!local) $(".preview").hidden = true;
         const pages = {
           public: $("#public"),
           account: $("#account"),
@@ -2310,7 +2314,7 @@
             : location.host;
           if ($("#referral"))
             $("#referral").textContent = `${referralHost}/r/${partnerSlug()}`;
-          const destination = `/bundles?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner`;
+          const destination = `${local ? "/bundles.html" : "/bundles"}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner`;
           if ($("#client-book")) $("#client-book").href = destination;
           if ($("#client-book-bottom"))
             $("#client-book-bottom").href = destination;
@@ -2591,10 +2595,11 @@
         const pathAlias = location.pathname.match(/^\/r\/([^/]+)\/?$/)?.[1];
         const requestedAlias = pathAlias || params.get("partner");
         if (requestedAlias && (pathAlias || params.get("state") === "client")) {
+          profile = { ...previewProfile, public_slug: requestedAlias };
+          show("client");
           loadPublic(requestedAlias).catch(() => {
             if (local) {
-              profile = { ...previewProfile, public_slug: requestedAlias };
-              show("client");
+              return;
             } else {
               show("public");
               $("#public h1").textContent =
