@@ -1,7 +1,6 @@
 {
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
@@ -53,6 +52,10 @@
     {
       "source": "/account",
       "destination": "/frontend/realtor-partner.html?state=account"
+    },
+    {
+      "source": "/admin",
+      "destination": "/frontend/dispatch.html"
     },
     {
       "source": "/realtor-partner",

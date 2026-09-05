@@ -1360,7 +1360,7 @@
     </style>
   </head>
   <body>
-    <div class="preview">
+    <div class="preview" hidden>
       <span>Preview state</span
       ><button data-state="public">Partner landing</button
       ><button data-state="pending">Application pending</button
@@ -2210,6 +2210,8 @@
           );
         const $ = (selector) => document.querySelector(selector);
         const $$ = (selector) => [...document.querySelectorAll(selector)];
+        const previewBar = $(".preview");
+        if (previewBar) previewBar.hidden = !local;
         const pages = {
           public: $("#public"),
           account: $("#account"),
