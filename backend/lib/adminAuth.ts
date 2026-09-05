@@ -12,6 +12,9 @@ export function corsHeaders(request?: Request): Record<string, string> {
   const allowedOrigins = [
     'https://home2smart.com',
     'https://www.home2smart.com',
+    'https://partners.home2smart.com',
+    'https://portal.home2smart.com',
+    'https://shop.home2smart.com',
     'https://h2s-bundles-frontend-ayoqyg92t-tabari-ropers-projects-6f2e090b.vercel.app',
     'https://h2s-bundles-frontend.vercel.app',
   ];

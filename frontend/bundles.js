@@ -5073,6 +5073,21 @@ function h2sCoValidateIntake(intake){
   return null;
 }
 
+function h2sGetReferralContext(){
+  const key = 'h2s_partner_referral_context';
+  let saved = {};
+  try { saved = JSON.parse(sessionStorage.getItem(key) || '{}'); } catch(_e) {}
+  const params = new URLSearchParams(window.location.search);
+  const rawRef = params.get('ref') || saved.partner_referral_slug || '';
+  const partnerReferralSlug = String(rawRef).toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
+  const referralSource = params.get('source') === 'realtor_partner' || saved.referral_source === 'realtor_partner' ? 'realtor_partner' : '';
+  const context = { partner_referral_slug: partnerReferralSlug, referral_source: referralSource };
+  if(partnerReferralSlug && referralSource) {
+    try { sessionStorage.setItem(key, JSON.stringify(context)); } catch(_e) {}
+  }
+  return context;
+}
+
 function h2sCoSetStep(step){
   const s1 = byId('coStepIntake');
   const s2 = byId('coStepSchedule');
@@ -5104,6 +5119,7 @@ async function h2sCoFetchOrderDetails(sessionId){
 }
 
 function h2sCoBuildCheckoutPayload(intake){
+  const referral = h2sGetReferralContext();
   const payload = {
     __action: 'create_checkout_session',
     customer: { name: intake.name, email: intake.email, phone: intake.phone },
@@ -5119,7 +5135,9 @@ function h2sCoBuildCheckoutPayload(intake){
       service_city: intake.city,
       service_state: intake.state,
       service_zip: intake.zip,
-      source: 'shop_rebuilt'
+      source: 'shop_rebuilt',
+      partner_referral_slug: referral.partner_referral_slug || null,
+      referral_source: referral.referral_source || null
     }
   };
   const promoCode = localStorage.getItem('h2s_promo_code');
@@ -5979,7 +5997,7 @@ async function loadOrders(){
     }
     orders.sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
     box.innerHTML = orders.map(o=>{
-      const oid = o.order_id || o.stripe_session_id || '—';
+      const oid = o.order_id || o.stripe_session_id || 'Not available';
       
       // Parse items JSON if available
       let itemsHTML = '';

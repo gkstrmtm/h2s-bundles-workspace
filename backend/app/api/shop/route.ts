@@ -7,6 +7,7 @@ import { generateJobDetailsSummary, generateEquipmentProvided, getScheduleStatus
 import OpenAI from 'openai';
 import Stripe from 'stripe';
 import crypto from 'crypto';
+import { recordPartnerEvent } from '@/lib/partnerAttribution';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -1146,6 +1147,8 @@ export async function POST(request: Request) {
         set('service_city', offerMeta?.service_city);
         set('service_state', offerMeta?.service_state);
         set('service_zip', offerMeta?.service_zip);
+        set('partner_referral_slug', offerMeta?.partner_referral_slug);
+        set('referral_source', offerMeta?.referral_source);
 
         // Job details (stringify nested object for Stripe)
         if (offerMeta?.job_details) {
@@ -1553,6 +1556,16 @@ export async function POST(request: Request) {
           job_value_cents: jobValueCents,
           tech_payout_cents: techPayoutCents,
           payout_estimated: techPayoutDollars
+        });
+
+        await recordPartnerEvent(client, {
+          eventType: 'checkout_started',
+          idempotencyKey: `checkout_started:${orderId}`,
+          partnerSlug: offerMeta?.partner_referral_slug,
+          source: offerMeta?.referral_source,
+          orderId,
+          jobId,
+          metadata: { customer_benefit_program: true },
         });
 
         // Link job to order metadata - CRITICAL STEP

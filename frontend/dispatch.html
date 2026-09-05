@@ -224,25 +224,47 @@ body {
 }
 
 @media (max-width: 768px) {
-    .main-content {
-        padding: 16px;
-    }
-    
-    .sidebar {
-        position: fixed;
-        left: -260px;
-        top: 0;
-        height: 100vh;
-        z-index: 1000;
-        transition: left 0.3s ease;
-    }
-    
-    .sidebar.mobile-open {
-        left: 0;
-    }
-    
-    body {
+    .h2s-dispatch-root {
         flex-direction: column;
+    }
+
+    .h2s-dispatch-root .main-content {
+        padding: 16px;
+        min-height: 0;
+    }
+    
+    .h2s-dispatch-root .sidebar {
+        width: 100%;
+        min-height: auto;
+        height: auto;
+        padding: 10px 12px;
+        position: relative;
+        left: auto;
+        top: auto;
+        z-index: 10;
+        border-right: 0;
+        border-bottom: 1px solid #334155;
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .h2s-dispatch-root .logo-container {
+        display: none;
+    }
+
+    .h2s-dispatch-root .nav-menu {
+        flex-direction: row;
+        gap: 6px;
+        width: max-content;
+    }
+
+    .h2s-dispatch-root .nav-item {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    .h2s-dispatch-root .nav-item[style] {
+        margin-top: 0 !important;
     }
 }
 
@@ -799,6 +821,10 @@ body {
             <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
             Pro Management
         </div>
+        <div id="nav-partners" class="nav-item" onclick="switchView('partners', this)">
+            <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m7-10a4 4 0 100-8 4 4 0 000 8zm13 10v-2a4 4 0 00-3-3.87m-2-12a4 4 0 010 7.75"></path></svg>
+            Partners
+        </div>
         <div class="nav-item" onclick="openSettings()" style="margin-top:auto">
             <svg class="nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             Settings
@@ -1040,6 +1066,24 @@ body {
         </div>
     </div>
 
+    <!-- MOVE-IN ADVANTAGE PARTNERS VIEW -->
+    <div id="view-partners" class="hidden">
+        <div class="page-header">
+            <div><h1 class="page-title">Move-In Advantage Partners</h1><p style="color:var(--text-muted);font-size:13px;margin-top:6px">Review applications, manage approval status and open each partner's public experience.</p></div>
+            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span id="partners-preview-badge" style="display:none;padding:7px 10px;border:1px solid rgba(245,158,11,.4);border-radius:999px;background:rgba(245,158,11,.12);color:#fbbf24;font-size:11px;font-weight:700">LOCAL PREVIEW DATA</span><button class="btn btn-primary" onclick="loadPartners()">Refresh</button></div>
+        </div>
+        <div class="metrics-grid" style="margin-bottom:30px">
+            <div class="metric-card"><div class="metric-label">Applications</div><div class="metric-value" id="partners-total">0</div></div>
+            <div class="metric-card"><div class="metric-label">Pending Review</div><div class="metric-value" id="partners-pending" style="color:var(--brand-gold)">0</div></div>
+            <div class="metric-card"><div class="metric-label">Approved</div><div class="metric-value" id="partners-approved" style="color:var(--brand-green)">0</div></div>
+            <div class="metric-card"><div class="metric-label">Attributed Jobs</div><div class="metric-value" id="partners-jobs" style="color:var(--brand-azure)">0</div><div class="metric-trend">Reporting activates after job attribution</div></div>
+        </div>
+        <div class="section">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:18px"><div class="tabs-container"><button class="tab-btn active" data-partner-filter="all" onclick="filterPartners('all',this)">All</button><button class="tab-btn" data-partner-filter="pending" onclick="filterPartners('pending',this)">Pending</button><button class="tab-btn" data-partner-filter="approved" onclick="filterPartners('approved',this)">Approved</button><button class="tab-btn" data-partner-filter="suspended" onclick="filterPartners('suspended',this)">Suspended</button></div><input id="partners-search" type="search" placeholder="Search partner or brokerage..." oninput="renderPartners()" style="padding:10px 12px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:#fff;min-width:250px"></div>
+            <div id="partners-container"><div style="text-align:center;padding:40px;color:var(--text-muted)">Loading partner applications...</div></div>
+        </div>
+    </div>
+
 </div>
 
 <!-- JOB DETAIL MODAL -->
@@ -1180,9 +1224,7 @@ body {
             <div class="info-item">
                 <label>Company</label>
                 <div id="pro-modal-company">N/A</div>
-            </div>Alright, what you need to do for the dispatch is make the prompt that's essentially going to establish continuity in the backend with rev tracking and all the metrics on our frontend for the dashboard area. The pro management is able to click on each name, pull their profile, all the detail of the data points in the database associated with the pro images, all that type of shit. Basically just tell it to audit that this dispatch.html and go deeper on everything, how it could be a little bit better or how I can make more sense.
-
-Make sure the pro payouts details show up in a style card that shows images, other jobs that the payouts were requested for, shit like that. Oh, never mind, it might already work. Let me see if you make sure the view card, you see the actual detail of the job that is relative to the payments, so you can see images and shit associated with it. It has to go down a rabbit hole of doing all that, the jobs being to click those cars, see all the details of jobs, and make sure it's completely connected to the ecosystem now, because it's rendering old data is not really showing any other bullshit. It's definitely some issues, so let's get under that all under control. 
+            </div>
             <div class="info-item">
                 <label>Status</label>
                 <div id="pro-modal-status">
@@ -1261,13 +1303,14 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     console.log('[DISPATCH] Loaded build', window.__DISPATCH_BUILD_ID);
     // --- CONFIGURATION ---
     let API_BASE = localStorage.getItem('h2s_api_base') || 'https://h2s-backend.vercel.app/api';
-    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+    let ADMIN_TOKEN = localStorage.getItem('h2s_admin_token') || '';
+    const LOCAL_DISPATCH_PREVIEW = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
     
     // Clear invalid tokens (empty strings from old sessions)
-    if (ADMIN_TOKEN === '' || ADMIN_TOKEN === 'null' || ADMIN_TOKEN === 'undefined') {
-        console.warn('[DISPATCH] Clearing invalid stored token, using default');
+    if (ADMIN_TOKEN === 'null' || ADMIN_TOKEN === 'undefined') {
+        console.warn('[DISPATCH] Clearing invalid stored token');
         localStorage.removeItem('h2s_admin_token');
-        ADMIN_TOKEN = 'e5d4100f-fdbb-44c5-802c-0166d86ed1a8';
+        ADMIN_TOKEN = '';
     }
     
     let currentJobs = [];
@@ -1435,6 +1478,7 @@ Make sure the pro payouts details show up in a style card that shows images, oth
         document.getElementById('view-jobs').classList.add('hidden');
         document.getElementById('view-payouts').classList.add('hidden');
         document.getElementById('view-pros').classList.add('hidden');
+        document.getElementById('view-partners').classList.add('hidden');
         
         document.getElementById(`view-${view}`).classList.remove('hidden');
         
@@ -1442,6 +1486,89 @@ Make sure the pro payouts details show up in a style card that shows images, oth
         if (view === 'jobs') loadJobs();
         if (view === 'payouts') loadPayouts();
         if (view === 'pros') loadProsList();
+        if (view === 'partners') loadPartners();
+    }
+
+    // --- MOVE-IN ADVANTAGE PARTNERS ---
+    const LOCAL_PARTNER_PREVIEW = LOCAL_DISPATCH_PREVIEW;
+    const PARTNER_PREVIEW_ROWS = [
+        { id: 1001, first_name: 'Jordan', last_name: 'Taylor', name: 'Jordan Taylor', brokerage: 'Palmetto Key Realty', market: 'Greenville', email: 'jordan@example.com', phone: '(864) 555-0142', status: 'pending', created_at: new Date(Date.now()-86400000).toISOString(), brokerage_approval_confirmed: true },
+        { id: 1002, first_name: 'Sarah', last_name: 'Jones', name: 'Sarah Jones', brokerage: 'Upstate Homes Group', market: 'Spartanburg', email: 'sarah@example.com', phone: '(864) 555-0188', status: 'approved', created_at: new Date(Date.now()-604800000).toISOString(), approved_at: new Date(Date.now()-518400000).toISOString(), public_slug: 'sarah-jones', referral_token: 'H2S-A7X4K2', brokerage_approval_confirmed: true }
+    ];
+    let allPartners = [];
+    let partnerFilter = 'all';
+    let partnersUsingPreview = false;
+
+    async function loadPartners() {
+        const container = document.getElementById('partners-container');
+        container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">Loading partner applications...</div>';
+        partnersUsingPreview = false;
+        if (LOCAL_PARTNER_PREVIEW) {
+            allPartners = PARTNER_PREVIEW_ROWS.map(row => ({...row}));
+            partnersUsingPreview = true;
+            document.getElementById('partners-preview-badge').style.display = 'inline-flex';
+            updatePartnerMetrics();
+            renderPartners();
+            return;
+        }
+        try {
+            const res = await fetchWithRetry(`${API_BASE}/admin_partners`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:ADMIN_TOKEN,status:'all'}) });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'Partner API unavailable');
+            allPartners = data.partners || [];
+        } catch (error) {
+            container.innerHTML = `<div style="text-align:center;padding:40px;color:var(--error)">${escapeHtml(error.message || 'Unable to load partners')}</div>`;
+            return;
+        }
+        document.getElementById('partners-preview-badge').style.display = partnersUsingPreview ? 'inline-flex' : 'none';
+        updatePartnerMetrics();
+        renderPartners();
+    }
+
+    function updatePartnerMetrics() {
+        document.getElementById('partners-total').textContent = allPartners.length;
+        document.getElementById('partners-pending').textContent = allPartners.filter(row => row.status === 'pending').length;
+        document.getElementById('partners-approved').textContent = allPartners.filter(row => row.status === 'approved').length;
+    }
+
+    function filterPartners(status, button) {
+        partnerFilter = status;
+        document.querySelectorAll('[data-partner-filter]').forEach(item => item.classList.toggle('active', item === button));
+        renderPartners();
+    }
+
+    function renderPartners() {
+        const query = String(document.getElementById('partners-search')?.value || '').trim().toLowerCase();
+        const rows = allPartners.filter(row => (partnerFilter === 'all' || row.status === partnerFilter) && (!query || `${row.name} ${row.brokerage} ${row.email} ${row.market}`.toLowerCase().includes(query)));
+        const container = document.getElementById('partners-container');
+        if (!rows.length) { container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--text-muted)">No partner applications match this view.</div>'; return; }
+        container.innerHTML = `<div style="display:grid;gap:12px">${rows.map(row => {
+            const statusColor = row.status === 'approved' ? 'var(--brand-green)' : row.status === 'pending' ? 'var(--brand-gold)' : '#94a3b8';
+            const publicUrl = row.public_slug ? (LOCAL_PARTNER_PREVIEW ? `http://127.0.0.1:4173/realtor-partner.html?state=client&partner=${encodeURIComponent(row.public_slug)}` : `https://partners.home2smart.com/r/${encodeURIComponent(row.public_slug)}`) : '';
+            return `<article style="display:grid;grid-template-columns:minmax(220px,1.25fr) minmax(180px,.8fr) minmax(210px,1fr) auto;gap:20px;align-items:center;padding:18px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card)">
+                <div><div style="font-weight:700;color:#fff">${escapeHtml(row.name || `${row.first_name||''} ${row.last_name||''}`.trim())}</div><div style="margin-top:5px;color:var(--text-muted);font-size:12px">${escapeHtml(row.email || '')}</div></div>
+                <div><div style="color:#fff;font-size:13px">${escapeHtml(row.brokerage || '')}</div><div style="margin-top:5px;color:var(--text-muted);font-size:12px">${escapeHtml(row.market || '')}</div></div>
+                <div><span style="display:inline-flex;padding:5px 9px;border:1px solid ${statusColor};border-radius:999px;color:${statusColor};font-size:10px;font-weight:800;text-transform:uppercase">${escapeHtml(row.status)}</span><div style="margin-top:7px;color:var(--text-muted);font-size:11px">Applied ${new Date(row.created_at).toLocaleDateString()}</div></div>
+                <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">${row.status === 'pending' ? `<button class="btn btn-success" onclick="setPartnerStatus(${row.id},'approved')">Approve</button><button class="btn btn-ghost" onclick="setPartnerStatus(${row.id},'rejected')">Reject</button>` : ''}${row.status === 'approved' ? `<a class="btn btn-primary" href="${publicUrl}" target="_blank" style="text-decoration:none;display:inline-flex;align-items:center">Open page</a><button class="btn btn-ghost" onclick="setPartnerStatus(${row.id},'suspended')">Suspend</button>` : ''}</div>
+            </article>`;
+        }).join('')}</div>`;
+    }
+
+    async function setPartnerStatus(partnerId, status) {
+        const row = allPartners.find(item => Number(item.id) === Number(partnerId));
+        if (!row) return;
+        if (partnersUsingPreview) {
+            row.status = status;
+            if (status === 'approved') { row.public_slug = `${row.first_name}-${row.last_name}`.toLowerCase().replace(/[^a-z0-9]+/g,'-'); row.referral_token = `H2S-PREVIEW${row.id}`; row.approved_at = new Date().toISOString(); }
+            updatePartnerMetrics(); renderPartners(); return;
+        }
+        try {
+            const res = await fetchWithRetry(`${API_BASE}/admin_partner_status`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token:ADMIN_TOKEN,partner_id:partnerId,status}) });
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.error || 'Status update failed');
+            Object.assign(row, data.partner);
+            updatePartnerMetrics(); renderPartners();
+        } catch (error) { alert(`Unable to update partner: ${error.message}`); }
     }
 
     // --- PRO MANAGEMENT ---
@@ -1828,7 +1955,6 @@ Make sure the pro payouts details show up in a style card that shows images, oth
         
         console.log('[LOAD METRICS] Starting API call...');
         console.log('[LOAD METRICS] API_BASE:', API_BASE);
-        console.log('[LOAD METRICS] ADMIN_TOKEN:', ADMIN_TOKEN);
         
         try {
             const res = await fetchWithRetry(`${API_BASE}/admin_business_intelligence`, {
@@ -5011,7 +5137,6 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     function init() {
         console.log('==================== DASHBOARD INIT ====================');
         console.log('API_BASE:', API_BASE);
-        console.log('ADMIN_TOKEN:', ADMIN_TOKEN);
         console.log('=======================================================');
         
         checkConnection().then(() => {
@@ -5031,9 +5156,16 @@ Make sure the pro payouts details show up in a style card that shows images, oth
     }
 
     // Auto-bypass login if token already stored
+    const requestedInitialView = new URLSearchParams(location.search).get('view');
     if (ADMIN_TOKEN) {
         document.getElementById('login-overlay').style.display = 'none';
         init();
+        if (requestedInitialView === 'partners') {
+            setTimeout(() => switchView('partners', document.getElementById('nav-partners')), 0);
+        }
+    } else if (LOCAL_DISPATCH_PREVIEW && requestedInitialView === 'partners') {
+        document.getElementById('login-overlay').style.display = 'none';
+        switchView('partners', document.getElementById('nav-partners'));
     }
 
 </script>

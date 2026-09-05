@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getSupabase, getSupabaseDispatch } from '@/lib/supabase';
+import { getSupabaseDispatch } from '@/lib/supabase';
 import { requireAuth, AuthError } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { ensureCompletionSideEffects } from '@/lib/dataOrchestration';
+import { recordPartnerEvent } from '@/lib/partnerAttribution';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -145,6 +146,13 @@ export async function POST(request: Request) {
       payoutOk = true;
       payoutLedgerId = sideEffectsResult?.payoutId || null;
       console.log(`[COMPLETE_JOB_PAYOUT_OK] cid=${cid} payout_ledger_id=${payoutLedgerId}`);
+
+      await recordPartnerEvent(sb, {
+        eventType: 'job_completed',
+        idempotencyKey: `job_completed:${jobId}`,
+        jobId,
+        metadata: { completion_source: 'technician_portal' },
+      });
       
     } catch (catchedError: any) {
       console.error(`[COMPLETE_JOB_PAYOUT_FAIL] cid=${cid} error=${catchedError.message}`);

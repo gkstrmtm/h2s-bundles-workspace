@@ -1,7 +1,6 @@
 {
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
@@ -31,6 +30,48 @@
     {
       "source": "/api/:path*",
       "destination": "https://h2s-backend.vercel.app/api/:path*"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "partners.home2smart.com"
+        }
+      ],
+      "destination": "/frontend/realtor-partner.html"
+    },
+    {
+      "source": "/r/:slug",
+      "destination": "/frontend/realtor-partner.html?state=client&partner=:slug"
+    },
+    {
+      "source": "/apply",
+      "destination": "/frontend/realtor-partner.html"
+    },
+    {
+      "source": "/account",
+      "destination": "/frontend/realtor-partner.html?state=account"
+    },
+    {
+      "source": "/admin",
+      "destination": "/frontend/dispatch.html"
+    },
+    {
+      "source": "/realtor-partner",
+      "destination": "/frontend/realtor-partner.html"
+    },
+    {
+      "source": "/realtor-partner.html",
+      "destination": "/frontend/realtor-partner.html"
+    },
+    {
+      "source": "/dispatch",
+      "destination": "/frontend/dispatch.html"
+    },
+    {
+      "source": "/dispatch.html",
+      "destination": "/frontend/dispatch.html"
     },
     {
       "source": "/",
