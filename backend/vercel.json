@@ -1,7 +1,6 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "rewrites": [
