@@ -13,6 +13,7 @@ type RecordPartnerEventInput = {
   eventType: PartnerEventType;
   idempotencyKey: string;
   partnerSlug?: string | null;
+  partnerToken?: string | null;
   orderId?: string | null;
   jobId?: string | null;
   sessionId?: string | null;
@@ -36,6 +37,7 @@ export async function recordPartnerEvent(client: SupabaseClient, input: RecordPa
   const orderId = String(input.orderId || '').trim() || null;
   const jobId = String(input.jobId || '').trim() || null;
   const slug = safeSlug(input.partnerSlug);
+  const token = String(input.partnerToken || '').trim().slice(0, 160);
 
   try {
     let attribution: any = null;
@@ -45,14 +47,15 @@ export async function recordPartnerEvent(client: SupabaseClient, input: RecordPa
       const existing = await attributionQuery.maybeSingle();
       if (existing.error) throw existing.error;
       attribution = existing.data;
-    } else if (!slug) return { ok: true, skipped: 'no_partner_context' };
+    } else if (!slug || !token) return { ok: true, skipped: 'unverified_partner_context' };
 
     if (!attribution) {
-      if (!slug) return { ok: true, skipped: 'attribution_not_found' };
+      if (!slug || !token) return { ok: true, skipped: 'attribution_not_found' };
       const { data: partner, error: partnerError } = await client
         .from('h2s_realtor_partners')
         .select('id, referral_token')
         .eq('public_slug', slug)
+        .eq('referral_token', token)
         .eq('status', 'approved')
         .maybeSingle();
       if (partnerError) throw partnerError;
@@ -72,7 +75,7 @@ export async function recordPartnerEvent(client: SupabaseClient, input: RecordPa
           status: input.eventType === 'booking_created' ? 'converted' : 'captured',
           converted_at: input.eventType === 'booking_created' ? now : null,
           last_event_at: now,
-          metadata: input.metadata || {},
+          metadata: { ...(input.metadata || {}), referral_verified: true },
         })
         .select('id, partner_id, order_id, job_id')
         .single();

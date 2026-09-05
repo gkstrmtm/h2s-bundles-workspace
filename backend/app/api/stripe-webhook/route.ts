@@ -310,6 +310,7 @@ export async function POST(req: NextRequest) {
           eventType: 'booking_created',
           idempotencyKey: `booking_created:${session.id}`,
           partnerSlug: session.metadata?.partner_referral_slug,
+          partnerToken: session.metadata?.partner_referral_token,
           source: session.metadata?.referral_source,
           orderId,
           jobId: attributedJob?.job_id || null,

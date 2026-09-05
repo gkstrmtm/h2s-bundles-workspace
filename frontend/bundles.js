@@ -5080,9 +5080,11 @@ function h2sGetReferralContext(){
   const params = new URLSearchParams(window.location.search);
   const rawRef = params.get('ref') || saved.partner_referral_slug || '';
   const partnerReferralSlug = String(rawRef).toLowerCase().trim().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '').slice(0, 100);
+  const rawToken = params.get('via') || saved.partner_referral_token || '';
+  const partnerReferralToken = String(rawToken).trim().replace(/[^A-Za-z0-9_-]+/g, '').slice(0, 160);
   const referralSource = params.get('source') === 'realtor_partner' || saved.referral_source === 'realtor_partner' ? 'realtor_partner' : '';
-  const context = { partner_referral_slug: partnerReferralSlug, referral_source: referralSource };
-  if(partnerReferralSlug && referralSource) {
+  const context = { partner_referral_slug: partnerReferralSlug, partner_referral_token: partnerReferralToken, referral_source: referralSource };
+  if(partnerReferralSlug && partnerReferralToken && referralSource) {
     try { sessionStorage.setItem(key, JSON.stringify(context)); } catch(_e) {}
   }
   return context;
@@ -5090,7 +5092,7 @@ function h2sGetReferralContext(){
 
 function h2sRenderPartnerBenefit(){
   const referral = h2sGetReferralContext();
-  if(!referral.partner_referral_slug || referral.referral_source !== 'realtor_partner') return;
+  if(!referral.partner_referral_slug || !referral.partner_referral_token || referral.referral_source !== 'realtor_partner') return;
   if(document.getElementById('h2sPartnerBenefit')) return;
   const name = referral.partner_referral_slug
     .split('-')
@@ -5164,6 +5166,7 @@ function h2sCoBuildCheckoutPayload(intake){
       service_zip: intake.zip,
       source: 'shop_rebuilt',
       partner_referral_slug: referral.partner_referral_slug || null,
+      partner_referral_token: referral.partner_referral_token || null,
       referral_source: referral.referral_source || null
     }
   };

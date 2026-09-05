@@ -55,6 +55,10 @@
       "destination": "/frontend/realtor-partner.html?state=account"
     },
     {
+      "source": "/admin",
+      "destination": "/frontend/dispatch.html?view=partners"
+    },
+    {
       "source": "/realtor-partner",
       "destination": "/frontend/realtor-partner.html"
     },

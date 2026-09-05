@@ -2371,6 +2371,7 @@
           market: "Greenville",
           email: "you@brokerage.com",
           public_slug: "jordan-taylor",
+          referral_token: "H2S-PREVIEW-JT",
           status: "approved",
           headshot_url: fallbackHeadshot,
         };
@@ -2467,15 +2468,18 @@
           const referralHost = local
             ? "partners.home2smart.com"
             : location.host;
+          const referralToken = String(profile.referral_token || "").trim();
+          const referralPath = `/r/${partnerSlug()}${referralToken ? `?via=${encodeURIComponent(referralToken)}` : ""}`;
           if ($("#referral"))
-            $("#referral").textContent = `${referralHost}/r/${partnerSlug()}`;
-          const referralUrl = `https://${referralHost}/r/${partnerSlug()}`;
+            $("#referral").textContent = `${referralHost}${referralPath}`;
+          const referralUrl = `https://${referralHost}${referralPath}`;
           const shareMessage = `${partnerName()} shared Home2Smart for TV mounting, security cameras and smart-lock installation: ${referralUrl}`;
           if ($("#share-text"))
             $("#share-text").href = `sms:${/iPad|iPhone|iPod/.test(navigator.userAgent) ? "&" : "?"}body=${encodeURIComponent(shareMessage)}`;
           if ($("#share-email"))
             $("#share-email").href = `mailto:?subject=${encodeURIComponent("A dependable local installation option")}&body=${encodeURIComponent(shareMessage)}`;
-          const destination = `${local ? "/bundles.html" : "/bundles"}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner`;
+          const incomingToken = new URLSearchParams(location.search).get("via") || referralToken;
+          const destination = `${local ? "/bundles.html" : "/bundles"}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner${incomingToken ? `&via=${encodeURIComponent(incomingToken)}` : ""}`;
           if ($("#client-book")) $("#client-book").href = destination;
           if ($("#client-book-bottom"))
             $("#client-book-bottom").href = destination;

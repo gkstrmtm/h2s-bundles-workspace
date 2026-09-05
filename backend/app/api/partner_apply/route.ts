@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       subject: `Partner application: ${row.first_name} ${row.last_name}`,
       category: 'partner_application_received',
       idempotencyKey: `partner_application_received:${data.id}`,
-      html: `<h2>New Realtor Partner application</h2><p><strong>${escapePartnerText(row.first_name)} ${escapePartnerText(row.last_name)}</strong> applied from ${escapePartnerText(row.brokerage)} in ${escapePartnerText(row.market)}.</p><p>Email: ${escapePartnerText(email)}<br>Phone: ${escapePartnerText(row.phone)}</p><p><a href="${partnerProgramUrl('/dispatch?view=partners')}">Review partner applications</a></p>`,
+      html: `<h2>New Realtor Partner application</h2><p><strong>${escapePartnerText(row.first_name)} ${escapePartnerText(row.last_name)}</strong> applied from ${escapePartnerText(row.brokerage)} in ${escapePartnerText(row.market)}.</p><p>Email: ${escapePartnerText(email)}<br>Phone: ${escapePartnerText(row.phone)}</p><p><a href="${partnerProgramUrl('/admin')}">Review partner applications</a></p>`,
       meta: { partnerId: data.id, market: row.market, brokerage: row.brokerage },
     }).catch(error => console.warn('[Partner Apply] Admin notification failed:', error));
     const publicClient = getSupabasePublic();

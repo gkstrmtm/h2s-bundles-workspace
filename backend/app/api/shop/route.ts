@@ -1148,6 +1148,7 @@ export async function POST(request: Request) {
         set('service_state', offerMeta?.service_state);
         set('service_zip', offerMeta?.service_zip);
         set('partner_referral_slug', offerMeta?.partner_referral_slug);
+        set('partner_referral_token', offerMeta?.partner_referral_token);
         set('referral_source', offerMeta?.referral_source);
 
         // Job details (stringify nested object for Stripe)
@@ -1562,6 +1563,7 @@ export async function POST(request: Request) {
           eventType: 'checkout_started',
           idempotencyKey: `checkout_started:${orderId}`,
           partnerSlug: offerMeta?.partner_referral_slug,
+          partnerToken: offerMeta?.partner_referral_token,
           source: offerMeta?.referral_source,
           orderId,
           jobId,
