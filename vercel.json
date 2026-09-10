@@ -25,39 +25,6 @@
       ],
       "destination": "/dash",
       "permanent": true
-    },
-    {
-      "source": "/bundles",
-      "has": [
-        {
-          "type": "host",
-          "value": "partner.home2smart.com"
-        }
-      ],
-      "destination": "/",
-      "permanent": false
-    },
-    {
-      "source": "/bundles.html",
-      "has": [
-        {
-          "type": "host",
-          "value": "partner.home2smart.com"
-        }
-      ],
-      "destination": "/",
-      "permanent": false
-    },
-    {
-      "source": "/shop",
-      "has": [
-        {
-          "type": "host",
-          "value": "partner.home2smart.com"
-        }
-      ],
-      "destination": "/",
-      "permanent": false
     }
   ],
   "rewrites": [
@@ -114,6 +81,16 @@
         }
       ],
       "destination": "/frontend/dispatch.html?view=partners"
+    },
+    {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
+      "destination": "/partner-404.html"
     },
     {
       "source": "/realtor-partner",

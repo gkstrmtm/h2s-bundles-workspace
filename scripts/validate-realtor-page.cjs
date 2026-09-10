@@ -41,7 +41,13 @@ assert.match(dispatch, /Waiting \$\{ageDays/);
 const vercel = fs.readFileSync('vercel.json', 'utf8');
 assert.match(vercel, /"source": "\/admin"/);
 assert.match(vercel, /"value": "partner\.home2smart\.com"/);
+assert.match(vercel, /"source": "\/:path\*"[\s\S]*?"destination": "\/partner-404\.html"/);
+assert.doesNotMatch(vercel, /"destination": "\/"[\s\S]*?"permanent": false[\s\S]*?partner\.home2smart\.com/);
 assert.doesNotMatch(vercel, /partners\.home2smart\.com/);
+const notFound = fs.readFileSync('partner-404.html', 'utf8');
+assert.match(notFound, /<title>Page not found \| Home2Smart Realtor Partners<\/title>/);
+assert.match(notFound, /This page is not part of the partner portal\./);
+assert.doesNotMatch(notFound, /—/);
 console.log('dispatch partner approval and public-link wiring OK');
 
 const bundles = fs.readFileSync('frontend/bundles.js', 'utf8');
