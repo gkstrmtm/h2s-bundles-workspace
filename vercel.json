@@ -1,7 +1,6 @@
 {
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
-  "public": true,
   "cleanUrls": false,
   "trailingSlash": false,
   "redirects": [
