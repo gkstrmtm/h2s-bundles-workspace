@@ -45,8 +45,11 @@ assert.match(vercel, /"source": "\/:path\*"[\s\S]*?"destination": "\/partner-404
 assert.doesNotMatch(vercel, /"destination": "\/"[\s\S]*?"permanent": false[\s\S]*?partner\.home2smart\.com/);
 assert.doesNotMatch(vercel, /partners\.home2smart\.com/);
 const notFound = fs.readFileSync('partner-404.html', 'utf8');
-assert.match(notFound, /<title>Page not found \| Home2Smart Realtor Partners<\/title>/);
-assert.match(notFound, /This page is not part of the partner portal\./);
+assert.match(notFound, /<title>404 \| Home2Smart<\/title>/);
+assert.match(notFound, /<h1>404<\/h1>/);
+assert.match(notFound, /<p>Page not found\.<\/p>/);
+assert.match(notFound, /@media \(prefers-reduced-motion: reduce\)/);
+assert.doesNotMatch(notFound, /Realtor Partners/);
 assert.doesNotMatch(notFound, /—/);
 console.log('dispatch partner approval and public-link wiring OK');
 
