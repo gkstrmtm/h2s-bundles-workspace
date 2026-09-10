@@ -90,7 +90,7 @@
           "value": "partner.home2smart.com"
         }
       ],
-      "destination": "/partner-404.html"
+      "destination": "/404.html"
     },
     {
       "source": "/realtor-partner",
