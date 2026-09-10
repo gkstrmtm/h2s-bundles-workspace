@@ -1548,7 +1548,7 @@ body {
         if (!rows.length) { container.innerHTML = '<div style="text-align:center;padding:48px;color:var(--text-muted)">No partner applications match this view.</div>'; return; }
         container.innerHTML = `<div style="display:grid;gap:12px">${rows.map(row => {
             const statusColor = row.status === 'approved' ? 'var(--brand-green)' : row.status === 'pending' ? 'var(--brand-gold)' : '#94a3b8';
-            const publicUrl = row.public_slug ? (LOCAL_PARTNER_PREVIEW ? `http://127.0.0.1:4173/realtor-partner.html?state=client&partner=${encodeURIComponent(row.public_slug)}` : `https://partners.home2smart.com/r/${encodeURIComponent(row.public_slug)}`) : '';
+            const publicUrl = row.public_slug ? (LOCAL_PARTNER_PREVIEW ? `http://127.0.0.1:4173/realtor-partner.html?state=client&partner=${encodeURIComponent(row.public_slug)}` : `https://partner.home2smart.com/r/${encodeURIComponent(row.public_slug)}`) : '';
             const ageDays = Math.max(0, Math.floor((Date.now() - new Date(row.created_at).getTime()) / 86400000));
             const waiting = row.status === 'pending' ? `<div style="margin-top:6px;color:${ageDays >= 2 ? 'var(--brand-gold)' : 'var(--text-muted)'};font-size:11px;font-weight:${ageDays >= 2 ? '700' : '400'}">Waiting ${ageDays === 0 ? 'less than a day' : `${ageDays} day${ageDays === 1 ? '' : 's'}`}</div>` : '';
             const metrics = row.metrics || {introductions:0,bookings:0,completed:0,follow_up_ready:0};

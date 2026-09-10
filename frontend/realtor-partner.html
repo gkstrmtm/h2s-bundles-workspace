@@ -2466,7 +2466,7 @@
           if ($("#profile-headshot")) $("#profile-headshot").src = headshot;
           if ($("#client-headshot")) $("#client-headshot").src = headshot;
           const referralHost = local
-            ? "partners.home2smart.com"
+            ? "partner.home2smart.com"
             : location.host;
           const referralToken = String(profile.referral_token || "").trim();
           const referralPath = `/r/${partnerSlug()}${referralToken ? `?via=${encodeURIComponent(referralToken)}` : ""}`;
@@ -2479,7 +2479,8 @@
           if ($("#share-email"))
             $("#share-email").href = `mailto:?subject=${encodeURIComponent("A dependable local installation option")}&body=${encodeURIComponent(shareMessage)}`;
           const incomingToken = new URLSearchParams(location.search).get("via") || referralToken;
-          const destination = `${local ? "/bundles.html" : "/bundles"}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner${incomingToken ? `&via=${encodeURIComponent(incomingToken)}` : ""}`;
+          const bookingOrigin = local ? "http://127.0.0.1:4173/bundles.html" : "https://shop.home2smart.com/bundles";
+          const destination = `${bookingOrigin}?ref=${encodeURIComponent(partnerSlug())}&source=realtor_partner${incomingToken ? `&via=${encodeURIComponent(incomingToken)}` : ""}`;
           if ($("#client-book")) $("#client-book").href = destination;
           if ($("#client-book-bottom"))
             $("#client-book-bottom").href = destination;
@@ -2910,12 +2911,14 @@
             saveSession(null);
             show("public");
           });
-        else
+        else {
           show(
             local && ["pending", "approved"].includes(params.get("state"))
               ? params.get("state")
               : "public",
           );
+          if (params.get("state") === "account") openLogin();
+        }
         if (location.pathname === "/apply") {
           requestAnimationFrame(() =>
             $("#apply")?.scrollIntoView({ behavior: "smooth" }),

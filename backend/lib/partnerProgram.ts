@@ -32,7 +32,7 @@ export function escapePartnerText(value: unknown): string {
 }
 
 export function partnerProgramUrl(path = ''): string {
-  const origin = String(process.env.PARTNER_PROGRAM_URL || 'https://partners.home2smart.com').replace(/\/$/, '');
+  const origin = String(process.env.PARTNER_PROGRAM_URL || 'https://partner.home2smart.com').replace(/\/$/, '');
   return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
 }
 

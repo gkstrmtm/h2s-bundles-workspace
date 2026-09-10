@@ -23,6 +23,9 @@ assert.match(html, /id="metric-introductions"/);
 assert.match(html, /class="client-advantage"/);
 assert.match(html, /recoveryMode && session\?\.access_token/);
 assert.match(html, /via=\$\{encodeURIComponent\(referralToken\)\}/);
+assert.match(html, /https:\/\/shop\.home2smart\.com\/bundles/);
+assert.match(html, /params\.get\("state"\) === "account"\) openLogin\(\)/);
+assert.doesNotMatch(html, /partners\.home2smart\.com/);
 assert.doesNotMatch(html, /Preview only: profile details persist/);
 assert.doesNotMatch(html, /—/);
 
@@ -32,10 +35,13 @@ const dispatch = fs.readFileSync('frontend/dispatch.html', 'utf8');
 assert.match(dispatch, /admin_partners/);
 assert.match(dispatch, /admin_partner_status/);
 assert.match(dispatch, /state=client&partner=/);
-assert.match(dispatch, /https:\/\/partners\.home2smart\.com\/r\//);
+assert.match(dispatch, /https:\/\/partner\.home2smart\.com\/r\//);
 assert.match(dispatch, /partnerSummary/);
 assert.match(dispatch, /Waiting \$\{ageDays/);
-assert.match(fs.readFileSync('vercel.json', 'utf8'), /"source": "\/admin"/);
+const vercel = fs.readFileSync('vercel.json', 'utf8');
+assert.match(vercel, /"source": "\/admin"/);
+assert.match(vercel, /"value": "partner\.home2smart\.com"/);
+assert.doesNotMatch(vercel, /partners\.home2smart\.com/);
 console.log('dispatch partner approval and public-link wiring OK');
 
 const bundles = fs.readFileSync('frontend/bundles.js', 'utf8');

@@ -25,6 +25,39 @@
       ],
       "destination": "/dash",
       "permanent": true
+    },
+    {
+      "source": "/bundles",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/bundles.html",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/shop",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
+      "destination": "/",
+      "permanent": false
     }
   ],
   "rewrites": [
@@ -37,25 +70,49 @@
       "has": [
         {
           "type": "host",
-          "value": "partners.home2smart.com"
+          "value": "partner.home2smart.com"
         }
       ],
       "destination": "/frontend/realtor-partner.html"
     },
     {
       "source": "/r/:slug",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
       "destination": "/frontend/realtor-partner.html?state=client&partner=:slug"
     },
     {
       "source": "/apply",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
       "destination": "/frontend/realtor-partner.html"
     },
     {
       "source": "/account",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
       "destination": "/frontend/realtor-partner.html?state=account"
     },
     {
       "source": "/admin",
+      "has": [
+        {
+          "type": "host",
+          "value": "partner.home2smart.com"
+        }
+      ],
       "destination": "/frontend/dispatch.html?view=partners"
     },
     {
