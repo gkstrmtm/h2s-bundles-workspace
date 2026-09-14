@@ -3131,7 +3131,7 @@
     <script>
       (() => {
         const HERO_IMAGE =
-          "https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/68da0ce6f00445991d64a63f.avif";
+          "/api/proof-asset-media?bucket=proof&path=uploads%2F9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp";
         const frame = document.querySelector(".install");
         const caption = document.querySelector(".caption strong");
         const captionMeta = document.querySelector(".caption span");
@@ -3146,6 +3146,11 @@
           frame.classList.add("has-photo");
           frame.setAttribute("aria-label", image.alt);
           image.classList.add("ready");
+        };
+        image.onerror = () => {
+          image.remove();
+          caption.textContent = "On-site security camera work";
+          captionMeta.textContent = "Selected install photo temporarily unavailable";
         };
         image.src = HERO_IMAGE;
         frame.prepend(image);
