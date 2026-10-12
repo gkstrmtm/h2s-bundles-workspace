@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Commercial Security, Displays, And Cabling | Home2Smart</title>
+  <meta name="description" content="Request a commercial consultation for business security cameras, displays, structured cabling, and multi-room installs. Save scope, upload project photos, and request a technician-reviewed time window.">
+  <meta name="theme-color" content="#1a365d">
+  <link rel="icon" type="image/png" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="/frontend/commercial.css">
+</head>
+<body class="commercial-body">
+  <header class="site-header">
+    <div class="site-header__inner shell">
+      <a class="brand" href="#top" aria-label="Home2Smart commercial intake">
+        <img class="brand__mark" src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" alt="Home2Smart" width="42" height="42">
+        <span class="brand__copy">
+          <span class="brand__eyebrow">Commercial systems</span>
+          <strong>Home2Smart</strong>
+        </span>
+      </a>
+      <div class="site-header__actions">
+        <a class="header-link header-link--phone" id="headerCallLink" href="tel:8645281475" data-phone-link data-track-source="header-call">
+          <span>Call</span>
+          <span id="headerCallText">864-528-1475</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="hero__copy">
+        <p class="section-kicker">Commercial security, displays, and cabling</p>
+        <h1>Plan the right commercial install before you book it.</h1>
+        <p class="hero__lede">Start one guided assessment for cameras, displays, cabling, and multi-room upgrades. Share the site context now so the consultation is shaped around the real space.</p>
+        <div class="hero__actions">
+          <a class="btn btn-primary" href="#assessmentWorkbench" id="heroStartBtn">Start project assessment</a>
+        </div>
+      </div>
+
+      <aside class="hero__visual">
+        <div class="media-stage is-loading" id="heroMediaStage" aria-live="polite">
+          <span class="sr-only" id="heroMediaStatus">Loading recent installation photo...</span>
+        </div>
+        <p class="hero__visual-note">Recent project photos from real installations.</p>
+      </aside>
+    </section>
+
+    <section class="proof-section shell" id="commercialWork" aria-labelledby="proofTitle">
+      <div class="section-head">
+        <div>
+          <p class="section-kicker">Recent installations</p>
+          <h2 id="proofTitle">Approved installation photos.</h2>
+        </div>
+      </div>
+      <div class="proof-grid">
+        <section class="proof-card">
+          <div class="proof-card__head">
+            <h3>Camera installs</h3>
+          </div>
+          <div class="proof-tiles" id="cameraProofRail">
+            <div class="proof-loading" aria-hidden="true">
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+            </div>
+            <span class="sr-only">Loading camera work...</span>
+          </div>
+        </section>
+        <section class="proof-card">
+          <div class="proof-card__head">
+            <h3>Display installs</h3>
+          </div>
+          <div class="proof-tiles" id="tvProofRail">
+            <div class="proof-loading" aria-hidden="true">
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+              <span class="media-skeleton media-skeleton--tile"></span>
+            </div>
+            <span class="sr-only">Loading display work...</span>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="assessment shell" id="assessmentWorkbench">
+      <div class="section-head section-head--tight assessment__intro">
+        <div>
+          <p class="section-kicker">Guided assessment</p>
+          <h2>Tell us what the site needs, one step at a time.</h2>
+        </div>
+        <p class="section-copy">Five short steps. Save anytime.</p>
+      </div>
+
+      <div class="assessment-shell">
+        <aside class="assessment__rail">
+          <div class="compact-card compact-card--summary">
+            <p class="rail-eyebrow">Project snapshot</p>
+            <div class="pill-rail pill-rail--summary" id="selectedServicesRail">
+              <span class="status-pill status-pill--muted">Select at least one project focus</span>
+            </div>
+            <div class="summary-list">
+              <div class="summary-row">
+                <span class="summary-label">Site type</span>
+                <strong id="assessmentBusinessType">Not selected</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Timeline</span>
+                <strong id="assessmentTimeline">Not selected</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Contact</span>
+                <strong id="assessmentContact">Add a phone or email</strong>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Photos</span>
+                <strong id="assessmentPhotos">No files yet</strong>
+              </div>
+            </div>
+            <p class="summary-note">Need help before you finish? Call or text and we will pick up from here.</p>
+          </div>
+
+          <div class="sr-only" aria-live="polite">
+            <span id="saveStateText">Not saved yet</span>
+            <span id="saveStateNote">Add a phone number or email, then save the lead before requesting the consultation.</span>
+            <span id="completenessText">Waiting for contact details</span>
+            <span id="priorityText">Normal</span>
+          </div>
+        </aside>
+
+        <div class="assessment__main">
+          <div class="wizard-shell">
+            <div class="wizard-progress" aria-label="Assessment progress">
+              <button class="wizard-step is-active" type="button" data-step-target="1">
+                <span class="wizard-step__index">01</span>
+                <span class="wizard-step__label">Project focus</span>
+              </button>
+              <button class="wizard-step" type="button" data-step-target="2">
+                <span class="wizard-step__index">02</span>
+                <span class="wizard-step__label">Contact and site</span>
+              </button>
+              <button class="wizard-step" type="button" data-step-target="3">
+                <span class="wizard-step__index">03</span>
+                <span class="wizard-step__label">Planning details</span>
+              </button>
+              <button class="wizard-step" type="button" data-step-target="4">
+                <span class="wizard-step__index">04</span>
+                <span class="wizard-step__label">Photos</span>
+              </button>
+              <button class="wizard-step" type="button" data-step-target="5">
+                <span class="wizard-step__index">05</span>
+                <span class="wizard-step__label">Consultation window</span>
+              </button>
+            </div>
+            <div class="wizard-meta">
+              <span class="wizard-meta__count" id="stepCounterText">Step 1 of 5</span>
+              <p class="wizard-meta__copy" id="wizardStatusText">Choose the project type and site details.</p>
+              <button class="btn btn-secondary btn--small" type="button" id="saveProgressBtn">Save progress</button>
+            </div>
+          </div>
+
+          <form id="commercialIntakeForm" class="workbench" novalidate>
+            <section class="work-card wizard-card" data-step="1">
+              <div class="work-card__head work-card__head--stacked">
+                <div>
+                  <p class="card-step">Step 1</p>
+                  <h3>Set the project direction</h3>
+                </div>
+                <p class="work-card__meta">Choose the work type, site type, timing, and budget range.</p>
+              </div>
+              <div class="field">
+                <span>What needs attention first?</span>
+                <div class="choice-grid" id="serviceChoiceGrid">
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Security Cameras"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Security Cameras</span><span class="choice-pill__meta">Entries, perimeter, parking, visibility</span></label>
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Commercial Displays"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Commercial Displays / TVs</span><span class="choice-pill__meta">Lobby, sanctuary, conference, retail</span></label>
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Structured Cabling"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Structured Cabling</span><span class="choice-pill__meta">Drops, runs, cleanup, future growth</span></label>
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Wi-Fi Upgrades"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Wi-Fi Upgrades</span><span class="choice-pill__meta">Coverage, reliability, support spaces</span></label>
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Audio / Paging"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Audio / Paging</span><span class="choice-pill__meta">Announcements, worship, shared areas</span></label>
+                  <label class="choice-pill"><input type="checkbox" name="serviceNeeds" value="Other Multi-Service"><span class="choice-pill__control" aria-hidden="true"></span><span class="choice-pill__label">Other Multi-Service</span><span class="choice-pill__meta">Mixed scopes or phased rollouts</span></label>
+                </div>
+              </div>
+              <div class="form-grid form-grid--three">
+                <label class="field field--select">
+                  <span>Business type</span>
+                  <select id="businessType" name="businessType">
+                    <option value="">Select one</option>
+                    <option value="office">Office</option>
+                    <option value="retail">Retail</option>
+                    <option value="church">Church / ministry</option>
+                    <option value="hospitality">Hospitality</option>
+                    <option value="multifamily">Multifamily / property management</option>
+                    <option value="warehouse">Warehouse / industrial</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Site count</span>
+                  <input id="siteCount" name="siteCount" type="number" min="1" max="99" value="1">
+                </label>
+                <label class="field field--select">
+                  <span>Timeline</span>
+                  <select id="timeline" name="timeline">
+                    <option value="">Select timing</option>
+                    <option value="asap">ASAP</option>
+                    <option value="2_weeks">Within 2 weeks</option>
+                    <option value="this_month">This month</option>
+                    <option value="this_quarter">This quarter</option>
+                    <option value="planning">Planning ahead</option>
+                  </select>
+                </label>
+                <label class="field field--select">
+                  <span>Budget range</span>
+                  <select id="budgetBand" name="budgetBand">
+                    <option value="">Select range</option>
+                    <option value="under_5k">Under $5k</option>
+                    <option value="5k_10k">$5k-$10k</option>
+                    <option value="10k_plus">$10k+</option>
+                    <option value="25k_plus">$25k+</option>
+                    <option value="enterprise">Enterprise / phased rollout</option>
+                    <option value="not_sure">Not sure yet</option>
+                  </select>
+                </label>
+              </div>
+              <div class="field">
+                <span>Scope summary</span>
+                <textarea id="scopeSummary" name="scopeSummary" rows="4" placeholder="Briefly describe what you need installed or improved."></textarea>
+              </div>
+              <div class="wizard-nav">
+                <span class="wizard-nav__spacer"></span>
+                <button class="btn btn-primary" type="button" data-step-action="next">Continue</button>
+              </div>
+            </section>
+
+            <section class="work-card wizard-card hidden" data-step="2">
+              <div class="work-card__head work-card__head--stacked">
+                <div>
+                  <p class="card-step">Step 2</p>
+                  <h3>Add the people and place</h3>
+                </div>
+                <p class="work-card__meta">Add the main contact and site details.</p>
+              </div>
+              <div class="form-grid form-grid--two">
+                <label class="field">
+                  <span>Contact name</span>
+                  <input id="fullName" name="fullName" type="text" autocomplete="name" placeholder="Who should we coordinate with?">
+                </label>
+                <label class="field">
+                  <span>Company or site name</span>
+                  <input id="companyName" name="companyName" type="text" autocomplete="organization" placeholder="Business, church, campus, or property name">
+                </label>
+                <label class="field">
+                  <span>Phone</span>
+                  <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="Best number for the consultation">
+                </label>
+                <label class="field">
+                  <span>Email</span>
+                  <input id="email" name="email" type="email" autocomplete="email" placeholder="Project email if available">
+                </label>
+                <label class="field field--select">
+                  <span>Preferred contact path</span>
+                  <select id="contactPreference" name="contactPreference">
+                    <option value="sms">Text first</option>
+                    <option value="call">Call first</option>
+                    <option value="email">Email first</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-grid form-grid--two">
+                <label class="field">
+                  <span>Street address</span>
+                  <input id="projectAddress" name="projectAddress" type="text" autocomplete="street-address" placeholder="Site address if known">
+                </label>
+                <label class="field">
+                  <span>City</span>
+                  <input id="projectCity" name="projectCity" type="text" autocomplete="address-level2" placeholder="Project city">
+                </label>
+                <label class="field">
+                  <span>State</span>
+                  <input id="projectState" name="projectState" type="text" autocomplete="address-level1" placeholder="SC">
+                </label>
+                <label class="field">
+                  <span>ZIP</span>
+                  <input id="projectPostalCode" name="projectPostalCode" type="text" autocomplete="postal-code" placeholder="29601">
+                </label>
+              </div>
+              <div class="wizard-nav">
+                <button class="btn btn-secondary" type="button" data-step-action="prev">Back</button>
+                <button class="btn btn-primary" type="button" data-step-action="next">Continue</button>
+              </div>
+            </section>
+
+            <section class="work-card wizard-card hidden" data-step="3">
+              <div class="work-card__head work-card__head--stacked">
+                <div>
+                  <p class="card-step">Step 3</p>
+                  <h3>Add the planning details that change the recommendation</h3>
+                </div>
+                <p class="work-card__meta">Add any details that change the recommendation or visit.</p>
+              </div>
+              <div class="form-grid form-grid--three">
+                <label class="field field--select">
+                  <span>Decision-maker on the consultation?</span>
+                  <select id="decisionMaker" name="decisionMaker">
+                    <option value="">Select one</option>
+                    <option value="yes">Yes</option>
+                    <option value="multiple">Multiple stakeholders</option>
+                    <option value="no">No, gathering options first</option>
+                  </select>
+                </label>
+                <label class="field field--select">
+                  <span>Existing system</span>
+                  <select id="existingSystem" name="existingSystem">
+                    <option value="">Select one</option>
+                    <option value="none">No existing system</option>
+                    <option value="upgrade">Existing system needs upgrade</option>
+                    <option value="replacement">Existing system needs replacement</option>
+                    <option value="unknown">Need guidance</option>
+                  </select>
+                </label>
+                <label class="field field--select">
+                  <span>Security incident or outage?</span>
+                  <select id="securityIncident" name="securityIncident">
+                    <option value="">Select one</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+              </div>
+              <div class="conditional-grid">
+                <div class="conditional-card hidden" id="cameraDetailsCard">
+                  <h4>Camera notes</h4>
+                  <div class="form-grid form-grid--two">
+                    <label class="field">
+                      <span>Approximate camera count</span>
+                      <input id="cameraCount" name="cameraCount" type="number" min="1" max="64" placeholder="8">
+                    </label>
+                    <label class="field">
+                      <span>Primary concern</span>
+                      <input id="cameraPriority" name="cameraPriority" type="text" placeholder="Entry points, parking, back-of-house, theft deterrence">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="conditional-card hidden" id="displayDetailsCard">
+                  <h4>Display and TV notes</h4>
+                  <div class="form-grid form-grid--two">
+                    <label class="field">
+                      <span>Approximate display count</span>
+                      <input id="displayCount" name="displayCount" type="number" min="1" max="40" placeholder="4">
+                    </label>
+                    <label class="field">
+                      <span>Display environment</span>
+                      <input id="displayEnvironment" name="displayEnvironment" type="text" placeholder="Lobby, sanctuary, conference room, retail floor">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="conditional-card hidden" id="cablingDetailsCard">
+                  <h4>Cabling notes</h4>
+                  <div class="form-grid form-grid--two">
+                    <label class="field">
+                      <span>Estimated drops or runs</span>
+                      <input id="networkDrops" name="networkDrops" type="number" min="1" max="200" placeholder="12">
+                    </label>
+                    <label class="field">
+                      <span>Access constraints</span>
+                      <input id="accessConstraints" name="accessConstraints" type="text" placeholder="Ceiling height, after-hours access, lift needed">
+                    </label>
+                  </div>
+                </div>
+
+                <div class="conditional-card hidden" id="churchDetailsCard">
+                  <h4>Church or campus notes</h4>
+                  <div class="form-grid form-grid--two">
+                    <label class="field">
+                      <span>Main spaces involved</span>
+                      <input id="churchSpaces" name="churchSpaces" type="text" placeholder="Sanctuary, lobby, classrooms, offices">
+                    </label>
+                    <label class="field">
+                      <span>When can the site be worked on?</span>
+                      <input id="churchSchedule" name="churchSchedule" type="text" placeholder="Weekdays, after services, evening access">
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <label class="field">
+                <span>Additional notes</span>
+                <textarea id="notes" name="notes" rows="3" placeholder="Anything else we should know before the visit."></textarea>
+              </label>
+              <div class="wizard-nav">
+                <button class="btn btn-secondary" type="button" data-step-action="prev">Back</button>
+                <button class="btn btn-primary" type="button" data-step-action="next">Continue</button>
+              </div>
+            </section>
+
+            <section class="work-card wizard-card hidden" data-step="4">
+              <div class="work-card__head work-card__head--stacked">
+                <div>
+                  <p class="card-step">Step 4</p>
+                  <h3>Add photos if the environment benefits from them</h3>
+                </div>
+                <span class="work-card__meta">Add photos or plans if they help explain the site.</span>
+              </div>
+              <div class="photo-uploader">
+                <label class="upload-box" for="projectPhotosInput">
+                  <strong>Upload project photos or plans</strong>
+                  <span>Images and PDFs up to 10MB each.</span>
+                  <input id="projectPhotosInput" type="file" accept="image/*,application/pdf" multiple>
+                </label>
+                <div id="photoUploadStatus" class="inline-status">No files uploaded yet.</div>
+                <div class="upload-list" id="uploadedPhotoList"></div>
+              </div>
+              <div class="wizard-nav">
+                <button class="btn btn-secondary" type="button" data-step-action="prev">Back</button>
+                <button class="btn btn-primary" type="button" data-step-action="next">Continue</button>
+              </div>
+            </section>
+
+            <section class="work-card wizard-card hidden" data-step="5">
+              <div class="work-card__head work-card__head--stacked">
+                <div>
+                  <p class="card-step">Step 5</p>
+                  <h3>Choose a consultation window and send the request</h3>
+                </div>
+                <span class="work-card__meta">Review the details, choose a time, and send the request.</span>
+              </div>
+
+              <div class="review-shell">
+                <div class="review-card">
+                  <p class="review-card__eyebrow">Review</p>
+                  <h4>Project summary</h4>
+                  <div class="review-grid">
+                    <div>
+                      <span class="summary-label">Services</span>
+                      <strong id="reviewServices">Select a project focus</strong>
+                    </div>
+                    <div>
+                      <span class="summary-label">Location</span>
+                      <strong id="reviewLocation">Add site details</strong>
+                    </div>
+                    <div>
+                      <span class="summary-label">Contact</span>
+                      <strong id="reviewContact">Add a phone or email</strong>
+                    </div>
+                    <div>
+                      <span class="summary-label">Scope</span>
+                      <strong id="reviewScope">Add a short scope summary</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="slot-toolbar">
+                <p class="slot-toolbar__copy">Choose the time that works best. If none fit, save progress and call or text us.</p>
+                <button class="btn btn-secondary" id="refreshSlotsBtn" type="button">Refresh suggestions</button>
+              </div>
+              <div class="slot-grid" id="slotGrid" role="radiogroup" aria-label="Consultation windows">
+                <div class="slot-empty">Loading suggested consultation windows...</div>
+              </div>
+              <p class="submit-copy">Submitting sends the latest project details with your requested time.</p>
+              <div class="form-actions">
+                <button class="btn btn-secondary" type="button" data-step-action="prev">Back</button>
+                <button class="btn btn-primary" id="requestConsultationBtn" type="submit">Request commercial consultation</button>
+                <button class="btn btn-secondary" id="stepSmsBtn" type="button">Text instead</button>
+                <a class="btn btn-secondary" id="footerCallLink" href="tel:8645281475" data-phone-link data-track-source="footer-call">Call instead</a>
+              </div>
+              <div id="formStatus" class="inline-status" aria-live="polite">Waiting for contact details.</div>
+            </section>
+          </form>
+
+          <section class="success-panel hidden" id="consultationSuccessPanel" aria-live="polite">
+            <p class="section-kicker">Request received</p>
+            <h2 id="successTitle">Commercial consultation requested.</h2>
+            <div class="success-grid">
+              <div>
+                <span class="status-label">Request code</span>
+                <strong id="successReference">--</strong>
+              </div>
+              <div>
+                <span class="status-label">Next step</span>
+                <strong id="successStatus">We will confirm the consultation window shortly.</strong>
+              </div>
+              <div>
+                <span class="status-label">Requested window</span>
+                <strong id="successSlot">--</strong>
+              </div>
+            </div>
+            <p id="successCopy">We saved the project details and your requested consultation window. Our team will follow up using the contact path you selected.</p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <footer class="page-footer" aria-labelledby="pageFooterTitle">
+      <div class="page-footer__band">
+        <div class="page-footer__inner shell">
+          <div class="page-footer__brandblock">
+            <p class="page-footer__eyebrow">Home2Smart commercial</p>
+            <strong id="pageFooterTitle">Commercial security, displays, and cabling</strong>
+            <p>Use the guided assessment to save scope now, then call or text if the project needs a direct handoff.</p>
+          </div>
+          <div class="page-footer__actions">
+            <a href="tel:8645281475" id="footerPhoneText" data-phone-link data-track-source="footer-direct">864-528-1475</a>
+            <button type="button" class="header-link" id="footerSmsBtn">Text commercial team</button>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <script defer src="/frontend/commercial.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+[dotenv@17.2.3] injecting env (45) from .env.production.local -- tip: G£à audit secrets and track compliance: https://dotenvx.com/ops
+{
+  "deletedCommercialOrders": {
+    "error": null,
+    "rows": []
+  },
+  "deletedCommercialLeads": {
+    "error": null,
+    "rows": []
+  },
+  "deletedDeployAssignments": {
+    "error": null,
+    "rows": []
+  },
+  "deletedDeployJobs": {
+    "error": null,
+    "rows": []
+  },
+  "deletedDeployOrders": {
+    "error": null,
+    "rows": []
+  },
+  "remainingCommercialLeads": {
+    "error": null,
+    "rows": []
+  },
+  "remainingCommercialConsultations": {
+    "error": null,
+    "rows": []
+  },
+  "remainingOrders": {
+    "error": null,
+    "rows": []
+  },
+  "remainingDeployJobs": {
+    "error": null,
+    "rows": []
+  }
+}

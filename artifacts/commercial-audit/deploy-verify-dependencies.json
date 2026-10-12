@@ -1,0 +1,57 @@
+[dotenv@17.2.3] injecting env (45) from .env.production.local -- tip: =ƒöä add secrets lifecycle management: https://dotenvx.com/ops
+{
+  "assignments": {
+    "error": null,
+    "count": 1,
+    "data": [
+      {
+        "assign_id": "d47a8a2b-1c39-469d-a214-f9374fa7b71e",
+        "job_id": "2f431e7d-6249-4b8f-b2a1-a263d162737c",
+        "pro_id": "a55f1bad-9547-4e61-986b-1a5fb6b83544",
+        "state": "offer_sent",
+        "offer_sent_at": null,
+        "accepted_at": null,
+        "declined_at": null,
+        "decline_reason": null,
+        "distance_miles": null,
+        "picked_by_rule": null,
+        "offer_token": null,
+        "completed_at": null,
+        "canceled_at": null,
+        "expired_at": null,
+        "cascade_tier": null,
+        "attempt_number": null,
+        "auto_cascade": null,
+        "created_at": "2026-10-12T22:32:55.512063+00:00",
+        "updated_at": "2026-10-12T22:32:55.512063+00:00",
+        "cancelled_at": null,
+        "cancellation_reason": null
+      }
+    ]
+  },
+  "payouts": {
+    "error": "Could not find the table 'public.h2s_dispatch_payouts' in the schema cache",
+    "count": 0,
+    "data": []
+  },
+  "order": {
+    "error": null,
+    "count": 1,
+    "data": [
+      {
+        "id": "fec5038c-cb30-4e85-890e-0b260258d81e",
+        "order_id": "ORD-MV5TVDKUB678A217"
+      }
+    ]
+  },
+  "job": {
+    "error": null,
+    "count": 1,
+    "data": [
+      {
+        "job_id": "2f431e7d-6249-4b8f-b2a1-a263d162737c",
+        "order_id": "ORD-MV5TVDKUB678A217"
+      }
+    ]
+  }
+}

@@ -1083,7 +1083,22 @@ export async function POST(request: Request) {
     }
 
     // ===== Simple appointment-booking mode (legacy/other usage) =====
-    const { name, email, phone, service, date, time, notes } = body;
+    const {
+      name,
+      email,
+      phone,
+      service,
+      date,
+      time,
+      notes,
+      source,
+      leadId,
+      consultationRequestId,
+      consultationReferenceCode,
+      slotStartIso,
+      slotEndIso,
+      idempotencyKey,
+    } = body;
 
     if (!name || !email || !phone) {
       return NextResponse.json({ success: false, error: 'Name, email, and phone are required' }, { status: 400, headers: corsHeaders() });
@@ -1094,16 +1109,57 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Database not available' }, { status: 503, headers: corsHeaders() });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedPhone = String(phone).trim();
+
+    if (consultationRequestId || idempotencyKey) {
+      const { data: existingRows } = await client
+        .from('h2s_orders')
+        .select('*')
+        .like('order_id', 'APPT%')
+        .eq('customer_email', normalizedEmail)
+        .order('created_at', { ascending: false })
+        .limit(25);
+
+      const existing = (existingRows || []).find((row: any) => {
+        const metadata = safeParseJson(row?.metadata_json) || {};
+        if (consultationRequestId && String(metadata?.commercial_consultation_request_id || '') === String(consultationRequestId)) return true;
+        if (idempotencyKey && String(metadata?.appointment_idempotency_key || '') === String(idempotencyKey)) return true;
+        return false;
+      });
+
+      if (existing) {
+        return NextResponse.json({ success: true, appointment: existing, reused: true }, { headers: corsHeaders() });
+      }
+    }
+
     const orderId = `APPT${Date.now()}${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+    const createdAt = new Date().toISOString();
+    const metadataJson: any = {
+      appointment_kind: 'appointment',
+      appointment_source: String(source || 'direct_appointment').trim() || 'direct_appointment',
+    };
+    if (consultationRequestId) metadataJson.commercial_consultation_request_id = String(consultationRequestId);
+    if (consultationReferenceCode) metadataJson.commercial_reference_code = String(consultationReferenceCode);
+    if (leadId) metadataJson.commercial_lead_id = String(leadId);
+    if (idempotencyKey) metadataJson.appointment_idempotency_key = String(idempotencyKey);
+    if (slotStartIso) metadataJson.slot_start_iso = String(slotStartIso);
+    if (slotEndIso) metadataJson.slot_end_iso = String(slotEndIso);
+
     const { data, error } = await client
       .from('h2s_orders')
       .insert({
         order_id: orderId,
-        customer_email: String(email).trim().toLowerCase(),
+        customer_email: normalizedEmail,
         customer_name: name,
-        customer_phone: phone,
+        customer_phone: normalizedPhone,
+        name,
+        phone: normalizedPhone,
         status: 'queued',
-        due_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        delivery_date: date || null,
+        delivery_time: time || null,
+        service_name: service || 'Consultation',
+        appointment_confirmed: true,
         subtotal: 0,
         total: 0,
         items: [
@@ -1115,7 +1171,9 @@ export async function POST(request: Request) {
             notes: notes || '',
           },
         ],
-        created_at: new Date().toISOString(),
+        metadata_json: metadataJson,
+        created_at: createdAt,
+        updated_at: createdAt,
       })
       .select()
       .single();

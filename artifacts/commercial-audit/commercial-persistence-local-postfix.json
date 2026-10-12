@@ -1,0 +1,962 @@
+[dotenv@17.2.3] injecting env (45) from .env.production.local -- tip: =ƒöæ add access controls to secrets: https://dotenvx.com/ops
+{
+  "generatedAt": "2026-10-12T22:45:51.186Z",
+  "baseUrl": "http://127.0.0.1:3001",
+  "safeMode": true,
+  "steps": [
+    {
+      "label": "load-config",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "config": {
+          "publicBaseUrl": "http://localhost:3001",
+          "callNumber": "",
+          "smsNumber": "",
+          "suggestedSlots": [
+            {
+              "startIso": "2026-10-13T13:30:00.000Z",
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T15:00:00.000Z",
+              "endIso": "2026-10-13T15:30:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T17:30:00.000Z",
+              "endIso": "2026-10-13T18:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T19:30:00.000Z",
+              "endIso": "2026-10-13T20:00:00.000Z",
+              "durationMinutes": 30
+            }
+          ]
+        },
+        "lead": null
+      }
+    },
+    {
+      "label": "create-lead-1",
+      "status": 201,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "office",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Persistence verification lead save.",
+          "timeline": "2_weeks",
+          "budgetBand": "10k_plus",
+          "siteCount": 1,
+          "serviceNeeds": [
+            "Security Cameras"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "decisionMaker": "yes",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence"
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "high",
+          "lastSubmittedAt": "2026-10-12T22:45:52.001+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:52.001+00:00"
+        },
+        "assessment": {
+          "score": 100,
+          "bucket": "qualified",
+          "completedSteps": 10,
+          "totalSteps": 10,
+          "isContactable": true
+        },
+        "priorityTier": "high",
+        "config": {
+          "publicBaseUrl": "http://localhost:3001",
+          "callNumber": "",
+          "smsNumber": "",
+          "suggestedSlots": [
+            {
+              "startIso": "2026-10-13T13:30:00.000Z",
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T15:00:00.000Z",
+              "endIso": "2026-10-13T15:30:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T17:30:00.000Z",
+              "endIso": "2026-10-13T18:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T19:30:00.000Z",
+              "endIso": "2026-10-13T20:00:00.000Z",
+              "durationMinutes": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "update-lead-1",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "church",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Updated persistence verification lead save.",
+          "timeline": "asap",
+          "budgetBand": "25k_plus",
+          "siteCount": 2,
+          "serviceNeeds": [
+            "Security Cameras",
+            "Structured Cabling"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "buildingType": "campus",
+            "decisionMaker": "multiple",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence",
+            "revision": 2
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "urgent",
+          "lastSubmittedAt": "2026-10-12T22:45:52.841+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:53.828601+00:00"
+        },
+        "assessment": {
+          "score": 100,
+          "bucket": "qualified",
+          "completedSteps": 10,
+          "totalSteps": 10,
+          "isContactable": true
+        },
+        "priorityTier": "urgent",
+        "config": {
+          "publicBaseUrl": "http://localhost:3001",
+          "callNumber": "",
+          "smsNumber": "",
+          "suggestedSlots": [
+            {
+              "startIso": "2026-10-13T13:30:00.000Z",
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T15:00:00.000Z",
+              "endIso": "2026-10-13T15:30:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T17:30:00.000Z",
+              "endIso": "2026-10-13T18:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T19:30:00.000Z",
+              "endIso": "2026-10-13T20:00:00.000Z",
+              "durationMinutes": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "load-lead-1",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "config": {
+          "publicBaseUrl": "http://localhost:3001",
+          "callNumber": "",
+          "smsNumber": "",
+          "suggestedSlots": [
+            {
+              "startIso": "2026-10-13T13:30:00.000Z",
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T15:00:00.000Z",
+              "endIso": "2026-10-13T15:30:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T17:30:00.000Z",
+              "endIso": "2026-10-13T18:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T19:30:00.000Z",
+              "endIso": "2026-10-13T20:00:00.000Z",
+              "durationMinutes": 30
+            }
+          ]
+        },
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "church",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Updated persistence verification lead save.",
+          "timeline": "asap",
+          "budgetBand": "25k_plus",
+          "siteCount": 2,
+          "serviceNeeds": [
+            "Security Cameras",
+            "Structured Cabling"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "buildingType": "campus",
+            "decisionMaker": "multiple",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence",
+            "revision": 2
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "urgent",
+          "lastSubmittedAt": "2026-10-12T22:45:52.841+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:53.828601+00:00"
+        }
+      }
+    },
+    {
+      "label": "create-consultation-1",
+      "status": 201,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "consultation": {
+          "requestId": "15db6d60-b644-4826-b8c1-974d8cff2d51",
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "referenceCode": "COM-7DA2A3",
+          "status": "escalated",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": null,
+          "responseNote": null,
+          "responseAt": null,
+          "reminderCount": 0,
+          "nextReminderAt": "2026-10-12T23:00:53.398+00:00",
+          "escalatedAt": "2026-10-12T22:45:53.621+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:53.621+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": null,
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:53.398+00:00",
+          "updatedAt": "2026-10-12T22:45:54.619557+00:00"
+        },
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "church",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Updated persistence verification lead save.",
+          "timeline": "asap",
+          "budgetBand": "25k_plus",
+          "siteCount": 2,
+          "serviceNeeds": [
+            "Security Cameras",
+            "Structured Cabling"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "buildingType": "campus",
+            "decisionMaker": "multiple",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence",
+            "revision": 2
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "urgent",
+          "lastSubmittedAt": "2026-10-12T22:45:52.841+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:53.828601+00:00"
+        },
+        "notifications": {
+          "technician": [],
+          "customer": {
+            "ok": false,
+            "to": "+18645550123",
+            "error": "Twilio is not configured"
+          },
+          "manualReviewRequired": true
+        }
+      }
+    },
+    {
+      "label": "duplicate-consultation-1",
+      "status": 409,
+      "ok": false,
+      "payload": {
+        "ok": false,
+        "error": "A consultation request is already in progress for this lead.",
+        "existingRequest": {
+          "requestId": "15db6d60-b644-4826-b8c1-974d8cff2d51",
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "referenceCode": "COM-7DA2A3",
+          "status": "escalated",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": null,
+          "responseNote": null,
+          "responseAt": null,
+          "reminderCount": 0,
+          "nextReminderAt": "2026-10-12T23:00:53.398+00:00",
+          "escalatedAt": "2026-10-12T22:45:53.621+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:53.621+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": null,
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:53.398+00:00",
+          "updatedAt": "2026-10-12T22:45:54.619557+00:00"
+        }
+      }
+    },
+    {
+      "label": "lookup-consultation-1",
+      "status": 200,
+      "ok": true,
+      "payload": [
+        {
+          "request_id": "15db6d60-b644-4826-b8c1-974d8cff2d51",
+          "lead_id": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "reference_code": "COM-7DA2A3",
+          "response_token": "LuZkfz_UOqDpVHuEsRPrHQ28QKZQqqd9",
+          "status": "escalated",
+          "selected_slot_start": "2026-10-13T13:30:00+00:00",
+          "selected_slot_end": "2026-10-13T14:00:00+00:00",
+          "created_at": "2026-10-12T22:45:53.398+00:00",
+          "updated_at": "2026-10-12T22:45:54.619557+00:00",
+          "management_notified_at": "2026-10-12T22:45:53.621+00:00",
+          "customer_confirmation_sent_at": null,
+          "response_channel": null,
+          "response_note": null
+        }
+      ]
+    },
+    {
+      "label": "approve-consultation-1",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "consultation": {
+          "requestId": "15db6d60-b644-4826-b8c1-974d8cff2d51",
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "referenceCode": "COM-7DA2A3",
+          "status": "approved",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": "web",
+          "responseNote": "Automated local persistence verification.",
+          "responseAt": "2026-10-12T22:45:54.688+00:00",
+          "reminderCount": 0,
+          "nextReminderAt": null,
+          "escalatedAt": "2026-10-12T22:45:53.621+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:53.621+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": "c1dbbcf8-2e80-499d-9a74-ce12c2957626",
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:53.398+00:00",
+          "updatedAt": "2026-10-12T22:45:56.125808+00:00"
+        },
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "church",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Updated persistence verification lead save.",
+          "timeline": "asap",
+          "budgetBand": "25k_plus",
+          "siteCount": 2,
+          "serviceNeeds": [
+            "Security Cameras",
+            "Structured Cabling"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "buildingType": "campus",
+            "decisionMaker": "multiple",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence",
+            "revision": 2
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "urgent",
+          "lastSubmittedAt": "2026-10-12T22:45:52.841+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:53.828601+00:00"
+        },
+        "notifications": {
+          "customer": {
+            "ok": false,
+            "to": "+18645550123",
+            "error": "Twilio is not configured"
+          },
+          "management": null
+        },
+        "appointment": {
+          "ok": true,
+          "appointment": {
+            "id": "c1dbbcf8-2e80-499d-9a74-ce12c2957626",
+            "order_id": "APPT1791845154967ED1N1",
+            "user_id": null,
+            "customer_email": "commercial-a-1791845151186@example.com",
+            "items": "[{\"type\":\"appointment\",\"service\":\"Commercial Consultation\",\"date\":\"2026-10-13\",\"time\":\"1:30 PM\",\"notes\":\"COM-7DA2A3: Security Cameras, Structured Cabling. Updated persistence verification lead save.\"}]",
+            "subtotal": 0,
+            "tax": 0,
+            "total": 0,
+            "status": "queued",
+            "payment_intent_id": null,
+            "delivery_date": "2026-10-13",
+            "delivery_time": "1:30 PM",
+            "address": null,
+            "city": null,
+            "state": null,
+            "zip": null,
+            "phone": "+18645550123",
+            "special_instructions": null,
+            "service_id": null,
+            "service_name": "Commercial Consultation",
+            "qty": null,
+            "unit_price": null,
+            "line_total": null,
+            "options_selected": null,
+            "referral_code_used": null,
+            "discount_applied": 0,
+            "points_earned": 0,
+            "points_redeemed": 0,
+            "stripe_coupon_id": null,
+            "discount_amount": 0,
+            "created_at": "2026-10-12T22:45:54.967+00:00",
+            "updated_at": "2026-10-12T22:45:54.967+00:00",
+            "synced_from_sheets": false,
+            "session_id": null,
+            "mode": null,
+            "name": "Commercial Test a-1791845151186",
+            "source": null,
+            "currency": "usd",
+            "cart_json": null,
+            "line_type": null,
+            "line_index": 0,
+            "option_id": null,
+            "bundle_id": null,
+            "metadata_json": {
+              "slot_end_iso": "2026-10-13T14:00:00+00:00",
+              "slot_start_iso": "2026-10-13T13:30:00+00:00",
+              "appointment_kind": "appointment",
+              "appointment_source": "commercial_consultation",
+              "commercial_lead_id": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+              "commercial_reference_code": "COM-7DA2A3",
+              "appointment_idempotency_key": "commercial-consultation:15db6d60-b644-4826-b8c1-974d8cff2d51",
+              "commercial_consultation_request_id": "15db6d60-b644-4826-b8c1-974d8cff2d51"
+            },
+            "tv_size": null,
+            "requires_team": false,
+            "min_team_size": 1,
+            "team_reason": null,
+            "wall_type": null,
+            "mount_type": null,
+            "installation_complexity": null,
+            "customer_phone": "+18645550123",
+            "customer_name": "Commercial Test a-1791845151186",
+            "appointment_confirmed": true,
+            "cancellation_requested": false,
+            "needs_reschedule": false,
+            "last_sms_sent_at": null,
+            "last_sms_type": null,
+            "last_email_sent_at": null,
+            "last_email_type": null,
+            "total_amount": null
+          }
+        }
+      }
+    },
+    {
+      "label": "duplicate-approve-consultation-1",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "consultation": {
+          "requestId": "15db6d60-b644-4826-b8c1-974d8cff2d51",
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "referenceCode": "COM-7DA2A3",
+          "status": "approved",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": "web",
+          "responseNote": "Automated local persistence verification.",
+          "responseAt": "2026-10-12T22:45:54.688+00:00",
+          "reminderCount": 0,
+          "nextReminderAt": null,
+          "escalatedAt": "2026-10-12T22:45:53.621+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:53.621+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": "c1dbbcf8-2e80-499d-9a74-ce12c2957626",
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:53.398+00:00",
+          "updatedAt": "2026-10-12T22:45:56.125808+00:00"
+        },
+        "lead": {
+          "leadId": "e37d0f80-e4df-4fda-88d4-36820dfadbb0",
+          "publicToken": "FqoDpN4OxUaOr8Vjf4E9FC48KVMBlm6j",
+          "fullName": "Commercial Test a-1791845151186",
+          "companyName": "Persistence Test a-1791845151186",
+          "email": "commercial-a-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "church",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Updated persistence verification lead save.",
+          "timeline": "asap",
+          "budgetBand": "25k_plus",
+          "siteCount": 2,
+          "serviceNeeds": [
+            "Security Cameras",
+            "Structured Cabling"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "buildingType": "campus",
+            "decisionMaker": "multiple",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence",
+            "revision": 2
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "urgent",
+          "lastSubmittedAt": "2026-10-12T22:45:52.841+00:00",
+          "createdAt": "2026-10-12T22:45:52.001+00:00",
+          "updatedAt": "2026-10-12T22:45:53.828601+00:00"
+        },
+        "notifications": {
+          "customer": null,
+          "management": null
+        },
+        "appointment": {
+          "ok": true,
+          "reused": true,
+          "appointment": {
+            "id": "c1dbbcf8-2e80-499d-9a74-ce12c2957626"
+          }
+        }
+      }
+    },
+    {
+      "label": "create-lead-2",
+      "status": 201,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "lead": {
+          "leadId": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "publicToken": "whjjgxi_8VDglW44DPZ1Wc7RBCJNTj_o",
+          "fullName": "Commercial Test b-1791845151186",
+          "companyName": "Persistence Test b-1791845151186",
+          "email": "commercial-b-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "office",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Persistence verification lead save.",
+          "timeline": "2_weeks",
+          "budgetBand": "10k_plus",
+          "siteCount": 1,
+          "serviceNeeds": [
+            "Security Cameras"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "decisionMaker": "yes",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence"
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "high",
+          "lastSubmittedAt": "2026-10-12T22:45:55.748+00:00",
+          "createdAt": "2026-10-12T22:45:55.748+00:00",
+          "updatedAt": "2026-10-12T22:45:55.748+00:00"
+        },
+        "assessment": {
+          "score": 100,
+          "bucket": "qualified",
+          "completedSteps": 10,
+          "totalSteps": 10,
+          "isContactable": true
+        },
+        "priorityTier": "high",
+        "config": {
+          "publicBaseUrl": "http://localhost:3001",
+          "callNumber": "",
+          "smsNumber": "",
+          "suggestedSlots": [
+            {
+              "startIso": "2026-10-13T13:30:00.000Z",
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T15:00:00.000Z",
+              "endIso": "2026-10-13T15:30:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T17:30:00.000Z",
+              "endIso": "2026-10-13T18:00:00.000Z",
+              "durationMinutes": 30
+            },
+            {
+              "startIso": "2026-10-13T19:30:00.000Z",
+              "endIso": "2026-10-13T20:00:00.000Z",
+              "durationMinutes": 30
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "create-consultation-2",
+      "status": 201,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "consultation": {
+          "requestId": "000d15a1-f0c5-42b2-bb09-9f089321b029",
+          "leadId": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "referenceCode": "COM-D570A2",
+          "status": "escalated",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": null,
+          "responseNote": null,
+          "responseAt": null,
+          "reminderCount": 0,
+          "nextReminderAt": "2026-10-12T23:00:56.176+00:00",
+          "escalatedAt": "2026-10-12T22:45:56.322+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:56.322+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": null,
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:56.176+00:00",
+          "updatedAt": "2026-10-12T22:45:57.320811+00:00"
+        },
+        "lead": {
+          "leadId": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "publicToken": "whjjgxi_8VDglW44DPZ1Wc7RBCJNTj_o",
+          "fullName": "Commercial Test b-1791845151186",
+          "companyName": "Persistence Test b-1791845151186",
+          "email": "commercial-b-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "office",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Persistence verification lead save.",
+          "timeline": "2_weeks",
+          "budgetBand": "10k_plus",
+          "siteCount": 1,
+          "serviceNeeds": [
+            "Security Cameras"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "decisionMaker": "yes",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence"
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "high",
+          "lastSubmittedAt": "2026-10-12T22:45:55.748+00:00",
+          "createdAt": "2026-10-12T22:45:55.748+00:00",
+          "updatedAt": "2026-10-12T22:45:55.748+00:00"
+        },
+        "notifications": {
+          "technician": [],
+          "customer": {
+            "ok": false,
+            "to": "+18645550123",
+            "error": "Twilio is not configured"
+          },
+          "manualReviewRequired": true
+        }
+      }
+    },
+    {
+      "label": "lookup-consultation-2",
+      "status": 200,
+      "ok": true,
+      "payload": [
+        {
+          "request_id": "000d15a1-f0c5-42b2-bb09-9f089321b029",
+          "lead_id": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "reference_code": "COM-D570A2",
+          "response_token": "M-QBPrOzO1wlUnvob-_qROW-Hx_IoGJC",
+          "status": "escalated",
+          "selected_slot_start": "2026-10-13T13:30:00+00:00",
+          "selected_slot_end": "2026-10-13T14:00:00+00:00",
+          "created_at": "2026-10-12T22:45:56.176+00:00",
+          "updated_at": "2026-10-12T22:45:57.320811+00:00",
+          "management_notified_at": "2026-10-12T22:45:56.322+00:00",
+          "customer_confirmation_sent_at": null,
+          "response_channel": null,
+          "response_note": null
+        }
+      ]
+    },
+    {
+      "label": "decline-consultation-2",
+      "status": 200,
+      "ok": true,
+      "payload": {
+        "ok": true,
+        "consultation": {
+          "requestId": "000d15a1-f0c5-42b2-bb09-9f089321b029",
+          "leadId": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "referenceCode": "COM-D570A2",
+          "status": "declined",
+          "preferredSlots": [
+            {
+              "endIso": "2026-10-13T14:00:00.000Z",
+              "startIso": "2026-10-13T13:30:00.000Z"
+            }
+          ],
+          "selectedSlotStart": "2026-10-13T13:30:00+00:00",
+          "selectedSlotEnd": "2026-10-13T14:00:00+00:00",
+          "slotLabel": "Tue, Oct 13, 9:30 AM to 10:00 AM",
+          "assignedTechnicianName": null,
+          "assignedTechnicianPhone": "",
+          "responseChannel": "web",
+          "responseNote": "Automated local persistence verification.",
+          "responseAt": "2026-10-12T22:45:57.181+00:00",
+          "reminderCount": 0,
+          "nextReminderAt": null,
+          "escalatedAt": "2026-10-12T22:45:56.322+00:00",
+          "managementNotifiedAt": "2026-10-12T22:45:56.322+00:00",
+          "customerConfirmationSentAt": null,
+          "customerReminderSentAt": null,
+          "relatedOrderId": null,
+          "metadata": {
+            "reminder_delay_minutes": 15
+          },
+          "createdAt": "2026-10-12T22:45:56.176+00:00",
+          "updatedAt": "2026-10-12T22:45:58.181947+00:00"
+        },
+        "lead": {
+          "leadId": "6b2fa59b-5672-4005-bf78-f158710ea723",
+          "publicToken": "whjjgxi_8VDglW44DPZ1Wc7RBCJNTj_o",
+          "fullName": "Commercial Test b-1791845151186",
+          "companyName": "Persistence Test b-1791845151186",
+          "email": "commercial-b-1791845151186@example.com",
+          "phone": "+18645550123",
+          "contactPreference": "sms",
+          "businessType": "office",
+          "projectAddress": "100 Test Way",
+          "projectCity": "Greenville",
+          "projectState": "SC",
+          "projectPostalCode": "29601",
+          "scopeSummary": "Persistence verification lead save.",
+          "timeline": "2_weeks",
+          "budgetBand": "10k_plus",
+          "siteCount": 1,
+          "serviceNeeds": [
+            "Security Cameras"
+          ],
+          "projectPhotoUrls": [],
+          "assessmentAnswers": {
+            "decisionMaker": "yes",
+            "existingSystem": "legacy"
+          },
+          "attribution": {
+            "source": "exercise-commercial-persistence"
+          },
+          "notes": "",
+          "completenessScore": 100,
+          "completenessBucket": "qualified",
+          "priorityTier": "high",
+          "lastSubmittedAt": "2026-10-12T22:45:55.748+00:00",
+          "createdAt": "2026-10-12T22:45:55.748+00:00",
+          "updatedAt": "2026-10-12T22:45:55.748+00:00"
+        },
+        "notifications": {
+          "customer": {
+            "ok": false,
+            "to": "+18645550123",
+            "error": "Twilio is not configured"
+          },
+          "management": []
+        },
+        "appointment": null
+      }
+    },
+    {
+      "label": "invalid-token-read",
+      "status": 404,
+      "ok": false,
+      "payload": {
+        "ok": false,
+        "error": "Consultation not found"
+      }
+    }
+  ]
+}

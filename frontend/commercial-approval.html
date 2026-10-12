@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Commercial Consultation Approval | Home2Smart</title>
+  <meta name="description" content="Approve or decline a Home2Smart commercial consultation request.">
+  <meta name="theme-color" content="#1a365d">
+  <link rel="icon" type="image/png" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet"></noscript>
+  <link rel="stylesheet" href="/frontend/commercial.css">
+</head>
+<body class="commercial-body commercial-body--approval">
+  <main class="approval-shell shell">
+    <section class="approval-card">
+      <div class="approval-card__head">
+        <p class="section-kicker">Commercial consultation response</p>
+        <h1 id="approvalHeading">Loading request...</h1>
+        <p id="approvalSubcopy">This page lets the technician or coordinator approve or decline the pending consultation request.</p>
+      </div>
+
+      <div class="approval-summary" id="approvalSummary">
+        <div>
+          <span class="status-label">Reference</span>
+          <strong id="approvalReference">--</strong>
+        </div>
+        <div>
+          <span class="status-label">Company</span>
+          <strong id="approvalCompany">--</strong>
+        </div>
+        <div>
+          <span class="status-label">Requested slot</span>
+          <strong id="approvalSlot">--</strong>
+        </div>
+        <div>
+          <span class="status-label">Current status</span>
+          <strong id="approvalStatus">--</strong>
+        </div>
+      </div>
+
+      <div class="approval-services" id="approvalServices"></div>
+
+      <label class="field field--stacked">
+        <span>Optional note</span>
+        <textarea id="approvalNote" rows="4" placeholder="Add a quick note for the decision trail if needed."></textarea>
+      </label>
+
+      <div class="approval-actions">
+        <button class="btn btn-primary" id="approveBtn" type="button">Approve consultation</button>
+        <button class="btn btn-danger" id="declineBtn" type="button">Decline consultation</button>
+      </div>
+
+      <div class="inline-status" id="approvalMessage" aria-live="polite">Waiting for consultation details.</div>
+    </section>
+  </main>
+
+  <script defer src="/frontend/commercial-approval.js"></script>
+</body>
+</html>

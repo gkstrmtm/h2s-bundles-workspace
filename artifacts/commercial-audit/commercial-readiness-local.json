@@ -1,0 +1,462 @@
+[dotenv@17.2.3] injecting env (45) from .env.production.local -- tip: G‹÷n+≈  specify custom .env file path with { path: '/custom/path/.env' }
+{
+  "generatedAt": "2026-10-12T22:15:19.300Z",
+  "baseUrl": "http://127.0.0.1:3001",
+  "env": {
+    "supabaseUrl": true,
+    "supabaseServiceKey": true,
+    "databaseUrl": true,
+    "twilioAccountSid": false,
+    "twilioAuthToken": false,
+    "twilioFromNumber": false,
+    "commercialCallNumber": false,
+    "commercialSmsNumber": false,
+    "commercialTechPhone": false,
+    "escalationPhones": false,
+    "maintenanceToken": true,
+    "twilioInboundWebhookUrl": false,
+    "twilioDisableSignatureValidation": false,
+    "commercialPublicBaseUrl": false
+  },
+  "directDb": {
+    "ok": false,
+    "error": "password authentication failed for user \"postgres\""
+  },
+  "dbPaths": [
+    {
+      "label": "pooled",
+      "ok": false,
+      "error": "password authentication failed for user \"postgres\""
+    },
+    {
+      "label": "pooled_mgmt",
+      "ok": false,
+      "error": "password authentication failed for user \"postgres\""
+    },
+    {
+      "label": "direct",
+      "ok": false,
+      "error": "getaddrinfo ENOTFOUND db.nkccbnrduojnzjfrpwva.supabase.co"
+    },
+    {
+      "label": "direct_mgmt",
+      "ok": false,
+      "error": "getaddrinfo ENOTFOUND db.nkccbnrduojnzjfrpwva.supabase.co"
+    }
+  ],
+  "tables": [
+    {
+      "table": "commercial_leads",
+      "ok": false,
+      "status": 404,
+      "count": "",
+      "payload": {
+        "code": "PGRST205",
+        "details": null,
+        "hint": "Perhaps you meant the table 'public.owner_media_uploads'",
+        "message": "Could not find the table 'public.commercial_leads' in the schema cache"
+      }
+    },
+    {
+      "table": "commercial_consultation_requests",
+      "ok": false,
+      "status": 404,
+      "count": "",
+      "payload": {
+        "code": "PGRST205",
+        "details": null,
+        "hint": "Perhaps you meant the table 'public.training_completion_rates'",
+        "message": "Could not find the table 'public.commercial_consultation_requests' in the schema cache"
+      }
+    },
+    {
+      "table": "sms_threads",
+      "ok": true,
+      "status": 206,
+      "count": "0-0/3",
+      "payload": [
+        {
+          "thread_id": "74307c7e-f0ae-4bc1-b72e-c49346b114f5"
+        }
+      ]
+    },
+    {
+      "table": "sms_messages",
+      "ok": true,
+      "status": 206,
+      "count": "0-0/14",
+      "payload": [
+        {
+          "message_id": "fbe74e16-2bd5-4f14-9ab1-d7c9ce0d2198"
+        }
+      ]
+    },
+    {
+      "table": "owner_media_uploads",
+      "ok": true,
+      "status": 206,
+      "count": "0-0/18",
+      "payload": [
+        {
+          "asset_id": "091edf03-d74c-426e-9964-2b75729f6029"
+        }
+      ]
+    }
+  ],
+  "routes": {
+    "baseUrl": "http://127.0.0.1:3001",
+    "probes": {
+      "ownerMedia": {
+        "status": 200,
+        "ok": true,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store, public, max-age=60, s-maxage=300, stale-while-revalidate=3600"
+        },
+        "payload": {
+          "ok": true,
+          "surface": "commercial_intake",
+          "sections": {
+            "commercial_security_rail": {
+              "title": "Security camera work",
+              "items": [
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_security_rail",
+                  "asset_id": "de955df6-d4d9-4603-be3a-90ed2fb25e45",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "after",
+                  "shot_type": "after",
+                  "service": "cameras",
+                  "created_at": "2026-01-24T01:45:42.154+00:00",
+                  "updated_at": "2026-07-15T13:24:49.218+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_security_rail",
+                  "asset_id": "122ea909-1c4b-42ed-ae52-b4b06a31122f",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/f0b4ca7e-0cb0-4eed-baab-5d9a924e7e6f.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Ff0b4ca7e-0cb0-4eed-baab-5d9a924e7e6f.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Ff0b4ca7e-0cb0-4eed-baab-5d9a924e7e6f.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Ff0b4ca7e-0cb0-4eed-baab-5d9a924e7e6f.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "after",
+                  "shot_type": "after",
+                  "service": "cameras",
+                  "created_at": "2026-01-24T01:46:29.715+00:00",
+                  "updated_at": "2026-02-06T00:06:36.674+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_security_rail",
+                  "asset_id": "6a091d53-7dca-4c59-a7d4-77b267b55132",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/d95d313d-aaa3-4c8d-8b36-09ec4f78e00b.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fd95d313d-aaa3-4c8d-8b36-09ec4f78e00b.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fd95d313d-aaa3-4c8d-8b36-09ec4f78e00b.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fd95d313d-aaa3-4c8d-8b36-09ec4f78e00b.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "after",
+                  "shot_type": "after",
+                  "service": "cameras",
+                  "created_at": "2026-01-24T01:45:25.977+00:00",
+                  "updated_at": "2026-02-06T00:06:27.474+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_security_rail",
+                  "asset_id": "ee2f14d6-bea9-4207-8aa4-dc31aeb3e165",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/a62a3c67-48ab-4e9a-a4aa-0e32916f804b.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fa62a3c67-48ab-4e9a-a4aa-0e32916f804b.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fa62a3c67-48ab-4e9a-a4aa-0e32916f804b.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fa62a3c67-48ab-4e9a-a4aa-0e32916f804b.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "after",
+                  "shot_type": "after",
+                  "service": "cameras",
+                  "created_at": "2026-02-03T05:36:59.935+00:00",
+                  "updated_at": "2026-02-06T00:06:19.848+00:00"
+                }
+              ]
+            },
+            "commercial_display_rail": {
+              "title": "Display and TV work",
+              "items": [
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_display_rail",
+                  "asset_id": "5567b6cd-a06c-46d1-b219-f86dfd6c6930",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/1917f4d8-d40e-4b90-b1a3-c9c85b4bfaab__crop_55e62b32__crop_71750b7f.jpg",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F1917f4d8-d40e-4b90-b1a3-c9c85b4bfaab__crop_55e62b32__crop_71750b7f.jpg",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F1917f4d8-d40e-4b90-b1a3-c9c85b4bfaab__crop_55e62b32__crop_71750b7f.jpg",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F1917f4d8-d40e-4b90-b1a3-c9c85b4bfaab__crop_55e62b32__crop_71750b7f.jpg",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "result_proof",
+                  "shot_type": "result_proof",
+                  "service": "tv_mounting",
+                  "created_at": "2026-01-23T22:32:52.082+00:00",
+                  "updated_at": "2026-02-22T01:33:44.068+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_display_rail",
+                  "asset_id": "fa1e34a7-b015-4522-949e-da30569f5756",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/dae31695-3676-44d2-8227-ea9753dd0564.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fdae31695-3676-44d2-8227-ea9753dd0564.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fdae31695-3676-44d2-8227-ea9753dd0564.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2Fdae31695-3676-44d2-8227-ea9753dd0564.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "result_proof",
+                  "shot_type": "result_proof",
+                  "service": "tv_mounting",
+                  "created_at": "2026-02-03T05:40:07.517+00:00",
+                  "updated_at": "2026-02-08T01:58:24.856+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_display_rail",
+                  "asset_id": "9bb26931-224e-4d4e-bcb3-384711500860",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/4a51d343-bd70-40e8-84a3-7db0fca7b362.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F4a51d343-bd70-40e8-84a3-7db0fca7b362.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F4a51d343-bd70-40e8-84a3-7db0fca7b362.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F4a51d343-bd70-40e8-84a3-7db0fca7b362.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "result_proof",
+                  "shot_type": "result_proof",
+                  "service": "tv_mounting",
+                  "created_at": "2026-02-03T05:40:15.705+00:00",
+                  "updated_at": "2026-02-06T00:06:18.054+00:00"
+                },
+                {
+                  "source": "proof_asset",
+                  "section_key": "commercial_display_rail",
+                  "asset_id": "f4ad5e61-ebcf-4d87-baa7-db5b8ec3ea8e",
+                  "media_kind": "photo",
+                  "storage_bucket": "proof",
+                  "storage_path": "uploads/63492094-ba1a-4d19-b75a-4ad0df78f832.webp",
+                  "media_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F63492094-ba1a-4d19-b75a-4ad0df78f832.webp",
+                  "public_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F63492094-ba1a-4d19-b75a-4ad0df78f832.webp",
+                  "preview_url": "/api/proof-asset-media?bucket=proof&path=uploads%2F63492094-ba1a-4d19-b75a-4ad0df78f832.webp",
+                  "direct_url": "",
+                  "city": "",
+                  "state": "",
+                  "label": "result_proof",
+                  "shot_type": "result_proof",
+                  "service": "tv_mounting",
+                  "created_at": "2026-02-03T05:40:13.386+00:00",
+                  "updated_at": "2026-02-06T00:06:16.779+00:00"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "intakeConfig": {
+        "status": 200,
+        "ok": true,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": true,
+          "config": {
+            "publicBaseUrl": "http://localhost:3001",
+            "callNumber": "",
+            "smsNumber": "",
+            "suggestedSlots": [
+              {
+                "startIso": "2026-10-13T13:30:00.000Z",
+                "endIso": "2026-10-13T14:00:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T15:00:00.000Z",
+                "endIso": "2026-10-13T15:30:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T17:30:00.000Z",
+                "endIso": "2026-10-13T18:00:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T19:30:00.000Z",
+                "endIso": "2026-10-13T20:00:00.000Z",
+                "durationMinutes": 30
+              }
+            ]
+          },
+          "lead": null
+        }
+      },
+      "intakeUnknownLead": {
+        "status": 200,
+        "ok": true,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": true,
+          "config": {
+            "publicBaseUrl": "http://localhost:3001",
+            "callNumber": "",
+            "smsNumber": "",
+            "suggestedSlots": [
+              {
+                "startIso": "2026-10-13T13:30:00.000Z",
+                "endIso": "2026-10-13T14:00:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T15:00:00.000Z",
+                "endIso": "2026-10-13T15:30:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T17:30:00.000Z",
+                "endIso": "2026-10-13T18:00:00.000Z",
+                "durationMinutes": 30
+              },
+              {
+                "startIso": "2026-10-13T19:30:00.000Z",
+                "endIso": "2026-10-13T20:00:00.000Z",
+                "durationMinutes": 30
+              }
+            ]
+          },
+          "lead": null
+        }
+      },
+      "intakeMissingContact": {
+        "status": 400,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "A valid phone number or email address is required before we can save this commercial lead."
+        }
+      },
+      "photoUnknownLead": {
+        "status": 404,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "Commercial lead not found"
+        }
+      },
+      "consultationMissingToken": {
+        "status": 400,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "Missing publicToken"
+        }
+      },
+      "consultationUnknownLead": {
+        "status": 404,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "Commercial lead not found"
+        }
+      },
+      "responseUnknownToken": {
+        "status": 404,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "Consultation not found"
+        }
+      },
+      "responseInvalidPost": {
+        "status": 400,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "token and approve/decline action are required"
+        }
+      },
+      "maintenanceUnauthorized": {
+        "status": 401,
+        "ok": false,
+        "headers": {
+          "contentType": "application/json",
+          "cacheControl": "no-store"
+        },
+        "payload": {
+          "ok": false,
+          "error": "Unauthorized"
+        }
+      },
+      "inboundSmsInvalidSignature": {
+        "status": 500,
+        "ok": false,
+        "headers": {
+          "contentType": "text/xml; charset=utf-8",
+          "cacheControl": "no-store"
+        },
+        "payload": "<Response></Response>"
+      }
+    },
+    "notes": [
+      "No positive save, consultation-create, SMS-send, or call-placement probe is executed by this script.",
+      "Unknown-token and missing-input probes are used to validate routing, validation, and failure semantics without intentionally sending live communications."
+    ]
+  }
+}

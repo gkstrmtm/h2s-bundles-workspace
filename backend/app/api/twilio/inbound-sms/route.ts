@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
 import { getSupabase, getSupabaseMgmt } from '../../../../lib/supabase';
 import { normalizePhone } from '../../_lib/phone';
+import { handleTechnicianReply } from '@/lib/commercial_consultation_runtime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -115,6 +116,12 @@ export async function POST(req: NextRequest) {
     if (msgErr) {
       console.error('[twilio inbound] message insert error:', msgErr);
       return xmlResponse('<Response></Response>', 500);
+    }
+
+    const commercialReply = await handleTechnicianReply(req, fromPhone, body);
+    if (commercialReply.handled) {
+      const safeReply = String(commercialReply.replyText || '').replace(/[<&>]/g, '');
+      return xmlResponse(`<Response><Message>${safeReply}</Message></Response>`, commercialReply.ok ? 200 : 200);
     }
 
     return xmlResponse('<Response></Response>', 200);
