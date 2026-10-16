@@ -5677,6 +5677,10 @@ function smsStartNewMessage(prefillPhone) {
                 const closeEditorBtn = document.getElementById('ppCloseEditor');
                 if (closeEditorBtn && !closeEditorBtn.dataset.bound) {
                     closeEditorBtn.addEventListener('click', () => {
+                        if (this.state.edit?.scope === 'placement') {
+                            this.cancelEdit();
+                            return;
+                        }
                         const editor = document.getElementById('ppLibraryEditor');
                         const body = document.getElementById('ppLibraryEditorBody');
                         if (body) body.innerHTML = '';
@@ -5691,6 +5695,7 @@ function smsStartNewMessage(prefillPhone) {
 
                 // Add escape key support for modal
                 document.addEventListener('keydown', (e) => {
+                    if (this.state.edit?.scope === 'placement') return;
                     if (e.key === 'Escape') {
                         const editor = document.getElementById('ppLibraryEditor');
                         if (editor && !editor.classList.contains('is-hidden')) {
@@ -8465,7 +8470,62 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
+            openPagePlacement(assetId) {
+                const asset = this.state.assets?.items?.find((item) => String(item.asset_id) === String(assetId))
+                    || this.state.edit?.asset;
+                if (!asset || String(asset.asset_id) !== String(assetId)) {
+                    showToast('Load this media asset before editing its page placement.', 'error');
+                    return;
+                }
+                if (!window.H2SMediaPlacements) {
+                    showToast('Page placement controls did not load. Refresh the dashboard.', 'error');
+                    return;
+                }
+                this.beginPlacementEdit({
+                    asset, source: 'proof_asset', base: this.getConfig().base,
+                    token: getDashboardSessionToken(),
+                    url: this.publicStorageUrl(asset.storage_bucket || 'proof', asset.storage_path),
+                });
+            },
+
+            showMediaEditor() {
+                const editor = document.getElementById('ppLibraryEditor');
+                const body = document.getElementById('ppLibraryEditorBody');
+                if (!editor || !body) throw new Error('Editor UI missing. Refresh the dashboard.');
+                if (editor.parentNode !== document.body) {
+                    this.state._modalOriginalParent = editor.parentElement;
+                    this.state._modalOriginalNext = editor.nextElementSibling;
+                    this.state._modalPreviousFocus = document.activeElement;
+                    document.body.appendChild(editor);
+                }
+                document.body.style.overflow = 'hidden';
+                editor.classList.remove('is-hidden');
+                return { editor, body };
+            },
+
+            async beginPlacementEdit(options) {
+                if (this._placementEditor) {
+                    if (!this._placementEditor.cancel()) return;
+                } else if (this.state.edit?.asset) {
+                    if (!confirm('Leave shared media edits? Unsaved shared edits will be discarded.')) return;
+                    this.cancelEdit();
+                }
+                try {
+                    const { body } = this.showMediaEditor();
+                    this.state.edit = { scope: 'placement', assetId: options.asset.asset_id, asset: options.asset };
+                    await this.renderEditorUI(
+                        options.asset, this.getCacheBustedUrl(options.url),
+                        options.asset.media_kind === 'video', body, null, null, options
+                    );
+                } catch (error) {
+                    console.error('[Placement editor]', error);
+                    showToast(error.message || 'Could not open placement framing.', 'error');
+                    this.cancelEdit(true);
+                }
+            },
+
             async beginEditAssetMedia(assetId) {
+                if (this._placementEditor && !this._placementEditor.cancel()) return;
                 console.log(`[Editor] Loading asset ${assetId}...`);
                 
                 // Store the current asset ID for delete button
@@ -8518,13 +8578,6 @@ function smsStartNewMessage(prefillPhone) {
                 // Prevents auto-baking a new cropped image when the user didn't touch framing.
                 this.state._userDidCrop = false;
 
-                // Ensure Supabase config is loaded so we can build a public preview URL.
-                const sb = await this.ensureSupabaseConfig();
-                if (!sb?.ok || !sb?.url) {
-                    showToast('Supabase config unavailable (no preview URL). Click Refresh and verify backend env.', 'error');
-                    return;
-                }
-
                 // If the asset has a preserved original, always edit against the original
                 // so we can re-crop without quality loss.
                 let bucket = String(asset?.storage_bucket || 'proof');
@@ -8546,7 +8599,7 @@ function smsStartNewMessage(prefillPhone) {
                 // const isVideo = (asset.media_kind || asset.kind || '').toLowerCase() === 'video'; // Already declared above
 
                 const baseUrl = this.publicStorageUrl(bucket, path);
-                const url = baseUrl ? `${baseUrl}?v=${Date.now()}` : '';
+                const url = this.getCacheBustedUrl(baseUrl);
 
                 if (!url) {
                     showToast('Missing preview URL (check Supabase config / storage path).', 'error');
@@ -8575,23 +8628,7 @@ function smsStartNewMessage(prefillPhone) {
                     return;
                 }
 
-                // Show editor immediately with loading state - no skeleton flicker
-                
-                // REPARENT STRATEGY: Move to body to escape CSS transform isolation
-                if (editorCard.parentNode !== document.body) {
-                    console.log('[Modal] Reparenting to body from:', editorCard.parentElement?.id || editorCard.parentElement?.tagName);
-                    // Store strict reference to original location
-                    this.state._modalOriginalParent = editorCard.parentElement;
-                    this.state._modalOriginalNext = editorCard.nextElementSibling;
-                    
-                    document.body.appendChild(editorCard);
-                    console.log('[Modal] Moved to body.');
-                } else {
-                    console.warn('[Modal] Already in body, skipping reparent');
-                }
-
-                document.body.style.overflow = 'hidden';
-                editorCard.classList.remove('is-hidden');
+                this.showMediaEditor();
                 // We'll render the full UI right away and let the media element load in background
 
                 // Capture original field homes so we can restore later.
@@ -8840,7 +8877,7 @@ function smsStartNewMessage(prefillPhone) {
             },
             
             // Render editor UI (extracted from beginEditAssetMedia)
-            async renderEditorUI(asset, url, isVideo, editorBody, rotateField, trimField) {
+            async renderEditorUI(asset, url, isVideo, editorBody, rotateField, trimField, placementOptions = null) {
                 const assetId = String(asset?.asset_id || '');
 
                 const previewEl = isVideo 
@@ -8888,13 +8925,17 @@ function smsStartNewMessage(prefillPhone) {
                 ` : '';
 
                 const editorContent = `
-                    <div class="pp-editor-card" style="border:none; box-shadow:none;">
+                    <div class="pp-editor-card${placementOptions ? ' pp-placement-scope' : ''}" style="border:none; box-shadow:none;">
                         
                         <!-- Header -->
                         <div class="editor-header">
                             <div>
-                                <h3 class="editor-title">Edit Media</h3>
+                                <h3 class="editor-title">${placementOptions ? 'Placement framing' : 'Shared media edits'}</h3>
                                 <div class="editor-subtitle">ID: ${assetId} | ${isVideo ? 'Video' : 'Image'} Asset</div>
+                                <div class="editor-subtitle">${placementOptions
+                                    ? 'Only this page and display area change. The shared file and other placements stay unchanged.'
+                                    : 'These edits affect the shared file. Use Page placement for page-specific framing.'}</div>
+                                ${placementOptions ? '' : `<button type="button" class="btn btn-tonal" onclick="proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Page placement</button>`}
                             </div>
                             <div class="editor-status">
                                 <span class="editor-badge">${isVideo ? 'HD Video' : 'HQ Image'}</span>
@@ -8911,12 +8952,12 @@ function smsStartNewMessage(prefillPhone) {
                         <div class="editor-toolbar">
                              <!-- Left: Guide info -->
                              <div class="editor-view-toggle">
-                                <span style="font-size:12px; font-weight:500; color:#cbd5e1;">Proof Rail Editor</span>
+                                <span class="pp-workbench-hint">${placementOptions ? 'Drag to set focal | Scroll to zoom' : 'Proof Rail Editor'}</span>
                              </div>
                              
                              <!-- Right: History Tools -->
                              <div class="pp-editor-history" style="display:flex; gap:8px; margin-left: auto;">
-                                <button id="ppRevertToOriginal" class="editor-tool-btn" type="button" style="display:none;" onclick="proofPacks.revertEditedAssetToOriginal()" title="Revert to original image (undo baked crop)" aria-label="Revert to original image">
+                                <button id="ppRevertToOriginal" class="editor-tool-btn" type="button" style="display:none;" ${placementOptions ? '' : 'onclick="proofPacks.revertEditedAssetToOriginal()"'} title="Revert to original image (undo baked crop)" aria-label="Revert to original image">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
                                 </button>
                                 <button id="ppUndoBtn" disabled class="editor-tool-btn" title="Undo (Ctrl+Z)"><svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/></svg></button>
@@ -8975,6 +9016,7 @@ function smsStartNewMessage(prefillPhone) {
                             </div>
                         </div>
 
+                        ${placementOptions ? '<div data-placement-controls></div>' : `
                         <!-- Bottom: Controls Block (Fixed/Scrollable as needed) -->
                         <div class="pp-editor-bottom-section">
                             ${playbackControls}
@@ -9225,19 +9267,27 @@ function smsStartNewMessage(prefillPhone) {
                             </div>
                         </div>
 
+                        `}
                         </div> <!-- END SCROLLABLE CONTENT WRAPPER -->
 
                         <!-- Static Footer (Outside Scroll Area) -->
                         <div class="editor-footer" style="flex-shrink: 0; background: #ffffff !important; opacity: 1 !important; border-top: 1px solid #e2e8f0; z-index: 1000; display: flex; align-items: center; padding: 16px 24px; gap: 12px;">
-                            <button class="editor-delete" onclick="proofPacks.deleteCurrentAsset()" style="background:#ef4444;color:white;padding:8px 16px;border:none;border-radius:6px;font-weight:600;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'" title="Delete this asset permanently">Delete Asset</button>
+                            ${placementOptions ? '' : `<button class="editor-delete" onclick="proofPacks.deleteCurrentAsset()" style="background:#ef4444;color:white;padding:8px 16px;border:none;border-radius:6px;font-weight:600;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#dc2626'" onmouseout="this.style.background='#ef4444'" title="Delete this asset permanently">Delete Asset</button>`}
                             <span id="ppEditStatus" class="u-text-sm u-muted" style="margin-right:auto;"></span>
                             <button class="editor-cancel" onclick="proofPacks.cancelEdit()">Cancel</button>
-                            <button id="ppApplyEdits" class="editor-save" style="min-width:140px;">Apply & Save</button>
+                            <button id="ppApplyEdits" class="editor-save" style="min-width:140px;">${placementOptions ? 'Save this placement' : 'Apply & Save'}</button>
                         </div>
                     </div>
                 `;
 
                 editorBody.innerHTML = editorContent;
+                if (placementOptions) {
+                    this._placementEditor = window.H2SMediaPlacements.mount({
+                        ...placementOptions, host: editorBody, onClose: () => this.cancelEdit(true),
+                    });
+                    await this._placementEditor.ready;
+                    return;
+                }
 
                 // Bindings
                 if (typeof this.bindMediaLoadIndicators === 'function') this.bindMediaLoadIndicators();
@@ -9757,7 +9807,12 @@ function smsStartNewMessage(prefillPhone) {
             },
             
             // Cancel editing
-            cancelEdit() {
+            cancelEdit(force = false) {
+                if (this._placementEditor && !force) return this._placementEditor.cancel();
+                if (this._placementEditor) {
+                    this._placementEditor.destroy();
+                    this._placementEditor = null;
+                }
                 // Restore regular scrolling
                 document.body.style.overflow = '';
 
@@ -9784,6 +9839,9 @@ function smsStartNewMessage(prefillPhone) {
                 this.state._editSaved = false; // Reset for next edit
                 
                 this.state.edit = null;
+                const previousFocus = this.state._modalPreviousFocus;
+                this.state._modalPreviousFocus = null;
+                if (previousFocus?.isConnected) previousFocus.focus();
                 
                 // User Feedback: Silently close (removed toast)
             },
@@ -10391,6 +10449,7 @@ function smsStartNewMessage(prefillPhone) {
                             <div class="pp-grid-info">
                                 <span class="pp-grid-intent" style="${!intentDisplay ? 'display:none;' : ''}">${this.escapeHtml(intentDisplay)}</span>
                                 <span class="pp-grid-duration">${this.escapeHtml(durationDisplay)}</span>
+                                <button type="button" class="btn btn-tonal" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Page placement</button>
                             </div>
                         </div>
                     `;
@@ -10508,8 +10567,9 @@ function smsStartNewMessage(prefillPhone) {
 
             getCacheBustedUrl(baseUrl) {
                 if (!baseUrl) return '';
-                const cacheBuster = `v=${Date.now()}_${Math.random().toString(36).substring(7)}`;
-                return `${baseUrl}?${cacheBuster}`;
+                const url = new URL(baseUrl, location.href);
+                url.searchParams.set('v', `${Date.now()}_${Math.random().toString(36).substring(7)}`);
+                return url.href;
             },
 
             async reloadPreviewAfterEdit(asset, changes) {
@@ -11088,6 +11148,7 @@ function smsStartNewMessage(prefillPhone) {
             },
 
             async applyEditsToAsset() {
+                if (this.state.edit?.scope === 'placement') return this._placementEditor.save();
                 const assetId = String(this.state.edit?.assetId || '').trim();
                 if (!assetId) {
                     showToast('No asset selected for editing', 'error');
@@ -47296,6 +47357,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             state: {
                 loading: false,
                 items: [],
+                me: null,
                 summary: null,
                 autoRefreshTimer: null,
                 autoRefreshBound: false,
@@ -47366,6 +47428,40 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 } catch (_) {
                     return '';
                 }
+            },
+
+            canEditPlacements() {
+                const role = String(this.state?.me?.role || '').trim().toUpperCase();
+                return role === 'ADMIN';
+            },
+
+            openPagePlacement(assetId) {
+                const asset = this.state.items.find((item) => String(item.asset_id) === String(assetId));
+                if (!asset || !window.H2SMediaPlacements) {
+                    showToast('Page placement controls are unavailable. Refresh the dashboard.', 'error');
+                    return;
+                }
+                proofPacks.beginPlacementEdit({
+                    asset, source: 'owner_media',
+                    base: this.resolveApiUrl('/api/admin/media-placements').replace(/\/api\/admin\/media-placements$/, ''),
+                    token: getDashboardSessionToken(), url: this.resolveAssetUrl(asset),
+                });
+            },
+
+            resolveApiUrl(url) {
+                const raw = String(url || '').trim();
+                if (!raw) return raw;
+                if (/^https?:\/\//i.test(raw)) return raw;
+                if (!raw.startsWith('/')) return raw;
+
+                try {
+                    const host = String(window.location.hostname || '').toLowerCase();
+                    if (host === '127.0.0.1' || host === 'localhost' || window.location.protocol === 'file:') {
+                        return `${String(DEFAULT_API_HOST || '').replace(/\/+$/g, '')}${raw}`;
+                    }
+                } catch (_) {}
+
+                return raw;
             },
 
             async fetchJson(url, init) {
@@ -47734,6 +47830,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                             <span>Download</span>
                                         </button>`
                                         : ''}
+                                    ${this.canEditPlacements() ? `<button type="button" class="btn btn-tonal" onclick="ownerUploadsUI.openPagePlacement('${assetId}')">Page placement</button>` : ''}
                                     <button type="button" onclick="ownerUploadsUI.removeAsset('${assetId}')" ${isRemoving ? 'disabled' : ''} aria-label="Remove upload" title="Remove upload" style="display:inline-flex; align-items:center; min-height:28px; padding:0 10px; border-radius:999px; border:1px solid #fecaca; background:#fff; color:#b42318; font-size:12px; font-weight:700; cursor:${isRemoving ? 'default' : 'pointer'}; opacity:${isRemoving ? '0.72' : '1'};">
                                         <span>${isRemoving ? 'Removing...' : 'Remove'}</span>
                                     </button>
@@ -47761,6 +47858,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     const requestLimit = appendMode ? this.state.pageSize : this.state.visibleCount;
                     const params = new URLSearchParams({ scope: 'all', limit: String(requestLimit), offset: String(requestOffset), state: apiState });
                     const data = await this.fetchJson(`/api/owner-media/uploads?${params.toString()}`, { method: 'GET', cache: 'no-store' });
+                    this.state.me = data.me || this.state.me || null;
                     const allItems = Array.isArray(data.uploads) ? data.uploads : [];
                     this.state.items = appendMode ? this.state.items.concat(allItems) : allItems;
                     this.state.visibleCount = Math.max(this.state.pageSize, Number(this.state.items.length || 0));
@@ -48126,6 +48224,10 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             const isEditorOpen = editorCard && !editorCard.classList.contains('is-hidden');
             
             if (!isEditorOpen) return;
+            if (proofPacks.state.edit?.scope === 'placement') {
+                proofPacks._placementEditor?.handleKey(e);
+                return;
+            }
             
             const videoEl = document.getElementById('ppVideoPreview');
             

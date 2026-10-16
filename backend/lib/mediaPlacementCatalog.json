@@ -1,0 +1,18 @@
+{
+  "bundles": {
+    "title": "Bundles",
+    "areas": [
+      { "key": "hero", "title": "Hero background", "aspect": "16 / 9", "limit": 1 },
+      { "key": "mid_proof_rail", "title": "Installation photo rail", "aspect": "4 / 3", "limit": 6 },
+      { "key": "pre_cta", "title": "Cart reassurance strip", "aspect": "4 / 3", "limit": 3 }
+    ]
+  },
+  "commercial_intake": {
+    "title": "Commercial",
+    "areas": [
+      { "key": "commercial_hero", "title": "Hero photo", "aspect": "4 / 3", "limit": 1 },
+      { "key": "commercial_security_rail", "title": "Security camera rail", "aspect": "4 / 3", "limit": 4, "service": "cameras" },
+      { "key": "commercial_display_rail", "title": "Display and TV rail", "aspect": "4 / 3", "limit": 4, "service": "tv_mounting" }
+    ]
+  }
+}

@@ -16993,3 +16993,36 @@ input[type="time"].form-input::-webkit-calendar-picker-indicator {
     outline: none !important;
 }
 
+.pp-placement-scope { color: var(--cobalt); font: 14px Inter, sans-serif; }
+.pp-placement-scope fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.pp-placement-scope legend { font-weight: 600; margin-bottom: 8px; }
+.media-placement-options { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pp-placement-scope [aria-pressed="true"] { outline: 2px solid var(--azure); outline-offset: 1px; }
+.media-placement-scope { display: grid; gap: 12px; padding: 16px; border-bottom: 1px solid var(--muted); position: sticky; top: 0; z-index: 60; background: var(--bg, #fff); }
+.pp-placement-scope small { color: var(--muted); line-height: 1.5; }
+.pp-placement-scope .pp-workbench-hint { color: var(--muted); }
+.pp-placement-scope #ppStageContainer { padding: 16px; margin: 0; min-height: 200px; background: transparent; box-sizing: border-box; }
+.pp-placement-scope #ppVideoStage { touch-action: none; cursor: grab; }
+.pp-placement-scope #ppVideoStage.is-dragging { cursor: grabbing; }
+.pp-placement-scope #ppVideoStage:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+.pp-placement-scope .pp-stage-info, .pp-placement-scope #ppStageDragHint { display: none; }
+.pp-placement-scope #ppVideoStage img, .pp-placement-scope #ppVideoStage video { pointer-events: none; }
+.media-placement-form { padding: 16px; border-top: 1px solid var(--muted); }
+.media-placement-form > fieldset { display: grid; gap: 12px; }
+.media-placement-form summary { cursor: pointer; font-weight: 600; }
+.media-placement-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.media-placement-fields label { display: grid; gap: 4px; }
+.media-placement-fields input { min-width: 0; width: 100%; box-sizing: border-box; padding: 8px; font-family: "JetBrains Mono", monospace; }
+.media-placement-form input[type="range"] { display: block; width: 100%; }
+.media-placement-secondary { justify-self: start; width: auto; min-height: 28px; padding: 4px 8px; border: 0; border-radius: 4px; background: transparent; color: var(--cobalt); font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.media-placement-secondary:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.media-placement-secondary:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+.media-placement-form output { color: var(--muted); font: 12px "JetBrains Mono", monospace; }
+.media-placement-decision { width: min(480px, calc(100vw - 32px)); box-sizing: border-box; padding: 16px; border: 1px solid var(--muted); border-radius: 8px; color: var(--cobalt); background: var(--bg, #fff); font: 14px Inter, sans-serif; }
+.media-placement-decision::backdrop { background: rgba(0, 0, 0, 0.45); }
+.media-placement-decision h3 { margin: 0 0 12px; font: 600 16px "Space Grotesk", sans-serif; }
+.media-placement-decision p { margin: 0 0 16px; line-height: 1.5; }
+.media-placement-decision [data-decision-error], .pp-placement-scope #ppEditStatus[data-state="failed"] { color: var(--danger); }
+@media (max-width: 480px) {
+  .media-placement-fields { grid-template-columns: 1fr; }
+}

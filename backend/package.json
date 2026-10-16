@@ -12,7 +12,11 @@
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 npx prisma generate && cross-env NODE_OPTIONS=--max-old-space-size=4096 next build",
     "start": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next start",
     "lint": "next lint",
-    "test": "node --test tests/task_creator.test.cjs"
+    "test": "node --test tests/task_creator.test.cjs",
+    "db:inspect": "node apply_migration_pg.js inspect",
+    "db:status": "node apply_migration_pg.js status",
+    "db:apply": "node apply_migration_pg.js apply",
+    "db:verify": "node apply_migration_pg.js verify"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

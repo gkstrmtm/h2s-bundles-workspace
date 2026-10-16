@@ -1176,6 +1176,7 @@
       mediaEl.src = mediaUrl;
     }
 
+    if (item.media_placement) mediaEl.style.cssText = window.H2SMediaPlacements.style(item.media_placement);
     mediaWrap.appendChild(mediaEl);
     setHeroStatus(isVideo ? 'Loading recent installation video...' : 'Loading recent installation photo...');
 
@@ -1263,12 +1264,14 @@
     target.innerHTML = list.map(function (item, index) {
       const mediaUrl = item.media_url;
       const poster = mediaPosterFor(item);
+      const placementStyle = item.media_placement
+        ? ` style="${escapeAttr(window.H2SMediaPlacements.style(item.media_placement))}"` : '';
       if (String(item.media_kind || 'photo') === 'video') {
-        return `<div class="proof-tile is-pending"><video controls muted playsinline preload="none" ${poster ? `poster="${escapeAttr(poster)}" ` : ''}aria-label="Approved commercial installation video" src="${escapeAttr(mediaUrl)}"></video></div>`;
+        return `<div class="proof-tile is-pending"><video controls muted playsinline preload="none" ${poster ? `poster="${escapeAttr(poster)}" ` : ''}aria-label="Approved commercial installation video"${placementStyle} src="${escapeAttr(mediaUrl)}"></video></div>`;
       }
       const loading = index < 2 ? 'eager' : 'lazy';
       const fetchPriority = index < 2 ? 'auto' : 'low';
-      return `<div class="proof-tile is-pending"><img loading="${loading}" fetchpriority="${fetchPriority}" decoding="async" sizes="(max-width: 720px) calc((100vw - 48px) / 2), (max-width: 1100px) 22vw, 18vw" src="${escapeAttr(mediaUrl)}" alt="Approved commercial installation photo"></div>`;
+      return `<div class="proof-tile is-pending"><img loading="${loading}" fetchpriority="${fetchPriority}" decoding="async" sizes="(max-width: 720px) calc((100vw - 48px) / 2), (max-width: 1100px) 22vw, 18vw"${placementStyle} src="${escapeAttr(mediaUrl)}" alt="Approved commercial installation photo"></div>`;
     }).join('');
     bindProofTileState(target);
   }
@@ -1337,12 +1340,14 @@
       const sections = payload.sections || {};
       const cameraItems = normalizeMediaItems(sections.commercial_security_rail && sections.commercial_security_rail.items, 4);
       const tvItems = normalizeMediaItems(sections.commercial_display_rail && sections.commercial_display_rail.items, 4);
+      const hasHeroSelection = !!sections.commercial_hero;
+      const heroItems = normalizeMediaItems(sections.commercial_hero && sections.commercial_hero.items, 6);
       recordMediaDiagnostic('info', 'owner-media-result', {
         status: response.status,
         cameraCount: cameraItems.length,
         displayCount: tvItems.length,
       });
-      if (!cameraItems.length && !tvItems.length) {
+      if (!cameraItems.length && !tvItems.length && !hasHeroSelection) {
         const fallback = await proofGalleryPromise;
         if (fallback) {
           applyProofGalleryMedia(cameraRail, tvRail, fallback.cameraItems, fallback.tvItems);
@@ -1353,7 +1358,10 @@
       }
       renderProofRail(cameraRail, cameraItems, 'No approved camera installs are available yet.');
       renderProofRail(tvRail, tvItems, 'No approved display installs are available yet.');
-      if (!selectHeroMedia(cameraItems, tvItems)) {
+      if (hasHeroSelection) {
+        if (heroItems.length) renderHeroMedia(heroItems[0], heroItems.slice(1));
+        else renderHeroEmpty('No installation media is selected for this area.');
+      } else if (!selectHeroMedia(cameraItems, tvItems)) {
         const fallback = await proofGalleryPromise;
         if (fallback) {
           applyProofGalleryMedia(cameraRail, tvRail, fallback.cameraItems, fallback.tvItems);

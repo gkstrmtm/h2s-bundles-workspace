@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { OWNER_MEDIA_DB_BUCKET } from '@/lib/ownerMediaDb';
+import { readMediaPlacements, resolvePlacementAssets, mergeMediaPlacements, type MediaPlacement } from '@/lib/mediaPlacements';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -186,6 +187,13 @@ export async function GET(request: Request) {
   const surface = normalizeSurface(url.searchParams.get('surface') || 'commercial_intake');
   const limit = clampInt(url.searchParams.get('limit'), 4, 1, 8);
   const sections = SURFACE_CONFIG[surface] || SURFACE_CONFIG.commercial_intake;
+  let placements: MediaPlacement[];
+  try {
+    placements = await readMediaPlacements('commercial_intake');
+  } catch (error) {
+    console.error('[owner-media/public] Placement read failed', error);
+    return NextResponse.json({ ok: false, error: 'Could not load page placements' }, { status: 503, headers: corsHeaders() });
+  }
 
   const payloadSections: Record<string, { title: string; items: any[] }> = {};
 
@@ -203,10 +211,30 @@ export async function GET(request: Request) {
       items = items.concat(proofItems);
     }
 
-    payloadSections[section.key] = {
-      title: section.title,
-      items,
+    try {
+      const explicit = await resolvePlacementAssets(placements, section.key);
+      payloadSections[section.key] = {
+        title: section.title,
+        items: mergeMediaPlacements(items, explicit, placements, section.key, limit, section.service),
+      };
+    } catch (error) {
+      console.error('[owner-media/public] Placed media failed', error);
+      return NextResponse.json({ ok: false, error: 'Could not load placed media' }, { status: 503, headers: corsHeaders() });
+    }
+  }
+
+  try {
+    const hero = await resolvePlacementAssets(placements, 'commercial_hero');
+    const railItems = sections.flatMap((section) => payloadSections[section.key].items);
+    const fallback = railItems.filter((item) => item.media_kind !== 'video')
+      .concat(railItems.filter((item) => item.media_kind === 'video'));
+    payloadSections.commercial_hero = {
+      title: 'Hero photo',
+      items: mergeMediaPlacements(fallback, hero, placements, 'commercial_hero', 6),
     };
+  } catch (error) {
+    console.error('[owner-media/public] Hero placement failed', error);
+    return NextResponse.json({ ok: false, error: 'Could not load hero placement' }, { status: 503, headers: corsHeaders() });
   }
 
   return NextResponse.json(
@@ -218,7 +246,7 @@ export async function GET(request: Request) {
     {
       headers: {
         ...corsHeaders(),
-        'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=3600',
+        'Cache-Control': 'no-store',
       },
     },
   );

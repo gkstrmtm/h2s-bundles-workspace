@@ -122,6 +122,8 @@ async function fetchHeroUnderlayUrl() {
 
 let _proofInitPromise = null;
 let _proofSlots = null;
+let _proofPageHero = [];
+let _proofHeroExclusions = [];
 let _proofSupabaseUrl = '';
 let _proofSupabaseAnonKey = '';
 let _proofHydratePromise = null;
@@ -362,6 +364,13 @@ function renderProofHeroMedia(targetEl, asset) {
     }
 
     const kind = String(asset?.media_kind || 'photo');
+    if (asset.media_placement) {
+      const placementStyle = window.H2SMediaPlacements.style(asset.media_placement);
+      targetEl.innerHTML = kind === 'video'
+        ? `<video autoplay muted loop playsinline preload="metadata" style="${placementStyle}" src="${escapeHtml(url)}"></video>`
+        : `<img loading="eager" decoding="async" fetchpriority="high" style="${placementStyle}" src="${escapeHtml(url)}" alt="">`;
+      return true;
+    }
     const heroBanner = getHeroBannerDetails(asset);
     const renderMode = String(heroBanner?.render_mode || '').trim().toLowerCase();
     const t = buildHeroTransformCss(heroBanner);
@@ -632,6 +641,7 @@ function scheduleAdaptiveHeroTone(heroMediaEl, analysisUrl) {
 }
 
 function buildProofMediaStyle(asset) {
+  if (asset?.media_placement) return window.H2SMediaPlacements.style(asset.media_placement);
   try {
     // Match the ProofPacks "resting card truth" logic from Dash.html.
     const rotateBase = Number(asset?.video_rotate_deg || 0);
@@ -1033,7 +1043,11 @@ async function loadProofData() {
     try {
       if (slotsRes && slotsRes.ok) {
         const slots = await slotsRes.json();
-        if (slots && slots.ok && slots.slots) _proofSlots = slots.slots;
+        if (slots && slots.ok && slots.slots) {
+          _proofSlots = slots.slots;
+          _proofPageHero = Array.isArray(slots.hero_media) ? slots.hero_media : [];
+          _proofHeroExclusions = Array.isArray(slots.hero_exclusions) ? slots.hero_exclusions : [];
+        }
       }
     } catch (_) {}
 
@@ -1185,7 +1199,9 @@ async function updateProofSections() {
     try {
       const heroSectionEl = document.querySelector('section.hero');
       if (heroSectionEl) {
-        const url = await fetchHeroUnderlayUrl();
+        const curatedHeroExcluded = _proofHeroExclusions.some((item) =>
+          item.asset_source === 'proof_asset' && item.asset_id === HERO_UNDERLAY_ASSET_ID);
+        const url = curatedHeroExcluded || _proofPageHero.length ? '' : await fetchHeroUnderlayUrl();
         if (url) {
           heroSectionEl.style.setProperty('--hero-bg-url', `url("${String(url).replace(/"/g, '%22')}")`);
         } else {
@@ -1204,6 +1220,22 @@ async function updateProofSections() {
     if (heroMedia) {
       heroMedia.style.display = 'none';
       heroMedia.innerHTML = '';
+    }
+    const heroSection = document.querySelector('section.hero');
+    if (heroSection && _proofPageHero.length) {
+      let underlay = heroSection.querySelector('.page-placement-hero');
+      if (!underlay) {
+        underlay = document.createElement('div');
+        underlay.className = 'page-placement-hero';
+        underlay.setAttribute('aria-hidden', 'true');
+        heroSection.prepend(underlay);
+      }
+      renderProofHeroMedia(underlay, _proofPageHero[0]);
+      heroSection.classList.add('has-page-placement');
+    } else if (heroSection) {
+      heroSection.classList.remove('has-page-placement');
+      const underlay = heroSection.querySelector('.page-placement-hero');
+      if (underlay) underlay.remove();
     }
 
     // Mid-page rail
@@ -1245,7 +1277,7 @@ async function updateProofSections() {
 
       combined = capVideos(combined, 1);
 
-      const ok = renderProofTiles(rail, combined, { limit: 5, fillToLimit: true, videoPreload: 'none' });
+      const ok = renderProofTiles(rail, combined, { limit: 5, fillToLimit: !hasRemote, videoPreload: 'none' });
       railSection.style.display = ok ? '' : (mode ? '' : 'none');
       
       // Stats removed - user wants clean presentation without counts
@@ -1282,7 +1314,7 @@ async function updateProofSections() {
       // Pre-CTA: allow at most one video, and preload metadata so the tile has a real first frame quickly.
       assets = capVideos(assets, 1);
 
-      const ok = renderProofTiles(miniTrack, assets, { limit: 3, fillToLimit: true, videoPreload: 'metadata' });
+      const ok = renderProofTiles(miniTrack, assets, { limit: 3, fillToLimit: !hasRemote, videoPreload: 'metadata' });
       mini.style.display = ok ? '' : (mode ? '' : 'none');
       if (ok && hasRemote) {
         logProofImpressionOnce('pre_cta:' + primary, {

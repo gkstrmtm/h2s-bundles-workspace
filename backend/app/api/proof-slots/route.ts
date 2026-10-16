@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { OWNER_MEDIA_DB_BUCKET, getOwnerMediaUploadByAssetId } from '@/lib/ownerMediaDb';
+import { getOwnerMediaStorageClient, isOwnerMediaBucket } from '@/lib/ownerMediaStore';
+import { readMediaPlacements, resolvePlacementAssets, mergeMediaPlacements } from '@/lib/mediaPlacements';
 
 function corsHeaders() {
   return {
@@ -195,6 +198,104 @@ function diversifyRanked(slotKey: string, service: string, ranked: any[], limitP
   return ranked.slice(0, max);
 }
 
+function mediaAvailabilityKey(asset: any) {
+  const bucket = String(asset?.storage_bucket || '').trim();
+  const path = String(asset?.storage_path || '').trim();
+  const direct = String(asset?.direct_url || '').trim();
+  const assetId = String(asset?.asset_id || '').trim();
+
+  if (bucket && path) return `${bucket}:${path}`;
+  if (direct) return `url:${direct}`;
+  if (assetId) return `asset:${assetId}`;
+  return '';
+}
+
+async function isHttpMediaReachable(url: string) {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { range: 'bytes=0-0' },
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function buildPublicUrl(bucket: string, path: string) {
+  const base = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+  const b = String(bucket || '').replace(/^\/+|\/+$/g, '');
+  const p = String(path || '').replace(/^\/+/, '');
+  if (!base || !b || !p) return '';
+  return `${base}/storage/v1/object/public/${encodeURIComponent(b)}/${p
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+}
+
+async function isAssetReachable(asset: any, cache: Map<string, Promise<boolean>>) {
+  const cacheKey = mediaAvailabilityKey(asset);
+  if (!cacheKey) return false;
+
+  const existing = cache.get(cacheKey);
+  if (existing) return existing;
+
+  const probe = (async () => {
+    const bucket = String(asset?.storage_bucket || '').trim();
+    const path = String(asset?.storage_path || '').trim();
+    const directUrl = String(asset?.direct_url || '').trim();
+
+    if (bucket === OWNER_MEDIA_DB_BUCKET) {
+      const row = await getOwnerMediaUploadByAssetId(path);
+      return !!row?.blob_data;
+    }
+
+    if (bucket && path && isOwnerMediaBucket(bucket)) {
+      const download = await getOwnerMediaStorageClient().storage.from(bucket).download(path);
+      return !download.error && !!download.data;
+    }
+
+    if (bucket && path) {
+      const publicUrl = buildPublicUrl(bucket, path);
+      if (publicUrl) return isHttpMediaReachable(publicUrl);
+    }
+
+    if (/^https?:\/\//i.test(directUrl)) {
+      return isHttpMediaReachable(directUrl);
+    }
+
+    return directUrl.startsWith('data:');
+  })();
+
+  cache.set(cacheKey, probe);
+  return probe;
+}
+
+async function selectReachableAssets(diversified: any[], ranked: any[], limitPerSlot: number, cache: Map<string, Promise<boolean>>) {
+  const limit = Math.max(1, Math.min(12, limitPerSlot));
+  const probeBudget = Math.max(limit * 4, limit);
+  const candidates = [...diversified, ...ranked];
+  const seen = new Set<string>();
+  const out: any[] = [];
+  let probes = 0;
+
+  for (const asset of candidates) {
+    if (out.length >= limit || probes >= probeBudget) break;
+
+    const key = mediaAvailabilityKey(asset);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    probes += 1;
+
+    if (await isAssetReachable(asset, cache)) {
+      out.push(asset);
+    }
+  }
+
+  return out;
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const surface = (searchParams.get('surface') || 'bundles').trim();
@@ -219,6 +320,8 @@ export async function GET(request: Request) {
     } catch {
       return NextResponse.json(empty, { headers: corsHeaders() });
     }
+
+    const placements = surface === 'bundles' ? await readMediaPlacements('bundles') : [];
 
     // 1) Try slot assignments first
     const { data: slotRows, error: slotErr } = await client
@@ -256,6 +359,8 @@ export async function GET(request: Request) {
         return scoreTs(b?.created_at) - scoreTs(a?.created_at);
       })[0];
     };
+
+    const availabilityCache = new Map<string, Promise<boolean>>();
 
     for (const slotKey of ['hero', 'mid_proof_rail', 'pre_cta']) {
       for (const service of ['tv_mounting', 'cameras']) {
@@ -313,7 +418,10 @@ export async function GET(request: Request) {
             return bScore - aScore;
           });
 
-        const diversified = diversifyRanked(slotKey, service, ranked, limitPerSlot)
+        const diversified = diversifyRanked(slotKey, service, ranked, limitPerSlot);
+        const reachable = await selectReachableAssets(diversified, ranked, limitPerSlot, availabilityCache);
+
+        grouped[slotKey][service] = reachable
           .map((a: any) => ({
             asset_id: a.asset_id,
             pack_id: a.pack_id,
@@ -339,12 +447,23 @@ export async function GET(request: Request) {
             city: a.city,
             state: a.state,
           }));
-
-        grouped[slotKey][service] = diversified;
       }
     }
 
-    return NextResponse.json({ ok: true, surface, slots: grouped }, { 
+    const placedHero = await resolvePlacementAssets(placements, 'hero');
+    for (const area of ['hero', 'mid_proof_rail', 'pre_cta']) {
+      const explicit = area === 'hero' ? placedHero : await resolvePlacementAssets(placements, area);
+      for (const service of ['tv_mounting', 'cameras']) {
+        grouped[area][service] = mergeMediaPlacements(grouped[area][service], explicit, placements, area, limitPerSlot, service);
+      }
+    }
+
+    return NextResponse.json({
+      ok: true, surface, slots: grouped,
+      hero_media: mergeMediaPlacements([], placedHero, placements, 'hero', 1),
+      hero_exclusions: placements.filter((row) => row.area === 'hero' && !row.enabled)
+        .map((row) => ({ asset_source: row.asset_source, asset_id: row.asset_id })),
+    }, {
       headers: {
         ...corsHeaders(),
         'Cache-Control': 'no-store, no-cache, must-revalidate',
@@ -352,6 +471,7 @@ export async function GET(request: Request) {
       }
     });
   } catch (e: any) {
+    console.error('[proof-slots]', e);
     return NextResponse.json(
       { ok: false, error: e?.message || 'Failed to fetch proof slots' },
       { status: 500, headers: corsHeaders() },

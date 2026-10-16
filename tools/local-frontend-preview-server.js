@@ -69,7 +69,8 @@ function proxyApi(req, res) {
   delete headers.host;
   headers.origin = `http://127.0.0.1:${PORT}`;
 
-  const proxyReq = https.request(target, {
+  const transport = target.protocol === 'https:' ? https : http;
+  const proxyReq = transport.request(target, {
     method: req.method,
     headers,
   }, (proxyRes) => {

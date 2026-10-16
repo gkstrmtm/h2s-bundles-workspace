@@ -717,6 +717,11 @@ body.modal-open {
   z-index: 2;
 }
 
+.hero.has-page-placement { isolation: isolate; overflow: hidden; }
+.page-placement-hero { position: absolute; inset: 0; z-index: -2; overflow: hidden; }
+.page-placement-hero img, .page-placement-hero video { display: block; width: 100%; height: 100%; }
+.hero.has-page-placement::after { content: ""; position: absolute; inset: 0; z-index: -1; background: var(--cobalt); opacity: 0.65; pointer-events: none; }
+
 .hero h1 {
   font-size: 32px;
   font-weight: 900;
@@ -4723,6 +4728,7 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
+<script defer src="/media-placements.js?v=PAGE_PLACEMENTS_V1"></script>
 <script defer src="/bundles.js?v=PROOF_RAIL_STABILITY_FEB11_2026_V1"></script>
 
 <!-- H2S Backend Tracking - Deferred (moved below for LCP/TTI) -->

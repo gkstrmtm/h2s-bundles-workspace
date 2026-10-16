@@ -152,6 +152,8 @@ frontend/dash-messages.js
 
 # SQL and database files
 *.sql
+!backend/migrations/029_create_media_placements.sql
+!backend/migrations/030_owner_media_placement_fields.sql
 
 # Backup files
 *.backup
