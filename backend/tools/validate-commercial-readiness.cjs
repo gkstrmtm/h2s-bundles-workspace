@@ -25,7 +25,7 @@ function summarizeEnv() {
     commercialSmsNumber: hasEnv('COMMERCIAL_SMS_NUMBER') || hasEnv('TWILIO_FROM_NUMBER') || hasEnv('TWILIO_PHONE_NUMBER'),
     commercialTechPhone: hasEnv('COMMERCIAL_CONSULTATION_TECH_PHONE') || hasEnv('COMMERCIAL_CONSULTATION_TECH_PHONES'),
     escalationPhones: hasEnv('COMMERCIAL_ESCALATION_PHONES') || hasEnv('DISPATCH_PHONES'),
-    maintenanceToken: hasEnv('COMMERCIAL_MAINTENANCE_TOKEN') || hasEnv('NOTIFY_DRAIN_TOKEN') || hasEnv('DISPATCH_ADMIN_TOKEN'),
+    maintenanceToken: hasEnv('CRON_SECRET') || hasEnv('COMMERCIAL_MAINTENANCE_TOKEN'),
     twilioInboundWebhookUrl: hasEnv('TWILIO_INBOUND_SMS_WEBHOOK_URL'),
     twilioDisableSignatureValidation: safeTrim(process.env.TWILIO_DISABLE_SIGNATURE_VALIDATION) === '1',
     commercialPublicBaseUrl: hasEnv('COMMERCIAL_PUBLIC_BASE_URL') || hasEnv('PUBLIC_SITE_URL') || hasEnv('NEXT_PUBLIC_SITE_URL'),

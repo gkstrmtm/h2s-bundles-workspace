@@ -112,3 +112,58 @@ existing visibility, rights, review, and QA eligibility rules.
 Schema verification is not an editor acceptance test. Also verify actual image
 loading, visual framing, cancel, save/reopen, independent scopes, and public
 rendering before declaring media management complete.
+
+## Commercial runtime boundary
+
+Commercial request handlers and scheduled maintenance do not create tables,
+functions, triggers, indexes, or policies. Missing relations/columns produce
+an operational error directing an authorized operator to this workflow.
+The existing production commercial tables have RLS enabled and no policies;
+preserve that default-deny state. API-role table grants alone do not bypass RLS.
+No commercial access-control migration is required for removing runtime DDL.
+
+Legacy `014_create_commercial_consultation.sql` includes unrestricted policies.
+It is not part of the managed list and must not be run blindly or marked applied.
+For a target missing commercial schema, inspect its catalog and access controls,
+then prepare and explicitly authorize a separate versioned migration that
+preserves existing data and default-deny access. Do not rewrite historical SQL
+or extend the existing media-only authorization to commercial changes.
+
+### Commercial notification and maintenance configuration
+
+Configure these outside Git, in the backend deployment environment or ignored
+`backend/.env.local` for development:
+
+- `COMMERCIAL_PUBLIC_BASE_URL` is the canonical public **origin**, without a
+  path, credentials, query, or fragment. `PUBLIC_SITE_URL` and
+  `NEXT_PUBLIC_SITE_URL` remain supported fallbacks. Approval links never use
+  request Origin, Host, or forwarded headers. HTTPS is required except for
+  explicitly configured HTTP `localhost`, `127.0.0.1`, or `[::1]` when neither
+  `NODE_ENV` nor `VERCEL_ENV` is `production`.
+- `COMMERCIAL_CONSULTATION_TECH_PHONE`, `COMMERCIAL_CONSULTATION_TECH_PHONES`,
+  and `DISPATCH_PHONES` supply the deduplicated technician recipient list.
+  At least one valid phone is required; invalid configured entries fail clearly.
+  `COMMERCIAL_CONSULTATION_TECH_NAME` optionally labels the assignment. Public
+  camelCase/snake_case assignment fields and historical stored phones cannot
+  add notification recipients. No public administrative override is supported.
+- Set `CRON_SECRET` in Vercel for the existing scheduled maintenance GET.
+  Vercel sends it automatically as `Authorization: Bearer <CRON_SECRET>`.
+  `x-vercel-cron` is not authentication.
+- Optional manual maintenance uses `COMMERCIAL_MAINTENANCE_TOKEN` in either
+  `Authorization: Bearer <COMMERCIAL_MAINTENANCE_TOKEN>` or
+  `x-maintenance-token`. Query-string tokens and the former `NOTIFY_DRAIN_TOKEN`
+  / `DISPATCH_ADMIN_TOKEN` fallbacks are no longer accepted for this endpoint.
+  Update any external manual caller accordingly. Missing authentication
+  configuration returns 503; missing/invalid credentials return 401.
+
+Canonical URL and technician configuration are checked before intake writes
+(URL only), consultation writes, and authorized maintenance processing.
+Existing Twilio transport variables remain required for actual SMS delivery.
+Provider acceptance, delivery, appointment recovery, and historical token
+revocation are separate concerns; these protections do not establish them.
+
+Run the fake-transport protection tests without production credentials:
+
+```powershell
+node --test backend\tests\commercial_consultation.test.cjs backend\tests\commercial_protection.test.cjs
+```

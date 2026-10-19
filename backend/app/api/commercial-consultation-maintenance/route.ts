@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { getSupabase } from '@/lib/supabase';
 import {
+  CommercialConfigurationError,
+  commercialDatabaseErrorMessage,
   corsHeaders,
-  ensureCommercialConsultationTables,
   getLeadById,
   getMaxReminderCount,
+  getPublicBaseUrl,
+  getTechnicianPhones,
   nextReminderIso,
   notifyManagementEscalation,
   sendTechnicianConsultationRequest,
@@ -14,15 +18,24 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function authorized(request: Request) {
-  if (request.headers.get('x-vercel-cron') === '1') return true;
-  const url = new URL(request.url);
-  const token = url.searchParams.get('token') || request.headers.get('x-maintenance-token') || '';
-  const expected = String(process.env.COMMERCIAL_MAINTENANCE_TOKEN || process.env.NOTIFY_DRAIN_TOKEN || process.env.DISPATCH_ADMIN_TOKEN || '').trim();
-  return Boolean(expected && token === expected);
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  const manualSecret = String(process.env.COMMERCIAL_MAINTENANCE_TOKEN || '').trim();
+  if (!cronSecret && !manualSecret) {
+    throw new CommercialConfigurationError('Configure CRON_SECRET for scheduled commercial maintenance or COMMERCIAL_MAINTENANCE_TOKEN for manual maintenance.');
+  }
+  const bearer = /^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') || '')?.[1] || '';
+  const manualToken = String(request.headers.get('x-maintenance-token') || '').trim();
+  const matches = (provided: string, expected: string) => {
+    if (!provided || !expected) return false;
+    const left = Buffer.from(provided, 'utf8');
+    const right = Buffer.from(expected, 'utf8');
+    return left.length === right.length && timingSafeEqual(left, right);
+  };
+  return matches(bearer, cronSecret) || matches(bearer, manualSecret) || matches(manualToken, manualSecret);
 }
 
 export async function OPTIONS(request: Request) {
-  return NextResponse.json({}, { headers: corsHeaders(request) });
+  return NextResponse.json({}, { headers: { ...corsHeaders(request), 'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Maintenance-Token' } });
 }
 
 async function processMaintenance(request: Request) {
@@ -30,7 +43,8 @@ async function processMaintenance(request: Request) {
     return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401, headers: corsHeaders(request) });
   }
 
-  await ensureCommercialConsultationTables();
+  getPublicBaseUrl();
+  getTechnicianPhones();
   const sb = getSupabase();
   const nowIso = new Date().toISOString();
   const { data, error } = await sb
@@ -42,7 +56,7 @@ async function processMaintenance(request: Request) {
     .limit(25);
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500, headers: corsHeaders(request) });
+    return NextResponse.json({ ok: false, error: commercialDatabaseErrorMessage(error) }, { status: 500, headers: corsHeaders(request) });
   }
 
   const processed: any[] = [];
@@ -68,7 +82,7 @@ async function processMaintenance(request: Request) {
       continue;
     }
 
-    const sent = await sendTechnicianConsultationRequest(request, consultation, lead);
+    const sent = await sendTechnicianConsultationRequest(consultation, lead);
     await sb
       .from('commercial_consultation_requests')
       .update({
@@ -86,9 +100,20 @@ async function processMaintenance(request: Request) {
 }
 
 export async function GET(request: Request) {
-  return processMaintenance(request);
+  return handleMaintenance(request);
 }
 
 export async function POST(request: Request) {
-  return processMaintenance(request);
+  return handleMaintenance(request);
+}
+
+async function handleMaintenance(request: Request) {
+  try {
+    return await processMaintenance(request);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : 'Commercial maintenance failed' },
+      { status: error instanceof CommercialConfigurationError ? 503 : 500, headers: corsHeaders(request) }
+    );
+  }
 }

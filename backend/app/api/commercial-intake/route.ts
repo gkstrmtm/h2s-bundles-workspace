@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import {
+  CommercialConfigurationError,
+  commercialDatabaseErrorMessage,
   corsHeaders,
   getLeadByToken,
   getPublicBaseUrl,
@@ -25,9 +27,9 @@ export async function OPTIONS(request: Request) {
   return NextResponse.json({}, { headers: corsHeaders(request) });
 }
 
-function publicConfig(request: Request) {
+function publicConfig() {
   return {
-    publicBaseUrl: getPublicBaseUrl(request),
+    publicBaseUrl: getPublicBaseUrl(),
     callNumber: String(process.env.COMMERCIAL_CALL_NUMBER || process.env.PUBLIC_PHONE_NUMBER || '').trim(),
     smsNumber: String(process.env.COMMERCIAL_SMS_NUMBER || process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER || '').trim(),
     suggestedSlots: buildSlotSuggestions({ count: 4 }),
@@ -38,12 +40,13 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const token = normalizeText(url.searchParams.get('token') || '', 120);
+    const config = publicConfig();
     const lead = token ? await getLeadByToken(token) : null;
 
     return NextResponse.json(
       {
         ok: true,
-        config: publicConfig(request),
+        config,
         lead: serializeLead(lead),
       },
       { headers: corsHeaders(request) }
@@ -51,7 +54,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error?.message || 'Failed to load commercial intake config' },
-      { status: 500, headers: corsHeaders(request) }
+      { status: error instanceof CommercialConfigurationError ? 503 : 500, headers: corsHeaders(request) }
     );
   }
 }
@@ -67,6 +70,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const config = publicConfig();
     const sb = getSupabase();
     const completeness = computeAssessmentCompletion(normalized);
     const priorityTier = computeLeadPriority(normalized);
@@ -115,7 +119,7 @@ export async function POST(request: Request) {
     const { data, error } = await query.select('*').single();
     if (error || !data) {
       return NextResponse.json(
-        { ok: false, error: error?.message || 'Failed to save commercial lead' },
+        { ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to save commercial lead' },
         { status: 500, headers: corsHeaders(request) }
       );
     }
@@ -126,14 +130,14 @@ export async function POST(request: Request) {
         lead: serializeLead(data),
         assessment: completeness,
         priorityTier,
-        config: publicConfig(request),
+        config,
       },
       { status: existing ? 200 : 201, headers: corsHeaders(request) }
     );
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error?.message || 'Failed to save commercial lead' },
-      { status: 500, headers: corsHeaders(request) }
+      { status: error instanceof CommercialConfigurationError ? 503 : 500, headers: corsHeaders(request) }
     );
   }
 }

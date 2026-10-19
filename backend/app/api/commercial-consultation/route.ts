@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import {
+  CommercialConfigurationError,
+  commercialDatabaseErrorMessage,
   corsHeaders,
   findActiveConsultationForLead,
   getLeadByToken,
+  getPublicBaseUrl,
   getReminderDelayMinutes,
+  getTechnicianPhones,
   nextReminderIso,
   notifyManagementEscalation,
   sendCustomerPendingAcknowledgement,
@@ -18,7 +22,6 @@ const commercialUtils = require('@/lib/commercial_consultation.js') as any;
 const {
   generateConsultationReference,
   generateResponseToken,
-  normalizePhone,
   normalizeText,
 } = commercialUtils;
 
@@ -53,6 +56,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Missing publicToken' }, { status: 400, headers: corsHeaders(request) });
     }
 
+    getPublicBaseUrl();
+    const technicianPhones = getTechnicianPhones();
     const lead = await getLeadByToken(publicToken);
     if (!lead) {
       return NextResponse.json({ ok: false, error: 'Commercial lead not found' }, { status: 404, headers: corsHeaders(request) });
@@ -64,8 +69,8 @@ export async function POST(request: Request) {
     const selectedSlotStart = normalizeText(body.selectedSlotStart || body.selected_slot_start || '', 64);
     const selectedSlotEnd = normalizeText(body.selectedSlotEnd || body.selected_slot_end || '', 64);
     const preferredSlots = normalizeSlots(body.preferredSlots || body.preferred_slots || []);
-    const assignedTechnicianPhone = normalizePhone(body.assignedTechnicianPhone || body.assigned_technician_phone || process.env.COMMERCIAL_CONSULTATION_TECH_PHONE || '');
-    const assignedTechnicianName = normalizeText(body.assignedTechnicianName || body.assigned_technician_name || process.env.COMMERCIAL_CONSULTATION_TECH_NAME || '', 120) || null;
+    const assignedTechnicianPhone = technicianPhones[0];
+    const assignedTechnicianName = normalizeText(process.env.COMMERCIAL_CONSULTATION_TECH_NAME || '', 120) || null;
     const mode = normalizeText(body.mode || 'create', 32).toLowerCase();
     const slotStart = selectedSlotStart || preferredSlots[0]?.startIso || '';
     const slotEnd = selectedSlotEnd || preferredSlots[0]?.endIso || '';
@@ -119,7 +124,7 @@ export async function POST(request: Request) {
         .select('*')
         .single();
       if (error || !data) {
-        return NextResponse.json({ ok: false, error: error?.message || 'Failed to reschedule consultation' }, { status: 500, headers: corsHeaders(request) });
+        return NextResponse.json({ ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to reschedule consultation' }, { status: 500, headers: corsHeaders(request) });
       }
       consultation = data;
     } else {
@@ -145,17 +150,17 @@ export async function POST(request: Request) {
         .select('*')
         .single();
       if (error || !data) {
-        return NextResponse.json({ ok: false, error: error?.message || 'Failed to create consultation request' }, { status: 500, headers: corsHeaders(request) });
+        return NextResponse.json({ ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to create consultation request' }, { status: 500, headers: corsHeaders(request) });
       }
       consultation = data;
     }
 
-    const technicianNotice = await sendTechnicianConsultationRequest(request, consultation, lead);
+    const technicianNotice = await sendTechnicianConsultationRequest(consultation, lead);
     const anyTechSent = technicianNotice.results.some((item: any) => item.ok);
     const customerAck = await sendCustomerPendingAcknowledgement(consultation, lead);
 
     if (!anyTechSent) {
-      const managementNotice = await notifyManagementEscalation(consultation, lead);
+      await notifyManagementEscalation(consultation, lead);
       const { data: escalated } = await sb
         .from('commercial_consultation_requests')
         .update({
@@ -168,7 +173,6 @@ export async function POST(request: Request) {
         .select('*')
         .single();
       consultation = escalated || consultation;
-      technicianNotice.management = managementNotice;
     }
 
     return NextResponse.json(
@@ -187,7 +191,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error?.message || 'Failed to submit consultation request' },
-      { status: 500, headers: corsHeaders(request) }
+      { status: error instanceof CommercialConfigurationError ? 503 : 500, headers: corsHeaders(request) }
     );
   }
 }
