@@ -7,6 +7,7 @@ import trainingAdminCreate from '@/lib/training_admin_create';
 import { sendMail } from '@/lib/mail';
 import { normalizePhone } from '../_lib/phone';
 import crypto from 'node:crypto';
+const { isManualCommercialFollowUp } = require('@/lib/commercial_consultation.js');
 
 const {
   canGenerateTaskDetails,
@@ -2199,6 +2200,247 @@ function getDeliverablesDb() {
   }
 }
 
+function readJsonArraySafe(value: any): any[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function formatCommercialSlotLabel(startIso: any, endIso: any): string | null {
+  const start = safeTrim(startIso);
+  if (!start) return null;
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) return null;
+
+  const end = safeTrim(endIso);
+  const endDate = end ? new Date(end) : null;
+  const startText = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(startDate);
+
+  if (!endDate || Number.isNaN(endDate.getTime())) return startText;
+
+  const endText = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(endDate);
+
+  return `${startText} to ${endText}`;
+}
+
+async function loadCommercialQueueSnapshot(limitValue: any) {
+  const limit = Math.min(Math.max(toInt(limitValue, 150), 25), 250);
+  const db = getSupabase();
+
+  const leadColumns = [
+    'lead_id',
+    'public_token',
+    'full_name',
+    'company_name',
+    'email',
+    'phone',
+    'contact_preference',
+    'business_type',
+    'project_address',
+    'project_city',
+    'project_state',
+    'project_postal_code',
+    'scope_summary',
+    'timeline',
+    'budget_band',
+    'site_count',
+    'service_needs',
+    'project_photo_urls',
+    'assessment_answers',
+    'attribution',
+    'notes',
+    'completeness_score',
+    'completeness_bucket',
+    'priority_tier',
+    'last_submitted_at',
+    'created_at',
+    'updated_at'
+  ].join(', ');
+
+  const { data: leads, error: leadError } = await db
+    .from('commercial_leads')
+    .select(leadColumns)
+    .order('last_submitted_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (leadError) {
+    if (isMissingTableError(leadError, 'commercial_leads')) {
+      throw new Error('Commercial queue schema is missing. An authorized operator must inspect the target and prepare a reviewed versioned migration using docs/DATABASE_MIGRATIONS.md; do not run legacy 014 SQL blindly.');
+    }
+    throw new Error(`Failed to load commercial leads: ${leadError.message}`);
+  }
+
+  const leadRows = Array.isArray(leads) ? leads : [];
+  const leadIds = leadRows.map((row: any) => safeTrim(row?.lead_id)).filter(Boolean);
+
+  let consultations: any[] = [];
+  if (leadIds.length) {
+    const consultationColumns = [
+      'request_id',
+      'lead_id',
+      'reference_code',
+      'response_token',
+      'status',
+      'preferred_slots',
+      'selected_slot_start',
+      'selected_slot_end',
+      'assigned_technician_name',
+      'assigned_technician_phone',
+      'response_channel',
+      'response_note',
+      'response_at',
+      'reminder_count',
+      'next_reminder_at',
+      'escalated_at',
+      'management_notified_at',
+      'customer_confirmation_sent_at',
+      'customer_reminder_sent_at',
+      'related_order_id',
+      'metadata',
+      'created_at',
+      'updated_at'
+    ].join(', ');
+
+    const { data: consultationRows, error: consultationError } = await db
+      .from('commercial_consultation_requests')
+      .select(consultationColumns)
+      .in('lead_id', leadIds)
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .limit(Math.max(limit * 4, 1000));
+
+    if (consultationError) {
+      if (isMissingTableError(consultationError, 'commercial_consultation_requests')) {
+        throw new Error('Commercial queue schema is missing. An authorized operator must inspect the target and prepare a reviewed versioned migration using docs/DATABASE_MIGRATIONS.md; do not run legacy 014 SQL blindly.');
+      }
+      throw new Error(`Failed to load commercial consultation requests: ${consultationError.message}`);
+    }
+
+    consultations = Array.isArray(consultationRows) ? consultationRows : [];
+  }
+
+  const latestConsultationByLead = new Map<string, any>();
+  for (const consultation of consultations) {
+    const leadId = safeTrim(consultation?.lead_id);
+    if (!leadId || latestConsultationByLead.has(leadId)) continue;
+    latestConsultationByLead.set(leadId, consultation);
+  }
+
+  const queue = leadRows.map((lead: any) => {
+    const leadId = safeTrim(lead?.lead_id);
+    const latestConsultation = leadId ? latestConsultationByLead.get(leadId) : null;
+    const services = readJsonArraySafe(lead?.service_needs).map((value: any) => safeTrim(value)).filter(Boolean);
+    const photoUrls = readJsonArraySafe(lead?.project_photo_urls).map((value: any) => safeTrim(value)).filter(Boolean);
+    const consultationStatus = safeTrim(latestConsultation?.status).toLowerCase();
+    const requestedContactMethod = safeTrim(latestConsultation?.metadata?.contact_preference || lead?.contact_preference) || 'sms';
+    const manualFollowUp = isManualCommercialFollowUp(latestConsultation, { contact_preference: requestedContactMethod });
+    const contactDetail = requestedContactMethod === 'email' ? safeTrim(lead?.email) : safeTrim(lead?.phone);
+    const followUp = {
+      submitted: !!latestConsultation,
+      kind: manualFollowUp ? 'manual_follow_up' : 'consultation',
+      requestedContactMethod,
+      contactDetail,
+      statusLabel: !latestConsultation ? 'Saved draft - not submitted'
+        : manualFollowUp && ['pending', 'escalated', 'reschedule_requested'].includes(consultationStatus)
+          ? 'Manual follow-up pending review' : `Submitted request: ${consultationStatus}`,
+      nextAction: !latestConsultation ? 'Draft only. No customer follow-up request has been submitted.'
+        : manualFollowUp
+          ? `Manually ${requestedContactMethod === 'email' ? 'email' : 'call'} ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. No automated customer texts or emails are sent.`
+          : 'Review the technician response and requested window. Customer texts require Text first and explicit texting permission.',
+    };
+    const consultation = latestConsultation ? {
+      requestId: safeTrim(latestConsultation.request_id),
+      referenceCode: safeTrim(latestConsultation.reference_code),
+      status: consultationStatus || 'pending',
+      slotLabel: formatCommercialSlotLabel(latestConsultation.selected_slot_start, latestConsultation.selected_slot_end),
+      selectedSlotStart: latestConsultation.selected_slot_start || null,
+      selectedSlotEnd: latestConsultation.selected_slot_end || null,
+      assignedTechnicianName: safeTrim(latestConsultation.assigned_technician_name) || null,
+      assignedTechnicianPhone: safeTrim(latestConsultation.assigned_technician_phone) || null,
+      reminderCount: Number(latestConsultation.reminder_count || 0) || 0,
+      nextReminderAt: latestConsultation.next_reminder_at || null,
+      responseChannel: safeTrim(latestConsultation.response_channel) || null,
+      relatedOrderId: latestConsultation.related_order_id || null,
+      managementNotifiedAt: latestConsultation.management_notified_at || null,
+      customerConfirmationSentAt: latestConsultation.customer_confirmation_sent_at || null,
+      updatedAt: latestConsultation.updated_at || latestConsultation.created_at || null,
+      createdAt: latestConsultation.created_at || null,
+    } : null;
+
+    const lastActivityAt = consultation?.updatedAt || lead?.updated_at || lead?.last_submitted_at || lead?.created_at || null;
+
+    return {
+      leadId,
+      publicToken: safeTrim(lead?.public_token),
+      fullName: safeTrim(lead?.full_name),
+      companyName: safeTrim(lead?.company_name),
+      email: safeTrim(lead?.email),
+      phone: safeTrim(lead?.phone),
+      contactPreference: safeTrim(lead?.contact_preference).toLowerCase() || 'sms',
+      businessType: safeTrim(lead?.business_type),
+      projectAddress: safeTrim(lead?.project_address),
+      projectCity: safeTrim(lead?.project_city),
+      projectState: safeTrim(lead?.project_state),
+      projectPostalCode: safeTrim(lead?.project_postal_code),
+      scopeSummary: safeTrim(lead?.scope_summary),
+      timeline: safeTrim(lead?.timeline),
+      budgetBand: safeTrim(lead?.budget_band),
+      siteCount: Number(lead?.site_count || 0) || 0,
+      serviceNeeds: services,
+      notes: safeTrim(lead?.notes),
+      projectPhotoCount: photoUrls.length,
+      completenessScore: Number(lead?.completeness_score || 0) || 0,
+      completenessBucket: safeTrim(lead?.completeness_bucket).toLowerCase() || 'empty',
+      priorityTier: safeTrim(lead?.priority_tier).toLowerCase() || 'normal',
+      lastSubmittedAt: lead?.last_submitted_at || null,
+      createdAt: lead?.created_at || null,
+      updatedAt: lead?.updated_at || null,
+      lastActivityAt,
+      consultation,
+      followUp,
+    };
+  });
+
+  const pendingCount = queue.filter((item: any) => ['pending', 'reschedule_requested'].includes(String(item?.consultation?.status || ''))).length;
+  const escalatedCount = queue.filter((item: any) => String(item?.consultation?.status || '') === 'escalated').length;
+  const approvedCount = queue.filter((item: any) => ['approved', 'customer_confirmed'].includes(String(item?.consultation?.status || ''))).length;
+  const highPriorityCount = queue.filter((item: any) => ['high', 'urgent'].includes(String(item?.priorityTier || ''))).length;
+  const qualifiedCount = queue.filter((item: any) => String(item?.completenessBucket || '') === 'qualified').length;
+  const freshCutoff = Date.now() - (24 * 60 * 60 * 1000);
+  const newLastDayCount = queue.filter((item: any) => {
+    const createdAt = new Date(String(item?.createdAt || '')).getTime();
+    return Number.isFinite(createdAt) && createdAt >= freshCutoff;
+  }).length;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {
+      totalLeads: queue.length,
+      newLastDay: newLastDayCount,
+      pendingConsultations: pendingCount,
+      escalatedConsultations: escalatedCount,
+      approvedConsultations: approvedCount,
+      highPriorityLeads: highPriorityCount,
+      qualifiedLeads: qualifiedCount,
+    },
+    queue,
+  };
+}
+
 function normalizeTaskReminderPriority(value: any): string {
   if (typeof value === 'number') {
     if (value === 1) return 'HIGH';
@@ -3508,6 +3750,16 @@ export async function GET(request: Request) {
           }
 
           result = users || [];
+        }
+        break;
+      case 'commercialQueue':
+        {
+          const auth = await requireAdminToken(request);
+          if (!auth.ok) {
+            return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+          }
+
+          result = await loadCommercialQueueSnapshot(searchParams.get('limit'));
         }
         break;
       case 'messagesUsers':

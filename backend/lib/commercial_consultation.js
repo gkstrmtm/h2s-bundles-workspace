@@ -122,6 +122,37 @@ function normalizeContactPreference(value) {
   return normalized;
 }
 
+
+
+function hasCommercialSmsConsent(source) {
+  const attribution = source?.attribution || {};
+  return (source?.smsOptIn ?? source?.smsConsent ?? attribution.smsOptIn ?? attribution.communicationConsent?.smsOptIn) === true;
+}
+
+function validateCommercialContact(source) {
+  const method = source?.contactPreference ?? source?.contact_preference ?? 'sms';
+  const email = String(source?.email || '').trim();
+  const phone = String(source?.phone || '').trim();
+  if (!CONTACT_PREFERENCES.has(method)) return { field: 'contactPreference', message: 'Choose Text first, Call first, or Email first.' };
+  if (email && !normalizeEmail(email)) return { field: 'email', message: 'Enter a valid email address.' };
+  if (phone && (!/^[+\d\s().-]+$/.test(phone) || !normalizePhone(phone))) return { field: 'phone', message: 'Enter a valid phone number, including the area code.' };
+  if (method === 'email' && !email) return { field: 'email', message: 'Email first requires a valid email address. A phone number is optional.' };
+  if (method !== 'email' && !phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
+  if (method === 'sms' && !hasCommercialSmsConsent(source)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first or Email first.' };
+  return null;
+}
+
+function isManualCommercialFollowUp(consultation, lead) {
+  return consultation?.metadata?.request_kind === 'manual_follow_up'
+    || ['call', 'email'].includes(lead?.contact_preference ?? lead?.contactPreference);
+}
+
+function buildManualFollowUpMessage(consultation, lead, slotLabel) {
+  const method = lead.contact_preference === 'email' ? 'email' : 'phone';
+  const detail = method === 'email' ? lead.email : lead.phone;
+  return `${consultation.reference_code}: manual follow-up requested for ${lead.company_name || lead.full_name || 'Commercial lead'}. Contact by ${method}: ${detail || 'details need review'}. Preferred window (pending review): ${consultation.selected_slot_start ? slotLabel : 'none requested'}. Review Commercial Queue and contact the customer manually. No appointment is confirmed.`;
+}
+
 function normalizeProjectPhotoUrls(value) {
   const urls = [];
   const seen = new Set();
@@ -141,6 +172,11 @@ function normalizeServiceNeeds(value) {
 
 function normalizeCommercialLeadInput(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
+  const rawAttribution = sanitizeJson(source.attribution || {}, 0) || {};
+  const existingConsent = rawAttribution.communicationConsent && typeof rawAttribution.communicationConsent === 'object'
+    ? rawAttribution.communicationConsent
+    : {};
+  const smsOptIn = hasCommercialSmsConsent(source);
   const normalized = {
     fullName: normalizeText(source.fullName || source.name, 160),
     companyName: normalizeText(source.companyName, 160),
@@ -159,7 +195,17 @@ function normalizeCommercialLeadInput(payload) {
     projectPhotoUrls: normalizeProjectPhotoUrls(source.projectPhotoUrls),
     siteCount: clampInt(source.siteCount, 1, 1, 99),
     assessmentAnswers: sanitizeJson(source.assessmentAnswers || {}, 0) || {},
-    attribution: sanitizeJson(source.attribution || {}, 0) || {},
+    attribution: {
+      ...rawAttribution,
+      communicationConsent: {
+        smsOptIn,
+        smsOptInText: normalizeText(source.smsOptInText || existingConsent.smsOptInText || 'I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.', 400),
+        smsOptInSource: normalizeText(source.smsOptInSource || existingConsent.smsOptInSource || 'commercial-intake-form', 120),
+        ...(smsOptIn ? {
+          smsOptInAt: normalizeText(source.smsOptInAt || existingConsent.smsOptInAt, 64) || new Date().toISOString(),
+        } : {}),
+      },
+    },
     notes: normalizeText(source.notes, 2000)
   };
 
@@ -321,7 +367,7 @@ function buildTechnicianRequestMessage(input) {
 
 function buildCustomerPendingMessage(input) {
   const reference = normalizeText(input.referenceCode, 32) || 'your request';
-  return `Thanks for contacting Home Too Smart. We received ${reference} and are confirming technician availability now. We will text you as soon as the consultation slot is approved.`;
+  return `Thanks for contacting Home Too Smart. We received ${reference} for review. Your preferred window is a request, not a confirmed appointment. Project follow-up may be sent by text using your texting choice.`;
 }
 
 function buildCustomerConfirmedMessage(input) {
@@ -338,6 +384,10 @@ function buildEscalationMessage(input) {
 }
 
 module.exports = {
+  hasCommercialSmsConsent,
+  validateCommercialContact,
+  isManualCommercialFollowUp,
+  buildManualFollowUpMessage,
   buildApprovalLinks,
   buildCustomerConfirmedMessage,
   buildCustomerPendingMessage,

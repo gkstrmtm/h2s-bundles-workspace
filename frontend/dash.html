@@ -2254,6 +2254,7 @@
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
+                        <a class="app-sidebar-nav-item" data-tab="commercialqueue" onclick="switchToTab('commercialqueue')">Commercial Queue</a>
                         <a class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">Admin Dashboard</a>
                         <a class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Website Media</a>
                     </div>
@@ -3176,6 +3177,70 @@
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMMERCIAL QUEUE PANE -->
+                <div class="pane" id="commercialqueue-pane">
+                    <div class="commercial-queue-shell">
+                        <div class="commercial-queue-header">
+                            <div>
+                                <div class="commercial-queue-eyebrow">Commercial operations</div>
+                                <h2 class="commercial-queue-title">Commercial Queue</h2>
+                                <p class="commercial-queue-copy">Review new commercial intakes, inspect consultation status, and spot anything that still needs operator follow-through.</p>
+                            </div>
+                            <div class="commercial-queue-actions">
+                                <div class="commercial-queue-updated" id="commercialQueueUpdatedAt">Waiting for first load</div>
+                                <button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI && window.commercialQueueUI.refresh()">Refresh</button>
+                            </div>
+                        </div>
+
+                        <div class="commercial-queue-summary" id="commercialQueueSummary">
+                            <div class="commercial-queue-metric commercial-queue-metric--placeholder">
+                                <div class="spinner"></div>
+                            </div>
+                        </div>
+
+                        <div class="commercial-queue-layout">
+                            <section class="commercial-queue-panel commercial-queue-panel--list" aria-label="Commercial lead queue">
+                                <div class="commercial-queue-panel__head">
+                                    <div>
+                                        <div class="commercial-queue-panel__title">Lead queue</div>
+                                        <div class="commercial-queue-panel__subtitle" id="commercialQueueListMeta">Loading current intake activity...</div>
+                                    </div>
+                                    <div class="commercial-queue-toolbar">
+                                        <input
+                                            id="commercialQueueSearch"
+                                            class="form-input commercial-queue-search"
+                                            type="text"
+                                            placeholder="Search company, contact, phone, or city"
+                                            oninput="window.commercialQueueUI && window.commercialQueueUI.onSearchInput()"
+                                        />
+                                        <select
+                                            id="commercialQueueFilter"
+                                            class="form-select commercial-queue-filter"
+                                            onchange="window.commercialQueueUI && window.commercialQueueUI.onFilterChange()"
+                                        >
+                                            <option value="attention">Needs attention</option>
+                                            <option value="all">All leads</option>
+                                            <option value="pending">Pending consults</option>
+                                            <option value="approved">Approved / confirmed</option>
+                                            <option value="escalated">Escalated</option>
+                                            <option value="no_consultation">No consultation yet</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="commercial-queue-list" id="commercialQueueList">
+                                    <div class="spinner"></div>
+                                </div>
+                            </section>
+
+                            <section class="commercial-queue-panel commercial-queue-panel--detail" aria-label="Commercial lead detail">
+                                <div id="commercialQueueDetail" class="commercial-queue-detail">
+                                    <div class="spinner"></div>
+                                </div>
+                            </section>
                         </div>
                     </div>
                 </div>

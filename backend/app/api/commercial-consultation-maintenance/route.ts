@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { getSupabase } from '@/lib/supabase';
+const { isManualCommercialFollowUp } = require('@/lib/commercial_consultation.js');
 import {
   CommercialConfigurationError,
   commercialDatabaseErrorMessage,
@@ -62,8 +63,10 @@ async function processMaintenance(request: Request) {
   const processed: any[] = [];
 
   for (const consultation of data || []) {
+    if (consultation.metadata?.request_kind === 'manual_follow_up') continue;
     const lead = await getLeadById(consultation.lead_id);
     if (!lead) continue;
+    if (isManualCommercialFollowUp(consultation, lead)) continue;
 
     const maxReminders = getMaxReminderCount();
     if ((consultation.reminder_count || 0) >= maxReminders) {

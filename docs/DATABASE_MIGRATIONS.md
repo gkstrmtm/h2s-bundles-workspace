@@ -167,3 +167,24 @@ Run the fake-transport protection tests without production credentials:
 ```powershell
 node --test backend\tests\commercial_consultation.test.cjs backend\tests\commercial_protection.test.cjs
 ```
+
+### Commercial contact and manual follow-up
+
+Email first requires a valid email; Call first requires a valid phone. Both
+submit for manual follow-up, without automated customer SMS/email or appointment
+creation. Text first requires a valid phone and an explicit boolean texting
+choice. All supplied contact details are validated, including optional details.
+Customer acknowledgement and approval paths enforce the same contact rules.
+Internal notifications still use server-owned recipients, independent of the
+customer's selected communication method.
+
+No schema migration is needed: existing `contact_preference` and consent in
+lead `attribution.communicationConsent` are reused. Explicit submission creates
+a request linked to that lead, with `metadata.request_kind`,
+`metadata.contact_preference`, and `metadata.submitted_at`. Manual requests
+remain pending review, have no automatic reminder time, and cannot be approved
+into appointments. A saved lead alone is a draft, not a submitted request.
+This increment includes the administrator-protected, read-only Commercial Queue
+endpoint, navigation, pane, widget, and styles needed to display contact details
+and the next manual action. Unrelated dashboard changes are not prerequisites.
+No email delivery system is introduced.

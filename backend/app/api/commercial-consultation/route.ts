@@ -23,6 +23,7 @@ const {
   generateConsultationReference,
   generateResponseToken,
   normalizeText,
+  validateCommercialContact,
 } = commercialUtils;
 
 export const dynamic = 'force-dynamic';
@@ -62,9 +63,16 @@ export async function POST(request: Request) {
     if (!lead) {
       return NextResponse.json({ ok: false, error: 'Commercial lead not found' }, { status: 404, headers: corsHeaders(request) });
     }
-    if (!lead.phone) {
-      return NextResponse.json({ ok: false, error: 'A mobile phone number is required before a consultation can be requested.' }, { status: 400, headers: corsHeaders(request) });
+    const contactError = validateCommercialContact(lead);
+    if (contactError) {
+      return NextResponse.json({ ok: false, error: contactError.message, field: contactError.field }, { status: 400, headers: corsHeaders(request) });
     }
+    const manualFollowUp = lead.contact_preference === 'email' || lead.contact_preference === 'call';
+    const submissionMetadata = {
+      request_kind: manualFollowUp ? 'manual_follow_up' : 'consultation',
+      contact_preference: lead.contact_preference || 'sms',
+      submitted_at: new Date().toISOString(),
+    };
 
     const selectedSlotStart = normalizeText(body.selectedSlotStart || body.selected_slot_start || '', 64);
     const selectedSlotEnd = normalizeText(body.selectedSlotEnd || body.selected_slot_end || '', 64);
@@ -75,7 +83,7 @@ export async function POST(request: Request) {
     const slotStart = selectedSlotStart || preferredSlots[0]?.startIso || '';
     const slotEnd = selectedSlotEnd || preferredSlots[0]?.endIso || '';
 
-    if (!slotStart) {
+    if (!slotStart && !manualFollowUp) {
       return NextResponse.json({ ok: false, error: 'At least one consultation slot is required.' }, { status: 400, headers: corsHeaders(request) });
     }
 
@@ -101,13 +109,20 @@ export async function POST(request: Request) {
       if (!requestId) {
         return NextResponse.json({ ok: false, error: 'requestId is required for reschedule mode.' }, { status: 400, headers: corsHeaders(request) });
       }
+      const { data: previous, error: previousError } = await sb
+        .from('commercial_consultation_requests').select('*')
+        .eq('request_id', requestId).eq('lead_id', lead.lead_id).maybeSingle();
+      if (previousError) throw new Error(commercialDatabaseErrorMessage(previousError));
+      if (!previous) {
+        return NextResponse.json({ ok: false, error: 'Consultation request not found' }, { status: 404, headers: corsHeaders(request) });
+      }
 
       const { data, error } = await sb
         .from('commercial_consultation_requests')
         .update({
           status: 'pending',
           preferred_slots: preferredSlots,
-          selected_slot_start: slotStart,
+          selected_slot_start: slotStart || null,
           selected_slot_end: slotEnd || null,
           assigned_technician_name: assignedTechnicianName,
           assigned_technician_phone: assignedTechnicianPhone,
@@ -116,7 +131,8 @@ export async function POST(request: Request) {
           response_at: null,
           reminder_count: 0,
           last_reminder_at: null,
-          next_reminder_at: nextReminderIso(),
+          next_reminder_at: manualFollowUp ? null : nextReminderIso(),
+          metadata: { ...(previous.metadata || {}), ...submissionMetadata },
           updated_at: new Date().toISOString(),
         })
         .eq('request_id', requestId)
@@ -136,12 +152,13 @@ export async function POST(request: Request) {
           response_token: generateResponseToken(),
           status: 'pending',
           preferred_slots: preferredSlots,
-          selected_slot_start: slotStart,
+          selected_slot_start: slotStart || null,
           selected_slot_end: slotEnd || null,
           assigned_technician_name: assignedTechnicianName,
           assigned_technician_phone: assignedTechnicianPhone,
-          next_reminder_at: nextReminderIso(),
+          next_reminder_at: manualFollowUp ? null : nextReminderIso(),
           metadata: {
+            ...submissionMetadata,
             reminder_delay_minutes: getReminderDelayMinutes(),
           },
           created_at: new Date().toISOString(),
@@ -183,7 +200,7 @@ export async function POST(request: Request) {
         notifications: {
           technician: technicianNotice.results,
           customer: customerAck,
-          manualReviewRequired: !anyTechSent,
+          manualReviewRequired: manualFollowUp || !anyTechSent,
         },
       },
       { status: mode === 'reschedule' ? 200 : 201, headers: corsHeaders(request) }

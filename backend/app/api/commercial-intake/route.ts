@@ -4,9 +4,11 @@ import {
   CommercialConfigurationError,
   commercialDatabaseErrorMessage,
   corsHeaders,
+  findActiveConsultationForLead,
   getLeadByToken,
   getPublicBaseUrl,
   serializeLead,
+  serializeConsultation,
 } from '@/lib/commercial_consultation_runtime';
 
 const commercialUtils = require('@/lib/commercial_consultation.js') as any;
@@ -18,6 +20,7 @@ const {
   generateResponseToken,
   normalizeCommercialLeadInput,
   normalizeText,
+  validateCommercialContact,
 } = commercialUtils;
 
 export const dynamic = 'force-dynamic';
@@ -42,12 +45,14 @@ export async function GET(request: Request) {
     const token = normalizeText(url.searchParams.get('token') || '', 120);
     const config = publicConfig();
     const lead = token ? await getLeadByToken(token) : null;
+    const submission = lead ? await findActiveConsultationForLead(lead.lead_id) : null;
 
     return NextResponse.json(
       {
         ok: true,
         config,
         lead: serializeLead(lead),
+        submission: serializeConsultation(submission),
       },
       { headers: corsHeaders(request) }
     );
@@ -62,6 +67,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
+    const contactError = validateCommercialContact(body);
+    if (contactError) {
+      return NextResponse.json(
+        { ok: false, error: contactError.message, field: contactError.field },
+        { status: 400, headers: corsHeaders(request) }
+      );
+    }
     const normalized = normalizeCommercialLeadInput(body);
     if (!normalized.isContactable) {
       return NextResponse.json(

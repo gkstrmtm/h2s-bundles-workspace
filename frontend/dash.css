@@ -10080,6 +10080,450 @@
             flex-wrap: wrap;
         }
 
+        .commercial-queue-shell {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .commercial-queue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .commercial-queue-eyebrow {
+            color: #526277;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .commercial-queue-title {
+            color: var(--cobalt);
+            font-size: 30px;
+            line-height: 1.08;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            margin: 0;
+        }
+
+        .commercial-queue-copy {
+            margin: 8px 0 0;
+            max-width: 760px;
+            color: #526277;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .commercial-queue-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .commercial-queue-updated {
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .commercial-queue-summary {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .commercial-queue-metric {
+            min-width: 0;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 16px;
+            background: #ffffff;
+            padding: 14px 16px;
+            display: grid;
+            gap: 6px;
+        }
+
+        .commercial-queue-metric--placeholder {
+            min-height: 84px;
+            place-items: center;
+        }
+
+        .commercial-queue-metric__label {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .commercial-queue-metric__value {
+            color: var(--cobalt);
+            font-size: 28px;
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+        }
+
+        .commercial-queue-metric__hint {
+            color: #526277;
+            font-size: 12px;
+            line-height: 1.45;
+            font-weight: 700;
+        }
+
+        .commercial-queue-layout {
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+
+        .commercial-queue-panel {
+            min-width: 0;
+            border: 1px solid rgba(148, 163, 184, 0.24);
+            border-radius: 18px;
+            background: #ffffff;
+            overflow: hidden;
+        }
+
+        .commercial-queue-panel__head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding: 16px 18px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+            background: #f8fafc;
+        }
+
+        .commercial-queue-panel__title {
+            color: var(--cobalt);
+            font-size: 16px;
+            line-height: 1.2;
+            font-weight: 800;
+        }
+
+        .commercial-queue-panel__subtitle {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.45;
+            font-weight: 700;
+        }
+
+        .commercial-queue-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .commercial-queue-search {
+            width: min(280px, 100%);
+            min-width: 220px;
+        }
+
+        .commercial-queue-filter {
+            min-width: 190px;
+        }
+
+        .commercial-queue-list {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100vh - 280px);
+            overflow: auto;
+        }
+
+        .commercial-queue-row {
+            width: 100%;
+            border: 0;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+            background: #ffffff;
+            padding: 16px 18px;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.16s ease, border-color 0.16s ease;
+        }
+
+        .commercial-queue-row:hover,
+        .commercial-queue-row:focus-visible {
+            background: rgba(37, 99, 235, 0.04);
+            outline: none;
+        }
+
+        .commercial-queue-row.is-active {
+            background: rgba(37, 99, 235, 0.06);
+            box-shadow: inset 3px 0 0 var(--azure);
+        }
+
+        .commercial-queue-row__top,
+        .commercial-queue-row__meta,
+        .commercial-queue-row__bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .commercial-queue-row__meta,
+        .commercial-queue-row__bottom {
+            margin-top: 10px;
+        }
+
+        .commercial-queue-row__company {
+            color: var(--cobalt);
+            font-size: 14px;
+            line-height: 1.35;
+            font-weight: 800;
+        }
+
+        .commercial-queue-row__contact,
+        .commercial-queue-row__detail,
+        .commercial-queue-row__timestamp {
+            color: #526277;
+            font-size: 12px;
+            line-height: 1.45;
+            font-weight: 700;
+        }
+
+        .commercial-queue-pillset {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .commercial-queue-pill {
+            display: inline-flex;
+            align-items: center;
+            min-height: 24px;
+            padding: 0 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+            background: #f8fafc;
+            color: #334155;
+            font-size: 11px;
+            line-height: 1;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .commercial-queue-pill--pending,
+        .commercial-queue-pill--reschedule_requested,
+        .commercial-queue-pill--attention {
+            background: rgba(245, 158, 11, 0.12);
+            border-color: rgba(245, 158, 11, 0.26);
+            color: #92400e;
+        }
+
+        .commercial-queue-pill--approved,
+        .commercial-queue-pill--customer_confirmed,
+        .commercial-queue-pill--qualified {
+            background: rgba(22, 163, 74, 0.12);
+            border-color: rgba(22, 163, 74, 0.24);
+            color: #166534;
+        }
+
+        .commercial-queue-pill--escalated,
+        .commercial-queue-pill--urgent,
+        .commercial-queue-pill--high {
+            background: rgba(220, 38, 38, 0.1);
+            border-color: rgba(220, 38, 38, 0.22);
+            color: #991b1b;
+        }
+
+        .commercial-queue-pill--empty,
+        .commercial-queue-pill--none,
+        .commercial-queue-pill--no_consultation,
+        .commercial-queue-pill--normal {
+            background: #f8fafc;
+            border-color: rgba(148, 163, 184, 0.24);
+            color: #475569;
+        }
+
+        .commercial-queue-detail {
+            min-height: 620px;
+            padding: 20px;
+            background: #ffffff;
+        }
+
+        .commercial-queue-detail__header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 14px;
+            flex-wrap: wrap;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+        }
+
+        .commercial-queue-detail__eyebrow {
+            color: #526277;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .commercial-queue-detail__title {
+            color: var(--cobalt);
+            font-size: 24px;
+            line-height: 1.1;
+            font-weight: 800;
+            letter-spacing: -0.04em;
+            margin: 0;
+        }
+
+        .commercial-queue-detail__subtitle,
+        .commercial-queue-detail__meta {
+            margin-top: 8px;
+            color: #526277;
+            font-size: 13px;
+            line-height: 1.5;
+            font-weight: 700;
+        }
+
+        .commercial-queue-detail__grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 18px;
+        }
+
+        .commercial-queue-detail__card {
+            min-width: 0;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 14px;
+            background: #f8fafc;
+            padding: 14px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .commercial-queue-detail__label {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .commercial-queue-detail__value {
+            color: var(--cobalt);
+            font-size: 15px;
+            line-height: 1.45;
+            font-weight: 700;
+            word-break: break-word;
+        }
+
+        .commercial-queue-detail__stack {
+            display: grid;
+            gap: 16px;
+            margin-top: 18px;
+        }
+
+        .commercial-queue-detail__section {
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 14px;
+            background: #ffffff;
+            padding: 16px;
+        }
+
+        .commercial-queue-detail__section-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .commercial-queue-detail__section-title {
+            color: var(--cobalt);
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .commercial-queue-detail__section-note,
+        .commercial-queue-detail__section-copy {
+            color: #526277;
+            font-size: 13px;
+            line-height: 1.55;
+            font-weight: 700;
+        }
+
+        .commercial-queue-detail__tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .commercial-queue-detail__mono {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            letter-spacing: -0.01em;
+        }
+
+        .commercial-queue-empty {
+            padding: 24px;
+        }
+
+        @media (max-width: 1280px) {
+            .commercial-queue-summary {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+            }
+
+            .commercial-queue-detail__grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 980px) {
+            .commercial-queue-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .commercial-queue-list {
+                max-height: none;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .commercial-queue-shell {
+                padding: 16px;
+            }
+
+            .commercial-queue-summary,
+            .commercial-queue-detail__grid {
+                grid-template-columns: 1fr;
+            }
+
+            .commercial-queue-search,
+            .commercial-queue-filter {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .commercial-queue-toolbar {
+                width: 100%;
+            }
+        }
+
         .training-admin-file-wrap {
             margin-top: 10px;
             padding: 12px 14px;

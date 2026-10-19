@@ -1540,6 +1540,7 @@
             workspace: { label: 'My Summary', areaTitle: 'My Summary', paneId: 'workspace-pane', sidebarGroupId: 'workflow' },
             deliverables: { label: 'Deliverables', areaTitle: 'Deliverables', paneId: 'deliverables-pane', sidebarGroupId: 'salestools' },
             offerbuilder: { label: 'Offer Builder', areaTitle: 'Offer Builder', paneId: 'offerbuilder-pane', sidebarGroupId: 'salestools' },
+            commercialqueue: { label: 'Commercial Queue', areaTitle: 'Commercial Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             admin: { label: 'Admin Dashboard', areaTitle: 'Admin Dashboard', paneId: 'admin-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             proofpacks: { label: 'Website Media', areaTitle: 'Website Media', paneId: 'proofpacks-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             owneruploads: { label: 'Owner Uploads', areaTitle: 'Owner Uploads', paneId: 'owneruploads-pane', sidebarGroupId: 'salestools' },
@@ -47896,6 +47897,401 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
         try { window.ownerUploadsUI = ownerUploadsUI; } catch (_) {}
 
 
+        const commercialQueueUI = {
+            state: {
+                loading: false,
+                items: [],
+                summary: null,
+                selectedLeadId: '',
+                query: '',
+                filter: 'attention',
+                generatedAt: '',
+            },
+
+            async refresh(options = {}) {
+                const opts = options && typeof options === 'object' ? options : {};
+                const pane = document.getElementById('commercialqueue-pane');
+                if (!pane) return;
+
+                const firstLoad = !pane.dataset.initialized;
+                if (!opts.silent || firstLoad) {
+                    this.state.loading = true;
+                    this.renderLoading();
+                }
+
+                try {
+                    const response = await fetch(`${API_URL}?action=commercialQueue&limit=150&_ts=${Date.now()}`, {
+                        method: 'GET',
+                        cache: 'no-store'
+                    });
+                    const payload = await response.json().catch(() => null);
+                    if (!response.ok || !payload || !payload.ok) {
+                        throw new Error((payload && payload.error) || 'Could not load the commercial queue.');
+                    }
+
+                    const next = payload.commercialQueue || {};
+                    this.state.items = Array.isArray(next.queue) ? next.queue.slice() : [];
+                    this.state.summary = next.summary || null;
+                    this.state.generatedAt = String(next.generatedAt || '').trim();
+
+                    const currentSelected = String(this.state.selectedLeadId || '').trim();
+                    if (!currentSelected || !this.state.items.some((item) => String(item && item.leadId || '') === currentSelected)) {
+                        this.state.selectedLeadId = this.state.items[0] ? String(this.state.items[0].leadId || '') : '';
+                    }
+
+                    pane.dataset.initialized = 'true';
+                    this.state.loading = false;
+                    this.render();
+                } catch (error) {
+                    console.error('Commercial queue refresh failed:', error);
+                    this.state.loading = false;
+                    this.renderError(error && error.message ? error.message : 'Could not load the commercial queue.');
+                    if (!opts.silent) {
+                        showToast(error && error.message ? error.message : 'Could not load the commercial queue.', 'error');
+                    }
+                }
+            },
+
+            onSearchInput() {
+                const input = document.getElementById('commercialQueueSearch');
+                this.state.query = String(input && input.value || '').trim().toLowerCase();
+                this.render();
+            },
+
+            onFilterChange() {
+                const select = document.getElementById('commercialQueueFilter');
+                this.state.filter = String(select && select.value || 'attention').trim().toLowerCase() || 'attention';
+                this.render();
+            },
+
+            selectLead(leadId) {
+                this.state.selectedLeadId = String(leadId || '').trim();
+                this.renderList();
+                this.renderDetail();
+            },
+
+            getFilteredItems() {
+                const filter = String(this.state.filter || 'attention').trim().toLowerCase();
+                const query = String(this.state.query || '').trim().toLowerCase();
+
+                const items = Array.isArray(this.state.items) ? this.state.items.slice() : [];
+                return items.filter((item) => {
+                    if (!item || typeof item !== 'object') return false;
+                    const status = String(item.consultation && item.consultation.status || '').trim().toLowerCase();
+                    const priority = String(item.priorityTier || '').trim().toLowerCase();
+                    const searchable = [
+                        item.companyName,
+                        item.fullName,
+                        item.phone,
+                        item.email,
+                        item.projectCity,
+                        item.projectState,
+                        item.scopeSummary,
+                        Array.isArray(item.serviceNeeds) ? item.serviceNeeds.join(' ') : ''
+                    ].join(' ').toLowerCase();
+
+                    if (query && !searchable.includes(query)) return false;
+
+                    if (filter === 'pending') return status === 'pending' || status === 'reschedule_requested';
+                    if (filter === 'approved') return status === 'approved' || status === 'customer_confirmed';
+                    if (filter === 'escalated') return status === 'escalated';
+                    if (filter === 'no_consultation') return !status;
+                    if (filter === 'attention') {
+                        return !status || status === 'pending' || status === 'reschedule_requested' || status === 'escalated' || priority === 'high' || priority === 'urgent';
+                    }
+
+                    return true;
+                });
+            },
+
+            getSelectedItem(filteredItems) {
+                const items = Array.isArray(filteredItems) ? filteredItems : this.getFilteredItems();
+                const selectedLeadId = String(this.state.selectedLeadId || '').trim();
+                const selected = items.find((item) => String(item && item.leadId || '') === selectedLeadId);
+                if (selected) return selected;
+                if (items[0]) {
+                    this.state.selectedLeadId = String(items[0].leadId || '').trim();
+                    return items[0];
+                }
+                return null;
+            },
+
+            renderLoading() {
+                const summaryEl = document.getElementById('commercialQueueSummary');
+                const listEl = document.getElementById('commercialQueueList');
+                const detailEl = document.getElementById('commercialQueueDetail');
+                const metaEl = document.getElementById('commercialQueueListMeta');
+                if (summaryEl) {
+                    summaryEl.innerHTML = Array.from({ length: 6 }).map(() => `
+                        <div class="commercial-queue-metric commercial-queue-metric--placeholder">${uiRenderSkeletonStack({ lines: 3, compact: true })}</div>
+                    `).join('');
+                }
+                if (listEl) listEl.innerHTML = uiRenderSkeletonStack({ lines: 10 });
+                if (detailEl) detailEl.innerHTML = uiRenderSkeletonStack({ lines: 14 });
+                if (metaEl) metaEl.textContent = 'Loading current intake activity...';
+            },
+
+            renderError(message) {
+                const summaryEl = document.getElementById('commercialQueueSummary');
+                const listEl = document.getElementById('commercialQueueList');
+                const detailEl = document.getElementById('commercialQueueDetail');
+                const updatedEl = document.getElementById('commercialQueueUpdatedAt');
+                const metaEl = document.getElementById('commercialQueueListMeta');
+                if (summaryEl) {
+                    summaryEl.innerHTML = `
+                        <div class="commercial-queue-metric" style="grid-column: 1 / -1;">
+                            <div class="commercial-queue-metric__label">Commercial queue</div>
+                            <div class="commercial-queue-metric__hint">${escapeHtml(String(message || 'Could not load the commercial queue.'))}</div>
+                        </div>
+                    `;
+                }
+                if (listEl) {
+                    listEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'error', title: 'Queue unavailable', message: String(message || 'Could not load the commercial queue.') })}</div>`;
+                }
+                if (detailEl) {
+                    detailEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No lead selected', message: 'Once the queue loads, the currently selected commercial lead will appear here.' })}</div>`;
+                }
+                if (updatedEl) updatedEl.textContent = 'Load failed';
+                if (metaEl) metaEl.textContent = 'Commercial intake data is currently unavailable.';
+            },
+
+            render() {
+                const filteredItems = this.getFilteredItems();
+                this.renderSummary(filteredItems);
+                this.renderList(filteredItems);
+                this.renderDetail(filteredItems);
+                this.renderUpdatedAt();
+            },
+
+            renderSummary(filteredItems) {
+                const summaryEl = document.getElementById('commercialQueueSummary');
+                if (!summaryEl) return;
+                const summary = this.state.summary || {};
+                const filteredCount = Array.isArray(filteredItems) ? filteredItems.length : 0;
+                const metrics = [
+                    { label: 'Visible leads', value: filteredCount, hint: `${Number(summary.totalLeads || 0)} total in this view` },
+                    { label: 'Pending consults', value: Number(summary.pendingConsultations || 0), hint: 'Awaiting technician or operator action' },
+                    { label: 'Escalated', value: Number(summary.escalatedConsultations || 0), hint: 'Needs management follow-up' },
+                    { label: 'Approved', value: Number(summary.approvedConsultations || 0), hint: 'Booked or customer-confirmed slots' },
+                    { label: 'High priority', value: Number(summary.highPriorityLeads || 0), hint: 'Scored high or urgent from intake' },
+                    { label: 'New last 24h', value: Number(summary.newLastDay || 0), hint: 'Fresh commercial intake volume' },
+                ];
+
+                summaryEl.innerHTML = metrics.map((metric) => `
+                    <article class="commercial-queue-metric">
+                        <div class="commercial-queue-metric__label">${escapeHtml(metric.label)}</div>
+                        <div class="commercial-queue-metric__value">${escapeHtml(String(metric.value))}</div>
+                        <div class="commercial-queue-metric__hint">${escapeHtml(metric.hint)}</div>
+                    </article>
+                `).join('');
+            },
+
+            renderList(filteredItems) {
+                const listEl = document.getElementById('commercialQueueList');
+                const metaEl = document.getElementById('commercialQueueListMeta');
+                if (!listEl) return;
+
+                const items = Array.isArray(filteredItems) ? filteredItems : this.getFilteredItems();
+                if (metaEl) {
+                    metaEl.textContent = items.length
+                        ? `${items.length} lead${items.length === 1 ? '' : 's'} match the current filter.`
+                        : 'No leads match the current search and filter.';
+                }
+
+                if (!items.length) {
+                    listEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No matching leads', message: 'Try a broader filter or clear the search to bring leads back into the queue.' })}</div>`;
+                    return;
+                }
+
+                const selectedLeadId = String(this.state.selectedLeadId || '').trim();
+                listEl.innerHTML = items.map((item) => {
+                    const leadId = String(item.leadId || '').trim();
+                    const isActive = leadId && leadId === selectedLeadId;
+                    const consultationStatus = String(item.consultation && item.consultation.status || '').trim().toLowerCase() || 'no_consultation';
+                    const detailBits = [
+                        item.projectCity,
+                        item.projectState,
+                        item.serviceNeeds && item.serviceNeeds[0],
+                    ].filter(Boolean);
+                    const activityText = this.formatRelativeTime(item.lastActivityAt);
+
+                    return `
+                        <button type="button" class="commercial-queue-row${isActive ? ' is-active' : ''}" onclick="window.commercialQueueUI && window.commercialQueueUI.selectLead('${escapeHtml(leadId)}')">
+                            <div class="commercial-queue-row__top">
+                                <div>
+                                    <div class="commercial-queue-row__company">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</div>
+                                    <div class="commercial-queue-row__contact">${escapeHtml(item.fullName || item.email || item.phone || 'No direct contact captured')}</div>
+                                </div>
+                                <div class="commercial-queue-pillset">
+                                    ${this.renderPill(consultationStatus, item.followUp && item.followUp.statusLabel || this.labelForStatus(consultationStatus))}
+                                    ${this.renderPill(String(item.priorityTier || 'normal').toLowerCase(), this.labelForStatus(item.priorityTier || 'normal'))}
+                                </div>
+                            </div>
+                            <div class="commercial-queue-row__meta">
+                                <div class="commercial-queue-row__detail">${escapeHtml(detailBits.join(' • ') || (item.scopeSummary || 'Scope summary pending'))}</div>
+                            </div>
+                            <div class="commercial-queue-row__bottom">
+                                <div class="commercial-queue-row__detail">${escapeHtml(item.consultation && item.consultation.referenceCode ? item.consultation.referenceCode : (item.phone || item.email || 'No contact route'))}</div>
+                                <div class="commercial-queue-row__timestamp">${escapeHtml(activityText)}</div>
+                            </div>
+                        </button>
+                    `;
+                }).join('');
+            },
+
+            renderDetail(filteredItems) {
+                const detailEl = document.getElementById('commercialQueueDetail');
+                if (!detailEl) return;
+                const item = this.getSelectedItem(filteredItems);
+                if (!item) {
+                    detailEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No lead selected', message: 'Choose a lead from the queue to inspect its intake and consultation details.' })}</div>`;
+                    return;
+                }
+
+                const consultationStatus = String(item.consultation && item.consultation.status || '').trim().toLowerCase() || 'no_consultation';
+                const projectLocation = [item.projectAddress, [item.projectCity, item.projectState].filter(Boolean).join(', '), item.projectPostalCode].filter(Boolean).join(', ');
+                const requestedMethod = item.followUp && item.followUp.requestedContactMethod || item.contactPreference || 'sms';
+                const primaryContact = (requestedMethod === 'email' ? item.email : item.phone) || 'Contact details need review';
+                const methodLabel = requestedMethod === 'email' ? 'Email first (manual)' : requestedMethod === 'call' ? 'Call first (manual)' : 'Text first (explicit permission required)';
+                const consultationCopy = item.consultation
+                    ? (item.consultation.slotLabel || 'No preferred window selected.')
+                    : 'No consultation request has been created for this lead yet.';
+                const windowReviewNote = item.followUp && item.followUp.submitted && item.followUp.kind === 'manual_follow_up'
+                    ? (item.consultation && item.consultation.selectedSlotStart
+                        ? 'Preferred window pending manual review. No appointment is confirmed.'
+                        : 'No appointment is confirmed. Discuss timing during manual follow-up.')
+                    : '';
+
+                detailEl.innerHTML = `
+                    <div class="commercial-queue-detail__header">
+                        <div>
+                            <div class="commercial-queue-detail__eyebrow">Commercial lead</div>
+                            <h3 class="commercial-queue-detail__title">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</h3>
+                            <div class="commercial-queue-detail__subtitle">${escapeHtml(item.scopeSummary || 'Scope summary pending from intake.')}</div>
+                            <div class="commercial-queue-detail__meta">Last activity ${escapeHtml(this.formatRelativeTime(item.lastActivityAt))}</div>
+                        </div>
+                        <div class="commercial-queue-pillset">
+                            ${this.renderPill(consultationStatus, item.followUp && item.followUp.statusLabel || this.labelForStatus(consultationStatus))}
+                            ${this.renderPill(String(item.priorityTier || 'normal').toLowerCase(), this.labelForStatus(item.priorityTier || 'normal'))}
+                            ${this.renderPill(String(item.completenessBucket || 'empty').toLowerCase(), this.labelForStatus(item.completenessBucket || 'empty'))}
+                        </div>
+                    </div>
+
+                    <div class="commercial-queue-detail__grid">
+                        ${this.renderDetailCard('Primary contact', primaryContact, item.fullName ? `Contact: ${item.fullName}` : '')}
+                        ${this.renderDetailCard('Requested contact method', methodLabel, [item.email, item.phone].filter(Boolean).join(' / '))}
+                        ${this.renderDetailCard('Next follow-up action', item.followUp && item.followUp.nextAction || 'Review the saved contact preference before contacting the customer.', item.followUp && item.followUp.statusLabel || '')}
+                        ${this.renderDetailCard('Project location', projectLocation || 'Location still missing', item.businessType || '')}
+                        ${this.renderDetailCard('Timeline', item.timeline || 'Not provided', item.budgetBand ? `Budget: ${item.budgetBand}` : '')}
+                        ${this.renderDetailCard('Sites / media', item.siteCount ? `${item.siteCount} site${item.siteCount === 1 ? '' : 's'}` : 'Site count not provided', `${Number(item.projectPhotoCount || 0)} file${Number(item.projectPhotoCount || 0) === 1 ? '' : 's'} uploaded`)}
+                        ${this.renderDetailCard('Completeness score', `${Math.round(Number(item.completenessScore || 0))}%`, item.publicToken ? `Lead token: ${item.publicToken}` : '')}
+                    </div>
+
+                    <div class="commercial-queue-detail__stack">
+                        <section class="commercial-queue-detail__section">
+                            <div class="commercial-queue-detail__section-head">
+                                <div class="commercial-queue-detail__section-title">Service mix</div>
+                                <div class="commercial-queue-detail__section-note">${escapeHtml(item.serviceNeeds && item.serviceNeeds.length ? `${item.serviceNeeds.length} requested` : 'No service selections saved')}</div>
+                            </div>
+                            <div class="commercial-queue-detail__tags">
+                                ${(Array.isArray(item.serviceNeeds) && item.serviceNeeds.length)
+                                    ? item.serviceNeeds.map((service) => this.renderPill('service', service)).join('')
+                                    : this.renderPill('none', 'No service tags')}
+                            </div>
+                        </section>
+
+                        <section class="commercial-queue-detail__section">
+                            <div class="commercial-queue-detail__section-head">
+                                <div class="commercial-queue-detail__section-title">Follow-up request and preferred window</div>
+                                <div class="commercial-queue-detail__section-note">${escapeHtml(item.consultation && item.consultation.referenceCode ? item.consultation.referenceCode : 'No request ID yet')}</div>
+                            </div>
+                            <div class="commercial-queue-detail__section-copy">${escapeHtml(consultationCopy)}</div>
+                            <div class="commercial-queue-detail__section-note">${escapeHtml(windowReviewNote)}</div>
+                            <div class="commercial-queue-detail__grid" style="margin-top: 14px;">
+                                ${this.renderDetailCard('Technician', item.consultation && item.consultation.assignedTechnicianName ? item.consultation.assignedTechnicianName : 'Not assigned yet', item.consultation && item.consultation.assignedTechnicianPhone ? item.consultation.assignedTechnicianPhone : '')}
+                                ${this.renderDetailCard('Reminder state', item.consultation ? `${Number(item.consultation.reminderCount || 0)} sent` : 'No reminders yet', item.consultation && item.consultation.nextReminderAt ? `Next: ${this.formatDateTime(item.consultation.nextReminderAt)}` : '')}
+                                ${this.renderDetailCard('Appointment link', item.consultation && item.consultation.relatedOrderId ? String(item.consultation.relatedOrderId) : 'No order linked yet', item.consultation && item.consultation.customerConfirmationSentAt ? `Customer notified ${this.formatRelativeTime(item.consultation.customerConfirmationSentAt)}` : '')}
+                            </div>
+                        </section>
+
+                        <section class="commercial-queue-detail__section">
+                            <div class="commercial-queue-detail__section-head">
+                                <div class="commercial-queue-detail__section-title">Notes</div>
+                                <div class="commercial-queue-detail__section-note">Captured from the intake</div>
+                            </div>
+                            <div class="commercial-queue-detail__section-copy">${escapeHtml(item.scopeSummary || item.notes || 'No additional project notes were provided yet.')}</div>
+                        </section>
+                    </div>
+                `;
+            },
+
+            renderDetailCard(label, value, hint) {
+                const primary = String(value || '').trim() || 'Not provided';
+                const secondary = String(hint || '').trim();
+                return `
+                    <article class="commercial-queue-detail__card">
+                        <div class="commercial-queue-detail__label">${escapeHtml(label)}</div>
+                        <div class="commercial-queue-detail__value">${escapeHtml(primary)}</div>
+                        ${secondary ? `<div class="commercial-queue-detail__section-note">${escapeHtml(secondary)}</div>` : ''}
+                    </article>
+                `;
+            },
+
+            renderPill(kind, label) {
+                const tone = String(kind || 'none').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_') || 'none';
+                return `<span class="commercial-queue-pill commercial-queue-pill--${escapeHtml(tone)}">${escapeHtml(String(label || 'Unknown'))}</span>`;
+            },
+
+            renderUpdatedAt() {
+                const updatedEl = document.getElementById('commercialQueueUpdatedAt');
+                if (!updatedEl) return;
+                if (!this.state.generatedAt) {
+                    updatedEl.textContent = 'Waiting for first load';
+                    return;
+                }
+                updatedEl.textContent = `Updated ${this.formatRelativeTime(this.state.generatedAt)}`;
+            },
+
+            labelForStatus(value) {
+                const raw = String(value || '').trim();
+                if (!raw) return 'No consultation';
+                return raw.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+            },
+
+            formatDateTime(value) {
+                const raw = String(value || '').trim();
+                if (!raw) return '';
+                const date = new Date(raw);
+                if (Number.isNaN(date.getTime())) return raw;
+                return new Intl.DateTimeFormat('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit'
+                }).format(date);
+            },
+
+            formatRelativeTime(value) {
+                const raw = String(value || '').trim();
+                if (!raw) return 'just now';
+                const date = new Date(raw);
+                const time = date.getTime();
+                if (Number.isNaN(time)) return raw;
+                const diffMs = Date.now() - time;
+                const diffMinutes = Math.round(diffMs / 60000);
+                if (diffMinutes < 1) return 'just now';
+                if (diffMinutes < 60) return `${diffMinutes}m ago`;
+                const diffHours = Math.round(diffMinutes / 60);
+                if (diffHours < 24) return `${diffHours}h ago`;
+                const diffDays = Math.round(diffHours / 24);
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return this.formatDateTime(value);
+            }
+        };
+
+        try { window.commercialQueueUI = commercialQueueUI; } catch (_) {}
+
+
         // Initialize features when tabs become active
         function initFeatureIfNeeded(tabName) {
             if (tabName === 'admin') {
@@ -47922,6 +48318,11 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (pane && pane.classList.contains('active') && !pane.dataset.initialized) {
                     proofPacks.init();
                     pane.dataset.initialized = 'true';
+                }
+            } else if (tabName === 'commercialqueue') {
+                const pane = document.getElementById('commercialqueue-pane');
+                if (pane && pane.classList.contains('active')) {
+                    commercialQueueUI.refresh({ silent: pane.dataset.initialized === 'true' });
                 }
             } else if (tabName === 'owneruploads') {
                 const pane = document.getElementById('owneruploads-pane');

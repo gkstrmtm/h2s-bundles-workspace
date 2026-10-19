@@ -2,7 +2,7 @@
   const API_BASE = (function () {
     const host = String(location.hostname || '').toLowerCase();
     if (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1') {
-      return 'https://h2s-backend.vercel.app/api';
+      return '/api';
     }
     return '/api';
   })();
@@ -17,6 +17,8 @@
   const DRAFT_KEY = 'h2s_commercial_draft';
   const DEFAULT_PHONE = '864-528-1475';
   const MEDIA_REQUEST_TIMEOUT_MS = 4500;
+
+  const SMS_CONSENT_COPY = 'I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.';
 
   const WIZARD_STEPS = [
     { number: 1, title: 'Project focus', message: 'Choose the project type and site details.' },
@@ -37,6 +39,7 @@
     currentStep: 1,
     maxStepVisited: 1,
     heroMediaApplied: false,
+    submission: null,
   };
 
   let commercialCustomSelectIdCounter = 0;
@@ -114,6 +117,7 @@
     node.textContent = message;
     if (tone) node.setAttribute('data-tone', tone);
     else node.removeAttribute('data-tone');
+    node.setAttribute('role', tone === 'error' ? 'alert' : 'status');
   }
 
   function setSaveState(message, tone, note) {
@@ -144,6 +148,100 @@
     const digits = normalizePhoneDigits(number);
     const body = encodeURIComponent(message || 'Hi, I need help with a commercial Home2Smart project.');
     return `sms:${digits}?body=${body}`;
+  }
+
+  function hasMessagingConsent(payload) {
+    if (!payload || typeof payload !== 'object') return false;
+    if (payload.smsOptIn != null) return payload.smsOptIn === true;
+    if (payload.smsConsent != null) return payload.smsConsent === true;
+    const attribution = payload.attribution && typeof payload.attribution === 'object' ? payload.attribution : {};
+    if (attribution.smsOptIn != null) return attribution.smsOptIn === true;
+    const communicationConsent = attribution.communicationConsent && typeof attribution.communicationConsent === 'object'
+      ? attribution.communicationConsent
+      : {};
+    return communicationConsent.smsOptIn === true;
+  }
+
+  function requiresMessagingConsent(payload) {
+    return payload && payload.contactPreference === 'sms';
+  }
+
+  function validateContact(payload) {
+    const method = payload.contactPreference;
+    const phone = String(payload.phone || '').trim();
+    const email = String(payload.email || '').trim();
+    const digits = normalizePhoneDigits(phone);
+    if (['sms', 'call', 'email'].indexOf(method) < 0) return { field: 'contactPreference', message: 'Choose Text first, Call first, or Email first.' };
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { field: 'email', message: 'Enter a valid email address.' };
+    if (phone && (!/^[+\d\s().-]+$/.test(phone) || digits.length < 10 || digits.length > 15)) return { field: 'phone', message: 'Enter a valid phone number, including the area code.' };
+    if (method === 'email' && !email) return { field: 'email', message: 'Email first requires a valid email address. A phone number is optional.' };
+    if (method !== 'email' && !phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
+    if (requiresMessagingConsent(payload) && !hasMessagingConsent(payload)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first or Email first.' };
+    return null;
+  }
+
+  function showContactError(error, focus) {
+    if (focus && state.currentStep !== 2) showStep(2);
+    setStatus(error.message, 'error');
+    const field = byId(error.field);
+    if (field) {
+      field.setAttribute('aria-invalid', 'true');
+      field.setAttribute('aria-describedby', 'formStatus');
+      if (focus) field.focus();
+    }
+  }
+
+  function getFollowUpCopy() {
+    const preference = String(byId('contactPreference') ? byId('contactPreference').value : 'sms').toLowerCase();
+    const manual = preference === 'email' || preference === 'call';
+    const channel = preference === 'email' ? 'email' : 'phone';
+    const manualCopy = `Your request is submitted for manual follow-up by ${channel}. No automated customer texts or emails are sent for this request. Any preferred window is pending review; no appointment is confirmed.`;
+    return {
+      preference,
+      cta: manual ? 'Request manual follow-up' : 'Submit estimate request',
+      helper: manual
+        ? `Submit for manual follow-up by ${channel}. A preferred window is optional and pending review, not a confirmed consultation.`
+        : 'Submit your requested window for technician review. Project texts require your explicit texting choice. No appointment is confirmed by this submission.',
+      sending: 'Submitting follow-up request...',
+      successTitle: 'Follow-up request submitted.',
+      successCopy: manual ? manualCopy : 'Your request is submitted for technician review. The requested window is not a confirmed appointment.',
+      manualReviewCopy: manual ? manualCopy : 'Your request is submitted for manual review. No appointment is confirmed.',
+      status: manual ? `Follow-up request submitted for manual ${channel} review.` : 'Request submitted. Requested window pending review.'
+    };
+  }
+
+  function syncFollowUpCopy() {
+    const copy = getFollowUpCopy();
+    const submitButton = byId('requestConsultationBtn');
+    const submitCopy = byId('submitCopy');
+    if (submitButton) {
+      submitButton.textContent = state.submission ? 'Follow-up request submitted' : copy.cta;
+      submitButton.disabled = !!state.submission;
+    }
+    if (submitCopy) submitCopy.textContent = copy.helper;
+    const texting = copy.preference === 'sms';
+    if (byId('smsConsentField')) byId('smsConsentField').classList.toggle('hidden', !texting);
+    if (byId('smsConsent')) byId('smsConsent').disabled = !texting;
+    setText('contactMethodHint', texting
+      ? 'Text first requires a valid phone number and your explicit agreement below. You can choose manual call or email follow-up instead.'
+      : 'Call and email follow-up are manual. We do not send automated customer texts for these choices.');
+    setText('phoneLabel', copy.preference === 'email' ? 'Phone (optional)' : 'Phone (required)');
+    setText('emailLabel', copy.preference === 'email' ? 'Email (required)' : 'Email (optional)');
+    return copy;
+  }
+
+  function renderSubmission(consultation, manualReviewRequired) {
+    if (!consultation) return;
+    state.submission = consultation;
+    const copy = syncFollowUpCopy();
+    const manual = consultation.metadata && consultation.metadata.request_kind === 'manual_follow_up';
+    const successPanel = byId('consultationSuccessPanel');
+    if (successPanel) successPanel.classList.remove('hidden');
+    setText('successReference', consultation.referenceCode || '--');
+    setText('successTitle', 'Follow-up request submitted.');
+    setText('successStatus', manual ? 'Manual follow-up pending review. No appointment is confirmed.' : 'Request submitted; check the request status with our team before making appointment plans.');
+    setText('successSlot', consultation.selectedSlotStart ? consultation.slotLabel : 'No preferred window requested');
+    setText('successCopy', manualReviewRequired ? copy.manualReviewCopy : copy.successCopy);
   }
 
   function mediaAssetOrigin() {
@@ -634,6 +732,7 @@
   }
 
   function collectLeadPayload() {
+    const smsOptIn = !!(byId('smsConsent') && byId('smsConsent').checked);
     return {
       publicToken: state.leadToken || '',
       fullName: byId('fullName') ? byId('fullName').value.trim() : '',
@@ -641,6 +740,7 @@
       phone: byId('phone') ? byId('phone').value.trim() : '',
       email: byId('email') ? byId('email').value.trim() : '',
       contactPreference: byId('contactPreference') ? byId('contactPreference').value : 'sms',
+      smsOptIn,
       businessType: byId('businessType') ? byId('businessType').value : '',
       siteCount: byId('siteCount') ? byId('siteCount').value : '1',
       timeline: byId('timeline') ? byId('timeline').value : '',
@@ -671,7 +771,12 @@
         utm_medium: new URL(location.href).searchParams.get('utm_medium') || '',
         utm_campaign: new URL(location.href).searchParams.get('utm_campaign') || '',
         referrer: document.referrer || '(direct)',
-        surface: 'commercial-intake'
+        surface: 'commercial-intake',
+        communicationConsent: {
+          smsOptIn,
+          smsOptInText: SMS_CONSENT_COPY,
+          smsOptInSource: 'commercial-intake-form'
+        }
       }
     };
   }
@@ -691,6 +796,16 @@
         qsa('input[name="serviceNeeds"]').forEach(function (input) {
           input.checked = value.indexOf(input.value) >= 0;
         });
+        return;
+      }
+      if (key === 'attribution' && value && typeof value === 'object') {
+        const consentField = byId('smsConsent');
+        if (consentField) consentField.checked = hasMessagingConsent({ attribution: value });
+        return;
+      }
+      if (key === 'smsOptIn') {
+        const consentField = byId('smsConsent');
+        if (consentField) consentField.checked = hasMessagingConsent({ smsOptIn: value });
         return;
       }
       const field = byId(key);
@@ -846,8 +961,9 @@
         setStatus('Add a contact name or company name before continuing.', 'error');
         return false;
       }
-      if (!payload.phone && !payload.email) {
-        setStatus('Add a phone number or email before continuing.', 'error');
+      const contactError = validateContact(payload);
+      if (contactError) {
+        showContactError(contactError, true);
         return false;
       }
     }
@@ -872,18 +988,20 @@
     state.slots = Array.isArray(slots) ? slots : [];
 
     if (!state.slots.length) {
-      target.innerHTML = '<div class="slot-empty">No suggested windows are available right now. Save progress and call or text the team if you need a manual handoff.</div>';
+      target.innerHTML = '<div class="slot-empty">No suggested times are available right now. Call us and we will help schedule the next step.</div>';
       return;
     }
 
-    target.innerHTML = state.slots.map(function (slot, index) {
-      const checked = state.selectedSlotStart ? state.selectedSlotStart === slot.startIso : index === 0;
+    const manual = collectLeadPayload().contactPreference !== 'sms';
+    const noWindow = manual ? `<label class="slot-option ${!state.selectedSlotStart ? 'is-selected' : ''}" data-slot-start=""><input type="radio" name="consultationSlot" value="" ${!state.selectedSlotStart ? 'checked' : ''}><strong>No preferred window</strong><span>Manual follow-up; timing pending review</span></label>` : '';
+    target.innerHTML = noWindow + state.slots.map(function (slot, index) {
+      const checked = state.selectedSlotStart ? state.selectedSlotStart === slot.startIso : !manual && index === 0;
       if (checked) state.selectedSlotStart = slot.startIso;
       return `
         <label class="slot-option ${checked ? 'is-selected' : ''}" data-slot-start="${escapeAttr(slot.startIso)}">
           <input type="radio" name="consultationSlot" value="${escapeAttr(slot.startIso)}" ${checked ? 'checked' : ''}>
           <strong>${escapeHtml(formatSlot(slot.startIso, slot.endIso))}</strong>
-          <span>${escapeHtml(slot.durationMinutes ? `${slot.durationMinutes} minute consultation window` : 'Consultation review required')}</span>
+          <span>${escapeHtml(slot.durationMinutes ? `${slot.durationMinutes}-minute time window` : 'Time review required')}</span>
         </label>
       `;
     }).join('');
@@ -921,6 +1039,7 @@
     });
 
     renderSlots(config.suggestedSlots || []);
+    syncFollowUpCopy();
   }
 
   function getFriendlyLoadMessage(message) {
@@ -964,18 +1083,25 @@
     renderSelectedServices();
     syncChoicePills();
     renderAssessmentSnapshot();
+    syncFollowUpCopy();
+    if (payload.lead) {
+      setSaveState(payload.submission ? 'Request submitted' : 'Draft saved', 'success', payload.submission
+        ? 'Your follow-up request is submitted for review.'
+        : 'Project details saved. No follow-up request has been submitted yet.');
+    }
+    renderSubmission(payload.submission, !!(payload.submission && payload.submission.metadata && payload.submission.metadata.request_kind === 'manual_follow_up'));
   }
 
   async function saveLead(source) {
     const payload = collectLeadPayload();
-    const hasContact = payload.phone || payload.email;
-    if (!hasContact) {
-      setSaveState('Missing contact details', 'error', 'Add a phone number or email before saving the project.');
-      setStatus('Add a phone number or email before saving the project.', 'error');
-      throw new Error('Missing contact details');
+    const contactError = validateContact(payload);
+    if (contactError) {
+      setSaveState('Draft on this device', 'error', 'No follow-up request has been submitted.');
+      showContactError(contactError, source !== 'autosave');
+      throw new Error(contactError.message);
     }
 
-    setSaveState('Saving project', '', 'Saving the current commercial project details.');
+    setSaveState('Saving project', '', 'Saving your project details.');
     const response = await fetch(INTAKE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -983,8 +1109,8 @@
     });
     const result = await response.json();
     if (!response.ok || !result.ok) {
-      setSaveState('Save failed', 'error', result.error || 'Commercial lead save failed.');
-      setStatus(result.error || 'Commercial lead save failed.', 'error');
+      setSaveState('Save failed', 'error', result.error || 'We could not save your project details.');
+      setStatus(result.error || 'We could not save your project details.', 'error');
       throw new Error(result.error || 'Failed to save lead');
     }
 
@@ -997,14 +1123,14 @@
     renderUploadedPhotos();
     updateInternalMetrics(result.lead);
     renderAssessmentSnapshot();
-    setSaveState('Project saved', 'success', 'The commercial project details are saved and ready to keep refining.');
-    setStatus('Project details saved. Keep going or request the consultation when ready.', 'success');
+    setSaveState(state.submission ? 'Project changes saved' : 'Draft saved', 'success', state.submission ? 'Your existing request remains submitted.' : 'Project details saved. No follow-up request has been submitted yet.');
+    setStatus(state.submission ? 'Project changes saved. Your existing request remains submitted.' : 'Draft saved. Submit your follow-up request when you are ready.', 'success');
 
     if (!state.firstLeadTracked) {
       state.firstLeadTracked = true;
-      track('lead', { form_name: 'commercial_intake', source: source || 'manual_save' });
+      track('lead', { form_name: 'commercial_intake', source: source || 'autosave' });
     } else {
-      track('form_submit', { form_name: 'commercial_intake_update', source: source || 'manual_save' });
+      track('form_submit', { form_name: 'commercial_intake_update', source: source || 'autosave' });
     }
 
     return result;
@@ -1080,21 +1206,27 @@
   async function requestConsultation(event) {
     event.preventDefault();
     const payload = collectLeadPayload();
+    const followUpCopy = syncFollowUpCopy();
+    const contactError = validateContact(payload);
+    if (contactError) {
+      showContactError(contactError, true);
+      return;
+    }
     if (!payload.fullName && !payload.companyName) {
-      setStatus('Add a contact name or company name before requesting the consultation.', 'error');
+      setStatus('Add a contact name or business name before requesting your estimate.', 'error');
       return;
     }
     if (!payload.serviceNeeds.length) {
-      setStatus('Select at least one service before requesting the consultation.', 'error');
+      setStatus('Choose at least one service before requesting your estimate.', 'error');
       return;
     }
-    if (!state.selectedSlotStart) {
-      setStatus('Choose a consultation window before submitting.', 'error');
+    if (!state.selectedSlotStart && payload.contactPreference === 'sms') {
+      setStatus('Choose a time before submitting.', 'error');
       return;
     }
 
     const saved = await saveLead('consultation_request');
-    setStatus('Sending consultation request...', '');
+    setStatus(followUpCopy.sending, '');
     const selectedSlot = state.slots.find(function (slot) {
       return slot.startIso === state.selectedSlotStart;
     });
@@ -1110,28 +1242,23 @@
     });
     const result = await response.json();
     if (!response.ok || !result.ok) {
+      if (result.field) {
+        showContactError({ field: result.field, message: result.error }, true);
+        return;
+      }
       setStatus(result.error || 'Consultation request failed.', 'error');
       return;
     }
 
-    const successPanel = byId('consultationSuccessPanel');
-    if (successPanel) successPanel.classList.remove('hidden');
-    setText('successReference', result.consultation.referenceCode || '--');
-    setText('successStatus', result.notifications.manualReviewRequired
-      ? 'We received the project details and a coordinator will follow up shortly.'
-      : 'We received the project details and will confirm the consultation window shortly.');
-    setText('successSlot', result.consultation.slotLabel || formatSlot(state.selectedSlotStart, selectedSlot && selectedSlot.endIso));
-    setText('successTitle', 'Commercial consultation requested.');
-    setText('successCopy', result.notifications.manualReviewRequired
-      ? 'The request is recorded and the team will follow up directly using the contact method you selected.'
-      : 'The request is recorded and the team will follow up using the contact method you selected.');
+    renderSubmission(result.consultation, result.notifications.manualReviewRequired);
 
-    setStatus('Consultation request received. We will follow up shortly.', 'success');
+    setStatus(followUpCopy.status, 'success');
     track('form_submit', {
       form_name: 'commercial_consultation_request',
       consultation_reference: result.consultation.referenceCode,
       manual_review_required: result.notifications.manualReviewRequired,
     });
+    const successPanel = byId('consultationSuccessPanel');
     if (successPanel) successPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -1400,8 +1527,11 @@
   function maybeAutosave() {
     const payload = collectLeadPayload();
     persistDraft();
-    if (!payload.phone && !payload.email) return;
-    if (state.leadToken) return;
+    const error = validateContact(payload);
+    if (error) {
+      showContactError(error, false);
+      return;
+    }
     saveLead('autosave').catch(function () {});
   }
 
@@ -1455,10 +1585,12 @@
       renderSelectedServices();
       renderConditionalCards();
       renderAssessmentSnapshot();
+      syncFollowUpCopy();
     };
 
     qsa('input, select, textarea').forEach(function (field) {
       field.addEventListener('input', function () {
+        field.removeAttribute('aria-invalid');
         syncFieldState();
       });
       field.addEventListener('change', function () {
@@ -1466,9 +1598,17 @@
       });
     });
 
-    ['fullName', 'companyName', 'phone', 'email'].forEach(function (id) {
+    ['fullName', 'companyName', 'phone', 'email', 'contactPreference', 'smsConsent'].forEach(function (id) {
       const field = byId(id);
       if (field) field.addEventListener('blur', maybeAutosave);
+    });
+
+    ['contactPreference', 'smsConsent'].forEach(function (id) {
+      const field = byId(id);
+      if (field) field.addEventListener('change', maybeAutosave);
+    });
+    if (byId('contactPreference')) byId('contactPreference').addEventListener('change', function () {
+      renderSlots(state.slots);
     });
 
     const saveProgressBtn = byId('saveProgressBtn');
@@ -1507,6 +1647,7 @@
     syncChoicePills();
     renderConditionalCards();
     renderAssessmentSnapshot();
+    syncFollowUpCopy();
     commercialSyncAllCustomSelects(document);
     bindWizard();
     bindForm();
@@ -1517,7 +1658,7 @@
     try {
       await fetchIntakeConfig();
       commercialSyncAllCustomSelects(document);
-      setStatus('Move through the project assessment and request the consultation when ready.', '');
+      setStatus('Review your project details and submit your follow-up request when ready.', '');
     } catch (error) {
       setStatus(getFriendlyLoadMessage(error.message || 'Failed to load commercial intake.'), 'error');
     }

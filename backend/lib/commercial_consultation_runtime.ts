@@ -13,6 +13,7 @@ const {
   normalizePhone,
   normalizeText
 } = commercialUtils;
+const { hasCommercialSmsConsent, validateCommercialContact, isManualCommercialFollowUp, buildManualFollowUpMessage } = commercialUtils;
 
 type SmsResult = {
   ok: boolean;
@@ -404,6 +405,9 @@ function toDateAndTime(startIso: string) {
 }
 
 export async function maybeCreateAppointment(request: Request, consultation: any, lead: any) {
+  if (isManualCommercialFollowUp(consultation, lead) || validateCommercialContact(lead)) {
+    return { ok: false, skipped: 'contact_policy', error: 'Manual follow-up or updated contact details/texting permission are required before scheduling.' };
+  }
   const startIso = safeTrim(consultation?.selected_slot_start || '');
   if (!startIso) return { ok: false, skipped: 'missing_slot' };
   if (!lead?.phone) return { ok: false, skipped: 'missing_phone' };
@@ -510,7 +514,9 @@ export async function notifyManagementEscalation(consultation: any, lead: any) {
   const phones = getEscalationPhones();
   if (!phones.length) return [];
   const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(consultation.created_at).getTime()) / 60000));
-  const body = buildEscalationMessage({
+  const body = isManualCommercialFollowUp(consultation, lead)
+    ? buildManualFollowUpMessage(consultation, lead, getSlotLabel(consultation.selected_slot_start, consultation.selected_slot_end))
+    : buildEscalationMessage({
     referenceCode: consultation.reference_code,
     companyName: lead?.company_name || lead?.full_name,
     ageMinutes,
@@ -530,6 +536,11 @@ export async function applyConsultationDecision(params: {
   const consultation = params.consultation;
   const lead = params.lead;
   const action = params.action;
+  if (isManualCommercialFollowUp(consultation, lead)) {
+    return { ok: false, error: 'This request requires manual customer follow-up. It is not a confirmed consultation; review the requested contact method in Commercial Queue.' };
+  }
+  const contactError = validateCommercialContact(lead);
+  if (contactError) return { ok: false, error: contactError.message };
   const nextStatus = action === 'approve' ? 'approved' : 'declined';
 
   if (action === 'approve' && ['approved', 'customer_confirmed'].includes(String(consultation.status || '').toLowerCase()) && consultation.related_order_id) {
@@ -588,7 +599,7 @@ export async function applyConsultationDecision(params: {
       slotLabel,
       referenceCode: updated.reference_code,
     });
-    const customerSms = lead?.phone ? await sendSmsAndPersist(lead.phone, customerBody, lead.full_name || lead.company_name || null) : { ok: false, error: 'Missing customer phone', to: '' };
+    const customerSms = await sendCommercialCustomerSms(lead, customerBody);
     result.customerSms = customerSms;
 
     const appointment = await maybeCreateAppointment(params.request, updated, lead);
@@ -614,13 +625,10 @@ export async function applyConsultationDecision(params: {
       result.consultation = confirmed || updated;
     }
   } else {
-    result.customerSms = lead?.phone
-      ? await sendSmsAndPersist(
-          lead.phone,
-          `Home Too Smart is reviewing an alternate consultation time for ${updated.reference_code}. We will text you a revised option shortly.`,
-          lead.full_name || lead.company_name || null
-        )
-      : null;
+    result.customerSms = await sendCommercialCustomerSms(
+      lead,
+      `Home Too Smart is reviewing another consultation window for ${updated.reference_code}. No revised time is confirmed yet.`
+    );
     result.managementSms = await notifyManagementEscalation(updated, lead);
     await sb
       .from('commercial_consultation_requests')
@@ -677,8 +685,11 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
 export async function sendTechnicianConsultationRequest(consultation: any, lead: any) {
   const baseUrl = getPublicBaseUrl();
   const technicianPhones = getTechnicianPhones();
-  const links = buildApprovalLinks(baseUrl, consultation.response_token);
-  const body = buildTechnicianRequestMessage({
+  const manualFollowUp = isManualCommercialFollowUp(consultation, lead);
+  const links = manualFollowUp ? null : buildApprovalLinks(baseUrl, consultation.response_token);
+  const body = manualFollowUp
+    ? buildManualFollowUpMessage(consultation, lead, getSlotLabel(consultation.selected_slot_start, consultation.selected_slot_end))
+    : buildTechnicianRequestMessage({
     referenceCode: consultation.reference_code,
     customerName: lead.full_name,
     companyName: lead.company_name,
@@ -693,7 +704,15 @@ export async function sendTechnicianConsultationRequest(consultation: any, lead:
 }
 
 export async function sendCustomerPendingAcknowledgement(consultation: any, lead: any) {
-  if (!lead?.phone) return { ok: false, to: '', error: 'Missing customer phone' };
   const body = buildCustomerPendingMessage({ referenceCode: consultation.reference_code });
+  return sendCommercialCustomerSms(lead, body);
+}
+
+async function sendCommercialCustomerSms(lead: any, body: string) {
+  if ((lead?.contact_preference || 'sms') !== 'sms' || !hasCommercialSmsConsent(lead)) {
+    return { ok: false, to: lead?.phone || '', skipped: true, reason: 'Customer texts are disabled for this contact preference or texting choice.' };
+  }
+  const contactError = validateCommercialContact(lead);
+  if (contactError) return { ok: false, to: lead?.phone || '', error: contactError.message };
   return sendSmsAndPersist(lead.phone, body, lead.full_name || lead.company_name || null);
 }

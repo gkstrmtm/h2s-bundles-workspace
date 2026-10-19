@@ -258,21 +258,29 @@
                   <input id="companyName" name="companyName" type="text" autocomplete="organization" placeholder="Business, church, campus, or property name">
                 </label>
                 <label class="field">
-                  <span>Phone</span>
-                  <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="Best number for the consultation">
+                  <span id="phoneLabel">Phone (required for Text first)</span>
+                  <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="Best number for your estimate">
                 </label>
                 <label class="field">
-                  <span>Email</span>
+                  <span id="emailLabel">Email (optional)</span>
                   <input id="email" name="email" type="email" autocomplete="email" placeholder="Project email if available">
                 </label>
                 <label class="field field--select">
-                  <span>Preferred contact path</span>
+                  <span>Best way to reach you</span>
                   <select id="contactPreference" name="contactPreference">
                     <option value="sms">Text first</option>
                     <option value="call">Call first</option>
                     <option value="email">Email first</option>
                   </select>
                 </label>
+                <div class="field field--consent" id="smsConsentField">
+                  <label class="consent-check" for="smsConsent">
+                    <input id="smsConsent" name="smsConsent" type="checkbox">
+                    <span class="consent-check__box" aria-hidden="true"></span>
+                    <span class="consent-check__copy">I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.</span>
+                  </label>
+                </div>
+                <p class="submit-copy" id="contactMethodHint">Text first requires a valid phone number and an explicit texting choice. Call and email follow-up are manual.</p>
               </div>
               <div class="form-grid form-grid--two">
                 <label class="field">
@@ -429,9 +437,9 @@
               <div class="work-card__head work-card__head--stacked">
                 <div>
                   <p class="card-step">Step 5</p>
-                  <h3>Choose a consultation window and send the request</h3>
+                  <h3>Review Your Project and Choose a Time</h3>
                 </div>
-                <span class="work-card__meta">Review the details, choose a time, and send the request.</span>
+                <span class="work-card__meta">Choose a time and tell us how you want us to follow up.</span>
               </div>
 
               <div class="review-shell">
@@ -459,41 +467,40 @@
                 </div>
               </div>
               <div class="slot-toolbar">
-                <p class="slot-toolbar__copy">Choose the time that works best. If none fit, save progress and call or text us.</p>
-                <button class="btn btn-secondary" id="refreshSlotsBtn" type="button">Refresh suggestions</button>
+                <p class="slot-toolbar__copy">Choose a time that works for a first follow-up. If none fit, call us now.</p>
+                <button class="btn btn-secondary" id="refreshSlotsBtn" type="button">Refresh times</button>
               </div>
-              <div class="slot-grid" id="slotGrid" role="radiogroup" aria-label="Consultation windows">
-                <div class="slot-empty">Loading suggested consultation windows...</div>
+              <div class="slot-grid" id="slotGrid" role="radiogroup" aria-label="Suggested follow-up times">
+                <div class="slot-empty">Loading suggested times...</div>
               </div>
-              <p class="submit-copy">Submitting sends the latest project details with your requested time.</p>
+              <p class="submit-copy" id="submitCopy">Submit your preferred window for review. No appointment is confirmed by submitting this request.</p>
               <div class="form-actions">
                 <button class="btn btn-secondary" type="button" data-step-action="prev">Back</button>
-                <button class="btn btn-primary" id="requestConsultationBtn" type="submit">Request commercial consultation</button>
-                <button class="btn btn-secondary" id="stepSmsBtn" type="button">Text instead</button>
-                <a class="btn btn-secondary" id="footerCallLink" href="tel:8645281475" data-phone-link data-track-source="footer-call">Call instead</a>
+                <button class="btn btn-primary" id="requestConsultationBtn" type="submit">Request Free Estimate</button>
+                <a class="btn btn-secondary" id="footerCallLink" href="tel:8645281475" data-phone-link data-track-source="footer-call">Call us now</a>
               </div>
-              <div id="formStatus" class="inline-status" aria-live="polite">Waiting for contact details.</div>
             </section>
+            <div id="formStatus" class="inline-status" aria-live="polite">Add your project details to get started.</div>
           </form>
 
           <section class="success-panel hidden" id="consultationSuccessPanel" aria-live="polite">
-            <p class="section-kicker">Request received</p>
-            <h2 id="successTitle">Commercial consultation requested.</h2>
+            <p class="section-kicker">Estimate request received</p>
+            <h2 id="successTitle">Estimate request received.</h2>
             <div class="success-grid">
               <div>
-                <span class="status-label">Request code</span>
+                <span class="status-label">Reference</span>
                 <strong id="successReference">--</strong>
               </div>
               <div>
-                <span class="status-label">Next step</span>
-                <strong id="successStatus">We will confirm the consultation window shortly.</strong>
+                <span class="status-label">What happens next</span>
+                <strong id="successStatus">Manual review pending. No appointment is confirmed.</strong>
               </div>
               <div>
-                <span class="status-label">Requested window</span>
+                <span class="status-label">Requested time</span>
                 <strong id="successSlot">--</strong>
               </div>
             </div>
-            <p id="successCopy">We saved the project details and your requested consultation window. Our team will follow up using the contact path you selected.</p>
+            <p id="successCopy">We saved your project details and requested time. Our team will follow up using the contact method you selected.</p>
           </section>
         </div>
       </div>

@@ -63,6 +63,7 @@ function fixture({ env = {}, requests = [], missingTable = null } = {}) {
       lead_id: 'lead-fixture', public_token: 'public-token-fixture', full_name: 'Fixture Contact',
       company_name: 'Fixture Company', phone: '+15550000005', email: 'fixture@example.invalid',
       service_needs: ['Cameras'], project_photo_urls: [],
+      contact_preference: 'sms', attribution: { communicationConsent: { smsOptIn: true } },
     }],
     commercial_consultation_requests: requests.map(row => ({ ...row })),
     sms_threads: [], sms_messages: [],
@@ -264,7 +265,7 @@ test('missing or invalid canonical configuration fails before intake, consultati
         ? await route.GET(maintenanceRequest('GET', { Authorization: 'Bearer fake-cron-secret-for-unit-tests' }))
         : await route.POST(name === 'commercial-intake'
           ? new Request('https://attacker.example.invalid/api/commercial-intake', {
-            method: 'POST', body: JSON.stringify({ email: 'fixture@example.invalid' }),
+            method: 'POST', body: JSON.stringify({ email: 'fixture@example.invalid', contactPreference: 'email' }),
           }) : consultationRequest());
       assert.equal(response.status, 503, `${name}: ${base}`);
       assert.match((await response.json()).error, /COMMERCIAL_PUBLIC_BASE_URL/);
