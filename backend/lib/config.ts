@@ -20,10 +20,18 @@ function requireEnv(key: string): string {
   return value.trim();
 }
 
+function requireFirstEnv(keys: string[]): string {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value && value.trim()) return value.trim();
+  }
+  throw new Error(`FATAL: Required environment variable ${keys.join(' or ')} is missing or empty. Application cannot start.`);
+}
+
 function initConfig(): AppConfig {
   // Required env vars - hard fail if missing
   const supabaseUrl = requireEnv('SUPABASE_URL');
-  const supabaseServiceKey = requireEnv('SUPABASE_SERVICE_KEY');
+  const supabaseServiceKey = requireFirstEnv(['SUPABASE_SERVICE_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY']);
   
   // Build ID (set at build time, defaults only for local dev)
   const buildId = process.env.BUILD_ID || `local-dev-${Date.now()}`;

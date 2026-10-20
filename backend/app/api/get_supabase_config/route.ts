@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+function cleanEnvValue(value: string | undefined): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
   const allowedOrigins = [
@@ -31,14 +35,17 @@ export async function OPTIONS(request: Request) {
 export async function GET(request: Request) {
   try {
     // Prefer dispatch/portal realtime project if configured; otherwise fall back to main project.
-    const url = process.env.SUPABASE_URL_DISPATCH || process.env.SUPABASE_URL;
-    const anonKey = process.env.SUPABASE_ANON_KEY_DISPATCH || process.env.SUPABASE_ANON_KEY;
+    const url = cleanEnvValue(process.env.SUPABASE_URL_DISPATCH)
+      || cleanEnvValue(process.env.SUPABASE_URL);
+    const anonKey = cleanEnvValue(process.env.SUPABASE_ANON_KEY_DISPATCH)
+      || cleanEnvValue(process.env.SUPABASE_ANON_KEY)
+      || cleanEnvValue(process.env.SUPABASE_PUBLISHABLE_KEY);
 
     if (!url || !anonKey) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'Supabase client config not set (SUPABASE_URL / SUPABASE_ANON_KEY)',
+          error: 'Supabase client config not set (SUPABASE_URL / SUPABASE_ANON_KEY or SUPABASE_PUBLISHABLE_KEY)',
           hasUrl: !!url,
           hasAnonKey: !!anonKey,
         },

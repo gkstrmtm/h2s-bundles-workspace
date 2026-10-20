@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { getSupabase } from '@/lib/supabase';
 import { getOwnerMediaAuthUser } from '@/lib/ownerMediaAuth';
-import { OWNER_MEDIA_DB_BUCKET, insertOwnerMediaUpload } from '@/lib/ownerMediaDb';
+import { OWNER_MEDIA_DB_BUCKET, insertOwnerMediaUpload, isOwnerMediaDuplicateError } from '@/lib/ownerMediaDb';
 import {
   OWNER_MEDIA_BUCKET,
   buildOwnerMediaObjectPath,
@@ -74,33 +74,54 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
     }
 
-    const bytes = Buffer.from(await file.arrayBuffer());
-    const saved = await insertOwnerMediaUpload({
-      filename: file.name || 'upload',
-      contentType: file.type || 'application/octet-stream',
-      mediaKind: String(form.get('media_kind') || '').trim() || (String(file.type || '').startsWith('video/') ? 'video' : 'photo'),
-      bytes,
-      uploadedByUserId: authed.userId,
-      uploadedByUsername: authed.username,
-      uploadedByDisplayName: authed.displayName,
-    });
+    try {
+      const bytes = Buffer.from(await file.arrayBuffer());
+      const saved = await insertOwnerMediaUpload({
+        filename: file.name || 'upload',
+        contentType: file.type || 'application/octet-stream',
+        mediaKind: String(form.get('media_kind') || '').trim() || (String(file.type || '').startsWith('video/') ? 'video' : 'photo'),
+        bytes,
+        capturedAtOriginal: String(form.get('captured_at_original') || '').trim() || null,
+        capturedAtSource: String(form.get('captured_at_source') || '').trim() || null,
+        uploadedByUserId: authed.userId,
+        uploadedByUsername: authed.username,
+        uploadedByDisplayName: authed.displayName,
+      });
 
-    return NextResponse.json(
-      {
-        ok: true,
-        bucket: OWNER_MEDIA_DB_BUCKET,
-        path: saved.asset_id,
-        public_url: `/api/proof-asset-media?bucket=${encodeURIComponent(OWNER_MEDIA_DB_BUCKET)}&path=${encodeURIComponent(saved.asset_id)}`,
-        content_type: saved.content_type,
-        file_size_kb: saved.file_size_kb,
-        media_kind: saved.media_kind,
-        original_name: saved.filename,
-        converted_to_mp4: false,
-        received_convert_to_mp4: String(form.get('convert_to_mp4') || ''),
-        warnings: [],
-      },
-      { headers: corsHeaders(request) },
-    );
+      return NextResponse.json(
+        {
+          ok: true,
+          bucket: OWNER_MEDIA_DB_BUCKET,
+          path: saved.asset_id,
+          public_url: `/api/proof-asset-media?bucket=${encodeURIComponent(OWNER_MEDIA_DB_BUCKET)}&path=${encodeURIComponent(saved.asset_id)}`,
+          content_type: saved.content_type,
+          file_size_kb: saved.file_size_kb,
+          media_kind: saved.media_kind,
+          original_name: saved.filename,
+          converted_to_mp4: false,
+          received_convert_to_mp4: String(form.get('convert_to_mp4') || ''),
+          warnings: [],
+        },
+        { headers: corsHeaders(request) },
+      );
+    } catch (error: any) {
+      if (isOwnerMediaDuplicateError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'This image has already been uploaded.',
+            error_code: 'duplicate_owner_upload',
+            existing_upload: error.existingUpload || null,
+          },
+          { status: 409, headers: corsHeaders(request) },
+        );
+      }
+
+      return NextResponse.json(
+        { ok: false, error: String(error?.message || 'Owner upload failed') },
+        { status: 500, headers: corsHeaders(request) },
+      );
+    }
   }
 
   const bucket = chooseBucket(form.get('bucket'));

@@ -8,6 +8,7 @@ const { URL } = require('node:url');
 const FRONTEND_ROOT = path.resolve(__dirname, '..', 'frontend');
 const PORT = Number(process.env.PORT || 3000);
 const BACKEND_ORIGIN = process.env.H2S_PREVIEW_BACKEND_ORIGIN || 'https://h2s-backend.vercel.app';
+const PUBLIC_ORIGIN = process.env.H2S_PREVIEW_PUBLIC_ORIGIN || 'https://shop.home2smart.com';
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -35,9 +36,20 @@ function sendText(res, statusCode, message) {
 async function serveStatic(req, res) {
   const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   const rawPath = decodeURIComponent(requestUrl.pathname || '/');
-  const relativePath = rawPath === '/' || rawPath === '/media' || rawPath === '/media.html' || rawPath === '/owner-media'
-    ? '/owner-media.html'
-    : rawPath;
+  let relativePath = rawPath;
+
+  if (relativePath.startsWith('/frontend/')) {
+    relativePath = relativePath.slice('/frontend'.length);
+  }
+
+  if (rawPath === '/' || rawPath === '/media' || rawPath === '/media.html' || rawPath === '/owner-media') {
+    relativePath = '/owner-media.html';
+  } else if (rawPath === '/commercial') {
+    relativePath = '/commercial.html';
+  } else if (rawPath === '/commercial-approval') {
+    relativePath = '/commercial-approval.html';
+  }
+
   const targetPath = path.resolve(FRONTEND_ROOT, `.${relativePath}`);
 
   if (!targetPath.startsWith(FRONTEND_ROOT)) {
@@ -67,7 +79,9 @@ function proxyApi(req, res) {
   const target = new URL(req.url || '/', BACKEND_ORIGIN);
   const headers = { ...req.headers };
   delete headers.host;
-  headers.origin = `http://127.0.0.1:${PORT}`;
+  headers.origin = PUBLIC_ORIGIN;
+  headers['x-forwarded-host'] = new URL(PUBLIC_ORIGIN).host;
+  headers['x-forwarded-proto'] = new URL(PUBLIC_ORIGIN).protocol.replace(':', '');
 
   const transport = target.protocol === 'https:' ? https : http;
   const proxyReq = transport.request(target, {
@@ -101,4 +115,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(`Local frontend preview running at http://127.0.0.1:${PORT}\n`);
   process.stdout.write(`Proxying /api/* to ${BACKEND_ORIGIN}\n`);
+  process.stdout.write(`Preview public origin set to ${PUBLIC_ORIGIN}\n`);
 });

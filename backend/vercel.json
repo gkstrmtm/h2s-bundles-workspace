@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "retro-dev": false
+    }
+  },
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "cleanUrls": false,

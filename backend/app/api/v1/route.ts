@@ -1719,6 +1719,24 @@ function normalizeDashboardUsername(raw: unknown): string {
     .toUpperCase();
 }
 
+function getDashboardAuthAvailabilityError(error: any): { status: number; error: string } | null {
+  const message = String(error?.message || '').trim();
+  if (!message) return null;
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes('service for this project is restricted') || normalized.includes('exceed_cached_egress_quota')) {
+    return {
+      status: 503,
+      error: 'Dashboard login is temporarily unavailable. Database service is restricted and sign-ins cannot be verified right now.'
+    };
+  }
+
+  return {
+    status: 503,
+    error: 'Dashboard login is temporarily unavailable. Please try again shortly.'
+  };
+}
+
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -9168,9 +9186,17 @@ export async function POST(request: Request) {
 
                 const { data: user, error: userError } = isEmail
                   ? await userQuery.ilike('Email', identifier).maybeSingle()
-                  : await userQuery.eq('Username', identifier).maybeSingle();
+                  : await userQuery.ilike('Username', identifier).maybeSingle();
 
-                if (userError || !user) {
+                if (userError) {
+                  const availabilityError = getDashboardAuthAvailabilityError(userError);
+                  return NextResponse.json(
+                    { ok: false, error: availabilityError?.error || 'Dashboard login is temporarily unavailable.' },
+                    { status: availabilityError?.status || 503, headers: corsHeaders(request) }
+                  );
+                }
+
+                if (!user) {
                   return NextResponse.json({ ok: false, error: 'Invalid login' }, { status: 401, headers: corsHeaders(request) });
                 }
 
@@ -9204,7 +9230,11 @@ export async function POST(request: Request) {
                 });
 
                 if (sessionError) {
-                  return NextResponse.json({ ok: false, error: `Failed to create session: ${sessionError.message}` }, { status: 500, headers: corsHeaders(request) });
+                  const availabilityError = getDashboardAuthAvailabilityError(sessionError);
+                  return NextResponse.json(
+                    { ok: false, error: availabilityError?.error || `Failed to create session: ${sessionError.message}` },
+                    { status: availabilityError?.status || 500, headers: corsHeaders(request) }
+                  );
                 }
 
                 // Best-effort: update last login
@@ -17578,4 +17608,3 @@ async function updateVaKnowledgeProfile(vaName: string, resourceId: string, aiAn
     console.error('Error updating VA knowledge profile:', error);
   }
 }
-

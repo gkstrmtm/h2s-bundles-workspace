@@ -11139,6 +11139,12 @@
             padding-top: 12px !important;
         }
 
+        @keyframes ownerUploadsPanelSpinner {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         /* Improved Pipeline Density */
         #h2s-app #pipeline-pane {
             width: 100% !important;

@@ -19,10 +19,25 @@ let supabaseInstance: SupabaseClient | null = null;
 let supabaseMgmtInstance: SupabaseClient | null = null;
 let supabaseInstanceDb1: SupabaseClient | null = null;
 
+function cleanEnvValue(value: string | undefined): string | undefined {
+  const next = typeof value === 'string' ? value.trim() : '';
+  return next || undefined;
+}
+
+function getMainSupabaseUrl(): string | undefined {
+  return cleanEnvValue(process.env.SUPABASE_URL);
+}
+
+function getMainSupabaseServiceKey(): string | undefined {
+  return cleanEnvValue(process.env.SUPABASE_SERVICE_KEY)
+    || cleanEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY)
+    || cleanEnvValue(process.env.SUPABASE_SECRET_KEY);
+}
+
 export function getSupabase(): SupabaseClient {
   if (!supabaseInstance) {
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabaseUrl = getMainSupabaseUrl();
+    const supabaseServiceKey = getMainSupabaseServiceKey();
 
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error(`Missing Supabase credentials: URL=${!!supabaseUrl}, KEY=${!!supabaseServiceKey}`);
@@ -42,8 +57,10 @@ export function getSupabase(): SupabaseClient {
 // Get Supabase client for Management Database (Candidates, Tasks, Hours, Training, VA Knowledge)
 export function getSupabaseMgmt(): SupabaseClient {
   if (!supabaseMgmtInstance) {
-    const mgmtUrl = process.env.SUPABASE_URL_MGMT;
-    const mgmtKey = process.env.SUPABASE_SERVICE_KEY_MGMT || process.env.SUPABASE_SERVICE_ROLE_KEY_MGMT;
+    const mgmtUrl = cleanEnvValue(process.env.SUPABASE_URL_MGMT) || getMainSupabaseUrl();
+    const mgmtKey = cleanEnvValue(process.env.SUPABASE_SERVICE_KEY_MGMT)
+      || cleanEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY_MGMT)
+      || getMainSupabaseServiceKey();
 
     if (!mgmtUrl || !mgmtKey) {
       throw new Error(`Missing Supabase Management DB credentials: URL=${!!mgmtUrl}, KEY=${!!mgmtKey}`);
@@ -63,8 +80,10 @@ export function getSupabaseMgmt(): SupabaseClient {
 // Get Supabase client for Database 1 (tracking events database)
 export function getSupabaseDb1(): SupabaseClient | null {
   // Try to use Database 1 credentials if available
-  const db1Url = process.env.SUPABASE_URL_DB1;
-  const db1Key = process.env.SUPABASE_SERVICE_KEY_DB1 || process.env.SUPABASE_SERVICE_ROLE_KEY_DB1;
+  const db1Url = cleanEnvValue(process.env.SUPABASE_URL_DB1);
+  const db1Key = cleanEnvValue(process.env.SUPABASE_SERVICE_KEY_DB1)
+    || cleanEnvValue(process.env.SUPABASE_SERVICE_ROLE_KEY_DB1)
+    || cleanEnvValue(process.env.SUPABASE_SECRET_KEY_DB1);
 
   if (!db1Url || !db1Key) {
     // If no separate DB1 credentials, return null to use proxy approach

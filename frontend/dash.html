@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Home2Smart - Service Tech Hiring Dashboard</title>
+    <title>Home2Smart Dashboard</title>
     <script>
-        const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260528_120652_4d5c78f';
+        const DASH_BUILD_STAMP = 'PORTAL_BUILD_20260915_200314_0793ee6';
         const H2S_SOURCE_FILE = 'Dash.html';
 
         // Suppress vendor console spam
@@ -216,10 +216,25 @@
     <link rel="apple-touch-icon" sizes="180x180" href="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png">
     <meta name="theme-color" content="#0a2a5a">
     <script>
-        (function writeDashStylesheet() {
+        (function installDashAssetResolvers() {
             const host = String(location.hostname || '').toLowerCase();
             const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1' || location.protocol === 'file:';
-            const href = isLocalHost ? './dash.css' : '/dash.PORTAL_BUILD_20260528_120652_4d5c78f.css';
+            window.__h2sResolveDashAsset = function resolveDashAsset(localName, stampedName) {
+                if (isLocalHost) return `./${String(localName || '').replace(/^\.\//, '')}`;
+                return `/${String(stampedName || '').replace(/^\/+/, '')}`;
+            };
+            window.__h2sResolveDashSiblingAsset = function resolveDashSiblingAsset(filename, version) {
+                const base = `./${String(filename || '').replace(/^\.\//, '')}`;
+                const suffix = version ? `?v=${encodeURIComponent(String(version))}` : '';
+                return `${base}${suffix}`;
+            };
+        })();
+    </script>
+    <script>
+        (function writeDashStylesheet() {
+            const href = (typeof window.__h2sResolveDashAsset === 'function')
+                ? window.__h2sResolveDashAsset('dash.css', 'dash.PORTAL_BUILD_20260915_200314_0793ee6.css')
+                : './dash.css';
             document.write(`<link rel="stylesheet" href="${href}" data-h2s-app-styles="true">`);
         })();
     </script>
@@ -2189,7 +2204,7 @@
                 <div class="app-topbar-logo">
                     <img src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" 
                          alt="Home2Smart Logo">
-                    <span class="app-topbar-title">hiring dashboard</span>
+                    <span class="app-topbar-title">H2S dashboard</span>
                 </div>
                 <div class="app-topbar-area" id="currentAreaTitle">Pipeline</div>
             </div>
@@ -2237,13 +2252,11 @@
 
                 <div class="app-sidebar-group" data-group-id="salestools">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('salestools')" aria-expanded="false">
-                        <span>Deliverables &amp; Offers</span>
+                        <span>Deliverables &amp; Uploads</span>
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
                         <a class="app-sidebar-nav-item" data-tab="deliverables" onclick="switchToTab('deliverables')">Deliverables</a>
-                        <a class="app-sidebar-nav-item" data-tab="offerbuilder" onclick="switchToTab('offerbuilder')">Offer Builder</a>
-                        <a class="app-sidebar-nav-item" href="#" onclick="openOfferLibraryFromNav(); return false;">Offer Library</a>
                         <a class="app-sidebar-nav-item" data-tab="owneruploads" onclick="switchToTab('owneruploads')">Owner Uploads</a>
                     </div>
                 </div>
@@ -2276,16 +2289,6 @@
                     <span class="app-sidebar-nav-item__label">Messaging</span>
                     <span class="h2s-badge" id="smsNavUnreadBadge" style="display:none;" aria-label="Unread messages"></span>
                 </a>
-
-                <div class="app-sidebar-nav-divider"></div>
-                <div class="app-sidebar-nav-label" style="opacity: 0.75;">Version</div>
-                <div class="h2s-build" style="padding: 6px 16px 14px 16px;">
-                    <button class="h2s-build-pill" id="sidebarBuildPill" type="button" onclick="copyBuildIdFromEl('sidebarBuildId','sidebarBuildPill')" aria-label="Copy build ID">
-                        <span class="h2s-build-pill__label">Version</span>
-                        <span class="h2s-build-pill__id" id="sidebarBuildId">PORTAL_BUILD_20260528_120652_4d5c78f</span>
-                        <span class="h2s-build-pill__copy">Copy</span>
-                    </button>
-                </div>
             </nav>
         </div>
 
@@ -3281,13 +3284,6 @@
                             <div>
                                 <div class="ds-page-header__title" style="font-size: 32px; font-weight: 600; color: #0f172a; margin-bottom: 8px; letter-spacing: -0.5px;">Website Media</div>
                                 <div class="ds-page-header__subtitle" style="font-size: 15px; color: #64748b; line-height: 1.6; max-width: 600px;">Upload and organize the photos and videos that can be used across the website. The system handles rotation automatically.</div>
-                                <div style="margin-top: 10px;">
-                                    <button class="h2s-build-pill h2s-build-pill--inline" id="ppBuildPill" type="button" onclick="copyBuildIdFromEl('ppBuildId','ppBuildPill')" aria-label="Copy version ID">
-                                        <span class="h2s-build-pill__label">Version</span>
-                                        <span class="h2s-build-pill__id" id="ppBuildId">PORTAL_BUILD_20260528_120652_4d5c78f</span>
-                                        <span class="h2s-build-pill__copy">Copy</span>
-                                    </button>
-                                </div>
                             </div>
                             <div class="button-group u-flex u-wrap u-gap-12"></div>
                         </div>
@@ -3722,24 +3718,33 @@
                 <div class="pane" id="owneruploads-pane">
                     <div style="max-width: 1480px; margin: 0 auto; padding: 24px;">
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
-                            <div>
+                            <div style="max-width:760px;">
                                 <h2 style="margin:0; font-size:28px; font-weight:700; color:var(--cobalt); letter-spacing:-0.03em;">Owner Uploads</h2>
-                                <p style="margin:6px 0 0; color:#64748b; font-size:14px; max-width:680px;">Every photo and video lands here. Open it or download it whenever you need it.</p>
-                            </div>
-                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                                <select id="ownerUploadsStateFilter" class="form-select" onchange="ownerUploadsUI.handleFilterChange()" style="min-width:150px;">
-                                    <option value="all" selected>All media</option>
-                                    <option value="new">Only new</option>
-                                </select>
-                                <button class="btn btn-tonal" onclick="ownerUploadsUI.refresh()">Reload</button>
+                                <p style="margin:6px 0 0; color:#64748b; font-size:14px; max-width:680px;">Every photo and video lands here in one running gallery. When the original capture time is available, older media settles into its real place automatically.</p>
                             </div>
                         </div>
 
-                        <div id="ownerUploadsStatus" style="margin-bottom:12px; font-size:13px; color:#64748b;"></div>
-                        <div id="ownerUploadsList" style="display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); align-items:start;"></div>
+                        <section style="margin-bottom:18px; border:1px solid #dbe4f0; border-radius:16px; background:#fff; overflow:hidden;">
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:14px 16px; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; background:#f8fafc;">
+                                <div style="min-width:260px; max-width:780px;">
+                                    <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#64748b;">Commercial placement workbench</div>
+                                    <div style="margin-top:4px; font-size:18px; font-weight:800; color:var(--cobalt); line-height:1.25;">Use the existing owner-uploads workflow to control which published assets appear on the commercial page.</div>
+                                    <div style="margin-top:6px; font-size:13px; line-height:1.5; color:#64748b;">This preview shows the same public commercial rails the customer sees. Only published, social-allowed assets should be assigned. Unassigned sections continue to use proof fallback.</div>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                    <div id="ownerUploadsCommercialMeta" style="font-size:12px; color:#64748b; line-height:1.45;">Checking current commercial preview...</div>
+                                    <button id="ownerUploadsCommercialRefresh" type="button" onclick="ownerUploadsUI.refreshCommercialPreview()" style="display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:0 12px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:12px; font-weight:700; line-height:1; box-shadow:none;">Refresh preview</button>
+                                </div>
+                            </div>
+                            <div id="ownerUploadsCommercialPreview" style="display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); padding:14px 16px;"></div>
+                        </section>
+
+                        <div id="ownerUploadsStatus" style="display:none; margin-bottom:12px; font-size:13px; color:#64748b;"></div>
+                        <div id="ownerUploadsMonthJump" style="display:none; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 14px;"></div>
+                        <div id="ownerUploadsList" style="display:grid; gap:14px; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); align-items:start; min-height:320px;"></div>
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-top:14px;">
                             <div id="ownerUploadsFooterMeta" style="font-size:12px; color:#64748b; line-height:1.45;">No uploads in gallery yet.</div>
-                            <button id="ownerUploadsLoadMore" class="btn btn-tonal" onclick="ownerUploadsUI.loadMore()" style="min-height:32px; padding:6px 12px; border-radius:999px; display:none;">Load more</button>
+                            <button id="ownerUploadsLoadMore" type="button" onclick="ownerUploadsUI.loadMore()" style="display:none; align-items:center; justify-content:center; min-height:34px; padding:0 12px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:12px; font-weight:700; line-height:1; box-shadow:none;">Show more</button>
                         </div>
                     </div>
                 </div>
@@ -5366,19 +5371,31 @@
     </script>
     <script>
         (function loadDashScript() {
-            // file:// protocol support: treat as localhost so ./dash.js loads
             const script = document.createElement('script');
             script.defer = true;
-            const host = String(location.hostname || '').toLowerCase();
-            const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-            const isLocalScript = isLocalHost || location.protocol === 'file:';
-            script.src = isLocalScript ? './dash.js' : '/dash.PORTAL_BUILD_20260528_120652_4d5c78f.js';
+            script.src = (typeof window.__h2sResolveDashAsset === 'function')
+                ? window.__h2sResolveDashAsset('dash.js', 'dash.PORTAL_BUILD_20260915_200314_0793ee6.js')
+                : './dash.js';
             document.head.appendChild(script);
         })();
     </script>
-    <script src="/media-placements.js?v=PAGE_PLACEMENTS_V1" defer></script>
-    <script src="/dash-messages.js?v=PORTAL_BUILD_20260528_120652_4d5c78f" defer></script>
-    <script src="/sms-no-flicker.js?v=PORTAL_BUILD_20260528_120652_4d5c78f" defer></script>
+    <script>
+        (function loadDashSupportScripts() {
+            const files = [
+                'media-placements.js',
+                'dash-messages.js',
+                'sms-no-flicker.js',
+            ];
+            files.forEach((filename) => {
+                const script = document.createElement('script');
+                script.defer = true;
+                script.src = (typeof window.__h2sResolveDashSiblingAsset === 'function')
+                    ? window.__h2sResolveDashSiblingAsset(filename, 'PORTAL_BUILD_20260915_200314_0793ee6')
+                    : `./${filename}`;
+                document.head.appendChild(script);
+            });
+        })();
+    </script>
     <script>
         window.addEventListener('load', () => {
             const installTrainingOverrides = () => {
@@ -5592,7 +5609,6 @@
     </script>
 </body>
 </html>
-
 
 
 

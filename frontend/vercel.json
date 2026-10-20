@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "retro-dev": false
+    }
+  },
   "version": 2,
   "cleanUrls": false,
   "trailingSlash": false,

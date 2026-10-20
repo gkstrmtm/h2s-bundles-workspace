@@ -40,6 +40,7 @@
 
         // Dashboard account session token (DB-backed login)
         const DASH_SESSION_TOKEN_KEY = 'h2s_dashboard_session_token_v1';
+        const OWNER_MEDIA_SESSION_TOKEN_KEY = 'h2s_owner_media_session_token_v1';
         // Global helper for build pills (dash.html uses inline onclick).
         // Must exist even if __dashBoot() fails early.
         try {
@@ -1539,7 +1540,6 @@
             training: { label: 'Training', areaTitle: 'Training', paneId: 'training-pane', sidebarGroupId: 'workflow' },
             workspace: { label: 'My Summary', areaTitle: 'My Summary', paneId: 'workspace-pane', sidebarGroupId: 'workflow' },
             deliverables: { label: 'Deliverables', areaTitle: 'Deliverables', paneId: 'deliverables-pane', sidebarGroupId: 'salestools' },
-            offerbuilder: { label: 'Offer Builder', areaTitle: 'Offer Builder', paneId: 'offerbuilder-pane', sidebarGroupId: 'salestools' },
             commercialqueue: { label: 'Commercial Queue', areaTitle: 'Commercial Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             admin: { label: 'Admin Dashboard', areaTitle: 'Admin Dashboard', paneId: 'admin-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             proofpacks: { label: 'Website Media', areaTitle: 'Website Media', paneId: 'proofpacks-pane', sidebarGroupId: 'admin', requiresAdmin: true },
@@ -1920,7 +1920,10 @@
                         window.ownerUploadsUI.pinPaneToTop({ resetScroll: false });
                     }
                     if (window.ownerUploadsUI && typeof window.ownerUploadsUI.refresh === 'function') {
-                        window.ownerUploadsUI.refresh();
+                        const pane = document.getElementById('owneruploads-pane');
+                        const alreadyInitialized = !!(pane && pane.dataset && pane.dataset.initialized === 'true');
+                        const canRefreshSilently = alreadyInitialized && !!(window.ownerUploadsUI.state && window.ownerUploadsUI.state.hasLoadedOnce);
+                        window.ownerUploadsUI.refresh({ silent: canRefreshSilently, pinToTop: false });
                     }
                 }
             }, 50);
@@ -47360,13 +47363,273 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 items: [],
                 me: null,
                 summary: null,
+                commercialPreview: null,
                 autoRefreshTimer: null,
                 autoRefreshBound: false,
                 visibleCount: 24,
                 pageSize: 24,
                 totalCount: 0,
+                hasLoadedOnce: false,
                 removingAssetIds: new Set(),
+                savingPlacementAssetIds: new Set(),
+                placementDrafts: {},
                 readyPreviewKeys: new Set(),
+                brokenPreviewKeys: new Set(),
+                lastRenderedSignature: '',
+            },
+
+            commercialDestinations() {
+                return [
+                    {
+                        key: 'commercial_security_rail',
+                        title: 'Security camera rail',
+                        serviceKeywords: ['camera', 'cameras', 'security camera', 'surveillance'],
+                        serviceLabel: 'Camera installs',
+                    },
+                    {
+                        key: 'commercial_display_rail',
+                        title: 'Display and TV rail',
+                        serviceKeywords: ['tv', 'display', 'displays', 'commercial display', 'commercial tv', 'monitor'],
+                        serviceLabel: 'Display installs',
+                    },
+                ];
+            },
+
+            canEditPlacements() {
+                const role = String(this.state?.me?.role || '').trim().toUpperCase();
+                return role === 'ADMIN';
+            },
+
+            openPagePlacement(assetId) {
+                const asset = this.state.items.find((item) => String(item.asset_id) === String(assetId));
+                if (!asset || !window.H2SMediaPlacements) {
+                    showToast('Page placement controls are unavailable. Refresh the dashboard.', 'error');
+                    return;
+                }
+                proofPacks.beginPlacementEdit({
+                    asset, source: 'owner_media',
+                    base: this.resolveApiUrl('/api/admin/media-placements').replace(/\/api\/admin\/media-placements$/, ''),
+                    token: getDashboardSessionToken(), url: this.resolveAssetUrl(asset),
+                });
+            },
+
+            normalizeFrontendDestinations(value) {
+                const input = Array.isArray(value)
+                    ? value
+                    : (typeof value === 'string' ? value.split(/\r?\n|,|\u2022|\u2023|\u25E6/) : []);
+                const seen = new Set();
+                const out = [];
+                input.forEach((entry) => {
+                    const normalized = String(entry || '')
+                        .trim()
+                        .toLowerCase()
+                        .replace(/\s+/g, '_')
+                        .replace(/[^a-z0-9:_-]+/g, '_')
+                        .replace(/^_+|_+$/g, '');
+                    if (!normalized || seen.has(normalized)) return;
+                    seen.add(normalized);
+                    out.push(normalized);
+                });
+                return out;
+            },
+
+            parseInteger(value, fallback, min, max) {
+                const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+                if (!Number.isFinite(parsed)) return fallback;
+                return Math.max(min, Math.min(max, parsed));
+            },
+
+            itemDraft(assetId) {
+                const key = String(assetId || '').trim();
+                return key ? (this.state.placementDrafts[key] || null) : null;
+            },
+
+            ensurePlacementDraft(item) {
+                const assetId = String(item?.asset_id || '').trim();
+                if (!assetId) return null;
+                const existing = this.itemDraft(assetId);
+                if (existing) return existing;
+                const nextDraft = {
+                    frontend_destinations: this.normalizeFrontendDestinations(item?.frontend_destinations || []),
+                    display_order: this.parseInteger(item?.display_order, 100, 0, 999),
+                    psychological_weight: this.parseInteger(item?.psychological_weight, 20, 0, 100),
+                    review_state: String(item?.review_state || 'pending').trim().toLowerCase() || 'pending',
+                    usage_rights_status: String(item?.usage_rights_status || 'pending_review').trim().toLowerCase() || 'pending_review',
+                };
+                this.state.placementDrafts[assetId] = nextDraft;
+                return nextDraft;
+            },
+
+            updatePlacementDraft(assetId, patch) {
+                const key = String(assetId || '').trim();
+                if (!key) return;
+                const current = this.state.placementDrafts[key] || {
+                    frontend_destinations: [],
+                    display_order: 100,
+                    psychological_weight: 20,
+                    review_state: 'pending',
+                    usage_rights_status: 'pending_review',
+                };
+                this.state.placementDrafts[key] = Object.assign({}, current, patch || {});
+                this.renderItems(this.state.items);
+            },
+
+            togglePlacementDestination(assetId, destination, checked) {
+                const key = String(assetId || '').trim();
+                const normalizedDestination = String(destination || '').trim();
+                if (!key || !normalizedDestination) return;
+                const draft = this.ensurePlacementDraft({ asset_id: key }) || { frontend_destinations: [] };
+                const current = this.normalizeFrontendDestinations(draft.frontend_destinations || []);
+                const next = checked
+                    ? current.concat([normalizedDestination])
+                    : current.filter((value) => value !== normalizedDestination);
+                this.updatePlacementDraft(key, { frontend_destinations: this.normalizeFrontendDestinations(next) });
+            },
+
+            assetServiceTokens(item) {
+                return [
+                    String(item?.service_type || ''),
+                    String(item?.soft_location_label || ''),
+                    String(item?.filename || ''),
+                ].join(' ').toLowerCase();
+            },
+
+            isPublishedCommercialCandidate(item) {
+                if (!item) return false;
+                if (String(item?.review_state || '').trim().toLowerCase() !== 'published') return false;
+                if (!!item?.qa_hold) return false;
+                if (String(item?.usage_rights_status || '').trim().toLowerCase() !== 'social_allowed') return false;
+                if (String(item?.customer_media_opt_in || '').trim().toLowerCase() === 'declined') return false;
+                return true;
+            },
+
+            fitsCommercialDestination(item, destinationKey) {
+                const config = this.commercialDestinations().find((entry) => entry.key === destinationKey);
+                if (!config) return false;
+                const haystack = this.assetServiceTokens(item);
+                return config.serviceKeywords.some((keyword) => haystack.includes(keyword));
+            },
+
+            placementFitLabels(item) {
+                if (!this.isPublishedCommercialCandidate(item)) return [];
+                return this.commercialDestinations()
+                    .filter((entry) => this.fitsCommercialDestination(item, entry.key))
+                    .map((entry) => entry.title);
+            },
+
+            placementHint(item) {
+                if (String(item?.review_state || '').trim().toLowerCase() !== 'published') {
+                    return 'Publish this asset before assigning it to a customer-facing commercial rail.';
+                }
+                if (String(item?.usage_rights_status || '').trim().toLowerCase() !== 'social_allowed') {
+                    return 'Social usage rights must be set to allowed before this can appear on the commercial page.';
+                }
+                if (String(item?.customer_media_opt_in || '').trim().toLowerCase() === 'declined') {
+                    return 'Customer opted out, so this asset should stay off public commercial rails.';
+                }
+                const fits = this.placementFitLabels(item);
+                if (!fits.length) return 'No obvious commercial fit detected from the current metadata. Leave proof fallback active unless management manually confirms this asset.';
+                return `Suggested fit: ${fits.join(' and ')}.`;
+            },
+
+            featuredWeightLabel(weight) {
+                return this.parseInteger(weight, 20, 0, 100) > 40 ? 'Featured' : 'Standard';
+            },
+
+            assignmentBadgeMarkup(item) {
+                const currentDestinations = this.normalizeFrontendDestinations(item?.frontend_destinations || []);
+                if (!currentDestinations.length) {
+                    return '<span style="display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid #dbe4f0; background:#fff; color:#64748b; font-size:11px; font-weight:700; letter-spacing:0.01em;">Fallback only</span>';
+                }
+                return currentDestinations.map((destinationKey) => {
+                    const destination = this.commercialDestinations().find((entry) => entry.key === destinationKey);
+                    const label = destination ? destination.title : destinationKey;
+                    return `<span style="display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid rgba(37, 99, 235, 0.22); background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; letter-spacing:0.01em;">${this.escapeHtml(label)}</span>`;
+                }).join('');
+            },
+
+            async refreshCommercialPreview(options) {
+                const settings = Object.assign({ silent: false }, options || {});
+                const metaEl = document.getElementById('ownerUploadsCommercialMeta');
+                const previewEl = document.getElementById('ownerUploadsCommercialPreview');
+
+                if (metaEl && !settings.silent) metaEl.textContent = 'Refreshing current commercial preview...';
+                if (previewEl && !settings.silent && !this.state.commercialPreview) {
+                    previewEl.innerHTML = '<div style="grid-column:1 / -1; padding:12px 0; font-size:13px; color:#64748b;">Loading current live assignments...</div>';
+                }
+
+                try {
+                    const data = await this.fetchJson('/api/owner-media/public?surface=commercial_intake&limit=4', { method: 'GET', cache: 'no-store' });
+                    this.state.commercialPreview = data.sections || {};
+                    this.renderCommercialPreview();
+                } catch (error) {
+                    this.state.commercialPreview = null;
+                    if (previewEl) {
+                        previewEl.innerHTML = '<div style="grid-column:1 / -1; padding:12px 0; font-size:13px; color:#b42318;">Commercial preview is unavailable right now.</div>';
+                    }
+                    if (metaEl) metaEl.textContent = this.toUserMessage(error && error.message, error && error.status, 'Commercial preview is unavailable right now.');
+                }
+            },
+
+            renderCommercialPreview() {
+                const previewEl = document.getElementById('ownerUploadsCommercialPreview');
+                const metaEl = document.getElementById('ownerUploadsCommercialMeta');
+                if (!previewEl) return;
+
+                const sections = this.state.commercialPreview || {};
+                const destinations = this.commercialDestinations();
+                const totalItems = destinations.reduce((count, entry) => {
+                    const items = Array.isArray(sections[entry.key]?.items) ? sections[entry.key].items : [];
+                    return count + items.length;
+                }, 0);
+
+                previewEl.innerHTML = destinations.map((entry) => {
+                    const section = sections[entry.key] || {};
+                    const items = Array.isArray(section.items) ? section.items : [];
+                    const listMarkup = items.length
+                        ? items.map((item, index) => {
+                            const label = String(item?.label || item?.city || item?.shot_type || 'Recent install').trim() || 'Recent install';
+                            const source = String(item?.source || '').trim() === 'owner_media' ? 'Owner-media' : 'Proof fallback';
+                            const mediaUrl = String(item?.media_url || item?.public_url || item?.preview_url || '').trim();
+                            const preview = mediaUrl
+                                ? (String(item?.media_kind || '').trim().toLowerCase() === 'video'
+                                    ? `<video muted playsinline preload="metadata" src="${this.escapeHtml(mediaUrl)}" style="width:56px; height:56px; border-radius:10px; object-fit:cover; border:1px solid #dbe4f0; background:#e8eef6;"></video>`
+                                    : `<img src="${this.escapeHtml(mediaUrl)}" alt="${this.escapeHtml(label)}" loading="lazy" decoding="async" style="width:56px; height:56px; border-radius:10px; object-fit:cover; border:1px solid #dbe4f0; background:#e8eef6;">`)
+                                : `<div style="width:56px; height:56px; border-radius:10px; border:1px solid #dbe4f0; background:#f8fafc;"></div>`;
+                            return `
+                                <div style="display:grid; grid-template-columns:56px minmax(0, 1fr); gap:10px; align-items:center; padding:8px 0; ${index > 0 ? 'border-top:1px solid #eef2f7;' : ''}">
+                                    ${preview}
+                                    <div style="min-width:0; display:grid; gap:4px;">
+                                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                                            <div style="font-size:13px; font-weight:800; color:var(--cobalt); line-height:1.3;">${this.escapeHtml(label)}</div>
+                                            <span style="display:inline-flex; align-items:center; min-height:22px; padding:0 7px; border-radius:999px; border:1px solid ${source === 'Owner-media' ? 'rgba(21, 128, 61, 0.2)' : '#dbe4f0'}; background:${source === 'Owner-media' ? '#f0fdf4' : '#fff'}; color:${source === 'Owner-media' ? '#166534' : '#64748b'}; font-size:11px; font-weight:700;">${this.escapeHtml(source)}</span>
+                                        </div>
+                                        <div style="font-size:12px; line-height:1.45; color:#64748b;">${this.escapeHtml(String(item?.city || item?.service_type || item?.service || entry.serviceLabel || '').trim() || 'No location metadata')}</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')
+                        : '<div style="font-size:13px; color:#64748b; line-height:1.5;">No pinned owner-media here yet. The public page will keep using proof fallback until management assigns a fit.</div>';
+
+                    return `
+                        <section style="display:grid; gap:10px; border:1px solid #e2e8f0; border-radius:14px; padding:12px; background:#fff; align-content:start;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#64748b;">${this.escapeHtml(entry.title)}</div>
+                                    <div style="margin-top:4px; font-size:14px; font-weight:800; color:var(--cobalt); line-height:1.3;">${this.escapeHtml(String(section.title || entry.serviceLabel || entry.title).trim())}</div>
+                                </div>
+                                <span style="display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid #dbe4f0; background:#f8fafc; color:#64748b; font-size:11px; font-weight:700;">${this.escapeHtml(items.length ? `${items.length} item${items.length === 1 ? '' : 's'} live` : 'Fallback ready')}</span>
+                            </div>
+                            <div style="display:grid; gap:6px;">${listMarkup}</div>
+                        </section>
+                    `;
+                }).join('');
+
+                if (metaEl) {
+                    metaEl.textContent = totalItems
+                        ? `${totalItems} commercial preview item${totalItems === 1 ? '' : 's'} currently live across both rails.`
+                        : 'No owner-media is pinned yet. Commercial rails are currently relying on proof fallback.';
+                }
             },
 
             pinPaneToTop(options = {}) {
@@ -47425,28 +47688,12 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             getSessionToken() {
                 try {
-                    return String(typeof getDashboardSessionToken === 'function' ? getDashboardSessionToken() : '').trim();
+                    const dashboardToken = String(typeof getDashboardSessionToken === 'function' ? getDashboardSessionToken() : '').trim();
+                    if (dashboardToken) return dashboardToken;
+                    return String(localStorage.getItem(OWNER_MEDIA_SESSION_TOKEN_KEY) || '').trim();
                 } catch (_) {
                     return '';
                 }
-            },
-
-            canEditPlacements() {
-                const role = String(this.state?.me?.role || '').trim().toUpperCase();
-                return role === 'ADMIN';
-            },
-
-            openPagePlacement(assetId) {
-                const asset = this.state.items.find((item) => String(item.asset_id) === String(assetId));
-                if (!asset || !window.H2SMediaPlacements) {
-                    showToast('Page placement controls are unavailable. Refresh the dashboard.', 'error');
-                    return;
-                }
-                proofPacks.beginPlacementEdit({
-                    asset, source: 'owner_media',
-                    base: this.resolveApiUrl('/api/admin/media-placements').replace(/\/api\/admin\/media-placements$/, ''),
-                    token: getDashboardSessionToken(), url: this.resolveAssetUrl(asset),
-                });
             },
 
             resolveApiUrl(url) {
@@ -47471,7 +47718,12 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (token && !headers.get('authorization')) {
                     headers.set('authorization', `Bearer ${token}`);
                 }
-                const response = await fetch(url, Object.assign({}, init || {}, { headers }));
+                const requestInit = Object.assign({}, init || {}, { headers });
+                const primaryUrl = this.resolveApiUrl(url);
+                let response = await fetch(primaryUrl, requestInit);
+                if (!response.ok && response.status === 404 && primaryUrl === String(url || '').trim() && String(DEFAULT_API_HOST || '').trim() && String(url || '').trim().startsWith('/')) {
+                    response = await fetch(`${String(DEFAULT_API_HOST || '').replace(/\/+$/g, '')}${String(url || '').trim()}`, requestInit);
+                }
                 const data = await response.json().catch(() => null);
                 if (!response.ok || !data || data.ok === false) {
                     const message = data && data.error ? String(data.error) : `Request failed (${response.status})`;
@@ -47516,6 +47768,89 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 return `${count} ${count === 1 ? singular : plural}`;
             },
 
+            getChronologyTimestamp(item) {
+                return this.getItemSortTimestamp(item, 'captured');
+            },
+
+            getChronologyDate(item) {
+                const timestamp = this.getChronologyTimestamp(item);
+                if (!timestamp) return null;
+                const date = new Date(timestamp);
+                return Number.isNaN(date.getTime()) ? null : date;
+            },
+
+            buildMonthGroupKey(date) {
+                if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'recent';
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            },
+
+            formatMonthGroupLabel(date) {
+                if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'Recent uploads';
+                return date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+            },
+
+            scrollToMonth(monthKey) {
+                const key = String(monthKey || '').trim();
+                if (!key) return;
+                const target = Array.from(document.querySelectorAll('[data-owner-month-anchor]')).find((node) => {
+                    return String(node?.getAttribute('data-owner-month-anchor') || '').trim() === key;
+                });
+                if (!target) return;
+
+                const appContent = document.querySelector('#h2s-app .app-content');
+                const appMain = document.querySelector('#h2s-app .app-main');
+                const scrollRoot = appContent || appMain;
+                if (scrollRoot && typeof scrollRoot.scrollTo === 'function' && typeof target.getBoundingClientRect === 'function') {
+                    const rootRect = scrollRoot.getBoundingClientRect();
+                    const targetRect = target.getBoundingClientRect();
+                    const currentTop = typeof scrollRoot.scrollTop === 'number' ? scrollRoot.scrollTop : 0;
+                    const nextTop = Math.max(0, (targetRect.top - rootRect.top) + currentTop - 18);
+                    try {
+                        scrollRoot.scrollTo({ top: nextTop, behavior: 'smooth' });
+                        return;
+                    } catch (_) {}
+                }
+
+                try {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } catch (_) {
+                    target.scrollIntoView(true);
+                }
+            },
+
+            renderMonthJump(items) {
+                const monthJumpEl = document.getElementById('ownerUploadsMonthJump');
+                if (!monthJumpEl) return;
+                const sortedItems = Array.isArray(items) ? items : [];
+                const seen = new Set();
+                const months = [];
+
+                sortedItems.forEach((item) => {
+                    const date = this.getChronologyDate(item);
+                    const key = this.buildMonthGroupKey(date);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    months.push({ key, label: this.formatMonthGroupLabel(date) });
+                });
+
+                if (months.length <= 1) {
+                    monthJumpEl.innerHTML = '';
+                    monthJumpEl.style.display = 'none';
+                    return;
+                }
+
+                monthJumpEl.innerHTML = months.map((month) => {
+                    const key = this.escapeHtml(month.key);
+                    const label = this.escapeHtml(month.label);
+                    return `
+                        <button type="button" onclick="ownerUploadsUI.scrollToMonth('${key}')" aria-label="Jump to ${label}" style="display:inline-flex; align-items:center; min-height:30px; padding:0 10px; border-radius:999px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:12px; font-weight:700; line-height:1; cursor:pointer;">
+                            <span>${label}</span>
+                        </button>
+                    `;
+                }).join('');
+                monthJumpEl.style.display = 'flex';
+            },
+
             toUserMessage(message, status, fallback) {
                 const raw = String(message || '').trim();
                 const lower = raw.toLowerCase();
@@ -47523,7 +47858,17 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (status === 401 || lower.includes('not authenticated')) return 'Your session expired. Sign in again.';
                 if (status === 403 || lower.includes('admin only') || lower.includes('not allowed')) return 'You do not have access to this action.';
                 if (!raw) return safeFallback;
+                if (lower === 'null' || lower === 'undefined') return safeFallback;
                 if (
+                    lower.includes('prisma') ||
+                    lower.includes('database') ||
+                    lower.includes('schema') ||
+                    lower.includes('supabase') ||
+                    lower.includes('prepared statement') ||
+                    lower.includes('already exists') ||
+                    lower.includes('raw query failed') ||
+                    lower.includes('owner-media') ||
+                    lower.includes('upload store') ||
                     lower.includes('proof_assets') ||
                     lower.includes('cannot find the table') ||
                     lower.includes('relation') ||
@@ -47532,6 +47877,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     lower.includes('syntax') ||
                     lower.includes('request failed (500)')
                 ) {
+                    return safeFallback;
+                }
+                if (/[{}\[\]]/.test(raw) || /\b(null|undefined|constraint|foreign key|bytea|42p05)\b/i.test(raw)) {
                     return safeFallback;
                 }
                 return raw;
@@ -47555,13 +47903,12 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             currentFilters() {
                 return {
-                    state: String(document.getElementById('ownerUploadsStateFilter')?.value || 'all').trim(),
+                    state: 'all',
+                    dateField: 'captured',
+                    from: '',
+                    to: '',
+                    sortBy: 'captured',
                 };
-            },
-
-            handleFilterChange() {
-                this.state.visibleCount = this.state.pageSize;
-                this.refresh({ pinToTop: false });
             },
 
             paneIsActive() {
@@ -47606,20 +47953,23 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             setStatus(message) {
                 const statusEl = document.getElementById('ownerUploadsStatus');
-                if (statusEl) statusEl.textContent = String(message || '');
+                if (!statusEl) return;
+                const text = String(message || '').trim();
+                statusEl.textContent = text;
+                statusEl.style.display = text ? '' : 'none';
             },
 
             updatePagingUi() {
                 const footerMeta = document.getElementById('ownerUploadsFooterMeta');
                 const loadMoreButton = document.getElementById('ownerUploadsLoadMore');
-                const filters = this.currentFilters();
                 const shown = Array.isArray(this.state.items) ? this.state.items.length : 0;
                 const total = Math.max(0, Number(this.state.totalCount || 0));
-                const label = filters.state === 'new' ? 'new uploads' : 'uploads';
+                const label = total === 1 ? 'upload' : 'uploads';
 
                 if (footerMeta) {
-                    if (!total) footerMeta.textContent = `No ${label} in this view.`;
-                    else if (shown >= total) footerMeta.textContent = `All ${total} ${label} shown.`;
+                    footerMeta.style.display = total > 0 ? '' : 'none';
+                    if (!total) footerMeta.textContent = '';
+                    else if (shown >= total) footerMeta.textContent = `${total} ${label} shown.`;
                     else footerMeta.textContent = `Showing ${shown} of ${total} ${label}.`;
                 }
 
@@ -47627,7 +47977,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     const remaining = Math.max(0, total - shown);
                     const nextCount = Math.min(this.state.pageSize, remaining);
                     loadMoreButton.style.display = nextCount > 0 ? 'inline-flex' : 'none';
-                    loadMoreButton.textContent = nextCount > 0 ? `Load ${nextCount} more` : 'All uploads shown';
+                    loadMoreButton.textContent = nextCount <= 0
+                        ? 'All uploads shown'
+                        : (remaining === 1 ? 'Show final upload' : `Show ${nextCount} more`);
                     loadMoreButton.disabled = nextCount <= 0;
                 }
             },
@@ -47636,6 +47988,28 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const preview = String(item?.preview_url || '').trim();
                 const direct = String(item?.direct_url || '').trim();
                 return options && options.preferDirect ? (direct || preview) : (preview || direct);
+            },
+
+            normalizeAssetOpenUrl(url) {
+                const raw = String(url || '').trim();
+                if (!raw) return '';
+                if (/^https?:\/\//i.test(raw)) return raw;
+                if (!raw.startsWith('/')) return raw;
+
+                try {
+                    if (raw.startsWith('/api/')) {
+                        const apiBase = (typeof API_BASE === 'string' && API_BASE)
+                            ? String(API_BASE).trim().replace(/\/+$/g, '')
+                            : String(DEFAULT_API_HOST || '').trim().replace(/\/+$/g, '');
+                        if (apiBase) return new URL(raw, apiBase).toString();
+                    }
+                } catch (_) {}
+
+                try {
+                    return new URL(raw, window.location.origin).toString();
+                } catch (_) {
+                    return raw;
+                }
             },
 
             getPreviewReadyKey(item) {
@@ -47649,14 +48023,100 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 return '';
             },
 
+            getItemIdentityKey(item) {
+                const contentHash = String(item?.content_sha256 || '').trim().toLowerCase();
+                if (contentHash) return `hash:${contentHash}`;
+                const assetId = String(item?.asset_id || '').trim();
+                if (assetId) return `asset:${assetId}`;
+                return this.getPreviewReadyKey(item);
+            },
+
+            getItemPriority(item) {
+                if (!item) return 0;
+                if (item.is_visible || String(item.review_state || '').trim().toLowerCase() === 'published') return 4;
+                if (String(item.review_state || '').trim().toLowerCase() === 'approved') return 3;
+                if (String(item.review_state || '').trim().toLowerCase() === 'reviewed') return 2;
+                if (String(item.review_state || '').trim().toLowerCase() === 'pending') return 1;
+                return 0;
+            },
+
+            getItemTimestamp(item) {
+                return Date.parse(String(item?.updated_at || item?.submitted_at || item?.created_at || '')) || 0;
+            },
+
+            getItemSortTimestamp(item, sortBy) {
+                const mode = String(sortBy || 'uploaded').trim().toLowerCase();
+                if (mode === 'captured') {
+                    return Date.parse(String(item?.captured_at_original || item?.created_at || item?.submitted_at || item?.updated_at || '')) || 0;
+                }
+                return this.getItemTimestamp(item);
+            },
+
+            pickPreferredItem(current, candidate) {
+                if (!current) return candidate;
+                if (!candidate) return current;
+                const candidatePriority = this.getItemPriority(candidate);
+                const currentPriority = this.getItemPriority(current);
+                if (candidatePriority !== currentPriority) return candidatePriority > currentPriority ? candidate : current;
+                return this.getItemTimestamp(candidate) > this.getItemTimestamp(current) ? candidate : current;
+            },
+
+            coalesceItems(items) {
+                if (!Array.isArray(items) || items.length === 0) return [];
+                const filters = this.currentFilters();
+                const byIdentity = new Map();
+                items.forEach((item, index) => {
+                    const identityKey = this.getItemIdentityKey(item) || `fallback:${index}`;
+                    byIdentity.set(identityKey, this.pickPreferredItem(byIdentity.get(identityKey), item));
+                });
+                return Array.from(byIdentity.values()).sort((left, right) => this.getItemSortTimestamp(right, filters.sortBy) - this.getItemSortTimestamp(left, filters.sortBy));
+            },
+
+            buildItemsSignature(items) {
+                if (!Array.isArray(items) || items.length === 0) return '__empty__';
+                return items.map((item) => {
+                    const assetId = String(item?.asset_id || '').trim();
+                    const previewKey = this.getPreviewReadyKey(item);
+                    const draft = assetId ? (this.state.placementDrafts[assetId] || null) : null;
+                    const isRemoving = assetId && this.state.removingAssetIds.has(assetId) ? 'removing' : 'steady';
+                    const isSavingPlacement = assetId && this.state.savingPlacementAssetIds.has(assetId) ? 'saving-placement' : 'steady';
+                    const isBroken = previewKey && this.state.brokenPreviewKeys.has(previewKey) ? 'broken' : 'ok';
+                    return [
+                        assetId,
+                        String(item?.updated_at || item?.submitted_at || item?.created_at || ''),
+                        String(item?.captured_at_original || ''),
+                        String(item?.review_state || ''),
+                        JSON.stringify(draft || {}),
+                        isRemoving,
+                        isSavingPlacement,
+                        isBroken,
+                    ].join('|');
+                }).join('||');
+            },
+
             markPreviewReady(node) {
                 const preview = node && node.closest ? node.closest('[data-owner-preview-key]') : null;
                 if (!preview) return;
                 const key = String(preview.getAttribute('data-owner-preview-key') || '').trim();
                 if (key) this.state.readyPreviewKeys.add(key);
+                if (key) this.state.brokenPreviewKeys.delete(key);
                 preview.setAttribute('data-preview-ready', '1');
+                const fallback = preview.querySelector('[data-owner-preview-fallback]');
+                if (fallback) fallback.style.display = 'none';
                 node.style.opacity = '1';
                 node.style.visibility = 'visible';
+            },
+
+            handlePreviewFailure(node) {
+                const preview = node && node.closest ? node.closest('[data-owner-preview-key]') : null;
+                if (!preview) return;
+                const key = String(preview.getAttribute('data-owner-preview-key') || '').trim();
+                if (key) this.state.brokenPreviewKeys.add(key);
+                preview.setAttribute('data-preview-ready', '1');
+                node.style.opacity = '0';
+                node.style.visibility = 'hidden';
+                const fallback = preview.querySelector('[data-owner-preview-fallback]');
+                if (fallback) fallback.style.display = 'grid';
             },
 
             hydratePreviewReadiness() {
@@ -47675,14 +48135,15 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
                     if (node.tagName === 'IMG') {
                         if (node.complete) {
-                            this.markPreviewReady(node);
+                            if (node.naturalWidth > 0) this.markPreviewReady(node);
+                            else this.handlePreviewFailure(node);
                             return;
                         }
                         node.addEventListener('load', () => this.markPreviewReady(node), { once: true });
-                        node.addEventListener('error', () => this.markPreviewReady(node), { once: true });
+                        node.addEventListener('error', () => this.handlePreviewFailure(node), { once: true });
                         if (typeof node.decode === 'function') {
                             node.decode().then(() => this.markPreviewReady(node)).catch(() => {
-                                // load/error handlers cover the fallback path
+                                this.handlePreviewFailure(node);
                             });
                         }
                         return;
@@ -47693,7 +48154,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         return;
                     }
                     node.addEventListener('loadeddata', () => this.markPreviewReady(node), { once: true });
-                    node.addEventListener('error', () => this.markPreviewReady(node), { once: true });
+                    node.addEventListener('error', () => this.handlePreviewFailure(node), { once: true });
                 });
             },
 
@@ -47716,7 +48177,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             openAsset(assetId) {
                 const item = this.findItem(assetId);
-                const url = this.resolveAssetUrl(item, { preferDirect: true });
+                const url = this.normalizeAssetOpenUrl(this.resolveAssetUrl(item, { preferDirect: true }));
                 if (!url) {
                     showToast('This upload is missing a working media link right now.', 'error');
                     return;
@@ -47726,7 +48187,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             async downloadAsset(assetId) {
                 const item = this.findItem(assetId);
-                const url = this.resolveAssetUrl(item, { preferDirect: true });
+                const url = this.normalizeAssetOpenUrl(this.resolveAssetUrl(item, { preferDirect: true }));
                 if (!url) {
                     showToast('This upload is missing a working media link right now.', 'error');
                     return;
@@ -47774,44 +48235,205 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.refresh({ append: true, silent: true, pinToTop: false });
             },
 
+            renderEmptyState(options) {
+                const listEl = document.getElementById('ownerUploadsList');
+                const monthJumpEl = document.getElementById('ownerUploadsMonthJump');
+                if (!listEl) return;
+                const settings = Object.assign({ loading: false }, options || {});
+                const isLoading = !!settings.loading;
+                if (monthJumpEl) {
+                    monthJumpEl.innerHTML = '';
+                    monthJumpEl.style.display = 'none';
+                }
+                const title = isLoading
+                    ? 'Loading owner uploads'
+                    : 'No owner uploads here yet';
+                const copy = isLoading
+                    ? 'Checking for photos and videos now. New media will appear here as soon as it is available.'
+                    : 'There are no owner uploads yet. New photos or videos will appear here automatically after they are added.';
+                const frameBorder = isLoading ? '1px solid #dbe4f0' : '1px dashed #dbe4f0';
+                const leadingVisual = isLoading
+                    ? `
+                        <div style="width:32px; height:32px; border-radius:999px; border:1px solid #dbe4f0; display:grid; place-items:center; color:var(--cobalt); background:#f8fafc;">
+                            <span aria-hidden="true" style="width:14px; height:14px; border-radius:999px; border:1.5px solid #cbd5e1; border-top-color:var(--cobalt); animation:ownerUploadsPanelSpinner 0.9s linear infinite;"></span>
+                        </div>
+                    `
+                    : `
+                        <div style="width:36px; height:36px; border-radius:999px; border:1px solid #dbe4f0; display:grid; place-items:center; color:var(--cobalt); background:#f8fafc;">
+                            <svg viewBox="0 0 20 20" aria-hidden="true" style="width:16px; height:16px; stroke:currentColor; stroke-width:1.9; fill:none; stroke-linecap:round; stroke-linejoin:round;">
+                                <rect x="3.5" y="4.5" width="13" height="11" rx="2"></rect>
+                                <path d="M6.5 11.5l2.5-2.5 2.5 2.5 2-2"></path>
+                                <circle cx="7.5" cy="8" r="1"></circle>
+                            </svg>
+                        </div>
+                    `;
+                const trailingVisual = isLoading
+                    ? `
+                        <div aria-hidden="true" style="width:100%; max-width:220px; display:grid; gap:8px;">
+                            <div style="height:8px; border-radius:999px; background:#e2e8f0;"></div>
+                            <div style="height:8px; width:72%; margin:0 auto; border-radius:999px; background:#edf2f7;"></div>
+                        </div>
+                    `
+                    : '';
+                listEl.innerHTML = `
+                    <div style="grid-column:1 / -1; min-height:320px; border:${frameBorder}; border-radius:16px; background:#fff; display:grid; place-items:center; padding:20px;">
+                        <div ${isLoading ? 'role="status" aria-live="polite"' : ''} style="width:100%; max-width:420px; display:grid; gap:12px; justify-items:center; text-align:center;">
+                            ${leadingVisual}
+                            <div style="display:grid; gap:6px;">
+                                <div style="font-size:${isLoading ? '16px' : '18px'}; font-weight:800; color:var(--cobalt); line-height:1.25;">${this.escapeHtml(title)}</div>
+                                <div style="font-size:${isLoading ? '13px' : '14px'}; line-height:1.5; color:#64748b;">${this.escapeHtml(copy)}</div>
+                            </div>
+                            ${trailingVisual}
+                        </div>
+                    </div>
+                `;
+                this.updatePagingUi();
+            },
+
             renderItems(items) {
                 const listEl = document.getElementById('ownerUploadsList');
                 if (!listEl) return;
+                const signature = this.buildItemsSignature(items);
                 if (!Array.isArray(items) || items.length === 0) {
-                    listEl.innerHTML = '<div style="border:1px dashed #dbe4f0; border-radius:18px; padding:24px; text-align:center; color:#64748b; background:#fff;">No owner uploads match the current filter.</div>';
-                    this.updatePagingUi();
+                    this.state.lastRenderedSignature = '__empty__';
+                    this.renderEmptyState();
                     return;
                 }
 
-                const sorted = items.slice().sort((left, right) => {
-                    const leftMs = Date.parse(String(left?.submitted_at || left?.created_at || '')) || 0;
-                    const rightMs = Date.parse(String(right?.submitted_at || right?.created_at || '')) || 0;
-                    return rightMs - leftMs;
-                });
+                if (signature === this.state.lastRenderedSignature) {
+                    this.renderMonthJump(items);
+                    this.updatePagingUi();
+                    this.hydratePreviewReadiness();
+                    return;
+                }
+
+                const sorted = this.coalesceItems(items);
+                this.renderMonthJump(sorted);
+                let activeMonthKey = '';
                 listEl.innerHTML = sorted.map((item) => {
                     const assetId = this.escapeHtml(item.asset_id);
+                    const rawAssetId = String(item?.asset_id || '').trim();
                     const assetUrl = this.resolveAssetUrl(item);
                     const isRemoving = this.state.removingAssetIds.has(String(item.asset_id || '').trim());
+                    const isSavingPlacement = rawAssetId && this.state.savingPlacementAssetIds.has(rawAssetId);
                     const previewKey = this.getPreviewReadyKey(item);
                     const previewKeyAttr = this.escapeHtml(previewKey);
                     const previewReady = !!(previewKey && this.state.readyPreviewKeys.has(previewKey));
-                    const previewMediaStyle = `width:100%; height:100%; object-fit:cover; display:block; opacity:${previewReady ? '1' : '0'}; visibility:${previewReady ? 'visible' : 'hidden'};`;
+                    const previewBroken = !!(previewKey && this.state.brokenPreviewKeys.has(previewKey));
+                    const chronologyDate = this.getChronologyDate(item);
+                    const monthKey = this.buildMonthGroupKey(chronologyDate);
+                    const monthLabel = this.formatMonthGroupLabel(chronologyDate);
+                    const monthHeader = monthKey !== activeMonthKey
+                        ? (() => {
+                            activeMonthKey = monthKey;
+                            return `
+                                <div data-owner-month-anchor="${this.escapeHtml(monthKey)}" style="grid-column:1 / -1; display:flex; align-items:center; gap:10px; margin:8px 0 0; padding-top:4px;">
+                                    <div style="font-size:12px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; white-space:nowrap;">${this.escapeHtml(monthLabel)}</div>
+                                    <div style="height:1px; flex:1; background:#e2e8f0;"></div>
+                                </div>
+                            `;
+                        })()
+                        : '';
+                    const previewMediaStyle = `width:100%; height:100%; object-fit:cover; display:block; opacity:${previewReady && !previewBroken ? '1' : '0'}; visibility:${previewReady && !previewBroken ? 'visible' : 'hidden'};`;
+                    const previewFallback = `
+                        <div data-owner-preview-fallback style="position:absolute; inset:0; display:${previewBroken ? 'grid' : 'none'}; place-items:center; background:#e8eef6; color:#64748b; text-align:center; padding:14px;">
+                            <div style="display:grid; gap:8px; justify-items:center;">
+                                <svg viewBox="0 0 20 20" aria-hidden="true" style="width:18px; height:18px; stroke:currentColor; stroke-width:1.8; fill:none; stroke-linecap:round; stroke-linejoin:round;">
+                                    <rect x="3.5" y="4.5" width="13" height="11" rx="2"></rect>
+                                    <path d="M6.5 11.5l2.5-2.5 2.5 2.5 2-2"></path>
+                                    <circle cx="7.5" cy="8" r="1"></circle>
+                                </svg>
+                                <span style="font-size:12px; font-weight:600; line-height:1.35;">Preview unavailable</span>
+                            </div>
+                        </div>
+                    `;
                     const previewMarkup = String(item.media_kind || '') === 'video'
                         ? `<video src="${this.escapeHtml(item.preview_url)}" ${item.poster_url ? `poster="${this.escapeHtml(item.poster_url)}"` : ''} muted playsinline preload="metadata" style="${previewMediaStyle}"></video>`
-                        : `<img src="${this.escapeHtml(item.preview_url)}" alt="${this.escapeHtml(item.job_label || item.client_reference || 'Owner upload')}" style="${previewMediaStyle}">`;
+                        : `<img src="${this.escapeHtml(item.preview_url)}" alt="${this.escapeHtml(item.job_label || item.client_reference || 'Owner upload')}" loading="lazy" decoding="async" style="${previewMediaStyle}">`;
                     const title = String(item.job_label || item.client_reference || '').trim() || (String(item.media_kind || '').trim().toLowerCase() === 'video' ? 'Video' : 'Photo');
                     const itemMetaParts = [];
                     if (item.soft_location_label) itemMetaParts.push(`From ${item.soft_location_label}`);
+                    if (item.captured_at_original) itemMetaParts.push(`Captured ${this.formatWhen(item.captured_at_original)}`);
                     const itemMeta = itemMetaParts.filter(Boolean).join(' · ');
-                    const isNew = this.normalizeGalleryState(item.review_state) === 'new';
+                    const placementDraft = this.ensurePlacementDraft(item) || { frontend_destinations: [], display_order: 100, psychological_weight: 20, review_state: 'pending', usage_rights_status: 'pending_review' };
+                    const placementDestinations = this.normalizeFrontendDestinations(placementDraft.frontend_destinations || []);
+                    const fitLabels = this.placementFitLabels(item);
+                    const canEditPlacements = this.canEditPlacements();
                     const preview = assetUrl
                         ? `<button type="button" onclick="ownerUploadsUI.openAsset('${assetId}')" aria-label="Open media" title="Open media" style="display:block; width:100%; height:100%; padding:0; border:none; background:transparent; cursor:zoom-in;">${previewMarkup}</button>`
                         : previewMarkup;
+                    const placementControls = `
+                        <div style="display:grid; gap:10px; border-top:1px solid #eef2f7; padding-top:10px;">
+                            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                                <div style="display:grid; gap:6px;">
+                                    <div style="font-size:12px; font-weight:800; color:var(--cobalt); line-height:1.3;">Commercial defaults</div>
+                                    ${canEditPlacements ? `<button type="button" class="btn btn-tonal" onclick="ownerUploadsUI.openPagePlacement('${assetId}')">Page placement</button>` : ''}
+                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">${this.assignmentBadgeMarkup(item)}</div>
+                                </div>
+                                <span style="display:inline-flex; align-items:center; min-height:24px; padding:0 8px; border-radius:999px; border:1px solid ${this.featuredWeightLabel(placementDraft.psychological_weight) === 'Featured' ? 'rgba(37, 99, 235, 0.22)' : '#dbe4f0'}; background:${this.featuredWeightLabel(placementDraft.psychological_weight) === 'Featured' ? '#eff6ff' : '#fff'}; color:${this.featuredWeightLabel(placementDraft.psychological_weight) === 'Featured' ? '#1d4ed8' : '#64748b'}; font-size:11px; font-weight:700;">${this.escapeHtml(this.featuredWeightLabel(placementDraft.psychological_weight))}</span>
+                            </div>
+                            <div style="display:grid; gap:8px;">
+                                ${this.commercialDestinations().map((destination) => {
+                                    const checked = placementDestinations.includes(destination.key);
+                                    const fit = fitLabels.includes(destination.title);
+                                    return `
+                                        <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border:1px solid ${checked ? 'rgba(37, 99, 235, 0.24)' : '#e2e8f0'}; border-radius:10px; background:${checked ? '#eff6ff' : '#fff'}; cursor:${canEditPlacements ? 'pointer' : 'default'}; opacity:${canEditPlacements ? '1' : '0.78'};">
+                                            <input type="checkbox" ${checked ? 'checked' : ''} ${canEditPlacements ? '' : 'disabled'} onchange="ownerUploadsUI.togglePlacementDestination('${assetId}', '${this.escapeHtml(destination.key)}', this.checked)">
+                                            <span style="display:grid; gap:3px; min-width:0;">
+                                                <span style="font-size:12px; font-weight:800; color:var(--cobalt); line-height:1.3;">${this.escapeHtml(destination.title)}</span>
+                                                <span style="font-size:12px; line-height:1.45; color:#64748b;">${fit ? 'Metadata suggests this is a fit.' : 'Leave unchecked unless management confirms this rail.'}</span>
+                                            </span>
+                                        </label>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
+                                <label style="display:grid; gap:5px; min-width:0;">
+                                    <span style="font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#64748b;">Display order</span>
+                                    <input type="number" min="0" max="999" value="${this.escapeHtml(String(placementDraft.display_order ?? 100))}" ${canEditPlacements ? '' : 'disabled'} onchange="ownerUploadsUI.updatePlacementDraft('${assetId}', { display_order: ownerUploadsUI.parseInteger(this.value, 100, 0, 999) })" style="width:100%; min-height:34px; padding:0 10px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:13px;">
+                                </label>
+                                <label style="display:grid; gap:5px; min-width:0;">
+                                    <span style="font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#64748b;">Weight</span>
+                                    <select ${canEditPlacements ? '' : 'disabled'} onchange="ownerUploadsUI.updatePlacementDraft('${assetId}', { psychological_weight: ownerUploadsUI.parseInteger(this.value, 20, 0, 100) })" style="width:100%; min-height:34px; padding:0 10px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:13px;">
+                                        <option value="20" ${this.parseInteger(placementDraft.psychological_weight, 20, 0, 100) <= 40 ? 'selected' : ''}>Standard</option>
+                                        <option value="50" ${this.parseInteger(placementDraft.psychological_weight, 20, 0, 100) > 40 ? 'selected' : ''}>Featured</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
+                                <label style="display:grid; gap:5px; min-width:0;">
+                                    <span style="font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#64748b;">Approval state</span>
+                                    <select ${canEditPlacements ? '' : 'disabled'} onchange="ownerUploadsUI.updatePlacementDraft('${assetId}', { review_state: String(this.value || 'pending').trim().toLowerCase() || 'pending' })" style="width:100%; min-height:34px; padding:0 10px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:13px;">
+                                        <option value="pending" ${String(placementDraft.review_state || 'pending') === 'pending' ? 'selected' : ''}>Pending</option>
+                                        <option value="reviewed" ${String(placementDraft.review_state || '') === 'reviewed' ? 'selected' : ''}>Reviewed</option>
+                                        <option value="approved" ${String(placementDraft.review_state || '') === 'approved' ? 'selected' : ''}>Approved</option>
+                                        <option value="published" ${String(placementDraft.review_state || '') === 'published' ? 'selected' : ''}>Published</option>
+                                        <option value="rejected" ${String(placementDraft.review_state || '') === 'rejected' ? 'selected' : ''}>Rejected</option>
+                                    </select>
+                                </label>
+                                <label style="display:grid; gap:5px; min-width:0;">
+                                    <span style="font-size:11px; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; color:#64748b;">Usage rights</span>
+                                    <select ${canEditPlacements ? '' : 'disabled'} onchange="ownerUploadsUI.updatePlacementDraft('${assetId}', { usage_rights_status: String(this.value || 'pending_review').trim().toLowerCase() || 'pending_review' })" style="width:100%; min-height:34px; padding:0 10px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:13px;">
+                                        <option value="pending_review" ${String(placementDraft.usage_rights_status || 'pending_review') === 'pending_review' ? 'selected' : ''}>Pending review</option>
+                                        <option value="social_allowed" ${String(placementDraft.usage_rights_status || '') === 'social_allowed' ? 'selected' : ''}>Social allowed</option>
+                                        <option value="internal_only" ${String(placementDraft.usage_rights_status || '') === 'internal_only' ? 'selected' : ''}>Internal only</option>
+                                        <option value="remove_requested" ${String(placementDraft.usage_rights_status || '') === 'remove_requested' ? 'selected' : ''}>Remove requested</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div style="font-size:12px; line-height:1.45; color:${this.isPublishedCommercialCandidate(item) ? '#64748b' : '#92400e'};">${this.escapeHtml(this.placementHint(item))}</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <div style="font-size:11px; line-height:1.4; color:#64748b;">These are legacy commercial defaults. Page placement overrides selection and framing separately for each page and area.</div>
+                                <button type="button" onclick="ownerUploadsUI.savePlacement('${assetId}')" ${(canEditPlacements && !isSavingPlacement) ? '' : 'disabled'} style="display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:0 12px; border-radius:10px; border:1px solid ${canEditPlacements ? 'rgba(37, 99, 235, 0.22)' : '#dbe4f0'}; background:${canEditPlacements ? '#eff6ff' : '#f8fafc'}; color:${canEditPlacements ? '#1d4ed8' : '#94a3b8'}; font-size:12px; font-weight:800; line-height:1;">${isSavingPlacement ? 'Saving...' : 'Save placement'}</button>
+                            </div>
+                        </div>
+                    `;
                     return `
+                        ${monthHeader}
                         <article style="display:grid; gap:10px; border:1px solid #dbe4f0; border-radius:16px; background:#fff; padding:10px; align-items:start;">
                             <div data-owner-preview-key="${previewKeyAttr}" data-preview-ready="${previewReady ? '1' : '0'}" style="position:relative; aspect-ratio:4/3; border-radius:12px; overflow:hidden; border:1px solid #dbe4f0; background:#e8eef6;">
                                 ${preview}
-                                ${isNew ? '<div style="position:absolute; top:10px; left:10px; display:inline-flex; align-items:center; min-height:24px; padding:4px 8px; border-radius:999px; border:1px solid #fed7aa; background:#fff7ed; color:#92400e; font-size:11px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase;">New</div>' : ''}
+                                ${previewFallback}
                             </div>
                             <div style="display:grid; gap:8px; min-width:0;">
                                 <div>
@@ -47831,15 +48453,16 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                             <span>Download</span>
                                         </button>`
                                         : ''}
-                                    ${this.canEditPlacements() ? `<button type="button" class="btn btn-tonal" onclick="ownerUploadsUI.openPagePlacement('${assetId}')">Page placement</button>` : ''}
                                     <button type="button" onclick="ownerUploadsUI.removeAsset('${assetId}')" ${isRemoving ? 'disabled' : ''} aria-label="Remove upload" title="Remove upload" style="display:inline-flex; align-items:center; min-height:28px; padding:0 10px; border-radius:999px; border:1px solid #fecaca; background:#fff; color:#b42318; font-size:12px; font-weight:700; cursor:${isRemoving ? 'default' : 'pointer'}; opacity:${isRemoving ? '0.72' : '1'};">
                                         <span>${isRemoving ? 'Removing...' : 'Remove'}</span>
                                     </button>
                                 </div>
+                                ${placementControls}
                             </div>
                         </article>
                     `;
                 }).join('');
+                this.state.lastRenderedSignature = signature;
                 this.hydratePreviewReadiness();
                 this.updatePagingUi();
             },
@@ -47851,51 +48474,113 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.state.loading = true;
                 if (settings.pinToTop) this.pinPaneToTop();
                 const filters = this.currentFilters();
-                if (!settings.silent) this.setStatus('Loading owner uploads...');
+                const hasExistingItems = Array.isArray(this.state.items) && this.state.items.length > 0;
+                if (!settings.silent) this.setStatus('');
+                if (!settings.append && !hasExistingItems && !settings.silent && !this.state.hasLoadedOnce) this.renderEmptyState({ loading: true });
                 try {
                     const appendMode = !!settings.append;
-                    const apiState = filters.state === 'new' ? 'pending' : 'all';
                     const requestOffset = appendMode ? Math.max(0, Number(this.state.items.length || 0)) : 0;
                     const requestLimit = appendMode ? this.state.pageSize : this.state.visibleCount;
-                    const params = new URLSearchParams({ scope: 'all', limit: String(requestLimit), offset: String(requestOffset), state: apiState });
+                    const params = new URLSearchParams({ scope: 'all', limit: String(requestLimit), offset: String(requestOffset), state: 'all' });
+                    if (filters.from) params.set('from', filters.from);
+                    if (filters.to) params.set('to', filters.to);
+                    if (filters.dateField) params.set('date_field', filters.dateField);
+                    if (filters.sortBy) params.set('sort_by', filters.sortBy);
                     const data = await this.fetchJson(`/api/owner-media/uploads?${params.toString()}`, { method: 'GET', cache: 'no-store' });
-                    this.state.me = data.me || this.state.me || null;
                     const allItems = Array.isArray(data.uploads) ? data.uploads : [];
-                    this.state.items = appendMode ? this.state.items.concat(allItems) : allItems;
+                    this.state.me = data.me || this.state.me || null;
+                    this.state.items = this.coalesceItems(appendMode ? this.state.items.concat(allItems) : allItems);
                     this.state.visibleCount = Math.max(this.state.pageSize, Number(this.state.items.length || 0));
                     this.state.summary = data.summary || {};
                     this.state.totalCount = filters.state === 'new'
-                        ? Number((data.summary && data.summary.pending) || 0)
-                        : Number((data.summary && data.summary.total) || this.state.items.length || 0);
+                        ? Math.max(Number((data.summary && data.summary.pending) || 0), this.state.items.length || 0)
+                        : Math.max(Number((data.summary && data.summary.total) || 0), this.state.items.length || 0);
+                    this.state.hasLoadedOnce = true;
                     this.renderItems(this.state.items);
-                    if (filters.state === 'new') {
-                        this.setStatus(this.state.totalCount > this.state.items.length
-                            ? `Showing ${this.state.items.length} of ${this.state.totalCount} new uploads.`
-                            : (this.state.items.length
-                                ? `All ${this.state.items.length} new uploads shown.`
-                                : 'No new uploads right now.'));
+                    if (settings.silent) {
+                        // Keep silent refresh visually quiet unless new data actually changes the rendered cards.
+                    } else if (!this.state.items.length) {
+                        this.setStatus('');
                     } else {
                         this.setStatus(this.state.totalCount > this.state.items.length
                             ? `Showing ${this.state.items.length} of ${this.state.totalCount} uploads.`
                             : (this.state.items.length
                                 ? `All ${this.state.items.length} uploads shown.`
-                                : 'No uploads in this view.'));
+                                : 'No owner uploads yet. New photos or videos will appear here automatically after they are added.'));
                     }
                     if (settings.pinToTop) this.pinPaneToTop();
+                    this.refreshCommercialPreview({ silent: true }).catch(() => {});
                 } catch (error) {
-                    this.renderItems([]);
-                    this.state.totalCount = 0;
-                    this.setStatus(this.toUserMessage(error && error.message, error && error.status, 'Owner uploads are unavailable right now. Try again in a moment.'));
+                    if (!hasExistingItems) {
+                        this.renderItems([]);
+                        this.state.totalCount = 0;
+                    }
+                    if (!settings.silent || !hasExistingItems || !this.state.hasLoadedOnce) {
+                        this.setStatus(this.toUserMessage(error && error.message, error && error.status, 'Owner uploads are unavailable right now. Try again in a moment.'));
+                    }
                     if (settings.pinToTop) this.pinPaneToTop();
                 } finally {
                     this.state.loading = false;
                 }
             },
 
+            async savePlacement(assetId) {
+                const key = String(assetId || '').trim();
+                if (!key) return;
+                if (!this.canEditPlacements()) {
+                    showToast('Only admins can update commercial placements.', 'error');
+                    return;
+                }
+
+                const item = this.findItem(key);
+                const draft = this.ensurePlacementDraft(item || { asset_id: key });
+                if (!draft) return;
+
+                this.state.savingPlacementAssetIds.add(key);
+                this.renderItems(this.state.items);
+                try {
+                    const payload = {
+                        asset_id: key,
+                        frontend_destinations: this.normalizeFrontendDestinations(draft.frontend_destinations || []),
+                        display_order: this.parseInteger(draft.display_order, 100, 0, 999),
+                        psychological_weight: this.parseInteger(draft.psychological_weight, 20, 0, 100),
+                        review_state: String(draft.review_state || 'pending').trim().toLowerCase() || 'pending',
+                        usage_rights_status: String(draft.usage_rights_status || 'pending_review').trim().toLowerCase() || 'pending_review',
+                    };
+                    const data = await this.fetchJson('/api/owner-media/uploads', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+
+                    const updated = data && data.upload ? data.upload : null;
+                    if (updated) {
+                        this.state.items = (Array.isArray(this.state.items) ? this.state.items : []).map((entry) => {
+                            return String(entry?.asset_id || '').trim() === key ? updated : entry;
+                        });
+                        this.state.placementDrafts[key] = {
+                            frontend_destinations: this.normalizeFrontendDestinations(updated.frontend_destinations || []),
+                            display_order: this.parseInteger(updated.display_order, 100, 0, 999),
+                            psychological_weight: this.parseInteger(updated.psychological_weight, 20, 0, 100),
+                            review_state: String(updated.review_state || 'pending').trim().toLowerCase() || 'pending',
+                            usage_rights_status: String(updated.usage_rights_status || 'pending_review').trim().toLowerCase() || 'pending_review',
+                        };
+                    }
+
+                    this.renderItems(this.state.items);
+                    await this.refreshCommercialPreview({ silent: true });
+                    showToast('Commercial placement saved', 'success');
+                } catch (error) {
+                    showToast(this.toUserMessage(error && error.message, error && error.status, 'Could not save commercial placement right now.'), 'error');
+                } finally {
+                    this.state.savingPlacementAssetIds.delete(key);
+                    this.renderItems(this.state.items);
+                }
+            },
+
         };
 
         try { window.ownerUploadsUI = ownerUploadsUI; } catch (_) {}
-
 
         const commercialQueueUI = {
             state: {
@@ -49028,4 +49713,3 @@ window.addDeliverableLinkFromInput = function() {
     input.value = '';
     input.focus();
 };
-

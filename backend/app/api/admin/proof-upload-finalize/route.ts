@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
+import { getOwnerMediaAuthUser } from '@/lib/ownerMediaAuth';
+import { OWNER_MEDIA_DB_BUCKET, insertOwnerMediaUpload, isOwnerMediaDuplicateError } from '@/lib/ownerMediaDb';
 import {
   OWNER_MEDIA_BUCKET,
   ensureOwnerMediaBucket,
@@ -89,6 +91,78 @@ export async function POST(request: Request) {
     publicUrl = String(pub?.data?.publicUrl || '').trim() || null;
   } catch {
     publicUrl = null;
+  }
+
+  if (surface === 'owner_media') {
+    const authed = await getOwnerMediaAuthUser(request);
+    if (!authed) {
+      return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
+    }
+
+    try {
+      const sb = getOwnerMediaStorageClient();
+      await ensureOwnerMediaBucket(sb);
+      const downloaded = await sb.storage.from(OWNER_MEDIA_BUCKET).download(finalPath);
+      if (downloaded.error || !downloaded.data) {
+        return NextResponse.json(
+          { ok: false, error: 'Uploaded file could not be finalized.' },
+          { status: 400, headers: corsHeaders(request) },
+        );
+      }
+
+      const bytes = Buffer.from(await downloaded.data.arrayBuffer());
+      const saved = await insertOwnerMediaUpload({
+        filename: String(body.filename || 'upload').trim() || 'upload',
+        contentType: mime || downloaded.data.type || 'application/octet-stream',
+        mediaKind: String(body.media_kind || '').trim() || (String(mime || downloaded.data.type || '').startsWith('video/') ? 'video' : 'photo'),
+        bytes,
+        capturedAtOriginal: String(body.captured_at_original || '').trim() || null,
+        capturedAtSource: String(body.captured_at_source || '').trim() || null,
+        uploadedByUserId: authed.userId,
+        uploadedByUsername: authed.username,
+        uploadedByDisplayName: authed.displayName,
+      });
+
+      try {
+        await sb.storage.from(OWNER_MEDIA_BUCKET).remove([finalPath]);
+      } catch {
+        // Best effort cleanup only.
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          bucket: OWNER_MEDIA_DB_BUCKET,
+          path: saved.asset_id,
+          public_url: `/api/proof-asset-media?bucket=${encodeURIComponent(OWNER_MEDIA_DB_BUCKET)}&path=${encodeURIComponent(saved.asset_id)}`,
+          content_type: saved.content_type,
+          file_size_kb: saved.file_size_kb,
+          media_kind: saved.media_kind,
+          original_name: saved.filename,
+          converted_to_mp4: false,
+          received_convert_to_mp4: wantsConvert ? 'true' : 'false',
+          warnings,
+        },
+        { headers: corsHeaders(request) },
+      );
+    } catch (error: any) {
+      if (isOwnerMediaDuplicateError(error)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: 'This image has already been uploaded.',
+            error_code: 'duplicate_owner_upload',
+            existing_upload: error.existingUpload || null,
+          },
+          { status: 409, headers: corsHeaders(request) },
+        );
+      }
+
+      return NextResponse.json(
+        { ok: false, error: 'Uploaded file could not be finalized.' },
+        { status: 500, headers: corsHeaders(request) },
+      );
+    }
   }
 
   return NextResponse.json(

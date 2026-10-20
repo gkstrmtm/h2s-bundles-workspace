@@ -44,7 +44,6 @@ export async function ensureOwnerMediaBucket(client?: SupabaseClient): Promise<v
 
     const created = await sb.storage.createBucket(OWNER_MEDIA_BUCKET, {
       public: false,
-      fileSizeLimit: '250MB',
     });
 
     if (created.error && !String(created.error.message || '').toLowerCase().includes('already exists')) {
