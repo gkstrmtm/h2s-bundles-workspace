@@ -79,6 +79,43 @@ TWILIO_PHONE_NUMBER=
 OPENAI_API_KEY=
 ```
 
+## Business phone and call relay
+
+The active local business number is **864-387-8413**. Public call links and
+appointment support copy use this number, not the outdated website contact number.
+Commercial intake prefers `COMMERCIAL_CALL_NUMBER`, then `PUBLIC_PHONE_NUMBER`,
+then the configured Twilio sender (`TWILIO_FROM_NUMBER` / `TWILIO_PHONE_NUMBER`).
+
+Voice forwarding is a published Twilio Studio flow, separate from customer SMS
+preferences and technician/management dispatch lists. It calls one configured
+recipient, displays the business line as caller ID, does not record calls, and
+plays an unavailable message if the connection fails or goes unanswered.
+Carrier voicemail can still count as an answered call.
+
+Configure credentials and the relay destination outside Git:
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, and
+`TWILIO_VOICE_FORWARD_TO`. From `backend`, validate without changing routing:
+
+```powershell
+node tools\configure-business-call-relay.cjs
+```
+
+Only after explicit authorization, publish and attach the verified flow:
+
+```powershell
+node tools\configure-business-call-relay.cjs --apply
+```
+
+The tool refuses unowned/nonvoice numbers, self-dialing, international targets,
+existing voice applications, and unrelated voice handlers. It preserves and
+verifies SMS settings. On an ambiguous provider update, read back the voice
+configuration before retrying; do not delete a flow that may already be attached.
+Keep the previous voice URL/method for rollback. Normal Twilio Voice and Studio
+usage charges apply. Publishing this provider route does not deploy website
+changes; those still require an explicitly authorized manual Vercel deployment.
+Confirm actual ringing and conversation from a different phone than the relay
+destination before marking end-to-end calling verified.
+
 ## 💡 Key Features
 
 - Real-time analytics dashboard with Meta Pixel tracking

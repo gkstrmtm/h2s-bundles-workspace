@@ -1214,11 +1214,13 @@ textarea {
 
 .photo-uploader {
   display: grid;
+  min-width: 0;
   gap: var(--space-4);
 }
 
 .upload-box {
   display: grid;
+  min-width: 0;
   gap: 8px;
   padding: 22px;
   cursor: pointer;
@@ -1227,6 +1229,9 @@ textarea {
 }
 
 .upload-box input {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin-top: 4px;
 }
 
@@ -1424,15 +1429,59 @@ textarea {
 }
 
 .approval-card {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+  min-width: 0;
   max-width: 840px;
   margin: 0 auto;
+}
+
+.approval-card__head {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.approval-card__head > * {
+  margin: 0;
+}
+
+.approval-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.approval-summary > div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.approval-summary strong,
+.approval-card__head h1 {
+  overflow-wrap: anywhere;
 }
 
 .approval-services {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: var(--space-4);
+}
+
+.approval-services:empty {
+  display: none;
+}
+
+.approval-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.approval-actions .btn {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
 @media (max-width: 1100px) {
@@ -1513,6 +1562,10 @@ textarea {
 @media (max-width: 720px) {
   .shell {
     width: min(100vw - 40px, 1180px);
+  }
+
+  .approval-actions {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .page-footer__inner,

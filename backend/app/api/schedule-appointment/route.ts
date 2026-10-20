@@ -1046,7 +1046,7 @@ export async function POST(request: Request) {
         // Send SMS if phone exists - Use Twilio directly for customer notifications
         if (customerPhone && twilioClient && process.env.TWILIO_PHONE_NUMBER) {
           try {
-            const smsBody = `Hi ${firstName}! Your ${serviceName} appointment is confirmed for ${dateFormatted} at ${timeFormatted}. We'll send you a reminder before we arrive. Questions? Call (864) 528-1475. - Home2Smart`;
+            const smsBody = `Hi ${firstName}! Your ${serviceName} appointment is confirmed for ${dateFormatted} at ${timeFormatted}. We'll send you a reminder before we arrive. Questions? Call (864) 387-8413. - Home2Smart`;
             await twilioClient.messages.create({
               body: smsBody,
               from: process.env.TWILIO_PHONE_NUMBER,

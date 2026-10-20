@@ -417,6 +417,7 @@ function buildApprovalLinks(baseUrl, responseToken) {
   const base = String(baseUrl || '').replace(/\/+$/, '');
   const token = encodeURIComponent(String(responseToken || ''));
   return {
+    reviewUrl: `${base}/commercial-approval?token=${token}`,
     approveUrl: `${base}/commercial-approval?token=${token}&action=approve`,
     declineUrl: `${base}/commercial-approval?token=${token}&action=decline`
   };
@@ -436,7 +437,15 @@ function buildTechnicianRequestMessage(input) {
   const slotLabel = normalizeText(input.slotLabel, 120) || 'requested consultation slot';
   const links = buildApprovalLinks(input.baseUrl, input.responseToken);
   const services = summarizeServices(input.serviceNeeds);
-  return `${reference}: ${leadName} requested ${services} consultation for ${slotLabel}. Approve: ${links.approveUrl} Decline: ${links.declineUrl}`;
+  return [
+    `Home2Smart | ${reference}`,
+    `For: ${leadName}`,
+    `Services: ${services}`,
+    `Requested: ${slotLabel}`,
+    '',
+    'Review and respond:',
+    links.reviewUrl
+  ].join('\n');
 }
 
 function buildCustomerPendingMessage(input) {

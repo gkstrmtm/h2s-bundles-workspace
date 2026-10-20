@@ -224,6 +224,47 @@ test('maintenance ignores poisoned historical assignments and still sends config
   assert.equal(f.network.length, 0);
 });
 
+test('public call configuration respects explicit overrides and otherwise uses the configured owned sender', async () => {
+  for (const [env, expected] of [
+    [{}, '+15550000004'],
+    [{ PUBLIC_PHONE_NUMBER: '+15550000011' }, '+15550000011'],
+    [{ COMMERCIAL_CALL_NUMBER: '+15550000012', PUBLIC_PHONE_NUMBER: '+15550000011' }, '+15550000012'],
+    [{ TWILIO_FROM_NUMBER: '', TWILIO_PHONE_NUMBER: '+15550000013' }, '+15550000013'],
+  ]) {
+    const f = fixture({ env });
+    const response = await f.route('commercial-intake').GET(new Request('https://untrusted.example.invalid/api/commercial-intake'));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.config.callNumber, expected);
+    assert.equal(payload.config.publicBaseUrl, 'https://commercial.example.invalid');
+    assert.equal(f.sms.length, 0);
+    assert.equal(f.network.length, 0);
+  }
+});
+
+test('dispatch SMS keeps the review URL separate from safe text-reply instructions', async () => {
+  for (const rescheduled of [false, true]) {
+    const pending = pendingRequest();
+    if (rescheduled) pending.metadata.last_reschedule_key = 'fixture-reschedule';
+    const f = fixture({ requests: [pending] });
+    const row = f.tables.commercial_consultation_requests[0];
+    const sent = await f.runtime.sendTechnicianConsultationRequest(row, f.tables.commercial_leads[0]);
+    const lines = sent.body.split('\n');
+    assert.equal(lines.filter(line => line.startsWith('https://')).length, 1);
+    assert.ok(lines.includes(sent.links.reviewUrl));
+    assert.equal(new URL(sent.links.reviewUrl).searchParams.has('action'), false);
+    assert.ok(sent.body.includes(`${sent.links.reviewUrl}\n\n`));
+    if (rescheduled) {
+      assert.match(sent.body, /text replies cannot approve a rescheduled window/);
+      assert.doesNotMatch(sent.body, /Or reply YES/);
+    } else {
+      assert.match(sent.body, /Or reply YES COM-ABCDEF or NO COM-ABCDEF\./);
+    }
+    assert.deepEqual(f.sms.map(message => message.to), trustedPhones);
+    assert.equal(f.network.length, 0);
+  }
+});
+
 test('historically assigned but unconfigured phones cannot authorize technician SMS replies', async () => {
   const f = fixture({ requests: [pendingRequest()] });
   assert.equal(await f.runtime.findConsultationForTechnicianReply(forgedPhone, 'YES COM-ABCDEF'), null);

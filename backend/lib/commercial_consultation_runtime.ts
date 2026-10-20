@@ -705,8 +705,8 @@ export async function sendTechnicianConsultationRequest(consultation: any, lead:
     responseToken: consultation.response_token,
     serviceNeeds: Array.isArray(lead.service_needs) ? lead.service_needs : [],
   }) + (consultation.metadata?.last_reschedule_key
-    ? ' The window changed; use the current approval link. Text replies cannot approve a rescheduled window.'
-    : ' Reply YES or NO to this text.');
+    ? '\n\nThe window changed. Use the review link above; text replies cannot approve a rescheduled window.'
+    : `\n\nOr reply YES ${consultation.reference_code} or NO ${consultation.reference_code}.`);
 
   const results = [];
   for (const phone of technicianPhones) {

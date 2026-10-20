@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const {
   buildApprovalLinks,
+  buildTechnicianRequestMessage,
   buildSlotSuggestions,
   canTransitionConsultationStatus,
   computeAssessmentCompletion,
@@ -11,6 +12,28 @@ const {
   generateResponseToken,
   normalizeCommercialLeadInput
 } = require('../lib/commercial_consultation.js');
+
+test('technician SMS separates request details and one neutral review link', () => {
+  const input = {
+    referenceCode: 'COM-ABCDEF', customerName: 'Fixture Contact',
+    serviceNeeds: ['Security Cameras'], slotLabel: 'Wed, Oct 21, 9:00 AM to 9:30 AM Eastern Time',
+    baseUrl: 'https://commercial.example.invalid/', responseToken: 'fixture token&safe?',
+  };
+  const links = buildApprovalLinks(input.baseUrl, input.responseToken);
+  const message = buildTechnicianRequestMessage(input);
+  const lines = message.split('\n');
+  assert.equal(lines[0], 'Home2Smart | COM-ABCDEF');
+  assert.equal(lines[1], 'For: Fixture Contact');
+  assert.equal(lines[2], 'Services: Security Cameras');
+  assert.equal(lines[3], `Requested: ${input.slotLabel}`);
+  assert.deepEqual(lines.slice(4), ['', 'Review and respond:', links.reviewUrl]);
+  assert.equal((message.match(/https:\/\//g) || []).length, 1);
+  const review = new URL(links.reviewUrl);
+  assert.equal(review.searchParams.get('token'), input.responseToken);
+  assert.equal(review.searchParams.has('action'), false);
+  assert.equal(new URL(links.approveUrl).searchParams.get('action'), 'approve');
+  assert.equal(new URL(links.declineUrl).searchParams.get('action'), 'decline');
+});
 
 test('normalizeCommercialLeadInput sanitizes commercial lead payloads', () => {
   const result = normalizeCommercialLeadInput({

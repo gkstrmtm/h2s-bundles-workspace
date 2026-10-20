@@ -1630,7 +1630,7 @@ function renderFatal(message) {
       <h2 style="margin:0 0 16px 0;font-weight:900;font-size:24px;color:#dc2626;">Something Went Wrong</h2>
       <p style="margin:0 0 24px 0;color:#64748b;font-size:16px;">${escapeHtml(message)}</p>
       <a href="/bundles" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;">Return to Shop</a>
-      <p style="margin-top:24px;font-size:14px;color:#94a3b8;">Need help? Call <a href="tel:864-528-1475" style="color:#2563eb;">(864) 528-1475</a></p>
+      <p style="margin-top:24px;font-size:14px;color:#94a3b8;">Need help? Call <a href="tel:+18643878413" style="color:#2563eb;">(864) 387-8413</a></p>
     </div>
   `;
   outlet.style.opacity = '1';
@@ -1699,7 +1699,7 @@ async function renderShopSuccessView() {
         if (msg) msg.innerHTML = '<span style="color:#059669; font-weight:700;">✓ Appointment locked in at checkout.</span>';
       } else {
         if (summary) summary.innerHTML = '<span style="color:#0f172a; font-weight:800;">Next:</span> We\'ll confirm your install details.';
-        if (msg) msg.innerHTML = '<span style="color:#64748b;">Need to change your install time? Call (864) 528-1475.</span>';
+        if (msg) msg.innerHTML = '<span style="color:#64748b;">Need to change your install time? Call (864) 387-8413.</span>';
       }
     } catch(_e) {}
   }
@@ -1998,7 +1998,7 @@ function checkSubmit() {
                 newBtn.style.background = '#ef4444';
                 newBtn.disabled = false;
                 newBtn.classList.add('active');
-                if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 528-1475</span>';
+                if(byId('schedMsg')) byId('schedMsg').innerHTML = '<span style="color:#ef4444;">⚠ Failed. Call (864) 387-8413</span>';
             }
         };
     } else {
@@ -2256,7 +2256,7 @@ async function init(){
           showCheckoutModal();
         } catch(err2) {
           logger.error('[Checkout] Fallback failed:', err2);
-          alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
+          alert('Unable to open checkout. Please refresh the page or call (864) 387-8413 to complete your order.');
         }
       }
     }, { passive: false });
@@ -5002,7 +5002,7 @@ function showCheckoutModal() {
 
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Phone Number</label>
-          <input type="tel" id="coPhone" class="inp" required value="${escapeAttr(prePhone)}" placeholder="(864) 528-1475" style="width:100%">
+          <input type="tel" id="coPhone" class="inp" required value="${escapeAttr(prePhone)}" placeholder="(864) 387-8413" style="width:100%">
         </div>
 
         <div style="margin-bottom:12px;">
@@ -5556,7 +5556,7 @@ window.handleCheckoutContinue = async function(){
             console.error('[Schedule] Error:', err2);
             const msg = byId('coSchedMsg');
             const detail = (err2 && err2.message) ? String(err2.message) : 'Failed to schedule';
-            if(msg) msg.innerHTML = '<span style="color:#ef4444; font-weight:700;">⚠ ' + escapeHtml(detail) + '</span><br/><span style="color:#64748b; font-size:12px;">Pick another slot or call (864) 528-1475.</span>';
+            if(msg) msg.innerHTML = '<span style="color:#ef4444; font-weight:700;">⚠ ' + escapeHtml(detail) + '</span><br/><span style="color:#64748b; font-size:12px;">Pick another slot or call (864) 387-8413.</span>';
             if(confirmBtn) {
               confirmBtn.innerText = 'Try Again';
               confirmBtn.style.background = '#ef4444';
@@ -5577,7 +5577,7 @@ window.handleCheckoutContinue = async function(){
           : `Checkout failed: ${err3.message}`;
         h2sCoShowError(msg);
         if(btn) { btn.disabled = false; btn.textContent = 'Continue to Scheduling'; }
-        alert('Unable to process checkout. Please try again or contact support at (864) 528-1475.');
+        alert('Unable to process checkout. Please try again or contact support at (864) 387-8413.');
         return;
       }
 
@@ -6483,7 +6483,7 @@ ${details}
   } catch (error) {
     logger.error('Quote request failed:', error);
     msg.style.color = '#d32f2f';
-    msg.textContent = 'Failed to send. Please call us at (864) 528-1475';
+    msg.textContent = 'Failed to send. Please call us at (864) 387-8413';
     btn.disabled = false;
     btn.textContent = 'Send Request';
   }
@@ -6535,7 +6535,7 @@ window.rescheduleOrder = async function(orderId, currentDate, currentTime) {
     }
   } catch (error) {
     console.error('Reschedule error:', error);
-    alert('Failed to reschedule: ' + error.message + '\n\nPlease call us at (864) 528-1475');
+    alert('Failed to reschedule: ' + error.message + '\n\nPlease call us at (864) 387-8413');
   } finally {
     hideLoader();
   }

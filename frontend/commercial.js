@@ -15,7 +15,7 @@
   const PROOF_ENDPOINT = `${API_BASE}/proof-gallery`;
   const STORAGE_KEY = 'h2s_commercial_lead';
   const DRAFT_KEY = 'h2s_commercial_draft';
-  const DEFAULT_PHONE = '864-528-1475';
+  const DEFAULT_PHONE = '864-387-8413';
   const MEDIA_REQUEST_TIMEOUT_MS = 4500;
 
   const SMS_CONSENT_COPY = 'I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.';

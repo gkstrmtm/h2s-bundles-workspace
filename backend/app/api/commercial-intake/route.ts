@@ -32,7 +32,7 @@ export async function OPTIONS(request: Request) {
 function publicConfig() {
   return {
     publicBaseUrl: getPublicBaseUrl(),
-    callNumber: String(process.env.COMMERCIAL_CALL_NUMBER || process.env.PUBLIC_PHONE_NUMBER || '').trim(),
+    callNumber: String(process.env.COMMERCIAL_CALL_NUMBER || process.env.PUBLIC_PHONE_NUMBER || process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER || '').trim(),
     smsNumber: String(process.env.COMMERCIAL_SMS_NUMBER || process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER || '').trim(),
     suggestedSlots: buildSlotSuggestions({ count: 4 }),
     timeZone: 'America/New_York',

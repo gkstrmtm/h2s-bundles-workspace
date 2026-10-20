@@ -351,7 +351,7 @@ async function init(){
             showCheckoutModal();
           } catch(err2) {
             logger.error('[Checkout] Fallback failed:', err2);
-            alert('Unable to open checkout. Please refresh the page or call (864) 528-1475 to complete your order.');
+            alert('Unable to open checkout. Please refresh the page or call (864) 387-8413 to complete your order.');
           }
         }
       }, { passive: false }); // passive: false ensures preventDefault works
@@ -720,7 +720,7 @@ function route(){
             <h2 style="margin:0 0 16px 0; font-weight:900; font-size:28px; color:#0a2a5a;">Order Confirmed!</h2>
             <p style="margin:0 0 24px 0; color:#6b778c; font-size:16px;">Your payment was successful. We'll send confirmation details to your email shortly.</p>
             <p style="margin:0 0 24px 0; color:#6b778c; font-size:16px;">Our team will contact you within 24 hours to schedule your installation.</p>
-            <a href="tel:864-528-1475" style="display:inline-block; padding:14px 28px; background:#1493ff; color:white; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px;">Call Us: (864) 528-1475</a>
+            <a href="tel:+18643878413" style="display:inline-block; padding:14px 28px; background:#1493ff; color:white; border-radius:10px; text-decoration:none; font-weight:700; font-size:16px;">Call Us: (864) 387-8413</a>
             <div style="margin-top:24px;">
               <button onclick="navSet({view:null})" class="btn btn-ghost">Back to Shop</button>
             </div>
@@ -2905,7 +2905,7 @@ function showCheckoutModal() {
         
         <div style="margin-bottom:12px;">
           <label style="display:block; font-weight:600; font-size:14px; margin-bottom:4px; color:var(--ink);">Phone Number</label>
-          <input type="tel" id="coPhone" class="inp" required value="${escapeAttr(prePhone)}" placeholder="(864) 528-1475" style="width:100%">
+          <input type="tel" id="coPhone" class="inp" required value="${escapeAttr(prePhone)}" placeholder="(864) 387-8413" style="width:100%">
         </div>
         
         <div style="margin-bottom:12px;">
@@ -3182,7 +3182,7 @@ window.handleCheckoutSubmit = async function(e) {
         }
         
         // Show user-friendly alert as backup
-        alert('Unable to process checkout. Please try again or contact support at (864) 528-1475.');
+        alert('Unable to process checkout. Please try again or contact support at (864) 387-8413.');
         return;
       }
       
@@ -3447,7 +3447,7 @@ window.renderShopSuccess = async function(){
       <!-- Footer Actions -->
       <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
         <button class="btn btn-ghost" id="backToShop" style="min-width: 160px;">Return to Shop</button>
-        <a href="tel:864-528-1475" class="btn btn-secondary" style="min-width: 160px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Call Support</a>
+        <a href="tel:+18643878413" class="btn btn-secondary" style="min-width: 160px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Call Support</a>
       </div>
     </section>
   `;
@@ -3587,7 +3587,7 @@ window.renderShopSuccess = async function(){
       cal.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted);">
           <p style="margin:0 0 12px 0;">Calendar temporarily unavailable. Please call to schedule:</p>
-          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 528-1475</a>
+          <a href="tel:+18643878413" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 387-8413</a>
         </div>
       `;
     }
@@ -3626,7 +3626,7 @@ window.renderShopSuccess = async function(){
       cal.innerHTML = `
         <div style="padding:20px; text-align:center; color:var(--muted);">
           <p style="margin:0 0 12px 0;">Unable to load calendar. Please call us to schedule:</p>
-          <a href="tel:864-528-1475" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 528-1475</a>
+          <a href="tel:+18643878413" style="display:inline-block; padding:12px 24px; background:var(--cobalt); color:white; border-radius:8px; text-decoration:none; font-weight:700;">Call (864) 387-8413</a>
         </div>
       `;
     }
@@ -3896,11 +3896,11 @@ window.renderShopSuccess = async function(){
             <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 2px solid #93c5fd; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
               <h3 style="margin: 0 0 12px 0; font-size: 17px; font-weight: 800; color: var(--cobalt);">What's Next?</h3>
               <p style="margin: 0 0 16px 0; color: #1e3a8a; font-size: 14px;">Our team will contact you within 24 hours to schedule your installation. You'll receive a confirmation email at <strong>${recentCheckout.customer_email || 'your email address'}</strong>.</p>
-              <a href="tel:864-528-1475" style="display: inline-block; padding: 12px 24px; background: var(--cobalt); color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">Call Us: (864) 528-1475</a>
+              <a href="tel:+18643878413" style="display: inline-block; padding: 12px 24px; background: var(--cobalt); color: white; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px;">Call Us: (864) 387-8413</a>
             </div>
             
             <div style="text-align: center; padding: 20px; color: var(--muted); font-size: 13px;">
-              <p style="margin: 0;">Questions? Call us at <a href="tel:864-528-1475" style="color: var(--cobalt); font-weight: 600;">(864) 528-1475</a></p>
+              <p style="margin: 0;">Questions? Call us at <a href="tel:+18643878413" style="color: var(--cobalt); font-weight: 600;">(864) 387-8413</a></p>
             </div>
             
             ${err.message.includes('network') || err.message.includes('fetch') ? '<div style="background: #fee; border: 1px solid #fca5a5; border-radius: 8px; padding: 12px; margin-top: 16px; text-align: center; font-size: 13px; color: #991b1b;">⚠️ Unable to load full order details. Your payment was successful and we\'ll send confirmation via email.</div>' : ''}
@@ -3927,7 +3927,7 @@ window.renderShopSuccess = async function(){
             </div>
             <h2 style="margin:0 0 8px 0;font-weight:900;font-size:28px;color:#1e3a8a;">Payment Successful!</h2>
             <p style="margin:0 0 20px 0;color:#64748b;">Your order has been received. We'll send confirmation via email.</p>
-            <a href="tel:864-528-1475" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;">Call (864) 528-1475</a>
+            <a href="tel:+18643878413" style="display:inline-block;padding:12px 24px;background:#2563eb;color:white;border-radius:8px;text-decoration:none;font-weight:700;">Call (864) 387-8413</a>
           </div>
         `;
       }
@@ -4816,7 +4816,7 @@ ${details}
   } catch (error) {
     logger.error('Quote request failed:', error);
     msg.style.color = '#d32f2f';
-    msg.textContent = 'Failed to send. Please call us at (864) 528-1475';
+    msg.textContent = 'Failed to send. Please call us at (864) 387-8413';
     btn.disabled = false;
     btn.textContent = 'Send Request';
   }
@@ -4868,7 +4868,7 @@ window.rescheduleOrder = async function(orderId, currentDate, currentTime) {
     }
   } catch (error) {
     console.error('Reschedule error:', error);
-    alert('Failed to reschedule: ' + error.message + '\n\nPlease call us at (864) 528-1475');
+    alert('Failed to reschedule: ' + error.message + '\n\nPlease call us at (864) 387-8413');
   } finally {
     hideLoader();
   }
