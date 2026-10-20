@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "retro-dev": false
+    }
+  },
   "buildCommand": "echo 'No build needed'",
   "outputDirectory": ".",
   "cleanUrls": false,

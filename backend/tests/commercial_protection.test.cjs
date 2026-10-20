@@ -11,6 +11,7 @@ const backend = path.resolve(__dirname, '..');
 const trustedPhones = ['+15550000001', '+15550000002', '+15550000003'];
 const forgedPhone = '+15550000099';
 const sourceCache = new Map();
+const slot = utils.buildSlotSuggestions(new Date())[0];
 
 function evaluateTs(filename, source, imports, globals = {}) {
   const compiled = ts.transpileModule(source, {
@@ -38,8 +39,9 @@ function pendingRequest() {
     request_id: 'request-fixture', lead_id: 'lead-fixture', reference_code: 'COM-ABCDEF',
     response_token: 'approval-token-fixture', status: 'pending', reminder_count: 0,
     next_reminder_at: '2000-01-01T00:00:00.000Z',
-    selected_slot_start: '2099-01-05T15:00:00.000Z',
-    selected_slot_end: '2099-01-05T15:45:00.000Z',
+    selected_slot_start: slot.startIso,
+    selected_slot_end: slot.endIso,
+    metadata: {},
     assigned_technician_phone: forgedPhone, assigned_technician_name: 'Untrusted historical assignment',
   };
 }
@@ -69,6 +71,24 @@ function fixture({ env = {}, requests = [], missingTable = null } = {}) {
     sms_threads: [], sms_messages: [],
   };
   const database = {
+    async rpc(name, args) {
+      const row = tables.commercial_consultation_requests.find(item => item.request_id === args.p_request_id);
+      if (name === 'commercial_submit_request') {
+        const saved = { request_id: 'request-fixture', reminder_count: 0, ...args.p_patch, lead_id: args.p_lead_id };
+        tables.commercial_consultation_requests.push(saved);
+        return { data: { request: saved, created: true }, error: null };
+      }
+      if (name === 'commercial_reschedule_request') {
+        Object.assign(row, args.p_patch);
+        return { data: { request: row, replayed: false }, error: null };
+      }
+      if (name === 'commercial_claim_effect') return { data: true, error: null };
+      if (name === 'commercial_finish_effect') {
+        row.metadata = { ...row.metadata, workflow: { ...row.metadata?.workflow, [args.p_kind]: { state: args.p_state, details: args.p_details } } };
+        return { data: null, error: null };
+      }
+      throw new Error(`Unexpected RPC; DDL and unreviewed calls are forbidden: ${name}`);
+    },
     from(table) {
       assert.ok(Object.hasOwn(tables, table), `Unexpected database table: ${table}`);
       const operation = { table, mode: 'select', filters: [], single: false, limit: Infinity };
@@ -146,8 +166,8 @@ function consultationRequest(body = {}) {
       Host: 'attacker.example.invalid', 'X-Forwarded-Host': 'attacker.example.invalid', 'X-Forwarded-Proto': 'http',
     },
     body: JSON.stringify({
-      publicToken: 'public-token-fixture', selectedSlotStart: '2099-01-05T15:00:00.000Z',
-      selectedSlotEnd: '2099-01-05T15:45:00.000Z', ...body,
+      publicToken: 'public-token-fixture', selectedSlotStart: slot.startIso,
+      selectedSlotEnd: slot.endIso, ...body,
     }),
   });
 }
@@ -411,7 +431,41 @@ test('existing administrator guard preserves shared-key and ADMIN-session access
       getConfiguredAnyAdminKey: () => configured,
       getDashboardAuthUserFromSession: async () => user,
     });
+
     const result = await isolated.requireAdminToken(new Request('http://localhost/api/v1?action=commercialQueue', { headers }));
     assert.equal(result.ok, expected);
   }
+});
+
+test('the actual recovery action rejects public and VA callers before executing any retry', async () => {
+  const filename = path.join(backend, 'app\\api\\v1\\route.ts');
+  const source = fs.readFileSync(filename, 'utf8');
+  const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true);
+  const guard = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'requireAdminToken');
+  let recovery;
+  function visit(node) {
+    if (ts.isCaseClause(node) && node.expression.getText(ast) === "'commercialRecovery'") recovery = node;
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  assert.ok(recovery);
+  let retries = 0;
+  const isolated = evaluateTs(filename, `${guard.getText(ast)}
+    async function run(request) {const body={requestId:'fixture'};let result;switch('commercialRecovery'){${recovery.getText(ast)}}return Response.json(result);}
+    module.exports={run};`, {}, {
+    getConfiguredAnyAdminKey: () => 'fixture-admin-key',
+    getDashboardAuthUserFromSession: async request => ({ role: request.headers.get('x-fixture-role') }),
+    retryCommercialProcessing: async () => { retries++; return { ok: true }; },
+    safeTrim: value => String(value || '').trim(), corsHeaders: () => ({}),
+    NextResponse: { json: (body, options) => Response.json(body, options) },
+  });
+  for (const headers of [{}, { 'x-fixture-role': 'VA' }, { 'x-h2s-admin-key': 'wrong' }]) {
+    const response = await isolated.run(new Request('http://localhost/api/v1?action=commercialRecovery', { headers }));
+    assert.ok([401, 403].includes(response.status));
+  }
+  assert.equal(retries, 0);
+  for (const headers of [{ 'x-fixture-role': 'ADMIN' }, { 'x-h2s-admin-key': 'fixture-admin-key' }]) {
+    assert.equal((await isolated.run(new Request('http://localhost/api/v1?action=commercialRecovery', { headers }))).status, 200);
+  }
+  assert.equal(retries, 2);
 });

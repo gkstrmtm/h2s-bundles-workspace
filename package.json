@@ -6,6 +6,7 @@
     "deploy:frontend:refresh-ca": "./frontend/scripts/vercel-safe.sh --refresh-ca --prod --yes"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.17",

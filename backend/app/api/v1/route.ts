@@ -7,6 +7,7 @@ import trainingAdminCreate from '@/lib/training_admin_create';
 import { sendMail } from '@/lib/mail';
 import { normalizePhone } from '../_lib/phone';
 import crypto from 'node:crypto';
+import { retryCommercialProcessing } from '@/lib/commercial_consultation_runtime';
 const { isManualCommercialFollowUp } = require('@/lib/commercial_consultation.js');
 
 const {
@@ -27,6 +28,7 @@ type TrackingEventRow = {
   visitor_id?: string | null;
   session_id?: string | null;
   occurred_at?: string | null;
+  created_at?: string | null;
   event_type?: string | null;
   event_name?: string | null;
   page_path?: string | null;
@@ -2220,6 +2222,7 @@ function formatCommercialSlotLabel(startIso: any, endIso: any): string | null {
   const end = safeTrim(endIso);
   const endDate = end ? new Date(end) : null;
   const startText = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
     month: 'short',
     day: 'numeric',
     weekday: 'short',
@@ -2230,11 +2233,12 @@ function formatCommercialSlotLabel(startIso: any, endIso: any): string | null {
   if (!endDate || Number.isNaN(endDate.getTime())) return startText;
 
   const endText = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
     hour: 'numeric',
     minute: '2-digit'
   }).format(endDate);
 
-  return `${startText} to ${endText}`;
+  return `${startText} to ${endText} Eastern Time`;
 }
 
 async function loadCommercialQueueSnapshot(limitValue: any) {
@@ -2349,11 +2353,22 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
     const requestedContactMethod = safeTrim(latestConsultation?.metadata?.contact_preference || lead?.contact_preference) || 'sms';
     const manualFollowUp = isManualCommercialFollowUp(latestConsultation, { contact_preference: requestedContactMethod });
     const contactDetail = requestedContactMethod === 'email' ? safeTrim(lead?.email) : safeTrim(lead?.phone);
+    const workflow = latestConsultation?.metadata?.workflow || {};
+    const effectStates = Object.values(workflow).map((entry: unknown) =>
+      entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
+    const providerReview = effectStates.some(state => state === 'processing' || state === 'uncertain');
+    const appointmentFailed = consultationStatus === 'approved' && !latestConsultation?.related_order_id;
+    const windowExpired = !!latestConsultation?.selected_slot_start && new Date(latestConsultation.selected_slot_start).getTime() <= Date.now();
+    const persistenceWarning = Object.values(workflow).some((entry: unknown) =>
+      entry && typeof entry === 'object' && 'details' in entry && entry.details &&
+      typeof entry.details === 'object' && 'persistenceError' in entry.details && !!entry.details.persistenceError);
     const followUp = {
       submitted: !!latestConsultation,
       kind: manualFollowUp ? 'manual_follow_up' : 'consultation',
       requestedContactMethod,
       contactDetail,
+      needsAttention: providerReview || appointmentFailed || persistenceWarning || effectStates.includes('failed') || consultationStatus === 'declined',
+      recoveryAllowed: !!latestConsultation && !providerReview && !windowExpired && (appointmentFailed || effectStates.includes('failed')),
       statusLabel: !latestConsultation ? 'Saved draft - not submitted'
         : manualFollowUp && ['pending', 'escalated', 'reschedule_requested'].includes(consultationStatus)
           ? 'Manual follow-up pending review' : `Submitted request: ${consultationStatus}`,
@@ -2362,6 +2377,15 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
           ? `Manually ${requestedContactMethod === 'email' ? 'email' : 'call'} ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. No automated customer texts or emails are sent.`
           : 'Review the technician response and requested window. Customer texts require Text first and explicit texting permission.',
     };
+    const manualAction = followUp.nextAction;
+    if (providerReview) followUp.nextAction = 'Reconcile the pending or uncertain provider attempt before retrying. Do not resend automatically; delivery and customer acknowledgement are not verified.';
+    else if (appointmentFailed) followUp.nextAction = `Technician approved; appointment is not created. Resolve the appointment error and retry processing. No booking confirmation should be sent before an appointment exists. ${safeTrim(latestConsultation?.metadata?.appointment_error)}`;
+    else if (effectStates.includes('failed')) followUp.nextAction = 'A provider rejected or could not accept a notification. Correct configuration or contact details, then retry processing. Previously accepted notifications will not be resent.';
+    else if (persistenceWarning) followUp.nextAction = 'The SMS provider accepted a notification but message-history persistence failed. Review the audit trail; do not resend an accepted notification.';
+    else if (consultationStatus === 'declined') followUp.nextAction = `Technician declined. Contact ${contactDetail || 'the customer'} to arrange another window; no revised appointment is confirmed.`;
+    else if (latestConsultation?.related_order_id) followUp.nextAction = 'Appointment exists. Check provider acceptance separately; delivery and customer acknowledgement remain unverified.';
+    if (!manualFollowUp && windowExpired && !latestConsultation?.related_order_id) followUp.nextAction = `Requested window has passed. Contact ${contactDetail || 'the customer'} to arrange a new window; do not retry the old window.`;
+    if (manualFollowUp && followUp.nextAction !== manualAction) followUp.nextAction = `${manualAction} Internal notification review: ${followUp.nextAction}`;
     const consultation = latestConsultation ? {
       requestId: safeTrim(latestConsultation.request_id),
       referenceCode: safeTrim(latestConsultation.reference_code),
@@ -2379,6 +2403,8 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
       customerConfirmationSentAt: latestConsultation.customer_confirmation_sent_at || null,
       updatedAt: latestConsultation.updated_at || latestConsultation.created_at || null,
       createdAt: latestConsultation.created_at || null,
+      workflow,
+      appointmentError: latestConsultation.metadata?.appointment_error || null,
     } : null;
 
     const lastActivityAt = consultation?.updatedAt || lead?.updated_at || lead?.last_submitted_at || lead?.created_at || null;
@@ -7699,7 +7725,7 @@ Format: JSON only, no markdown.`;
 
       case 'meta_pixel_events':
         // Query Database 1 directly (h2s_tracking_events table)
-        let allEvents;
+        let allEvents: TrackingEventRow[] | undefined;
         let totalEventsInDatabase = 0;
         const db1Client = getTrackingDb();
         
@@ -8078,7 +8104,7 @@ Format: JSON only, no markdown.`;
         
         // Calculate daily averages and growth rates
         const oldestEventDate = allEvents && allEvents.length > 0 
-          ? new Date(allEvents[allEvents.length - 1].occurred_at)
+          ? new Date(allEvents[allEvents.length - 1].occurred_at || allEvents[allEvents.length - 1].created_at || Date.now())
           : now;
         const daysSinceFirstEvent = Math.max(1, Math.floor((now.getTime() - oldestEventDate.getTime()) / (24 * 60 * 60 * 1000)));
         const avgEventsPerDay = (allEvents?.length || 0) / daysSinceFirstEvent;
@@ -9453,6 +9479,14 @@ export async function POST(request: Request) {
               }
               break;
 
+            case 'commercialRecovery':
+              {
+                const auth = await requireAdminToken(request);
+                if (!auth.ok) return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
+                result = await retryCommercialProcessing(request, safeTrim(body.requestId));
+                if (!result.ok) return NextResponse.json(result, { status: 409, headers: corsHeaders(request) });
+              }
+              break;
             case 'messagesConversationUpsert':
               {
                 const authed = await getDashboardAuthUserFromSession(request);
@@ -9467,7 +9501,7 @@ export async function POST(request: Request) {
                   : Array.isArray(body?.memberUserIds)
                     ? body.memberUserIds
                     : [];
-                const memberUserIds = Array.from(new Set(rawMemberIds.map((id: any) => safeTrim(id)).filter((id: string) => id && isUuid(id)).concat([authed.userId])));
+                const memberUserIds = Array.from(new Set<string>(rawMemberIds.map((id: unknown) => safeTrim(id)).filter((id: string) => id && isUuid(id)).concat([authed.userId])));
 
                 if (memberUserIds.length < 2) {
                   return NextResponse.json({ ok: false, error: 'Pick at least one teammate' }, { status: 400, headers: corsHeaders(request) });
@@ -12698,7 +12732,7 @@ Format: JSON only, no markdown.
           const isVideo = typeUpper === 'VIDEO';
           const primaryUrl = safeTrim(normalizedInput.primaryUrl || '');
 
-          const assets = isVideo ? (Array.isArray(normalizedInput.assets) ? normalizedInput.assets : []) : [];
+          const assets: string[] = isVideo ? (Array.isArray(normalizedInput.assets) ? normalizedInput.assets : []) : [];
           const assetsMetaIncoming = isVideo ? normalizeTrainingAssetsMeta(body.assetsMeta || body.assets_meta, assets) : null;
           const assetsMeta = isVideo
             ? (mergeTrainingAssetsMeta({ existing: null, incoming: assetsMetaIncoming, assets }) || {}) as any
@@ -15875,7 +15909,9 @@ Be thorough, specific, and constructive. Focus on what makes this deliverable va
               .ilike('Title', 'Offer Brief:%');
             if (sinceIso) q2 = q2.gte('Created_At', sinceIso);
             if (submittedByFilter) q2 = q2.eq('Submitted_By', submittedByFilter);
-            ({ data: deliverablesRows, error: deliverablesErr } = await q2);
+            const fallback = await q2;
+            deliverablesRows = fallback.data?.map(row => ({ ...row, Offer_ID: null, Deliverable_Type: null })) || null;
+            deliverablesErr = fallback.error;
           }
           if (deliverablesErr && isMissingDeliverablesColumnError(deliverablesErr, 'Metadata')) {
             return NextResponse.json(

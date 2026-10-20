@@ -2,7 +2,7 @@
   const API_BASE = (function () {
     const host = String(location.hostname || '').toLowerCase();
     if (location.protocol === 'file:' || host === 'localhost' || host === '127.0.0.1') {
-      return 'https://h2s-backend.vercel.app/api';
+      return '/api';
     }
     return '/api';
   })();
@@ -67,7 +67,7 @@
       return null;
     }
     renderContext(payload);
-    setMessage('Approve or decline the request. The backend will handle customer confirmation or internal escalation.', '');
+    setMessage('Approval records the technician decision. Appointment creation and customer notification are separate results.', '');
     return payload;
   }
 
@@ -91,9 +91,15 @@
       return;
     }
     renderContext(payload);
+    const appointment = payload.appointment;
+    const customer = payload.notifications && payload.notifications.customer;
     setMessage(action === 'approve'
-      ? 'Consultation approved. Customer confirmation has been triggered.'
-      : 'Consultation declined. Management follow-up has been triggered.', 'success');
+      ? appointment && appointment.ok
+        ? customer && customer.ok
+          ? 'Appointment exists. The SMS provider accepted the customer confirmation; delivery and customer acknowledgement are not verified.'
+          : 'Appointment exists, but customer communication needs review in Commercial Queue. Do not resend an uncertain provider attempt.'
+        : 'Technician approval recorded. Appointment creation needs review in Commercial Queue. No booking confirmation was sent.'
+      : 'Decline recorded. Review the management notification result in Commercial Queue.', 'success');
   }
 
   async function init() {

@@ -1,7 +1,17 @@
+const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
+const dotenv = require('dotenv');
 
-require('dotenv').config({ path: path.resolve(__dirname, '..', '.env.production.local') });
+const ENV_FILES = ['.env.local', '.env.production.local', '.env.vercel.production', '.env'];
+const loadedEnvFiles = [];
+
+for (const rel of ENV_FILES) {
+  const envPath = path.resolve(__dirname, '..', rel);
+  if (!fs.existsSync(envPath)) continue;
+  dotenv.config({ path: envPath, override: true });
+  loadedEnvFiles.push(rel);
+}
 
 const DEFAULT_BASE_URL = process.env.COMMERCIAL_VALIDATION_BASE_URL || 'http://127.0.0.1:3001';
 
@@ -86,8 +96,9 @@ async function checkDbPaths() {
 }
 
 const TABLES = [
-  { name: 'commercial_leads', select: 'lead_id' },
-  { name: 'commercial_consultation_requests', select: 'request_id' },
+  { name: 'commercial_leads', select: 'lead_id,revision,last_save_key' },
+  { name: 'commercial_consultation_requests', select: 'request_id,submission_key' },
+  { name: 'commercial_effects', select: 'request_id,kind,state' },
   { name: 'sms_threads', select: 'thread_id' },
   { name: 'sms_messages', select: 'message_id' },
   { name: 'owner_media_uploads', select: 'asset_id' },
@@ -231,6 +242,7 @@ async function main() {
   console.log(JSON.stringify({
     generatedAt: new Date().toISOString(),
     baseUrl,
+    loadedEnvFiles,
     env,
     directDb,
     dbPaths,

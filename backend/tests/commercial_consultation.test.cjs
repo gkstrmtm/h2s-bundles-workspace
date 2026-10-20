@@ -86,15 +86,29 @@ test('computeLeadPriority escalates urgent commercial opportunities', () => {
 test('buildSlotSuggestions returns future weekday windows with consistent duration', () => {
   const now = new Date('2026-04-03T20:00:00.000Z');
   const slots = buildSlotSuggestions({ now, count: 3, durationMinutes: 45 });
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: false,
+  });
 
   assert.equal(slots.length, 3);
   for (const slot of slots) {
     const start = new Date(slot.startIso);
     const end = new Date(slot.endIso);
+    const parts = formatter.formatToParts(start).reduce((accumulator, part) => {
+      if (part.type !== 'literal') accumulator[part.type] = part.value;
+      return accumulator;
+    }, {});
+    const startHour = Number(parts.hour || 0);
+    const weekday = String(parts.weekday || '').toLowerCase();
     assert.ok(start.getTime() > now.getTime());
-    assert.equal((end.getTime() - start.getTime()) / 60000, 45);
-    assert.notEqual(start.getDay(), 0);
-    assert.notEqual(start.getDay(), 6);
+    assert.equal((end.getTime() - start.getTime()) / 60000, 30);
+    assert.notEqual(weekday, 'sun');
+    assert.notEqual(weekday, 'sat');
+    assert.ok(startHour >= 9);
   }
 });
 

@@ -1,0 +1,1575 @@
+{
+  "capturedAt": "2026-10-20T03:31:38.568Z",
+  "projectRef": "nkccbnrduojnzjfrpwva",
+  "environment": "production",
+  "serverVersion": "17.6",
+  "schema": {
+    "relations": [
+      {
+        "name": "commercial_consultation_requests",
+        "rls": true,
+        "force_rls": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "name": "commercial_leads",
+        "rls": true,
+        "force_rls": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "name": "h2s_orders",
+        "rls": false,
+        "force_rls": false,
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      }
+    ],
+    "columns": [
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "request_id",
+        "type": "uuid",
+        "not_null": true,
+        "generated": "",
+        "default_value": "gen_random_uuid()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "lead_id",
+        "type": "uuid",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "reference_code",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "response_token",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "status",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'pending'::text",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "preferred_slots",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'[]'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "selected_slot_start",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "selected_slot_end",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "assigned_technician_name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "assigned_technician_phone",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "response_channel",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "response_note",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "response_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "reminder_count",
+        "type": "integer",
+        "not_null": true,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "last_reminder_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "next_reminder_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "escalated_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "management_notified_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "customer_confirmation_sent_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "customer_reminder_sent_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "related_order_id",
+        "type": "uuid",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "metadata",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'{}'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "not_null": true,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "not_null": true,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "lead_id",
+        "type": "uuid",
+        "not_null": true,
+        "generated": "",
+        "default_value": "gen_random_uuid()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "public_token",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "full_name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "company_name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "email",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "phone",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "contact_preference",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'sms'::text",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "business_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "project_address",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "project_city",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "project_state",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "project_postal_code",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "scope_summary",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "timeline",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "budget_band",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "site_count",
+        "type": "integer",
+        "not_null": true,
+        "generated": "",
+        "default_value": "1",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "service_needs",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'[]'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "project_photo_urls",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'[]'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "assessment_answers",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'{}'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "attribution",
+        "type": "jsonb",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'{}'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "notes",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "completeness_score",
+        "type": "integer",
+        "not_null": true,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "completeness_bucket",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'empty'::text",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "priority_tier",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": "'normal'::text",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "last_submitted_at",
+        "type": "timestamp with time zone",
+        "not_null": true,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "not_null": true,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "not_null": true,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "id",
+        "type": "uuid",
+        "not_null": true,
+        "generated": "",
+        "default_value": "gen_random_uuid()",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "order_id",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "user_id",
+        "type": "uuid",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "customer_email",
+        "type": "text",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "items",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "subtotal",
+        "type": "numeric",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "tax",
+        "type": "numeric",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "total",
+        "type": "numeric",
+        "not_null": true,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "status",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": "'pending'::text",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "payment_intent_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "delivery_date",
+        "type": "date",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "delivery_time",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "address",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "city",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "state",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "zip",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "phone",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "special_instructions",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "service_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "service_name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "qty",
+        "type": "integer",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "unit_price",
+        "type": "numeric",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "line_total",
+        "type": "numeric",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "options_selected",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "referral_code_used",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "discount_applied",
+        "type": "numeric",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "points_earned",
+        "type": "integer",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "points_redeemed",
+        "type": "integer",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "stripe_coupon_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "discount_amount",
+        "type": "numeric",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": "now()",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "synced_from_sheets",
+        "type": "boolean",
+        "not_null": false,
+        "generated": "",
+        "default_value": "false",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "session_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "mode",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "source",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "currency",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": "'usd'::text",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "cart_json",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "line_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "line_index",
+        "type": "integer",
+        "not_null": false,
+        "generated": "",
+        "default_value": "0",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "option_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "bundle_id",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "metadata_json",
+        "type": "jsonb",
+        "not_null": false,
+        "generated": "",
+        "default_value": "'{}'::jsonb",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "tv_size",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "requires_team",
+        "type": "boolean",
+        "not_null": false,
+        "generated": "",
+        "default_value": "false",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "min_team_size",
+        "type": "integer",
+        "not_null": false,
+        "generated": "",
+        "default_value": "1",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "team_reason",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "wall_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "mount_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "installation_complexity",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "customer_phone",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "customer_name",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "appointment_confirmed",
+        "type": "boolean",
+        "not_null": false,
+        "generated": "",
+        "default_value": "false",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "cancellation_requested",
+        "type": "boolean",
+        "not_null": false,
+        "generated": "",
+        "default_value": "false",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "needs_reschedule",
+        "type": "boolean",
+        "not_null": false,
+        "generated": "",
+        "default_value": "false",
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "last_sms_sent_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "last_sms_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "last_email_sent_at",
+        "type": "timestamp with time zone",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "last_email_type",
+        "type": "text",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "total_amount",
+        "type": "numeric(12,2)",
+        "not_null": false,
+        "generated": "",
+        "default_value": null,
+        "acl": null
+      }
+    ],
+    "constraints": [
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_lead_id_fkey",
+        "type": "f",
+        "definition": "FOREIGN KEY (lead_id) REFERENCES commercial_leads(lead_id) ON DELETE CASCADE",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (request_id)",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_reference_code_key",
+        "type": "u",
+        "definition": "UNIQUE (reference_code)",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_response_channel_check",
+        "type": "c",
+        "definition": "CHECK ((response_channel = ANY (ARRAY['sms'::text, 'web'::text, 'manual'::text])))",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_response_token_key",
+        "type": "u",
+        "definition": "UNIQUE (response_token)",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_status_check",
+        "type": "c",
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text, 'reschedule_requested'::text, 'customer_confirmed'::text, 'escalated'::text, 'expired'::text, 'cancelled'::text])))",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_completeness_bucket_check",
+        "type": "c",
+        "definition": "CHECK ((completeness_bucket = ANY (ARRAY['empty'::text, 'contact_only'::text, 'partial'::text, 'qualified'::text])))",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_contact_preference_check",
+        "type": "c",
+        "definition": "CHECK ((contact_preference = ANY (ARRAY['sms'::text, 'call'::text, 'email'::text])))",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (lead_id)",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_priority_tier_check",
+        "type": "c",
+        "definition": "CHECK ((priority_tier = ANY (ARRAY['low'::text, 'normal'::text, 'high'::text, 'urgent'::text])))",
+        "validated": true
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_public_token_key",
+        "type": "u",
+        "definition": "UNIQUE (public_token)",
+        "validated": true
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_order_id_key",
+        "type": "u",
+        "definition": "UNIQUE (order_id)",
+        "validated": true
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_pkey",
+        "type": "p",
+        "definition": "PRIMARY KEY (id)",
+        "validated": true
+      }
+    ],
+    "indexes": [
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_pkey",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX commercial_consultation_requests_pkey ON public.commercial_consultation_requests USING btree (request_id)",
+        "columns": [
+          "request_id"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_reference_code_key",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX commercial_consultation_requests_reference_code_key ON public.commercial_consultation_requests USING btree (reference_code)",
+        "columns": [
+          "reference_code"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "commercial_consultation_requests_response_token_key",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX commercial_consultation_requests_response_token_key ON public.commercial_consultation_requests USING btree (response_token)",
+        "columns": [
+          "response_token"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "idx_commercial_consultation_requests_assigned_phone",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_consultation_requests_assigned_phone ON public.commercial_consultation_requests USING btree (assigned_technician_phone)",
+        "columns": [
+          "assigned_technician_phone"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "idx_commercial_consultation_requests_lead_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_consultation_requests_lead_id ON public.commercial_consultation_requests USING btree (lead_id)",
+        "columns": [
+          "lead_id"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "idx_commercial_consultation_requests_next_reminder_at",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_consultation_requests_next_reminder_at ON public.commercial_consultation_requests USING btree (next_reminder_at)",
+        "columns": [
+          "next_reminder_at"
+        ]
+      },
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "idx_commercial_consultation_requests_status",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_consultation_requests_status ON public.commercial_consultation_requests USING btree (status)",
+        "columns": [
+          "status"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_pkey",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX commercial_leads_pkey ON public.commercial_leads USING btree (lead_id)",
+        "columns": [
+          "lead_id"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "commercial_leads_public_token_key",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX commercial_leads_public_token_key ON public.commercial_leads USING btree (public_token)",
+        "columns": [
+          "public_token"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "idx_commercial_leads_created_at",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_leads_created_at ON public.commercial_leads USING btree (created_at DESC)",
+        "columns": [
+          "created_at"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "idx_commercial_leads_email",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_leads_email ON public.commercial_leads USING btree (email)",
+        "columns": [
+          "email"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "idx_commercial_leads_last_submitted_at",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_leads_last_submitted_at ON public.commercial_leads USING btree (last_submitted_at DESC)",
+        "columns": [
+          "last_submitted_at"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "idx_commercial_leads_phone",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_leads_phone ON public.commercial_leads USING btree (phone)",
+        "columns": [
+          "phone"
+        ]
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "idx_commercial_leads_priority_tier",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_commercial_leads_priority_tier ON public.commercial_leads USING btree (priority_tier)",
+        "columns": [
+          "priority_tier"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_created_idx",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX h2s_orders_created_idx ON public.h2s_orders USING btree (created_at DESC)",
+        "columns": [
+          "created_at"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_email_idx",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX h2s_orders_email_idx ON public.h2s_orders USING btree (customer_email)",
+        "columns": [
+          "customer_email"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_order_id_key",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX h2s_orders_order_id_key ON public.h2s_orders USING btree (order_id)",
+        "columns": [
+          "order_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_pkey",
+        "unique": true,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE UNIQUE INDEX h2s_orders_pkey ON public.h2s_orders USING btree (id)",
+        "columns": [
+          "id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "h2s_orders_user_idx",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX h2s_orders_user_idx ON public.h2s_orders USING btree (user_id, created_at DESC)",
+        "columns": [
+          "user_id",
+          "created_at"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_bundle_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_bundle_id ON public.h2s_orders USING btree (bundle_id)",
+        "columns": [
+          "bundle_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_line_type",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_line_type ON public.h2s_orders USING btree (line_type)",
+        "columns": [
+          "line_type"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_metadata_json_gin",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_metadata_json_gin ON public.h2s_orders USING gin (metadata_json)",
+        "columns": [
+          "metadata_json"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_option_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_option_id ON public.h2s_orders USING btree (option_id)",
+        "columns": [
+          "option_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_requires_team",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_requires_team ON public.h2s_orders USING btree (requires_team)",
+        "columns": [
+          "requires_team"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_session_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_session_id ON public.h2s_orders USING btree (session_id)",
+        "columns": [
+          "session_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_total_amount",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_total_amount ON public.h2s_orders USING btree (total_amount)",
+        "columns": [
+          "total_amount"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_h2s_orders_tv_size",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_h2s_orders_tv_size ON public.h2s_orders USING btree (tv_size)",
+        "columns": [
+          "tv_size"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_created_at",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_created_at ON public.h2s_orders USING btree (created_at)",
+        "columns": [
+          "created_at"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_customer_email",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_customer_email ON public.h2s_orders USING btree (customer_email)",
+        "columns": [
+          "customer_email"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_order_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_order_id ON public.h2s_orders USING btree (order_id)",
+        "columns": [
+          "order_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_payment_intent_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_payment_intent_id ON public.h2s_orders USING btree (payment_intent_id)",
+        "columns": [
+          "payment_intent_id"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_status",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_status ON public.h2s_orders USING btree (status)",
+        "columns": [
+          "status"
+        ]
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "idx_orders_user_id",
+        "unique": false,
+        "valid": true,
+        "predicate": null,
+        "definition": "CREATE INDEX idx_orders_user_id ON public.h2s_orders USING btree (user_id)",
+        "columns": [
+          "user_id"
+        ]
+      }
+    ],
+    "policies": [],
+    "triggers": [
+      {
+        "table_name": "commercial_consultation_requests",
+        "name": "trg_commercial_consultation_requests_touch_updated_at",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER trg_commercial_consultation_requests_touch_updated_at BEFORE UPDATE ON public.commercial_consultation_requests FOR EACH ROW EXECUTE FUNCTION commercial_touch_updated_at()",
+        "function_body": "\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n",
+        "security_definer": false,
+        "config": null
+      },
+      {
+        "table_name": "commercial_leads",
+        "name": "trg_commercial_leads_touch_updated_at",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER trg_commercial_leads_touch_updated_at BEFORE UPDATE ON public.commercial_leads FOR EACH ROW EXECUTE FUNCTION commercial_touch_updated_at()",
+        "function_body": "\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n",
+        "security_definer": false,
+        "config": null
+      },
+      {
+        "table_name": "h2s_orders",
+        "name": "update_h2s_orders_updated_at",
+        "enabled": "O",
+        "definition": "CREATE TRIGGER update_h2s_orders_updated_at BEFORE UPDATE ON public.h2s_orders FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()",
+        "function_body": "\r\nBEGIN\r\n    NEW.updated_at = NOW();\r\n    RETURN NEW;\r\nEND;\r\n",
+        "security_definer": false,
+        "config": null
+      }
+    ],
+    "routines": [],
+    "roles": [
+      {
+        "name": "anon",
+        "superuser": false,
+        "bypass_rls": false
+      },
+      {
+        "name": "authenticated",
+        "superuser": false,
+        "bypass_rls": false
+      },
+      {
+        "name": "service_role",
+        "superuser": false,
+        "bypass_rls": true
+      }
+    ],
+    "defaultPrivileges": [
+      {
+        "owner": "postgres",
+        "schema": "public",
+        "type": "f",
+        "acl": "{postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}"
+      },
+      {
+        "owner": "postgres",
+        "schema": "public",
+        "type": "r",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+      },
+      {
+        "owner": "supabase_admin",
+        "schema": "public",
+        "type": "f",
+        "acl": "{postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}"
+      },
+      {
+        "owner": "supabase_admin",
+        "schema": "public",
+        "type": "r",
+        "acl": "{postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+      }
+    ],
+    "effectsAccess": []
+  }
+}

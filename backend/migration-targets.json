@@ -5,8 +5,14 @@
     "connectionEnv": "DATABASE_URL_DIRECT",
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql"],
     "baselineSha256": "c8d848d14bf42cebc9b1a5f59a41b15cfea878c9140dd7cb29d78a4b7da3d3e3",
-    "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409"
+    "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409",
+    "commercial031": {
+      "reviewOnly": false,
+      "authorization": "Workspace owner authorized applying the reviewed migration 031 on 2026-10-20 after verifying the security/build release. Security deployment dpl_6ngVyygN8t8FeEXP3V4pkemwxJrK was verified live; the owner also approved retirement of the six superseded runtime-DDL deployments. Apply only after their 300-second function drain.",
+      "baselineSha256": "71162e1e734c077c45d6415d1e0d2849485fd38daf2ceefb6660a2011f88e907",
+      "sqlSha256": "c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071"
+    }
   }
 }

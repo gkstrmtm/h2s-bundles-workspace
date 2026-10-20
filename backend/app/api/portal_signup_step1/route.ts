@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     }
 
     // Issue JWT token for the new pro
-    const token = issuePortalToken({ sub: proId, role: 'pro', email: normalizedEmail });
+    const token = await issuePortalToken({ proId, email: normalizedEmail, zip: String(zip || '') });
 
     return NextResponse.json(
       {

@@ -103,7 +103,7 @@ export async function POST(request: Request) {
 
     // Legacy admin validation: allow explicit created_by OR a signed admin token OR a legacy admin session token.
     const signed = token ? await verifyPortalToken(token) : null;
-    const signedAdminEmail = signed?.role === 'admin' ? (signed.email || signed.sub || null) : null;
+    const signedAdminEmail = signed?.ok && signed.payload && String(signed.payload.role) === 'admin' ? (signed.payload.email || signed.payload.sub || null) : null;
     const adminToken = String((body as any)?.admin_token || (body as any)?.token || token || '');
     const adminEmail = String((body as any)?.created_by || '').trim() || signedAdminEmail || (await validateLegacyAdminSession(client as any, adminToken));
 

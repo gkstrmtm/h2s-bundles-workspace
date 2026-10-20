@@ -3,6 +3,7 @@ import { getSupabase } from '@/lib/supabase';
 import {
   CommercialConfigurationError,
   commercialDatabaseErrorMessage,
+  commercialRpc,
   corsHeaders,
   findActiveConsultationForLead,
   getLeadByToken,
@@ -24,6 +25,7 @@ const {
   generateResponseToken,
   normalizeText,
   validateCommercialContact,
+  validateConsultationWindow,
 } = commercialUtils;
 
 export const dynamic = 'force-dynamic';
@@ -83,25 +85,25 @@ export async function POST(request: Request) {
     const slotStart = selectedSlotStart || preferredSlots[0]?.startIso || '';
     const slotEnd = selectedSlotEnd || preferredSlots[0]?.endIso || '';
 
+    if (mode !== 'create' && mode !== 'reschedule') {
+      return NextResponse.json({ ok: false, error: 'Unsupported submission mode.' }, { status: 400, headers: corsHeaders(request) });
+    }
+    if (mode === 'create') {
+      const active = await findActiveConsultationForLead(lead.lead_id);
+      if (active) return NextResponse.json({
+        ok: true, replayed: true, consultation: serializeConsultation(active), lead: serializeLead(lead),
+        notifications: { technician: [], customer: { skipped: true }, manualReviewRequired: manualFollowUp },
+      }, { headers: corsHeaders(request) });
+    }
     if (!slotStart && !manualFollowUp) {
       return NextResponse.json({ ok: false, error: 'At least one consultation slot is required.' }, { status: 400, headers: corsHeaders(request) });
     }
+    const windowError = validateConsultationWindow(slotStart, slotEnd);
+    if (windowError) return NextResponse.json({ ok: false, error: windowError, field: 'slotGrid' }, {
+      status: 400, headers: corsHeaders(request),
+    });
 
     const sb = getSupabase();
-
-    if (mode !== 'reschedule') {
-      const active = await findActiveConsultationForLead(lead.lead_id);
-      if (active) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: activeStatusMessage(active.status),
-            existingRequest: serializeConsultation(active),
-          },
-          { status: 409, headers: corsHeaders(request) }
-        );
-      }
-    }
 
     let consultation: any = null;
     if (mode === 'reschedule') {
@@ -116,10 +118,16 @@ export async function POST(request: Request) {
       if (!previous) {
         return NextResponse.json({ ok: false, error: 'Consultation request not found' }, { status: 404, headers: corsHeaders(request) });
       }
+      if (previous.related_order_id || !['pending', 'escalated', 'reschedule_requested'].includes(previous.status)) {
+        return NextResponse.json({ ok: false, error: 'This request needs staff review before rescheduling an appointment.' }, {
+          status: 409, headers: corsHeaders(request),
+        });
+      }
 
-      const { data, error } = await sb
-        .from('commercial_consultation_requests')
-        .update({
+      const rescheduled = await commercialRpc('commercial_reschedule_request', {
+        p_request_id: requestId, p_lead_id: lead.lead_id, p_expected_token: previous.response_token,
+        p_key: normalizeText(body.submissionKey || '', 120) || `reschedule:${slotStart}:${slotEnd}:${lead.contact_preference}`,
+        p_patch: {
           status: 'pending',
           preferred_slots: preferredSlots,
           selected_slot_start: slotStart || null,
@@ -132,22 +140,21 @@ export async function POST(request: Request) {
           reminder_count: 0,
           last_reminder_at: null,
           next_reminder_at: manualFollowUp ? null : nextReminderIso(),
-          metadata: { ...(previous.metadata || {}), ...submissionMetadata },
+          response_token: generateResponseToken(),
+          metadata: submissionMetadata,
           updated_at: new Date().toISOString(),
-        })
-        .eq('request_id', requestId)
-        .eq('lead_id', lead.lead_id)
-        .select('*')
-        .single();
-      if (error || !data) {
-        return NextResponse.json({ ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to reschedule consultation' }, { status: 500, headers: corsHeaders(request) });
-      }
-      consultation = data;
+        },
+      });
+      consultation = rescheduled.request;
+      if (rescheduled.replayed) return NextResponse.json({
+        ok: true, replayed: true, consultation: serializeConsultation(consultation), lead: serializeLead(lead),
+        notifications: { technician: [], customer: { skipped: true }, manualReviewRequired: manualFollowUp },
+      }, { headers: corsHeaders(request) });
     } else {
-      const { data, error } = await sb
-        .from('commercial_consultation_requests')
-        .insert({
-          lead_id: lead.lead_id,
+      const saved = await commercialRpc('commercial_submit_request', {
+        p_lead_id: lead.lead_id,
+        p_key: normalizeText(body.submissionKey || '', 120) || generateResponseToken(),
+        p_patch: {
           reference_code: generateConsultationReference(),
           response_token: generateResponseToken(),
           status: 'pending',
@@ -163,13 +170,13 @@ export async function POST(request: Request) {
           },
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
-        .select('*')
-        .single();
-      if (error || !data) {
-        return NextResponse.json({ ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to create consultation request' }, { status: 500, headers: corsHeaders(request) });
-      }
-      consultation = data;
+        },
+      });
+      consultation = saved.request;
+      if (!saved.created) return NextResponse.json({
+        ok: true, replayed: true, consultation: serializeConsultation(consultation), lead: serializeLead(lead),
+        notifications: { technician: [], customer: { skipped: true }, manualReviewRequired: manualFollowUp },
+      }, { headers: corsHeaders(request) });
     }
 
     const technicianNotice = await sendTechnicianConsultationRequest(consultation, lead);
@@ -177,19 +184,22 @@ export async function POST(request: Request) {
     const customerAck = await sendCustomerPendingAcknowledgement(consultation, lead);
 
     if (!anyTechSent) {
-      await notifyManagementEscalation(consultation, lead);
-      const { data: escalated } = await sb
+      const management = await notifyManagementEscalation(consultation, lead);
+      const { data: escalated, error: escalationError } = await sb
         .from('commercial_consultation_requests')
         .update({
           status: 'escalated',
           escalated_at: new Date().toISOString(),
-          management_notified_at: new Date().toISOString(),
+          management_notified_at: management.some(item => item.ok) ? new Date().toISOString() : null,
           updated_at: new Date().toISOString(),
         })
         .eq('request_id', consultation.request_id)
+        .eq('status', consultation.status)
+        .eq('response_token', consultation.response_token)
         .select('*')
-        .single();
-      consultation = escalated || consultation;
+        .maybeSingle();
+      if (escalationError || !escalated) throw new Error(escalationError ? commercialDatabaseErrorMessage(escalationError) : 'Request changed during dispatch. Reload its current status.');
+      consultation = escalated;
     }
 
     return NextResponse.json(

@@ -21,6 +21,9 @@ type SmsResult = {
   sid?: string | null;
   status?: string | null;
   error?: string | null;
+  accepted?: boolean;
+  retrySafe?: boolean;
+  persistenceError?: string;
 };
 
 export class CommercialConfigurationError extends Error {}
@@ -150,6 +153,7 @@ export function getSlotLabel(startIso?: string | null, endIso?: string | null) {
   if (Number.isNaN(startDate.getTime())) return 'requested consultation slot';
   const endDate = endIso ? new Date(endIso) : null;
   const dateText = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
     month: 'short',
     day: 'numeric',
     weekday: 'short',
@@ -158,10 +162,11 @@ export function getSlotLabel(startIso?: string | null, endIso?: string | null) {
   }).format(startDate);
   if (!endDate || Number.isNaN(endDate.getTime())) return dateText;
   const endText = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
     hour: 'numeric',
     minute: '2-digit'
   }).format(endDate);
-  return `${dateText} to ${endText}`;
+  return `${dateText} to ${endText} Eastern Time`;
 }
 
 export function serializeLead(row: any) {
@@ -194,6 +199,8 @@ export function serializeLead(row: any) {
     lastSubmittedAt: row.last_submitted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    revision: Number(row.revision || 0),
+    lastSaveKey: row.last_save_key || null,
   };
 }
 
@@ -239,6 +246,37 @@ export async function getLeadByToken(publicToken: string) {
   }
   return data || null;
 }
+
+export async function commercialRpc(name: string, args: Record<string, unknown>) {
+    const { data, error } = await getSupabase().rpc(name, args);
+    if (error) {
+      const missing = error.code === 'PGRST202' || error.code === '42883' || error.code === '42703' || error.code === '42P01';
+      throw new Error(missing
+        ? 'Commercial reliability migration 031 is required. An authorized operator must review and apply it before enabling this workflow.'
+        : `Commercial persistence failed: ${error.message}`);
+    }
+
+    return data;
+}
+
+export async function retryCommercialProcessing(request: Request, requestId: string) {
+      const { data, error } = await getSupabase().from('commercial_consultation_requests').select('*').eq('request_id', requestId).maybeSingle();
+      if (error) throw new Error(commercialDatabaseErrorMessage(error));
+      if (!data) return { ok: false, error: 'Commercial request not found' };
+      const lead = await getLeadById(data.lead_id);
+      if (!lead) return { ok: false, error: 'Commercial lead not found' };
+      if (!isManualCommercialFollowUp(data, lead) && data.selected_slot_start && new Date(data.selected_slot_start).getTime() <= Date.now()) {
+        return { ok: false, error: 'Requested window has passed. Contact the customer to arrange a new window; do not retry the old window.' };
+      }
+      if (['approved', 'customer_confirmed', 'declined'].includes(data.status)) {
+        return applyConsultationDecision({ request, consultation: data, lead, action: data.status === 'declined' ? 'decline' : 'approve', channel: 'manual' });
+      }
+      if (!['pending', 'escalated', 'reschedule_requested'].includes(data.status)) return { ok: false, error: 'This request is no longer pending.' };
+      const notification = await sendTechnicianConsultationRequest(data, lead);
+      const acknowledgement = await sendCustomerPendingAcknowledgement(data, lead);
+      const management = data.status === 'escalated' ? await notifyManagementEscalation(data, lead) : [];
+      return { ok: true, notification, acknowledgement, management };
+    }
 
 export async function getConsultationByToken(responseToken: string) {
   const sb = getSupabase();
@@ -327,43 +365,65 @@ async function persistSmsMessage(params: { to: string; body: string; fromPhone: 
 export async function sendSmsAndPersist(to: string, body: string, contactName?: string | null): Promise<SmsResult> {
   const twilioConfig = getTwilioConfig();
   if (!twilioConfig) {
-    return { ok: false, to, error: 'Twilio is not configured' };
+    return { ok: false, to, error: 'Twilio is not configured', retrySafe: true };
   }
 
+  let message;
   try {
-    const message = await twilioConfig.client.messages.create({
+    message = await twilioConfig.client.messages.create({
       from: twilioConfig.fromPhone,
       to,
       body,
     });
-    const persisted = await persistSmsMessage({
-      to,
-      body,
-      fromPhone: twilioConfig.fromPhone,
-      sid: message.sid,
-      status: message.status || 'sent',
-      contactName,
-    });
-    if (!persisted.ok) {
-      return { ok: false, to, sid: message.sid, status: message.status || 'sent', error: persisted.error || 'Failed to persist outbound sms' };
-    }
-    return { ok: true, to, sid: message.sid, status: message.status || 'sent' };
   } catch (error: any) {
-    const persisted = await persistSmsMessage({
+    await persistSmsMessage({
       to,
       body,
       fromPhone: twilioConfig.fromPhone,
       status: 'failed',
       contactName,
-    }).catch(() => null);
+    }).catch((persistError: unknown) => {
+      console.error('Commercial failed-message persistence error:', persistError);
+      return null;
+    });
     return {
       ok: false,
       to,
       status: 'failed',
       error: error?.message || 'Failed to send SMS',
-      sid: persisted && 'sid' in persisted ? (persisted as any).sid : null,
+      retrySafe: [400, 401, 403, 404, 422, 429].includes(Number(error?.status)),
     };
   }
+  let persistenceError;
+  try {
+    const persisted = await persistSmsMessage({
+      to, body, fromPhone: twilioConfig.fromPhone, sid: message.sid,
+      status: message.status || 'queued', contactName,
+    });
+    if (!persisted.ok) persistenceError = persisted.error;
+  } catch (error) {
+    persistenceError = error instanceof Error ? error.message : 'SMS message persistence failed';
+  }
+  if (persistenceError) console.error('Commercial SMS accepted but local message persistence failed:', persistenceError);
+  return { ok: true, accepted: true, to, sid: message.sid, status: message.status || 'queued', persistenceError };
+}
+
+async function sendRecordedSms(consultation: any, kind: string, to: string, body: string, name?: string | null) {
+    const claimed = await commercialRpc('commercial_claim_effect', { p_request_id: consultation.request_id, p_kind: kind });
+    if (!claimed) {
+      const { data, error } = await getSupabase().from('commercial_effects').select('state,details')
+        .eq('request_id', consultation.request_id).eq('kind', kind).maybeSingle();
+      if (error) throw new Error(commercialDatabaseErrorMessage(error));
+      return { ok: data?.state === 'accepted', accepted: data?.state === 'accepted', to, skipped: true,
+        reason: 'Previously accepted or awaiting provider reconciliation; no automatic resend.' };
+    }
+    const result = await sendSmsAndPersist(to, body, name);
+    await commercialRpc('commercial_finish_effect', {
+      p_request_id: consultation.request_id, p_kind: kind,
+      p_state: result.ok ? 'accepted' : result.retrySafe ? 'failed' : 'uncertain',
+      p_details: result,
+    });
+    return result;
 }
 
 export async function sendBulkSms(phones: string[], body: string, contactName?: string | null) {
@@ -390,20 +450,6 @@ export function nextReminderIso(fromDate = new Date()) {
   return new Date(fromDate.getTime() + getReminderDelayMinutes() * 60 * 1000).toISOString();
 }
 
-function toDateAndTime(startIso: string) {
-  const date = new Date(startIso);
-  if (Number.isNaN(date.getTime())) return { date: '', time: '' };
-  const yyyy = date.getUTCFullYear();
-  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(date.getUTCDate()).padStart(2, '0');
-  const time = new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZone: 'UTC'
-  }).format(date);
-  return { date: `${yyyy}-${mm}-${dd}`, time };
-}
-
 export async function maybeCreateAppointment(request: Request, consultation: any, lead: any) {
   if (isManualCommercialFollowUp(consultation, lead) || validateCommercialContact(lead)) {
     return { ok: false, skipped: 'contact_policy', error: 'Manual follow-up or updated contact details/texting permission are required before scheduling.' };
@@ -411,47 +457,12 @@ export async function maybeCreateAppointment(request: Request, consultation: any
   const startIso = safeTrim(consultation?.selected_slot_start || '');
   if (!startIso) return { ok: false, skipped: 'missing_slot' };
   if (!lead?.phone) return { ok: false, skipped: 'missing_phone' };
-  if (!lead?.email) return { ok: false, skipped: 'missing_email' };
-
-  const origin = new URL(request.url).origin;
-  const endpoint = `${origin}/api/schedule-appointment`;
-  const { date, time } = toDateAndTime(startIso);
-  const services = Array.isArray(lead?.service_needs) ? lead.service_needs.join(', ') : 'Commercial consultation';
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: lead.full_name || lead.company_name || 'Commercial Consultation',
-      email: lead.email,
-      phone: lead.phone,
-      service: 'Commercial Consultation',
-      date,
-      time,
-      notes: `${consultation.reference_code}: ${services}. ${lead.scope_summary || ''}`.trim(),
-      source: 'commercial_consultation',
-      leadId: lead?.lead_id || null,
-      consultationRequestId: consultation?.request_id || null,
-      consultationReferenceCode: consultation?.reference_code || null,
-      slotStartIso: consultation?.selected_slot_start || null,
-      slotEndIso: consultation?.selected_slot_end || null,
-      idempotencyKey: consultation?.request_id ? `commercial-consultation:${consultation.request_id}` : null,
-    }),
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload?.success || !payload?.appointment) {
-    return {
-      ok: false,
-      skipped: 'appointment_create_failed',
-      error: payload?.error || `HTTP ${response.status}`,
-    };
+  try {
+    const appointment = await commercialRpc('commercial_create_appointment', { p_request_id: consultation.request_id });
+    return { ok: true, appointment };
+  } catch (error: unknown) {
+    return { ok: false, skipped: 'appointment_create_failed', error: error instanceof Error ? error.message : 'Appointment creation failed' };
   }
-
-  return {
-    ok: true,
-    appointment: payload.appointment,
-  };
 }
 
 export async function loadConsultationContextByReference(referenceCode: string, technicianPhone?: string | null) {
@@ -521,7 +532,9 @@ export async function notifyManagementEscalation(consultation: any, lead: any) {
     companyName: lead?.company_name || lead?.full_name,
     ageMinutes,
   });
-  return sendBulkSms(phones, body, lead?.company_name || lead?.full_name || null);
+  const results = [];
+  for (const phone of phones) results.push(await sendRecordedSms(consultation, `escalation:${phone}`, phone, body, lead?.company_name || lead?.full_name));
+  return results;
 }
 
 export async function applyConsultationDecision(params: {
@@ -539,32 +552,10 @@ export async function applyConsultationDecision(params: {
   if (isManualCommercialFollowUp(consultation, lead)) {
     return { ok: false, error: 'This request requires manual customer follow-up. It is not a confirmed consultation; review the requested contact method in Commercial Queue.' };
   }
+  if (action === 'decline' && consultation.related_order_id) return { ok: false, error: 'An appointment exists. Staff must review cancellation separately.' };
   const contactError = validateCommercialContact(lead);
   if (contactError) return { ok: false, error: contactError.message };
   const nextStatus = action === 'approve' ? 'approved' : 'declined';
-
-  if (action === 'approve' && ['approved', 'customer_confirmed'].includes(String(consultation.status || '').toLowerCase()) && consultation.related_order_id) {
-    return {
-      ok: true,
-      consultation,
-      idempotent: true,
-      appointment: {
-        ok: true,
-        reused: true,
-        appointment: {
-          id: consultation.related_order_id,
-        },
-      },
-    };
-  }
-
-  if (action === 'decline' && String(consultation.status || '').toLowerCase() === 'declined') {
-    return {
-      ok: true,
-      consultation,
-      idempotent: true,
-    };
-  }
 
   if (!canTransitionConsultationStatus(consultation.status, nextStatus)) {
     return { ok: false, error: `Cannot transition ${consultation.status} to ${nextStatus}` };
@@ -572,21 +563,25 @@ export async function applyConsultationDecision(params: {
 
   const patch: any = {
     status: nextStatus,
-    response_channel: params.channel,
-    response_note: normalizeText(params.note || '', 500) || null,
-    response_at: new Date().toISOString(),
+    response_channel: consultation.status === nextStatus ? consultation.response_channel || params.channel : params.channel,
+    response_note: consultation.status === nextStatus ? consultation.response_note || null : normalizeText(params.note || '', 500) || null,
+    response_at: consultation.status === nextStatus ? consultation.response_at || new Date().toISOString() : new Date().toISOString(),
     updated_at: new Date().toISOString(),
     next_reminder_at: null,
   };
 
-  const { data: updated, error } = await sb
+  const decisionUpdate = sb
     .from('commercial_consultation_requests')
     .update(patch)
     .eq('request_id', consultation.request_id)
+    .eq('status', consultation.status)
+    .eq('response_token', consultation.response_token);
+  if (action === 'decline') decisionUpdate.is('related_order_id', null);
+  const { data: updated, error } = await decisionUpdate
     .select('*')
-    .single();
+    .maybeSingle();
 
-  if (error) return { ok: false, error: error.message };
+  if (error || !updated) return { ok: false, error: error?.message || 'The request changed. Reload its current status before acting.' };
 
   const result: any = {
     ok: true,
@@ -594,49 +589,58 @@ export async function applyConsultationDecision(params: {
   };
 
   if (action === 'approve') {
+    const appointment = await maybeCreateAppointment(params.request, updated, lead);
+    result.appointment = appointment;
+    if (!appointment.ok) {
+      await commercialRpc('commercial_record_appointment_error', {
+        p_request_id: updated.request_id, p_error: appointment.error || appointment.skipped,
+      });
+      result.consultation = (await getConsultationByToken(updated.response_token))?.consultation || updated;
+      result.recoveryRequired = true;
+      return result;
+    }
     const slotLabel = getSlotLabel(updated.selected_slot_start, updated.selected_slot_end);
     const customerBody = buildCustomerConfirmedMessage({
       slotLabel,
       referenceCode: updated.reference_code,
     });
-    const customerSms = await sendCommercialCustomerSms(lead, customerBody);
+    const customerSms = await sendCommercialCustomerSms(lead, customerBody, updated, 'customer_confirmation');
     result.customerSms = customerSms;
-
-    const appointment = await maybeCreateAppointment(params.request, updated, lead);
-    result.appointment = appointment;
 
     const confirmPatch: any = {
       updated_at: new Date().toISOString(),
     };
     if (customerSms.ok) {
-      confirmPatch.status = 'customer_confirmed';
       confirmPatch.customer_confirmation_sent_at = new Date().toISOString();
     }
     if (appointment.ok && appointment.appointment?.id) {
       confirmPatch.related_order_id = appointment.appointment.id;
     }
     if (Object.keys(confirmPatch).length > 1) {
-      const { data: confirmed } = await sb
+      const { data: confirmed, error: confirmError } = await sb
         .from('commercial_consultation_requests')
         .update(confirmPatch)
         .eq('request_id', updated.request_id)
         .select('*')
         .single();
-      result.consultation = confirmed || updated;
+      if (confirmError) throw new Error(commercialDatabaseErrorMessage(confirmError));
+      result.consultation = confirmed;
     }
   } else {
     result.customerSms = await sendCommercialCustomerSms(
       lead,
-      `Home Too Smart is reviewing another consultation window for ${updated.reference_code}. No revised time is confirmed yet.`
+      `Home Too Smart is reviewing another consultation window for ${updated.reference_code}. No revised time is confirmed yet.`,
+      updated, 'customer_decline'
     );
     result.managementSms = await notifyManagementEscalation(updated, lead);
-    await sb
+    const { error: escalationError } = await sb
       .from('commercial_consultation_requests')
       .update({
-        management_notified_at: new Date().toISOString(),
+        management_notified_at: result.managementSms.some((item: SmsResult) => item.ok) ? new Date().toISOString() : null,
         updated_at: new Date().toISOString(),
       })
       .eq('request_id', updated.request_id);
+    if (escalationError) throw new Error(commercialDatabaseErrorMessage(escalationError));
   }
 
   return result;
@@ -652,6 +656,9 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
       ok: false,
       replyText: 'No pending commercial consultation was found for that reply. Include the reference code or use the approval link in the original text.',
     };
+  }
+  if (context.consultation.metadata?.last_reschedule_key) {
+    return { handled: true as const, ok: false, replyText: 'This consultation window changed. Use the current approval link to review the new window; a delayed text reply cannot approve it.' };
   }
 
   const outcome = await applyConsultationDecision({
@@ -676,13 +683,13 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
     handled: true as const,
     ok: true,
     replyText: action === 'approve'
-      ? `${reference} approved. Customer confirmation is being sent now.`
+      ? `${reference} approval recorded. Check Commercial Queue for appointment and customer communication results; approval alone does not confirm an appointment.`
       : `${reference} declined. Management has been notified for follow-up.`,
     outcome,
   };
 }
 
-export async function sendTechnicianConsultationRequest(consultation: any, lead: any) {
+export async function sendTechnicianConsultationRequest(consultation: any, lead: any, purpose = 'dispatch') {
   const baseUrl = getPublicBaseUrl();
   const technicianPhones = getTechnicianPhones();
   const manualFollowUp = isManualCommercialFollowUp(consultation, lead);
@@ -697,22 +704,30 @@ export async function sendTechnicianConsultationRequest(consultation: any, lead:
     baseUrl,
     responseToken: consultation.response_token,
     serviceNeeds: Array.isArray(lead.service_needs) ? lead.service_needs : [],
-  }) + ' Reply YES or NO to this text.';
+  }) + (consultation.metadata?.last_reschedule_key
+    ? ' The window changed; use the current approval link. Text replies cannot approve a rescheduled window.'
+    : ' Reply YES or NO to this text.');
 
-  const results = await sendBulkSms(technicianPhones, body, lead.company_name || lead.full_name || null);
+  const results = [];
+  for (const phone of technicianPhones) {
+    results.push(await sendRecordedSms(consultation, `${purpose}:${consultation.selected_slot_start || 'manual'}:${consultation.metadata?.last_reschedule_key || 'initial'}:${phone}`, phone, body, lead.company_name || lead.full_name));
+  }
   return { body, links, results, technicianPhones };
 }
 
 export async function sendCustomerPendingAcknowledgement(consultation: any, lead: any) {
   const body = buildCustomerPendingMessage({ referenceCode: consultation.reference_code });
-  return sendCommercialCustomerSms(lead, body);
+  return sendCommercialCustomerSms(lead, body, consultation, `customer_acknowledgement:${consultation.metadata?.last_reschedule_key || 'initial'}`);
 }
 
-async function sendCommercialCustomerSms(lead: any, body: string) {
+async function sendCommercialCustomerSms(lead: any, body: string, consultation: any, kind: string) {
   if ((lead?.contact_preference || 'sms') !== 'sms' || !hasCommercialSmsConsent(lead)) {
     return { ok: false, to: lead?.phone || '', skipped: true, reason: 'Customer texts are disabled for this contact preference or texting choice.' };
   }
   const contactError = validateCommercialContact(lead);
   if (contactError) return { ok: false, to: lead?.phone || '', error: contactError.message };
-  return sendSmsAndPersist(lead.phone, body, lead.full_name || lead.company_name || null);
+  if (kind === 'customer_confirmation' && consultation.customer_confirmation_sent_at) {
+    return { ok: true, skipped: true, accepted: true, to: lead.phone, reason: 'Previously accepted; delivery and customer acknowledgement are not implied.' };
+  }
+  return sendRecordedSms(consultation, kind, lead.phone, body, lead.full_name || lead.company_name || null);
 }

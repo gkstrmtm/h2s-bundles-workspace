@@ -25,6 +25,8 @@ const CONSULTATION_TRANSITIONS = {
   cancelled: new Set([])
 };
 
+const COMMERCIAL_TIME_ZONE = 'America/New_York';
+
 function clampInt(value, fallback, min, max) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   if (!Number.isFinite(parsed)) return fallback;
@@ -122,7 +124,12 @@ function normalizeContactPreference(value) {
   return normalized;
 }
 
-
+function normalizeBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  const normalized = normalizeText(value, 16).toLowerCase();
+  if (!normalized) return false;
+  return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'y' || normalized === 'on';
+}
 
 function hasCommercialSmsConsent(source) {
   const attribution = source?.attribution || {};
@@ -279,29 +286,78 @@ function computeLeadPriority(lead) {
   return 'normal';
 }
 
+function getTimeZoneParts(date, timeZone = COMMERCIAL_TIME_ZONE) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  });
+  return formatter.formatToParts(date).reduce((accumulator, part) => {
+    if (part.type !== 'literal') accumulator[part.type] = part.value;
+    return accumulator;
+  }, {});
+}
+
+function getTimeZoneOffsetMinutes(date, timeZone = COMMERCIAL_TIME_ZONE) {
+  const parts = getTimeZoneParts(date, timeZone);
+  const zonedUtc = Date.UTC(
+    Number(parts.year || 0),
+    Math.max(0, Number(parts.month || 1) - 1),
+    Number(parts.day || 1),
+    Number(parts.hour || 0),
+    Number(parts.minute || 0),
+    Number(parts.second || 0)
+  );
+  return Math.round((zonedUtc - date.getTime()) / 60000);
+}
+
+function zonedLocalToUtc(year, month, day, hours, minutes, timeZone = COMMERCIAL_TIME_ZONE) {
+  const utcGuess = Date.UTC(year, month - 1, day, hours, minutes, 0, 0);
+  const firstOffset = getTimeZoneOffsetMinutes(new Date(utcGuess), timeZone);
+  const firstPass = utcGuess - (firstOffset * 60000);
+  const secondOffset = getTimeZoneOffsetMinutes(new Date(firstPass), timeZone);
+  return new Date(utcGuess - (secondOffset * 60000));
+}
+
 function buildSlotSuggestions(options = {}) {
   const count = clampInt(options.count, 3, 1, 8);
-  const durationMinutes = clampInt(options.durationMinutes, 30, 15, 120);
+  const durationMinutes = 30;
   const now = options.now instanceof Date ? new Date(options.now.getTime()) : new Date(options.now || Date.now());
+  const timeZone = COMMERCIAL_TIME_ZONE;
+  const nowParts = getTimeZoneParts(now, timeZone);
   const suggestions = [];
   const slotTemplates = [
-    [9, 30],
+    [9, 0],
     [11, 0],
     [13, 30],
     [15, 30]
   ];
 
   for (let dayOffset = 0; dayOffset < 14 && suggestions.length < count; dayOffset += 1) {
-    const day = new Date(now.getTime());
-    day.setHours(0, 0, 0, 0);
-    day.setDate(day.getDate() + dayOffset);
-
-    const weekday = day.getDay();
-    if (weekday === 0 || weekday === 6) continue;
+    const localDaySeed = new Date(Date.UTC(
+      Number(nowParts.year || 0),
+      Math.max(0, Number(nowParts.month || 1) - 1),
+      Number(nowParts.day || 1) + dayOffset,
+      12,
+      0,
+      0,
+      0
+    ));
+    const year = localDaySeed.getUTCFullYear();
+    const month = localDaySeed.getUTCMonth() + 1;
+    const day = localDaySeed.getUTCDate();
+    const noonUtc = zonedLocalToUtc(year, month, day, 12, 0, timeZone);
+    const weekday = String(getTimeZoneParts(noonUtc, timeZone).weekday || '').toLowerCase();
+    if (weekday === 'sun' || weekday === 'sat') continue;
 
     for (const [hours, minutes] of slotTemplates) {
-      const start = new Date(day.getTime());
-      start.setHours(hours, minutes, 0, 0);
+      const start = zonedLocalToUtc(year, month, day, hours, minutes, timeZone);
       if (start.getTime() - now.getTime() < 2 * 60 * 60 * 1000) continue;
 
       const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
@@ -315,6 +371,24 @@ function buildSlotSuggestions(options = {}) {
   }
 
   return suggestions;
+}
+
+function validateConsultationWindow(start, end, now = new Date()) {
+  if (!start && !end) return null;
+  if (!start || !end || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(start) || !/T.*(?:Z|[+-]\d{2}:\d{2})$/.test(end)) {
+    return 'Choose a complete suggested window with an explicit timezone.';
+  }
+  const first = new Date(start);
+  const last = new Date(end);
+  if (!Number.isFinite(first.getTime()) || !Number.isFinite(last.getTime())) return 'Invalid consultation window.';
+  if (first.getTime() - now.getTime() < 2 * 60 * 60 * 1000) return 'Choose a window at least two hours in the future.';
+  if (first.getTime() - now.getTime() > 14 * 86400000) return 'Choose a window within the next fourteen days.';
+  if (last.getTime() - first.getTime() !== 30 * 60000) return 'Choose a supported thirty-minute window.';
+  const parts = getTimeZoneParts(first);
+  if (['sat', 'sun'].includes(parts.weekday.toLowerCase()) ||
+      !['9:0', '11:0', '13:30', '15:30'].includes(`${Number(parts.hour)}:${Number(parts.minute)}`) ||
+      first.getUTCSeconds() || first.getUTCMilliseconds()) return 'Choose a suggested weekday window in Eastern Time.';
+  return null;
 }
 
 function generateConsultationReference(prefix = 'COM') {
@@ -384,6 +458,8 @@ function buildEscalationMessage(input) {
 }
 
 module.exports = {
+  COMMERCIAL_TIME_ZONE,
+  validateConsultationWindow,
   hasCommercialSmsConsent,
   validateCommercialContact,
   isManualCommercialFollowUp,

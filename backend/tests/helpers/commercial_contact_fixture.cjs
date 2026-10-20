@@ -54,10 +54,14 @@ function queueWidgetSource() {
 }
 
 function createFixture() {
-  const tables = { commercial_leads: [], commercial_consultation_requests: [], sms_threads: [], sms_messages: [] };
+  const tables = { commercial_leads: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
   const sms = [];
+  const providerAttempts = [];
   const appointments = [];
   const calls = [];
+  const effects = new Map();
+  const objects = new Map();
+  const faults = {};
   const env = {
     NODE_ENV: 'test', COMMERCIAL_PUBLIC_BASE_URL: 'http://localhost:3002',
     COMMERCIAL_CONSULTATION_TECH_PHONE: '+15550000001', COMMERCIAL_ESCALATION_PHONES: '+15550000002',
@@ -65,6 +69,90 @@ function createFixture() {
     CRON_SECRET: 'fixture-only-cron-secret',
   };
   const database = {
+    rpc(name, args) {
+      calls.push({ rpc: name });
+      if (faults[name]) return Promise.resolve({ data: null, error: { message: faults[name] } });
+      const req = tables.commercial_consultation_requests.find(row => row.request_id === args.p_request_id);
+      let data;
+      if (name === 'commercial_save_lead') {
+        let row = tables.commercial_leads.find(lead => lead.public_token === args.p_token);
+        if (row && row.last_save_key === args.p_save_key) data = { lead: row, replayed: true };
+        else if (Number(row?.revision || 0) !== args.p_revision) data = { conflict: true, lead: row };
+        else {
+          if (!row) {
+            row = { lead_id: crypto.randomUUID(), created_at: new Date().toISOString() };
+            tables.commercial_leads.push(row);
+          }
+          const photos = row.project_photo_urls || [];
+          Object.assign(row, copy(args.p_patch), { revision: Number(row.revision || 0) + 1,
+            last_save_key: args.p_save_key, project_photo_urls: photos, public_token: args.p_token });
+          data = { lead: row };
+        }
+      } else if (name === 'commercial_submit_request') {
+        let row = tables.commercial_consultation_requests.find(item => item.lead_id === args.p_lead_id &&
+          (item.submission_key === args.p_key || ['pending', 'approved', 'customer_confirmed', 'escalated', 'reschedule_requested'].includes(item.status)));
+        const created = !row;
+        if (!row) {
+          row = { ...copy(args.p_patch), request_id: crypto.randomUUID(), lead_id: args.p_lead_id,
+            submission_key: args.p_key, reminder_count: 0 };
+          tables.commercial_consultation_requests.push(row);
+        }
+        data = { request: row, created };
+      } else if (name === 'commercial_reschedule_request') {
+        const replayed = req.metadata.last_reschedule_key === args.p_key;
+        if (!replayed) {
+          assert.equal(req.response_token, args.p_expected_token);
+          Object.assign(req, copy(args.p_patch), { metadata: { ...req.metadata, ...args.p_patch.metadata, last_reschedule_key: args.p_key } });
+        }
+        data = { request: req, replayed };
+      } else if (name === 'commercial_claim_effect') {
+        const key = `${args.p_request_id}:${args.p_kind}`;
+        data = !effects.has(key) || effects.get(key).state === 'failed';
+        if (data) {
+          req.metadata.workflow = { ...req.metadata.workflow, [args.p_kind]: { state: 'processing' } };
+          effects.set(key, { state: 'processing' });
+          const existing = tables.commercial_effects.find(item => item.request_id === args.p_request_id && item.kind === args.p_kind);
+          if (existing) existing.state = 'processing';
+          else tables.commercial_effects.push({ request_id: args.p_request_id, kind: args.p_kind, state: 'processing' });
+        }
+      } else if (name === 'commercial_finish_effect') {
+        const key = `${args.p_request_id}:${args.p_kind}`;
+        const value = { state: args.p_state, details: copy(args.p_details) };
+        effects.set(key, value);
+        Object.assign(tables.commercial_effects.find(item => item.request_id === args.p_request_id && item.kind === args.p_kind), value);
+        req.metadata.workflow = { ...req.metadata.workflow, [args.p_kind]: value };
+        data = null;
+      } else if (name === 'commercial_create_appointment') {
+        if (!req.related_order_id) {
+          const appointment = { id: crypto.randomUUID(), requestId: req.request_id };
+          appointments.push(appointment);
+          req.related_order_id = appointment.id;
+        }
+        delete req.metadata.appointment_error;
+        data = appointments.find(item => item.id === req.related_order_id);
+      } else if (name === 'commercial_record_appointment_error') {
+        req.metadata.appointment_error = args.p_error;
+        data = null;
+      } else if (name === 'commercial_attach_photo') {
+        const row = tables.commercial_leads.find(item => item.lead_id === args.p_lead_id);
+        if (row.project_photo_urls.length >= 8) return Promise.resolve({ error: { message: 'Maximum eight attachments reached' } });
+        row.project_photo_urls.push(args.p_url);
+        data = row;
+      } else throw new Error(`Unmocked RPC: ${name}`);
+      return Promise.resolve({ data: copy(data ?? null), error: null });
+    },
+    storage: {
+      getBucket: async () => ({ data: { public: faults.privateBucket !== true }, error: null }),
+      from: () => ({
+        upload: async (name, bytes) => { objects.set(name, bytes); return { error: null }; },
+        getPublicUrl: name => ({ data: { publicUrl: `https://fixture.invalid/${name}` } }),
+        remove: async names => {
+          if (faults.cleanup) return { error: { message: 'Fixture cleanup failure' } };
+          names.forEach(name => objects.delete(name));
+          return { error: null };
+        },
+      }),
+    },
     from(table) {
       assert.ok(Object.hasOwn(tables, table), `Unexpected database table: ${table}`);
       const operation = { table, mode: 'select', filters: [], orders: [], limit: Infinity, single: false };
@@ -72,6 +160,7 @@ function createFixture() {
         get(_, method) {
           if (method === 'then') return (resolve, reject) => Promise.resolve().then(() => {
             calls.push({ table, mode: operation.mode });
+            if (faults[table]) return { data: null, error: { message: String(faults[table]) } };
             let rows = tables[table].filter(row => operation.filters.every(filter => filter(row)));
             if (['insert', 'upsert'].includes(operation.mode)) {
               let row = operation.mode === 'upsert' ? rows.find(item => item.contact_phone === operation.value.contact_phone) : null;
@@ -97,7 +186,7 @@ function createFixture() {
           }).then(resolve, reject);
           return (...args) => {
             if (['insert', 'upsert', 'update'].includes(method)) { operation.mode = method; operation.value = args[0]; }
-            else if (method === 'eq') operation.filters.push(row => row[args[0]] === args[1]);
+            else if (method === 'eq' || method === 'is') operation.filters.push(row => (row[args[0]] ?? null) === args[1]);
             else if (method === 'in') operation.filters.push(row => args[1].includes(row[args[0]]));
             else if (method === 'lte') operation.filters.push(row => row[args[0]] != null && row[args[0]] <= args[1]);
             else if (method === 'limit') operation.limit = args[0];
@@ -124,6 +213,8 @@ function createFixture() {
     '@/lib/commercial_consultation.js': utils,
     'node:crypto': crypto,
     twilio: () => ({ messages: { create: async message => {
+      providerAttempts.push(copy(message));
+      if (faults.sms) throw Object.assign(new Error('Fixture provider failure'), { status: faults.sms === 'rejected' ? 400 : 504 });
       sms.push(copy(message));
       return { sid: `fixture-${sms.length}`, status: 'queued' };
     } } }),
@@ -148,7 +239,7 @@ function createFixture() {
   });
   function route(name) { return load(`app\\api\\${name}\\route.ts`); }
   return {
-    tables, sms, appointments, calls, runtime, route,
+    tables, sms, providerAttempts, appointments, calls, runtime, route, faults, effects, objects,
     queue: () => queue.loadCommercialQueueSnapshot(150),
     post: (name, body) => route(name).POST(new Request(`http://localhost:3002/api/${name}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -183,13 +274,15 @@ function startServer(port = 3003) {
       const body = Buffer.concat(chunks);
       let result;
       if (url.pathname === '/api/_fixture/reset' && request.method === 'POST') { fixture = createFixture(); result = Response.json({ ok: true }); }
+      else if (url.pathname === '/api/_fixture/faults' && request.method === 'POST') { Object.assign(fixture.faults, JSON.parse(body)); result = Response.json({ ok: true }); }
       else if (url.pathname === '/api/_fixture/state') result = Response.json({ fixture: true, tables: fixture.tables, sms: fixture.sms, appointments: fixture.appointments });
       else if (url.pathname === '/api/_fixture/queue') result = new Response(queuePage(), { headers: { 'Content-Type': 'text/html' } });
       else if (url.pathname === '/api/v1' && url.searchParams.get('action') === 'commercialQueue') result = Response.json({ ok: true, commercialQueue: await fixture.queue() });
+      else if (url.pathname === '/api/v1' && url.searchParams.get('action') === 'commercialRecovery' && request.method === 'POST') result = Response.json(await fixture.runtime.retryCommercialProcessing(new Request(url), JSON.parse(body).requestId));
       else if (['/api/track', '/api/owner-media/public', '/api/proof-gallery'].includes(url.pathname)) result = Response.json({ ok: true, assets: [], photos: [], items: [] });
       else {
         const name = url.pathname.slice('/api/'.length);
-        assert.ok(['commercial-intake', 'commercial-consultation', 'commercial-consultation-response'].includes(name), 'Unsupported fixture route');
+        assert.ok(['commercial-intake', 'commercial-intake/photo', 'commercial-consultation', 'commercial-consultation-response'].includes(name), 'Unsupported fixture route');
         const handler = fixture.route(name)[request.method];
         assert.equal(typeof handler, 'function', 'Unsupported fixture method');
         result = await handler(new Request(url, { method: request.method, headers: request.headers,

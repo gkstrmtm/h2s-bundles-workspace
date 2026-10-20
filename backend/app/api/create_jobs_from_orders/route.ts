@@ -99,12 +99,14 @@ async function handle(request: Request, token: string, options?: { limit?: numbe
 
   let payload;
   try {
-    payload = verifyPortalToken(token);
+    const verified = await verifyPortalToken(token);
+    if (!verified.ok || !verified.payload) throw new Error(verified.error || 'Invalid token');
+    payload = verified.payload;
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || 'Invalid token', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
   }
 
-  if (payload.role !== 'admin') {
+  if (String(payload.role) !== 'admin') {
     return NextResponse.json({ ok: false, error: 'Not an admin session', error_code: 'bad_session' }, { status: 401, headers: corsHeaders(request) });
   }
 

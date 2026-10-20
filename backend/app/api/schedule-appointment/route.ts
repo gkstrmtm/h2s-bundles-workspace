@@ -453,6 +453,11 @@ export async function OPTIONS() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    if (body?.consultationRequestId || body?.consultationReferenceCode || String(body?.source || '').toLowerCase() === 'commercial') {
+      return NextResponse.json({ success: false, error: 'Commercial appointments must be created through the approved consultation workflow.' }, {
+        status: 409, headers: corsHeaders(),
+      });
+    }
 
     // ===== Legacy mode (bundles-success scheduling) =====
     // Expected payload: { order_id, delivery_date, delivery_time, start_iso, end_iso, timezone }

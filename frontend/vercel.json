@@ -66,6 +66,26 @@
   ],
   "rewrites": [
     {
+      "source": "/commercial",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/commercial.html"
+    },
+    {
+      "source": "/commercial-approval",
+      "has": [
+        {
+          "type": "host",
+          "value": "shop.home2smart.com"
+        }
+      ],
+      "destination": "/commercial-approval.html"
+    },
+    {
       "source": "/(.*\\.(?:css|js|map|png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|ttf|otf|json|txt))",
       "destination": "/$1"
     },
@@ -450,6 +470,14 @@
     {
       "source": "/gallery",
       "destination": "/gallery.html"
+    },
+    {
+      "source": "/commercial",
+      "destination": "/commercial.html"
+    },
+    {
+      "source": "/commercial-approval",
+      "destination": "/commercial-approval.html"
     },
     {
       "source": "/portal",

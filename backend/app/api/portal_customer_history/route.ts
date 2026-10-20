@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     try {
       const _auth = await verifyPortalToken(token);
       if (!_auth.ok || !_auth.payload) {
-        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401, headers: corsHeaders(request) });
+        return NextResponse.json({ ok: false, error: _auth.error || 'Invalid token', error_code: _auth.errorCode || 'bad_session' }, { status: 401 });
       }
       payload = _auth.payload;
     } catch {

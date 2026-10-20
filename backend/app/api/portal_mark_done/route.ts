@@ -124,7 +124,7 @@ export async function POST(request: Request) {
     for (const col of proCols) {
       for (const val of proValues) {
         try {
-          const probe = await sb.from(assignTable).select('*').eq(assignJobCol as any, jobId).eq(col as any, val).limit(5);
+          const probe = await sb.from(assignTable).select('*').eq(String(assignJobCol), jobId).eq(String(col), val).limit(5);
           if (!probe.error && Array.isArray(probe.data) && probe.data.length) {
             const rows = probe.data;
             const getState = (r: any) => String(r?.[assignStateCol] ?? r?.assign_state ?? r?.state ?? r?.status ?? '').toLowerCase().trim();
@@ -162,7 +162,7 @@ export async function POST(request: Request) {
     let jobRow: any = null;
     if (!ownershipOk) {
       try {
-        const { data, error } = await sb.from(jobsTable).select('*').eq(jobIdCol as any, jobId).maybeSingle();
+        const { data, error } = await sb.from(jobsTable).select('*').eq(String(jobIdCol), jobId).maybeSingle();
         if (!error && data) {
           jobRow = data;
           const jobProCols = [
@@ -212,13 +212,11 @@ export async function POST(request: Request) {
     // 2. Update job status to done
     console.log(`[COMPLETE_JOB_UPDATE_START] cid=${cid} updating job status to done...`);
 
+    const statusPatch: Record<string, string> = { [jobStatusCol]: 'done', updated_at: new Date().toISOString() };
     const { data: updatedRows, error: updateError } = await sb
       .from(jobsTable)
-      .update({
-        [jobStatusCol]: 'done',
-        updated_at: new Date().toISOString(),
-      } as any)
-      .eq(jobIdCol as any, jobId)
+      .update(statusPatch)
+      .eq(String(jobIdCol), jobId)
       .select();
     
     if (updateError) {

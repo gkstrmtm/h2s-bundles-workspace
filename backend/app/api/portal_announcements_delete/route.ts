@@ -83,7 +83,7 @@ export async function GET(request: Request) {
 
     // Legacy admin validation: allow signed admin token or a legacy admin session token.
     const signed = token ? await verifyPortalToken(token) : null;
-    const signedAdminEmail = signed?.role === 'admin' ? (signed.email || signed.sub || null) : null;
+    const signedAdminEmail = signed?.ok && signed.payload && String(signed.payload.role) === 'admin' ? (signed.payload.email || signed.payload.sub || null) : null;
     const adminEmail = signedAdminEmail || (await validateLegacyAdminSession(client as any, token));
 
     if (!adminEmail) {

@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
     // Legacy portal allows admin access either via explicit created_by OR via h2s_admin_sessions session token.
     const signed = token ? await verifyPortalToken(token) : null;
-    const signedAdminEmail = signed?.role === 'admin' ? (signed.email || signed.sub || null) : null;
+    const signedAdminEmail = signed?.ok && signed.payload && String(signed.payload.role) === 'admin' ? (signed.payload.email || signed.payload.sub || null) : null;
 
     if (!normalized.title || !normalized.message) {
       return NextResponse.json({ ok: false, error: 'Title and message are required', error_code: 'bad_request' }, { status: 400, headers: corsHeaders(request) });

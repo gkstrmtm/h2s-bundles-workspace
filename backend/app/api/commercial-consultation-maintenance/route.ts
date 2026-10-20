@@ -69,24 +69,34 @@ async function processMaintenance(request: Request) {
     if (isManualCommercialFollowUp(consultation, lead)) continue;
 
     const maxReminders = getMaxReminderCount();
-    if ((consultation.reminder_count || 0) >= maxReminders) {
+    const windowExpired = consultation.selected_slot_start && new Date(consultation.selected_slot_start).getTime() <= Date.now();
+    if ((consultation.reminder_count || 0) >= maxReminders || windowExpired) {
       const management = await notifyManagementEscalation(consultation, lead);
-      await sb
+      const { data: escalated, error: escalationError } = await sb
         .from('commercial_consultation_requests')
         .update({
           status: 'escalated',
           escalated_at: new Date().toISOString(),
-          management_notified_at: new Date().toISOString(),
+          management_notified_at: management.some(item => item.ok) ? new Date().toISOString() : null,
           next_reminder_at: null,
           updated_at: new Date().toISOString(),
         })
-        .eq('request_id', consultation.request_id);
-      processed.push({ requestId: consultation.request_id, action: 'escalated', notifications: management });
+        .eq('request_id', consultation.request_id)
+        .eq('status', consultation.status)
+        .eq('response_token', consultation.response_token)
+        .eq('reminder_count', consultation.reminder_count || 0)
+        .select('request_id').maybeSingle();
+      if (escalationError) throw new Error(commercialDatabaseErrorMessage(escalationError));
+      processed.push({ requestId: consultation.request_id, action: escalated ? 'escalated' : 'changed_during_processing', notifications: management });
       continue;
     }
 
-    const sent = await sendTechnicianConsultationRequest(consultation, lead);
-    await sb
+    const sent = await sendTechnicianConsultationRequest(consultation, lead, `reminder:${consultation.reminder_count || 0}`);
+    if (!sent.results.some(item => item.ok)) {
+      processed.push({ requestId: consultation.request_id, action: 'delivery_review_required', notifications: sent.results });
+      continue;
+    }
+    const { data: reminded, error: reminderError } = await sb
       .from('commercial_consultation_requests')
       .update({
         reminder_count: Number(consultation.reminder_count || 0) + 1,
@@ -94,9 +104,14 @@ async function processMaintenance(request: Request) {
         next_reminder_at: nextReminderIso(),
         updated_at: new Date().toISOString(),
       })
-      .eq('request_id', consultation.request_id);
+      .eq('request_id', consultation.request_id)
+      .eq('status', consultation.status)
+      .eq('response_token', consultation.response_token)
+      .eq('reminder_count', consultation.reminder_count || 0)
+      .select('request_id').maybeSingle();
+    if (reminderError) throw new Error(commercialDatabaseErrorMessage(reminderError));
 
-    processed.push({ requestId: consultation.request_id, action: 'reminded', notifications: sent.results });
+    processed.push({ requestId: consultation.request_id, action: reminded ? 'reminded' : 'changed_during_processing', notifications: sent.results });
   }
 
   return NextResponse.json({ ok: true, processed }, { headers: corsHeaders(request) });

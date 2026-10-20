@@ -1,14 +1,15 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createFixture, queuePage } = require('./helpers/commercial_contact_fixture.cjs');
-const { validateCommercialContact } = require('../lib/commercial_consultation.js');
+const { validateCommercialContact, buildSlotSuggestions } = require('../lib/commercial_consultation.js');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 const { JSDOM, VirtualConsole } = require('jsdom');
 
-const slot = { selectedSlotStart: '2099-01-05T15:00:00.000Z', selectedSlotEnd: '2099-01-05T15:45:00.000Z' };
+const suggested = buildSlotSuggestions()[0];
+const slot = { selectedSlotStart: suggested.startIso, selectedSlotEnd: suggested.endIso };
 const contact = (method, patch = {}) => ({
   fullName: 'Fixture Contact', companyName: 'Fixture Project', contactPreference: method,
   email: method === 'email' ? 'fixture@example.invalid' : '', phone: method === 'email' ? '' : '+15550000005',
@@ -27,7 +28,7 @@ test('email-only and call-first save one lead and submit actionable manual reque
     const draftQueue = await f.queue();
     assert.equal(draftQueue.queue[0].followUp.submitted, false);
     assert.match(draftQueue.queue[0].followUp.statusLabel, /draft.*not submitted/i);
-    const update = await f.post('commercial-intake', contact(method, { publicToken: lead.publicToken, notes: 'Retain this project detail' }));
+    const update = await f.post('commercial-intake', contact(method, { publicToken: lead.publicToken, revision: lead.revision, notes: 'Retain this project detail' }));
     assert.equal(update.status, 200);
     const response = await f.post('commercial-consultation', { publicToken: lead.publicToken, ...slot, assignedTechnicianPhone: '+15550000099' });
     assert.equal(response.status, 201);
@@ -52,7 +53,8 @@ test('email-only and call-first save one lead and submit actionable manual reque
     assert.equal(reloaded.lead.publicToken, lead.publicToken);
     assert.equal(reloaded.submission.requestId, result.consultation.requestId);
     const duplicate = await f.post('commercial-consultation', { publicToken: lead.publicToken, ...slot });
-    assert.equal(duplicate.status, 409);
+    assert.equal(duplicate.status, 200);
+    assert.equal((await duplicate.json()).consultation.requestId, result.consultation.requestId);
     assert.equal(f.tables.commercial_consultation_requests.length, 1);
   });
 });

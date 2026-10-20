@@ -7,6 +7,10 @@
     {
       "path": "/api/owner-media-reminder",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/commercial-consultation-maintenance",
+      "schedule": "*/15 * * * *"
     }
   ],
   "rewrites": [

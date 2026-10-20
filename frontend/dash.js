@@ -47970,6 +47970,21 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.renderDetail();
             },
 
+            async retryProcessing(requestId) {
+                try {
+                    const response = await fetch(`${API_URL}?action=commercialRecovery`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ requestId })
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok) throw new Error(payload.error || 'Commercial recovery failed.');
+                    showToast('Processing attempt recorded. Review the updated appointment and communication states.', 'success');
+                    await this.refresh();
+                } catch (error) {
+                    showToast(error.message || 'Could not retry processing.', 'error');
+                }
+            },
+
             getFilteredItems() {
                 const filter = String(this.state.filter || 'attention').trim().toLowerCase();
                 const query = String(this.state.query || '').trim().toLowerCase();
@@ -47997,7 +48012,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     if (filter === 'escalated') return status === 'escalated';
                     if (filter === 'no_consultation') return !status;
                     if (filter === 'attention') {
-                        return !status || status === 'pending' || status === 'reschedule_requested' || status === 'escalated' || priority === 'high' || priority === 'urgent';
+                        return !!(item.followUp && item.followUp.needsAttention) || !status || status === 'pending' || status === 'reschedule_requested' || status === 'escalated' || priority === 'high' || priority === 'urgent';
                     }
 
                     return true;
@@ -48072,7 +48087,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     { label: 'Visible leads', value: filteredCount, hint: `${Number(summary.totalLeads || 0)} total in this view` },
                     { label: 'Pending consults', value: Number(summary.pendingConsultations || 0), hint: 'Awaiting technician or operator action' },
                     { label: 'Escalated', value: Number(summary.escalatedConsultations || 0), hint: 'Needs management follow-up' },
-                    { label: 'Approved', value: Number(summary.approvedConsultations || 0), hint: 'Booked or customer-confirmed slots' },
+                    { label: 'Technician approved', value: Number(summary.approvedConsultations || 0), hint: 'Review appointment and notification outcomes separately' },
                     { label: 'High priority', value: Number(summary.highPriorityLeads || 0), hint: 'Scored high or urgent from intake' },
                     { label: 'New last 24h', value: Number(summary.newLastDay || 0), hint: 'Fresh commercial intake volume' },
                 ];
@@ -48181,6 +48196,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         ${this.renderDetailCard('Primary contact', primaryContact, item.fullName ? `Contact: ${item.fullName}` : '')}
                         ${this.renderDetailCard('Requested contact method', methodLabel, [item.email, item.phone].filter(Boolean).join(' / '))}
                         ${this.renderDetailCard('Next follow-up action', item.followUp && item.followUp.nextAction || 'Review the saved contact preference before contacting the customer.', item.followUp && item.followUp.statusLabel || '')}
+                        ${item.followUp && item.followUp.recoveryAllowed && item.consultation ? `<button type="button" class="btn btn-secondary" onclick="window.commercialQueueUI.retryProcessing('${escapeHtml(item.consultation.requestId)}')">Retry failed processing</button>` : ''}
                         ${this.renderDetailCard('Project location', projectLocation || 'Location still missing', item.businessType || '')}
                         ${this.renderDetailCard('Timeline', item.timeline || 'Not provided', item.budgetBand ? `Budget: ${item.budgetBand}` : '')}
                         ${this.renderDetailCard('Sites / media', item.siteCount ? `${item.siteCount} site${item.siteCount === 1 ? '' : 's'}` : 'Site count not provided', `${Number(item.projectPhotoCount || 0)} file${Number(item.projectPhotoCount || 0) === 1 ? '' : 's'} uploaded`)}
@@ -48210,7 +48226,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             <div class="commercial-queue-detail__grid" style="margin-top: 14px;">
                                 ${this.renderDetailCard('Technician', item.consultation && item.consultation.assignedTechnicianName ? item.consultation.assignedTechnicianName : 'Not assigned yet', item.consultation && item.consultation.assignedTechnicianPhone ? item.consultation.assignedTechnicianPhone : '')}
                                 ${this.renderDetailCard('Reminder state', item.consultation ? `${Number(item.consultation.reminderCount || 0)} sent` : 'No reminders yet', item.consultation && item.consultation.nextReminderAt ? `Next: ${this.formatDateTime(item.consultation.nextReminderAt)}` : '')}
-                                ${this.renderDetailCard('Appointment link', item.consultation && item.consultation.relatedOrderId ? String(item.consultation.relatedOrderId) : 'No order linked yet', item.consultation && item.consultation.customerConfirmationSentAt ? `Customer notified ${this.formatRelativeTime(item.consultation.customerConfirmationSentAt)}` : '')}
+                                ${this.renderDetailCard('Appointment link', item.consultation && item.consultation.relatedOrderId ? String(item.consultation.relatedOrderId) : 'No order linked yet', item.consultation && item.consultation.customerConfirmationSentAt ? `SMS provider accepted ${this.formatRelativeTime(item.consultation.customerConfirmationSentAt)}; delivery unverified` : '')}
                             </div>
                         </section>
 
@@ -48264,11 +48280,12 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const date = new Date(raw);
                 if (Number.isNaN(date.getTime())) return raw;
                 return new Intl.DateTimeFormat('en-US', {
+                    timeZone: 'America/New_York',
                     month: 'short',
                     day: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit'
-                }).format(date);
+                }).format(date) + ' Eastern Time';
             },
 
             formatRelativeTime(value) {

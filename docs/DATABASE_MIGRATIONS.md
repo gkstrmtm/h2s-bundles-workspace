@@ -4,6 +4,9 @@ The database runner uses `pg`, not application API keys or a custom SQL RPC.
 Non-secret target configuration is in `backend/migration-targets.json`.
 The workspace owner confirmed project `nkccbnrduojnzjfrpwva` is **production**
 and authorized the two additive media migrations on 2026-10-16.
+The owner separately authorized the ordered security-first production rollout
+and reviewed migration 031 on 2026-10-20. Migration 031 was applied and verified
+through this runner after the security deployment and legacy invocation drain.
 This does not authorize arbitrary future migrations.
 
 ## Credentials and trusted TLS
@@ -80,10 +83,14 @@ The explicit managed list currently contains:
    constraints, source foreign keys, RLS, backend-only grants and ordering index.
 2. `030_owner_media_placement_fields.sql`: additive owner destination/order/
    weight columns and their indexes, with the existing application's defaults.
+3. `031_commercial_reliability.sql`: explicitly authorized, applied and verified
+   in production on 2026-10-20 after the security-first rollout.
 
-These scripts deliberately fail if untracked objects already exist; do not
+The two media scripts deliberately fail if untracked objects already exist; do not
 replace that protection with `IF NOT EXISTS` or mark changes applied manually.
-Only these two intended SQL paths are unignored.
+Only these three intended SQL paths are unignored. Although 031 uses conditional
+DDL, the runner requires an exact commercial baseline with no colliding objects
+before executing it. Never run that file directly to bypass this guard.
 
 Apply takes a transaction-scoped advisory lock, checks schema drift and file
 checksums, and executes pending SQL intact in one transaction. It verifies
@@ -168,7 +175,189 @@ Run the fake-transport protection tests without production credentials:
 node --test backend\tests\commercial_consultation.test.cjs backend\tests\commercial_protection.test.cjs
 ```
 
-### Commercial contact and manual follow-up
+### Commercial reliability migration 031 (applied and verified)
+
+The owner authorized this exact migration and ordered production rollout on
+2026-10-20. The production `authorizedMigrations` list now includes 031,
+`commercial031.reviewOnly` is false, and its separate authorization records the
+verified security deployment and required legacy invocation drain. This does not
+authorize other migrations. The reviewed normalized-LF SQL SHA-256 remains
+`c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071`.
+
+`backend/migration-baselines/031_commercial_reliability.json` contains the
+read-only production catalog baseline, not customer records. Its independent
+checksum and the normalized-LF SQL checksum are bound in target configuration.
+The existing media baseline/security hashes and historical ledger digests are
+unchanged. Before application, status/inspect compared the commercial baseline
+and ran read-only duplicate/null-email and legacy commercial-link preflights.
+Application at 2026-10-20 05:23:32 UTC reported only 031 applied, verified TLS and
+`verified: true`. A separate read-only verify returned
+`commercial031.state: applied_verified`; zero-row PostgREST queries also
+confirmed the new effects table and lead/order columns are visible.
+
+Post-031 verification checks preserved columns/defaults/constraints/indexes,
+grants, role flags, default privileges, RLS/policies and existing trigger bodies;
+it also checks every new function's body/signature/fixed search path/execution
+permissions, the effect ledger, request indexes, typed appointment foreign key,
+strict identity/email CHECKs, both enabled appointment guards and the preserved
+global order-key unique constraint/backing index.
+These checks are exercised against a catalog-derived embedded PostgreSQL fixture.
+The frontend and commercial write paths now require these functions; do not
+deploy them before that migration is authorized, applied and verified.
+
+The prepared scope is:
+
+- Lead revisions, stable save keys, transactional revision checks and replay.
+  Saved drafts keep `last_submitted_at` null; submission sets it atomically.
+- One active request per lead and stable submission-key replay. Preflight stops
+  on active duplicates without deleting or merging customer records.
+- Locked rescheduling with fresh approval authority and replay protection.
+  Rescheduling intentionally invalidates old approval links; existing unrelated
+  tokens are not rotated and still have no automatic expiry. Rescheduled requests
+  require the current approval link; a delayed reference-only SMS cannot approve
+  a changed window.
+- A backend-only effect ledger. Processing/uncertain provider attempts require
+  reconciliation, not automatic resend. Only known rejected/failed attempts are
+  retryable. Provider acceptance does not prove delivery or customer acknowledgement.
+- Appointment creation/reuse and request linking in one transaction, before any
+  customer booking confirmation. Only correctly typed, matching linked
+  appointments are reused; missing or unrelated links fail for reconciliation.
+- Atomic eight-attachment enforcement. Runtime uploads allow JPEG, PNG, WebP
+  and PDF up to 3 MB, within a bounded 4.25 MB JSON request. Failed persistence
+  removes the object; cleanup failure is an explicit operator task. A verified
+  public-read bucket is currently required; private storage needs a separate
+  signed/proxied-access design, not a silent bucket permission change.
+
+Read-only inspection confirmed the current `h2s-job-artifacts` bucket is public;
+this did not download customer attachments or prove end-to-end storage access.
+
+Read-only production inspection found UUID appointment IDs, `items` stored as
+text, JSONB metadata, and a required `customer_email`. To support text-first
+requests without inventing an email, 031 relaxes that column's NOT NULL but adds
+`h2s_orders_email_required_except_commercial`: every noncommercial order still
+requires email. The null exception requires a new typed `commercial_request_id`
+UUID foreign key to a real commercial request. `h2s_orders_commercial_link`
+requires matching typed UUID, deterministic order key and metadata ID on inserts
+and updates; missing/NULL or invented metadata alone cannot qualify. No redundant
+partial appointment-key index is created: existing global order-key uniqueness
+already supplies that guarantee.
+
+Orders retain their existing RLS setting and table/column grants. A narrow
+BEFORE INSERT/UPDATE/DELETE guard rejects anon/authenticated commercial writes,
+checks OLD and NEW so markers cannot be cleared to escape, and preserves linked
+identity. Generic backend routes use service-role clients, so commercial writes
+also require the appointment RPC's transaction-local request-bound scope. It
+restores that scope; a failed statement rolls it back. This is an internal scope,
+not an environment variable or secret. A separate BEFORE TRUNCATE guard denies
+all API roles; noncommercial CRUD retains existing behavior. Both current_user
+and the actual SET ROLE setting are checked, including owner-executing wrappers.
+No broad RLS enablement or existing grant revocation is made.
+Existing order SELECT access remains unchanged; these are write guards,
+not a new order-data privacy boundary.
+
+Generic scheduling/rescheduling handlers cannot edit commercial appointments
+through their service client. Approved commercial creation/recovery uses its RPC.
+Legacy generic backfill/geocoding tools are not commercial reconciliation tools;
+in particular, the old job backfill performs side effects before an unchecked
+order update. Do not run it for commercial rows. A future commercial editing or
+job-link flow needs a narrow authorized/validated RPC or an explicit exclusion
+before generic tooling side effects, not a bypass of the guard.
+
+This remains a reviewed constraint relaxation, not a data deletion. No existing
+rows are rewritten. Fresh live aggregate counts found no commercial requests,
+commercial appointment markers or request/order links. SQL and runner preflight
+stop if that footprint appears rather than invent a backfill. Existing timestamp
+triggers remain unchanged; the two guards are additional. Downstream integrations
+and real multi-connection behavior still need an approved integration check.
+
+The new effect table has RLS enabled and no policies; its grants are reset before
+granting only SELECT/INSERT/UPDATE to service_role, including removal of inherited
+service-role defaults. The eight RPCs plus trigger function are SECURITY INVOKER with fixed
+`search_path=public,pg_temp`, not SECURITY DEFINER; PUBLIC/anon/authenticated
+execution is revoked. Existing commercial default-deny policies remain unchanged.
+API keys cannot apply this migration. The established
+`DATABASE_URL_DIRECT` and `MIGRATION_CA_CERT_PATH` remain the authorized migration
+connection; no additional secret is required.
+
+Local validation uses fake transports and embedded PostgreSQL, never production
+test writes:
+
+```powershell
+node --test backend\tests\commercial_consultation.test.cjs backend\tests\commercial_contact.test.cjs backend\tests\commercial_protection.test.cjs backend\tests\commercial_reliability.test.cjs backend\tests\commercial_reliability_sql.test.cjs
+node --test backend\tests\migration_runner.test.cjs backend\tests\media_placements.test.cjs
+node backend\apply_migration_pg.js status --target production
+node backend\apply_migration_pg.js verify --target production
+```
+
+The embedded tests execute actual SQL against both minimal tables and a
+catalog-derived production-schema fixture, including actual default grants,
+existing indexes/constraints and trigger functions. They verify transactional
+DDL rollback, real request linkage, role guards, spoofed metadata/GUCs, definer
+wrappers, failed insertion/retry, duplicate recovery and noncommercial CRUD.
+They are not evidence of live application behavior, real concurrent connections,
+provider delivery, or customer acknowledgement. Production schema application
+and read-only verification are separately recorded above.
+
+**Resolved deployment-order blocker (2026-10-20):**
+the previously active `h2s-backend.vercel.app` deployment
+`dpl_5GYHkEYGTYER1Cz6BJmzUEziGZUT` is a dirty upload based on Git SHA
+`35391b66a6bbd62e777b00212d62132dc57af031`. Its actual uploaded runtime still
+contains `ensureCommercialConsultationTables`, Prisma raw DDL and unrestricted
+commercial policy creation. Its maintenance route calls that function and still
+trusted `x-vercel-cron: 1`. Under explicit owner approval, security/build release
+`dpl_6ngVyygN8t8FeEXP3V4pkemwxJrK` replaced it. Uploaded source matched the
+isolated security snapshot, and forged cron/invalid bearer probes returned 401.
+The six separately approved unsafe legacy deployments were retired and verified
+404, then drained for at least the configured 300-second function timeout before
+031 was applied. Do not restore those unsafe releases.
+
+The final reliability backend is
+`dpl_7xaUuKubemNVifgojqDsEu6JqXSr`; the final frontend is
+`dpl_9gDXuHnYX83Ukkfqtm6vsFacvGpa`, serving both shop and portal aliases.
+Frontend verification caught missing commercial routing prerequisites and an
+obsolete approval-script prefix; only those existing local prerequisites were
+selected, preserving noncommercial routing. The legacy deployment helper also
+required absent unused assets, so the isolated frontend was stamped equivalently
+and deployed from its actual root with explicit `--local-config .\vercel.json`.
+Live canonical routes and stamped assets matched deployed source bytes, and both
+frontend API proxies retained forged-cron rejection. `COMMERCIAL_PUBLIC_BASE_URL`
+was the sole approved deployment-environment addition; secret values were not
+changed. No production test customers, appointments, or notifications were created.
+
+The owner separately authorized the existing 15-minute commercial maintenance
+cron prerequisite. Its exact path is `/api/commercial-consultation-maintenance`
+with schedule `*/15 * * * *`; the existing owner-media reminder is unchanged.
+The final deployment's registered cron configuration and uploaded configuration
+bytes match the isolated release. Vercel uses the existing production
+`CRON_SECRET`; no secret was added or rotated. Maintenance was not manually
+invoked with valid production credentials for testing. Scheduled execution and
+real provider delivery have not been observed as part of these checks.
+
+Final isolated validation passed 113 tests (fake transports and embedded
+PostgreSQL), all targeted syntax checks, zero TypeScript diagnostics, the strict
+production build (85/85 pages), and Eastern-time tests under Honolulu and Tokyo.
+Live checks separately verified schema/history with trusted TLS, PostgREST
+schema visibility using `limit=0`, backend source hashes, forged-auth rejection,
+and canonical frontend route/asset bytes. Browser navigation in the integrated
+browser timed out; no live browser-rendering pass is claimed. Existing build
+configuration skips lint; this is not a lint pass.
+
+For the subsequent Git reconciliation, the owner explicitly approved a
+repository-root `vercel.json` guard with
+`git.deploymentEnabled: { "retro-dev": false }`. All three repository-linked
+Vercel projects currently use the repository root for Git builds. This guard
+prevents branch pushes from creating preview deployments; it does not disable
+manual CLI deployments or change the running production releases. The guard and
+this reconciliation note are post-deployment metadata, not changes to the
+deployed application source. Generated portal build stamps/assets and environment
+files are excluded from the reconciliation commit.
+
+The security-only release is retained, but reverting code is not a database
+rollback: old commercial writes may be rejected by the new guards, and old saves
+do not implement revision comparison. Review compatibility and recovery before
+rolling back. Do not remove 031 or rewrite its recorded checksum to undo it.
+
+### Contact rules preserved by reliability work
 
 Email first requires a valid email; Call first requires a valid phone. Both
 submit for manual follow-up, without automated customer SMS/email or appointment
@@ -178,7 +367,7 @@ Customer acknowledgement and approval paths enforce the same contact rules.
 Internal notifications still use server-owned recipients, independent of the
 customer's selected communication method.
 
-No schema migration is needed: existing `contact_preference` and consent in
+The earlier C03 contact rules needed no schema migration: existing `contact_preference` and consent in
 lead `attribution.communicationConsent` are reused. Explicit submission creates
 a request linked to that lead, with `metadata.request_kind`,
 `metadata.contact_preference`, and `metadata.submitted_at`. Manual requests

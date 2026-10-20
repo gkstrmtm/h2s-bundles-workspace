@@ -40,13 +40,29 @@
     maxStepVisited: 1,
     heroMediaApplied: false,
     submission: null,
+    revision: 0,
+    dirty: false,
+    localVersion: 0,
+    pendingSave: null,
+    submissionKey: '',
+    submitting: false,
+    hydrating: true,
+    conflict: false,
   };
+  let saveChain = Promise.resolve();
+  let uploadChain = Promise.resolve();
+
+  function newIdentity() {
+    if (window.crypto.randomUUID) return window.crypto.randomUUID();
+    return Array.from(window.crypto.getRandomValues(new Uint8Array(24)), byte => byte.toString(16).padStart(2, '0')).join('');
+  }
 
   let commercialCustomSelectIdCounter = 0;
   let commercialCustomSelectSyncQueued = false;
   let commercialCustomSelectBound = false;
   let heroMediaPreloadHref = '';
   let heroMediaRequestId = 0;
+  const DEFAULT_LOCAL_DRAFT_MESSAGE = 'Saved automatically as you go.';
 
   function byId(id) {
     return document.getElementById(id);
@@ -181,13 +197,17 @@
   }
 
   function showContactError(error, focus) {
-    if (focus && state.currentStep !== 2) showStep(2);
+    const step = error.field === 'slotGrid' ? 5 : error.field === 'serviceNeeds' ? 1 : 2;
+    if (focus && state.currentStep !== step) showStep(step);
     setStatus(error.message, 'error');
-    const field = byId(error.field);
+    const field = byId(error.field) || (error.field === 'serviceNeeds' ? document.querySelector('input[name="serviceNeeds"]') : null);
     if (field) {
       field.setAttribute('aria-invalid', 'true');
       field.setAttribute('aria-describedby', 'formStatus');
-      if (focus) field.focus();
+      if (focus) {
+        if (!field.matches('input,select,textarea,button')) field.setAttribute('tabindex', '-1');
+        field.focus();
+      }
     }
   }
 
@@ -216,7 +236,7 @@
     const submitCopy = byId('submitCopy');
     if (submitButton) {
       submitButton.textContent = state.submission ? 'Follow-up request submitted' : copy.cta;
-      submitButton.disabled = !!state.submission;
+      submitButton.disabled = !!state.submission || state.submitting;
     }
     if (submitCopy) submitCopy.textContent = copy.helper;
     const texting = copy.preference === 'sms';
@@ -242,6 +262,13 @@
     setText('successStatus', manual ? 'Manual follow-up pending review. No appointment is confirmed.' : 'Request submitted; check the request status with our team before making appointment plans.');
     setText('successSlot', consultation.selectedSlotStart ? consultation.slotLabel : 'No preferred window requested');
     setText('successCopy', manualReviewRequired ? copy.manualReviewCopy : copy.successCopy);
+    if (!manual && ['approved', 'customer_confirmed'].indexOf(consultation.status) >= 0) {
+      const booked = !!consultation.relatedOrderId;
+      setText('successStatus', booked ? 'Appointment created. Contact the team if you need to change this window.' : 'Technician approved; booking still needs review. No appointment is confirmed.');
+      setText('successCopy', booked
+        ? 'Your appointment is recorded. SMS provider acceptance, message delivery and customer acknowledgement are separate; contact the team if you have not received the details.'
+        : 'The team needs to resolve appointment creation before sending a booking confirmation.');
+    }
   }
 
   function mediaAssetOrigin() {
@@ -297,17 +324,23 @@
   }
 
   function updateLeadUrl(token) {
-    if (!token) return;
     const url = new URL(location.href);
-    url.searchParams.set('lead', token);
+    if (token) url.searchParams.set('lead', token);
+    else url.searchParams.delete('lead');
     history.replaceState({}, '', url.toString());
+  }
+
+  function setLocalDraftState(message) {
+    const node = byId('localDraftState');
+    if (node) node.textContent = String(message || DEFAULT_LOCAL_DRAFT_MESSAGE);
   }
 
   function formatSlot(startIso, endIso) {
     const start = new Date(startIso);
     const end = endIso ? new Date(endIso) : null;
-    if (Number.isNaN(start.getTime())) return 'Consultation window';
+    if (Number.isNaN(start.getTime())) return 'Requested time';
     const startText = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
       weekday: 'short',
       month: 'short',
       day: 'numeric',
@@ -316,10 +349,11 @@
     }).format(start);
     if (!end || Number.isNaN(end.getTime())) return startText;
     const endText = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
       hour: 'numeric',
       minute: '2-digit'
     }).format(end);
-    return `${startText} to ${endText}`;
+    return `${startText} to ${endText} Eastern Time`;
   }
 
   function escapeHtml(value) {
@@ -430,6 +464,43 @@
     } catch (_) {
       return {};
     }
+  }
+
+  function normalizeDraft(rawDraft) {
+    if (!rawDraft || typeof rawDraft !== 'object') return null;
+    const payload = rawDraft.payload && typeof rawDraft.payload === 'object'
+      ? rawDraft.payload
+      : rawDraft;
+    const currentStep = Math.max(1, Math.min(WIZARD_STEPS.length, Number(rawDraft.currentStep || 1)));
+    const maxStepVisited = Math.max(currentStep, Math.min(WIZARD_STEPS.length, Number(rawDraft.maxStepVisited || currentStep)));
+    const selectedSlotStart = String(rawDraft.selectedSlotStart || '').trim();
+    const uploadedPhotos = Array.isArray(rawDraft.uploadedPhotos)
+      ? rawDraft.uploadedPhotos.slice(0, 8)
+      : (Array.isArray(payload.projectPhotoUrls) ? payload.projectPhotoUrls.slice(0, 8) : []);
+    const leadToken = String(rawDraft.leadToken || rawDraft.publicToken || payload.publicToken || '').trim();
+
+    return {
+      version: Number(rawDraft.version || 1),
+      savedAt: String(rawDraft.savedAt || '').trim(),
+      leadToken,
+      currentStep,
+      maxStepVisited,
+      selectedSlotStart,
+      uploadedPhotos,
+      payload,
+      dirty: rawDraft.dirty === true,
+      localVersion: Number(rawDraft.localVersion || 0),
+      revision: Number(rawDraft.revision || 0),
+      pendingSave: rawDraft.pendingSave || null,
+      submissionKey: String(rawDraft.submissionKey || ''),
+    };
+  }
+
+  function draftMatchesLead(draft, leadToken) {
+    const normalized = draft && draft.leadToken ? String(draft.leadToken).trim() : '';
+    const current = String(leadToken || '').trim();
+    if (!normalized || !current) return true;
+    return normalized === current;
   }
 
   function commercialShouldUseCustomSelect(selectEl) {
@@ -782,9 +853,30 @@
   }
 
   function persistDraft() {
+    if (state.hydrating) return;
+    if (!state.leadToken) {
+      state.leadToken = getQueryLeadToken() || storage.getItem(STORAGE_KEY) || newIdentity();
+      storage.setItem(STORAGE_KEY, state.leadToken);
+    }
     const payload = collectLeadPayload();
     payload.publicToken = state.leadToken || '';
-    storage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    const draft = {
+      version: 2,
+      savedAt: new Date().toISOString(),
+      leadToken: state.leadToken || '',
+      currentStep: state.currentStep,
+      maxStepVisited: state.maxStepVisited,
+      selectedSlotStart: state.selectedSlotStart || '',
+      uploadedPhotos: state.uploadedPhotos.slice(0, 8),
+      payload,
+      dirty: state.dirty,
+      localVersion: state.localVersion,
+      revision: state.revision,
+      pendingSave: state.pendingSave,
+      submissionKey: state.submissionKey,
+    };
+    storage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    setLocalDraftState(DEFAULT_LOCAL_DRAFT_MESSAGE);
   }
 
   function hydrateForm(payload) {
@@ -795,6 +887,18 @@
       if (key === 'serviceNeeds' && Array.isArray(value)) {
         qsa('input[name="serviceNeeds"]').forEach(function (input) {
           input.checked = value.indexOf(input.value) >= 0;
+        });
+        return;
+      }
+      if (key === 'assessmentAnswers' && value && typeof value === 'object') {
+        Object.entries(value).forEach(function (nestedEntry) {
+          const nestedKey = nestedEntry[0];
+          const nestedValue = nestedEntry[1];
+          const nestedField = byId(nestedKey);
+          if (!nestedField) return;
+          if (typeof nestedValue === 'string' || typeof nestedValue === 'number') {
+            nestedField.value = String(nestedValue);
+          }
         });
         return;
       }
@@ -814,6 +918,33 @@
         field.value = String(value);
       }
     });
+  }
+
+  function applyDraft(rawDraft, options) {
+    const draft = normalizeDraft(rawDraft);
+    if (!draft) return false;
+    if (options && options.requireTokenMatch && !draftMatchesLead(draft, state.leadToken)) {
+      return false;
+    }
+
+    hydrateForm(draft.payload);
+    state.selectedSlotStart = draft.selectedSlotStart || state.selectedSlotStart || '';
+    if (draft.uploadedPhotos.length) {
+      state.uploadedPhotos = draft.uploadedPhotos.slice();
+    }
+    state.maxStepVisited = Math.max(1, Math.min(WIZARD_STEPS.length, draft.maxStepVisited || 1));
+
+    if (state.slots.length) {
+      renderSlots(state.slots);
+    }
+    renderUploadedPhotos();
+    renderConditionalCards();
+    renderSelectedServices();
+    syncChoicePills();
+    renderAssessmentSnapshot();
+    syncFollowUpCopy();
+    showStep(Math.max(1, Math.min(state.maxStepVisited, draft.currentStep || 1)));
+    return true;
   }
 
   function humanizeToken(value, fallback) {
@@ -950,15 +1081,35 @@
     commercialQueueCustomSelectSync();
   }
 
+  function scrollWizardStepIntoView(step) {
+    const card = document.querySelector(`.wizard-card[data-step="${Math.max(1, Math.min(WIZARD_STEPS.length, Number(step || 1)))}"]`);
+    if (!card || !card.scrollIntoView) return;
+    const behavior = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 'auto'
+      : 'smooth';
+    const run = function () {
+      try {
+        card.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
+      } catch (_) {}
+    };
+    try {
+      window.requestAnimationFrame(function () {
+        window.requestAnimationFrame(run);
+      });
+    } catch (_) {
+      window.setTimeout(run, 0);
+    }
+  }
+
   function validateStep(step) {
     const payload = collectLeadPayload();
     if (step === 1 && !payload.serviceNeeds.length) {
-      setStatus('Choose at least one project focus before continuing.', 'error');
+      showContactError({ field: 'serviceNeeds', message: 'Choose at least one service before continuing.' }, true);
       return false;
     }
     if (step === 2) {
       if (!payload.fullName && !payload.companyName) {
-        setStatus('Add a contact name or company name before continuing.', 'error');
+        showContactError({ field: 'fullName', message: 'Add a contact name or company name before continuing.' }, true);
         return false;
       }
       const contactError = validateContact(payload);
@@ -980,6 +1131,8 @@
       return;
     }
     showStep(numericTarget);
+    scrollWizardStepIntoView(numericTarget);
+    persistDraft();
   }
 
   function renderSlots(slots) {
@@ -1012,6 +1165,7 @@
         qsa('.slot-option').forEach(function (card) {
           card.classList.toggle('is-selected', card.getAttribute('data-slot-start') === input.value);
         });
+        persistDraft();
       });
     });
   }
@@ -1053,18 +1207,23 @@
 
   async function fetchIntakeConfig() {
     const token = state.leadToken || getQueryLeadToken() || storage.getItem(STORAGE_KEY) || '';
+    const storedDraft = normalizeDraft(readDraft());
+    const draft = storedDraft && (!token || draftMatchesLead(storedDraft, token)) ? storedDraft : null;
+    state.pendingSave = draft && draft.pendingSave;
+    state.localVersion = draft && draft.localVersion || 0;
+    state.revision = draft && draft.revision || 0;
+    state.submissionKey = draft && draft.submissionKey || newIdentity();
     if (token) state.leadToken = token;
     const url = token ? `${INTAKE_ENDPOINT}?token=${encodeURIComponent(token)}` : INTAKE_ENDPOINT;
-    const response = await fetch(url, { cache: 'no-store' });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      const draft = readDraft();
-      hydrateForm(draft);
-      renderConditionalCards();
-      renderSelectedServices();
-      syncChoicePills();
-      renderAssessmentSnapshot();
-      throw new Error(payload.error || 'Failed to load commercial intake');
+    let payload;
+    try {
+      const response = await fetch(url, { cache: 'no-store' });
+      payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'Failed to load commercial intake');
+    } catch (error) {
+      applyDraft(draft);
+      state.dirty = !!(draft && draft.dirty);
+      throw error;
     }
     applyConfig(payload.config || {});
     if (payload.lead) {
@@ -1076,24 +1235,54 @@
       state.uploadedPhotos = Array.isArray(payload.lead.projectPhotoUrls) ? payload.lead.projectPhotoUrls.slice() : [];
       renderUploadedPhotos();
       updateInternalMetrics(payload.lead);
-    } else {
-      hydrateForm(readDraft());
+      state.revision = Number(payload.lead.revision || 0);
     }
-    renderConditionalCards();
-    renderSelectedServices();
-    syncChoicePills();
-    renderAssessmentSnapshot();
-    syncFollowUpCopy();
+    state.pendingSave = draft && draft.pendingSave;
+    state.submissionKey = draft && draft.submissionKey || newIdentity();
+    let restore = draft && (!payload.lead || draft.dirty);
+    if (restore && payload.lead && draft.revision < state.revision) {
+      if (draft.pendingSave && draft.pendingSave.saveKey === payload.lead.lastSaveKey) {
+        state.pendingSave = null;
+      } else if (window.confirm('A newer version was saved elsewhere. OK loads that server version. Cancel keeps your local edits without overwriting the server.')) {
+        restore = false;
+        state.pendingSave = null;
+      } else {
+        state.conflict = true;
+      }
+    }
+    if (payload.submission) {
+      restore = false;
+      state.pendingSave = null;
+    }
+    state.dirty = !!restore;
+    if (!restore || !applyDraft(draft, { requireTokenMatch: !!payload.lead })) {
+      if (!payload.lead) hydrateForm(draft && draft.payload ? draft.payload : readDraft());
+      renderConditionalCards();
+      renderSelectedServices();
+      syncChoicePills();
+      renderAssessmentSnapshot();
+      syncFollowUpCopy();
+    }
     if (payload.lead) {
-      setSaveState(payload.submission ? 'Request submitted' : 'Draft saved', 'success', payload.submission
+      setSaveState(state.dirty ? 'Unsaved local changes' : payload.submission ? 'Request submitted' : 'Draft saved', state.dirty ? '' : 'success', payload.submission
         ? 'Your follow-up request is submitted for review.'
+        : state.dirty ? 'Local edits are not yet saved to the server. No follow-up request has been submitted.'
         : 'Project details saved. No follow-up request has been submitted yet.');
     }
     renderSubmission(payload.submission, !!(payload.submission && payload.submission.metadata && payload.submission.metadata.request_kind === 'manual_follow_up'));
   }
 
   async function saveLead(source) {
-    const payload = collectLeadPayload();
+    const run = () => saveCurrentLead(source);
+    saveChain = saveChain.then(run, run);
+    return saveChain;
+  }
+
+  async function saveCurrentLead(source) {
+    if (state.conflict) throw new Error('A newer saved draft exists. Reload to review it; your local edits are preserved.');
+    persistDraft();
+    const pending = state.pendingSave;
+    const payload = pending ? pending.payload : collectLeadPayload();
     const contactError = validateContact(payload);
     if (contactError) {
       setSaveState('Draft on this device', 'error', 'No follow-up request has been submitted.');
@@ -1102,19 +1291,37 @@
     }
 
     setSaveState('Saving project', '', 'Saving your project details.');
-    const response = await fetch(INTAKE_ENDPOINT, {
+    const snapshot = pending || { payload, revision: state.revision, saveKey: newIdentity(), version: state.localVersion };
+    state.pendingSave = snapshot;
+    persistDraft();
+    let response;
+    try {
+      response = await fetch(INTAKE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+      body: JSON.stringify({ ...payload, revision: snapshot.revision, saveKey: snapshot.saveKey }),
+      });
+    } catch (error) {
+      setSaveState('Save failed', 'error', 'Your edits remain on this device. Retry when the connection is available.');
+      setStatus('Server save failed. Local edits are preserved; retry before submitting.', 'error');
+      throw error;
+    }
     const result = await response.json();
     if (!response.ok || !result.ok) {
+      if (result.conflict) state.conflict = true;
       setSaveState('Save failed', 'error', result.error || 'We could not save your project details.');
       setStatus(result.error || 'We could not save your project details.', 'error');
       throw new Error(result.error || 'Failed to save lead');
     }
 
+    if (payload.publicToken !== state.leadToken) {
+      console.info('Discarded save response for a cleared device draft.');
+      throw new Error('The previous device draft was cleared.');
+    }
     state.lead = result.lead;
+    state.revision = Number(result.lead.revision || 0);
+    state.pendingSave = null;
+    state.dirty = state.localVersion !== snapshot.version;
     state.leadToken = result.lead.publicToken;
     storage.setItem(STORAGE_KEY, state.leadToken);
     updateLeadUrl(state.leadToken);
@@ -1123,8 +1330,12 @@
     renderUploadedPhotos();
     updateInternalMetrics(result.lead);
     renderAssessmentSnapshot();
+    setLocalDraftState(DEFAULT_LOCAL_DRAFT_MESSAGE);
     setSaveState(state.submission ? 'Project changes saved' : 'Draft saved', 'success', state.submission ? 'Your existing request remains submitted.' : 'Project details saved. No follow-up request has been submitted yet.');
     setStatus(state.submission ? 'Project changes saved. Your existing request remains submitted.' : 'Draft saved. Submit your follow-up request when you are ready.', 'success');
+    if (state.dirty) setSaveState('Unsaved changes', '', 'Saving the latest local changes next.');
+    persistDraft();
+    if (state.dirty) return saveCurrentLead(source);
 
     if (!state.firstLeadTracked) {
       state.firstLeadTracked = true;
@@ -1160,7 +1371,18 @@
   }
 
   async function uploadPhotos(files) {
+    const run = () => uploadPhotoBatch(files);
+    uploadChain = uploadChain.then(run, run);
+    return uploadChain;
+  }
+
+  async function uploadPhotoBatch(files) {
     if (!files.length) return;
+    if (state.uploadedPhotos.length + files.length > 8) throw new Error('A maximum of eight attachments is allowed.');
+    for (const file of files) {
+      if (!['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type)) throw new Error('Use JPEG, PNG, WebP or PDF files.');
+      if (file.size > 3 * 1024 * 1024) throw new Error('Each file must be 3 MB or smaller.');
+    }
     const status = byId('photoUploadStatus');
     if (status) {
       status.textContent = 'Saving project before upload...';
@@ -1195,6 +1417,7 @@
       }
       state.uploadedPhotos = Array.isArray(result.lead.projectPhotoUrls) ? result.lead.projectPhotoUrls.slice() : state.uploadedPhotos;
       renderUploadedPhotos();
+      persistDraft();
     }
 
     if (status) {
@@ -1205,6 +1428,9 @@
 
   async function requestConsultation(event) {
     event.preventDefault();
+    if (state.submitting || state.submission) return;
+    state.submitting = true;
+    try {
     const payload = collectLeadPayload();
     const followUpCopy = syncFollowUpCopy();
     const contactError = validateContact(payload);
@@ -1213,19 +1439,31 @@
       return;
     }
     if (!payload.fullName && !payload.companyName) {
-      setStatus('Add a contact name or business name before requesting your estimate.', 'error');
+      showContactError({ field: 'fullName', message: 'Add a contact name or business name before requesting your estimate.' }, true);
       return;
     }
     if (!payload.serviceNeeds.length) {
-      setStatus('Choose at least one service before requesting your estimate.', 'error');
+      showContactError({ field: 'serviceNeeds', message: 'Choose at least one service before requesting your estimate.' }, true);
       return;
     }
     if (!state.selectedSlotStart && payload.contactPreference === 'sms') {
-      setStatus('Choose a time before submitting.', 'error');
+      showContactError({ field: 'slotGrid', message: 'Choose a time before submitting.' }, true);
       return;
     }
 
+    try {
+      await uploadChain;
+    } catch (error) {
+      if (!window.confirm('Some attachments were not saved. Submit without the failed attachments? Cancel to return and retry them.')) {
+        showStep(4);
+        setStatus(error.message || 'Retry the failed attachments before submitting.', 'error');
+        return;
+      }
+      uploadChain = Promise.resolve();
+    }
     const saved = await saveLead('consultation_request');
+    if (!state.submissionKey) state.submissionKey = newIdentity();
+    persistDraft();
     setStatus(followUpCopy.sending, '');
     const selectedSlot = state.slots.find(function (slot) {
       return slot.startIso === state.selectedSlotStart;
@@ -1235,6 +1473,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         publicToken: saved.lead.publicToken,
+        submissionKey: state.submissionKey,
         selectedSlotStart: selectedSlot ? selectedSlot.startIso : state.selectedSlotStart,
         selectedSlotEnd: selectedSlot ? selectedSlot.endIso : '',
         preferredSlots: selectedSlot ? [selectedSlot] : [],
@@ -1260,6 +1499,14 @@
     });
     const successPanel = byId('consultationSuccessPanel');
     if (successPanel) successPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    state.dirty = false;
+    persistDraft();
+    } catch (error) {
+      setStatus(error && error.message || 'Request could not be confirmed. Your saved details and submission identity are preserved; retry safely.', 'error');
+    } finally {
+      state.submitting = false;
+      syncFollowUpCopy();
+    }
   }
 
   function renderHeroMedia(item, fallbackItems) {
@@ -1580,6 +1827,10 @@
     }
 
     const syncFieldState = function () {
+      if (!state.hydrating) {
+        state.dirty = true;
+        state.localVersion += 1;
+      }
       persistDraft();
       syncChoicePills();
       renderSelectedServices();
@@ -1627,6 +1878,7 @@
           if (status) {
             status.textContent = error.message || 'Upload failed.';
             status.setAttribute('data-tone', 'error');
+            status.setAttribute('role', 'alert');
           }
         }).finally(function () {
           projectPhotosInput.value = '';
@@ -1643,6 +1895,7 @@
   }
 
   async function init() {
+    setLocalDraftState(DEFAULT_LOCAL_DRAFT_MESSAGE);
     renderSelectedServices();
     syncChoicePills();
     renderConditionalCards();
@@ -1663,6 +1916,8 @@
       setStatus(getFriendlyLoadMessage(error.message || 'Failed to load commercial intake.'), 'error');
     }
 
+    state.hydrating = false;
+    persistDraft();
     loadCommercialMedia();
     track('page_view', { page_type: 'commercial_intake' });
     track('view_content', { content_name: 'Commercial Intake', content_type: 'service' });

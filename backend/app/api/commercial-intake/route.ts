@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
 import {
   CommercialConfigurationError,
-  commercialDatabaseErrorMessage,
+  commercialRpc,
   corsHeaders,
   findActiveConsultationForLead,
   getLeadByToken,
@@ -36,6 +35,9 @@ function publicConfig() {
     callNumber: String(process.env.COMMERCIAL_CALL_NUMBER || process.env.PUBLIC_PHONE_NUMBER || '').trim(),
     smsNumber: String(process.env.COMMERCIAL_SMS_NUMBER || process.env.TWILIO_FROM_NUMBER || process.env.TWILIO_PHONE_NUMBER || '').trim(),
     suggestedSlots: buildSlotSuggestions({ count: 4 }),
+    timeZone: 'America/New_York',
+    photoMaxBytes: 3 * 1024 * 1024,
+    photoMaxCount: 8,
   };
 }
 
@@ -83,7 +85,6 @@ export async function POST(request: Request) {
     }
 
     const config = publicConfig();
-    const sb = getSupabase();
     const completeness = computeAssessmentCompletion(normalized);
     const priorityTier = computeLeadPriority(normalized);
     const publicToken = normalizeText(body.publicToken || '', 120) || generateResponseToken();
@@ -92,7 +93,6 @@ export async function POST(request: Request) {
     const mergedPhotoUrls = Array.from(
       new Set([
         ...((existing?.project_photo_urls || []) as string[]),
-        ...(normalized.projectPhotoUrls || []),
       ])
     ).slice(0, 8);
 
@@ -120,21 +120,24 @@ export async function POST(request: Request) {
       completeness_score: completeness.score,
       completeness_bucket: completeness.bucket,
       priority_tier: priorityTier,
-      last_submitted_at: new Date().toISOString(),
+      last_submitted_at: existing?.last_submitted_at || null,
       updated_at: new Date().toISOString(),
     };
 
-    const query = existing
-      ? sb.from('commercial_leads').update(patch).eq('lead_id', existing.lead_id)
-      : sb.from('commercial_leads').insert({ ...patch, created_at: new Date().toISOString() });
-
-    const { data, error } = await query.select('*').single();
-    if (error || !data) {
-      return NextResponse.json(
-        { ok: false, error: error ? commercialDatabaseErrorMessage(error) : 'Failed to save commercial lead' },
-        { status: 500, headers: corsHeaders(request) }
-      );
+    const revision = Number(body.revision ?? 0);
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      return NextResponse.json({ ok: false, error: 'Invalid draft revision.' }, { status: 400, headers: corsHeaders(request) });
     }
+    const result = await commercialRpc('commercial_save_lead', {
+      p_token: publicToken, p_revision: revision,
+      p_save_key: normalizeText(body.saveKey || '', 120) || generateResponseToken(),
+      p_patch: { ...patch, created_at: new Date().toISOString() },
+    });
+    if (result.conflict) return NextResponse.json({
+      ok: false, conflict: true, error: 'A newer saved draft exists. Review the server version before saving again.',
+      lead: serializeLead(result.lead),
+    }, { status: 409, headers: corsHeaders(request) });
+    const data = result.lead;
 
     return NextResponse.json(
       {
