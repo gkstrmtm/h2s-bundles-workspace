@@ -50,6 +50,24 @@ test('production commercial routes and approval assets remain reachable from the
   assert.doesNotMatch(approval, /src="\/frontend\/commercial-approval\.js"/);
 });
 
+test('commercial and approval stylesheets resolve from the production static root', () => {
+  const frontend = path.resolve(__dirname, '../../frontend');
+  for (const page of ['commercial', 'commercial-approval']) {
+    const html = fs.readFileSync(path.join(frontend, `${page}.html`), 'utf8');
+    const dom = new JSDOM(html, { url: `https://shop.home2smart.com/${page}` });
+    try {
+      const link = dom.window.document.querySelector('link[rel="stylesheet"][href$="commercial.css"]');
+      assert.ok(link, `${page} must load the commercial stylesheet`);
+      assert.equal(link.getAttribute('href'), '/commercial.css', `${page} must not use the repository folder as a public URL`);
+      const asset = new URL(link.href);
+      assert.equal(asset.origin, 'https://shop.home2smart.com');
+      assert.ok(fs.statSync(path.join(frontend, asset.pathname.slice(1))).isFile());
+    } finally {
+      dom.window.close();
+    }
+  }
+});
+
 test('initial save replay, concurrent saves and stale revisions retain one authoritative lead', async () => {
   const f = createFixture();
   const input = { ...contact, publicToken: 'fixture-public-token-000001', revision: 0, saveKey: 'fixture-save-key-000001' };
