@@ -148,7 +148,6 @@ debug-*.ps1
 
 # Generated / ad-hoc artifacts (do not commit)
 backend/public/dash.js
-frontend/dash-messages.js
 
 # SQL and database files
 *.sql
@@ -247,7 +246,6 @@ frontend/_offerlib_*
 frontend/_pp_*
 frontend/_prod_dash.*
 frontend/_target_dash.*
-frontend/sms-no-flicker.js
 
 # Backend envs (ensure these are ignored)
 backend/.env.production.vercel

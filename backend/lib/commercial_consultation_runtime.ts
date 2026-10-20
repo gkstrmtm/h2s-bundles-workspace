@@ -629,7 +629,7 @@ export async function applyConsultationDecision(params: {
   } else {
     result.customerSms = await sendCommercialCustomerSms(
       lead,
-      `Home Too Smart is reviewing another consultation window for ${updated.reference_code}. No revised time is confirmed yet.`,
+      `Home2Smart is reviewing another consultation window for ${updated.reference_code}. No revised time is confirmed yet.`,
       updated, 'customer_decline'
     );
     result.managementSms = await notifyManagementEscalation(updated, lead);
@@ -684,7 +684,9 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
     ok: true,
     replyText: action === 'approve'
       ? `${reference} approval recorded. Check Commercial Queue for appointment and customer communication results; approval alone does not confirm an appointment.`
-      : `${reference} declined. Management has been notified for follow-up.`,
+      : `${reference} declined. ${outcome.managementSms?.some((item: SmsResult) => item.ok)
+        ? 'Management notification accepted for follow-up.'
+        : 'Management notification needs review in Commercial Queue.'} Customer follow-up is still required.`,
     outcome,
   };
 }

@@ -27,6 +27,83 @@ async function submit(f) {
 }
 const decision = (f, row, action = 'approve') => f.post('commercial-consultation-response', { token: row.response_token, action });
 
+test('technician SMS YES reuses appointment/confirmation processing and exposes each persisted result in the queue', async () => {
+  for (const failure of [null, 'appointment', 'rejected', 'timeout']) {
+    const f = createFixture();
+    const row = await submit(f);
+    if (failure === 'appointment') f.faults.commercial_create_appointment = 'Fixture appointment insert failed';
+    else if (failure) f.faults.sms = failure;
+    const result = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${row.reference_code}`);
+    assert.equal(result.ok, true);
+    assert.equal(row.status, 'approved');
+    assert.equal(row.response_channel, 'sms');
+    assert.ok(row.response_at);
+    const queued = (await f.queue()).queue[0];
+    assert.equal(queued.consultation.responseAt, row.response_at);
+    assert.match(queued.followUp.nextAction, /Technician approved/);
+    if (failure === 'appointment') {
+      assert.equal(f.appointments.length, 0);
+      assert.equal(row.customer_confirmation_sent_at, undefined);
+      assert.match(queued.followUp.nextAction, /appointment is not created/);
+    } else {
+      assert.equal(f.appointments.length, 1);
+      assert.ok(queued.consultation.relatedOrderId);
+      if (!failure) {
+        assert.ok(queued.consultation.customerConfirmationSentAt);
+        assert.match(queued.followUp.nextAction, /provider accepted.*acknowledgement remain unverified/);
+      } else {
+        assert.equal(queued.consultation.customerConfirmationSentAt, null);
+        assert.match(queued.followUp.nextAction, failure === 'rejected' ? /provider rejected/ : /uncertain provider/);
+      }
+    }
+    assert.equal(Object.hasOwn(queued.followUp, 'handled'), false);
+    assert.match(result.replyText, /approval alone does not confirm an appointment/);
+  }
+});
+
+test('technician SMS NO retains alternate-time follow-up despite notification failure and never creates an appointment', async () => {
+  for (const failure of [null, 'rejected', 'timeout']) {
+    const f = createFixture();
+    const row = await submit(f);
+    if (failure) f.faults.sms = failure;
+    const result = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `NO ${row.reference_code}`);
+    assert.equal(result.ok, true);
+    assert.equal(row.status, 'declined');
+    assert.equal(row.response_channel, 'sms');
+    assert.equal(f.appointments.length, 0);
+    const queued = (await f.queue()).queue[0];
+    assert.match(queued.followUp.nextAction, /Technician declined.*arrange another window/);
+    assert.equal(queued.followUp.needsAttention, true);
+    assert.match(result.replyText, /Customer follow-up is still required/);
+    assert.match(result.replyText, failure ? /notification needs review/ : /notification accepted/);
+    if (failure) assert.match(queued.followUp.nextAction, failure === 'rejected' ? /provider rejected/ : /uncertain provider/);
+  }
+});
+
+test('no technician response preserves reminder progression then management escalation without completing follow-up', async () => {
+  const f = createFixture();
+  const row = await submit(f);
+  const maintain = () => f.route('commercial-consultation-maintenance').GET(new Request('http://localhost/api/commercial-consultation-maintenance', {
+    headers: { Authorization: 'Bearer fixture-only-cron-secret' },
+  }));
+  assert.match((await f.queue()).queue[0].followUp.nextAction, /Awaiting technician YES\/NO/);
+  for (let reminder = 1; reminder <= f.runtime.getMaxReminderCount(); reminder++) {
+    row.next_reminder_at = '2000-01-01T00:00:00.000Z';
+    assert.equal((await maintain()).status, 200);
+    assert.equal(row.status, 'pending');
+    assert.equal(row.reminder_count, reminder);
+  }
+  row.next_reminder_at = '2000-01-01T00:00:00.000Z';
+  assert.equal((await maintain()).status, 200);
+  assert.equal(row.status, 'escalated');
+  assert.equal(row.next_reminder_at, null);
+  assert.equal(row.response_at, undefined);
+  assert.equal(f.appointments.length, 0);
+  const queued = (await f.queue()).queue[0];
+  assert.match(queued.followUp.nextAction, /No technician response recorded.*management review/);
+  assert.equal(queued.consultation.customerConfirmationSentAt, null);
+});
+
 test('commercial maintenance is scheduled without replacing the existing owner-media reminder', () => {
   const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../vercel.json'), 'utf8'));
   assert.deepEqual(config.crons, [

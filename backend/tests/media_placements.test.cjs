@@ -95,6 +95,77 @@ test('Commercial hero fallback does not inherit rail-specific framing', () => {
   assert.equal(railPhoto.media_placement.focal_x, 99);
 });
 
+test('shared assets retain independent page/area selection and framing in the actual public renderers', () => {
+  const alternateId = '22222222-2222-4222-8222-222222222222';
+  const pool = [assetId, alternateId].map(id => ({
+    asset_id: id, source: 'proof_asset', media_kind: 'photo', service: 'cameras',
+    direct_url: `https://fixture.invalid/${id}.jpg`, smart_crop_details: { mode: 'contain' },
+  }));
+  const original = JSON.stringify(pool);
+  const rows = [
+    placement({ area: 'hero', focal_x: 10, zoom: 1.75 }),
+    placement({ asset_id: alternateId, area: 'hero', enabled: false }),
+    placement({ surface: 'commercial_intake', area: 'commercial_security_rail', focal_x: 90, fit: 'contain', display_order: 20 }),
+    placement({ asset_id: alternateId, surface: 'commercial_intake', area: 'commercial_security_rail', focal_x: 40, display_order: 1 }),
+  ];
+  const resolve = (surface, area) => {
+    const scoped = rows.filter(row => row.surface === surface);
+    const explicit = pool.filter(asset => scoped.some(row => row.area === area && row.asset_id === asset.asset_id && row.enabled))
+      .map(asset => ({ ...asset, media_placement: scoped.find(row => row.area === area && row.asset_id === asset.asset_id) }));
+    const config = library.MEDIA_PAGES[surface].areas.find(entry => entry.key === area);
+    return library.mergeMediaPlacements(pool, explicit, scoped, area, config.limit, config.service);
+  };
+  const dom = new JSDOM('<div id="hero"></div><div id="rail"></div>', { runScripts: 'outside-only' });
+  try {
+    const { window } = dom;
+    window.eval(fs.readFileSync(helperPath, 'utf8'));
+    const extract = (filename, names) => {
+      const source = fs.readFileSync(path.join(root, 'frontend', filename), 'utf8');
+      const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+      const found = new Map();
+      const visit = node => {
+        if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) found.set(node.name.text, node.getText(ast));
+        ts.forEachChild(node, visit);
+      };
+      visit(ast);
+      assert.equal(found.size, names.length);
+      return names.map(name => found.get(name)).join('\n');
+    };
+    window.eval(`
+      const resolveProofAssetMediaUrl = asset => asset.direct_url;
+      const getProofAssetVersionToken = () => '';
+      const appendCacheBust = url => url;
+      ${extract('commercial.js', ['escapeHtml', 'escapeAttr', 'mediaUrlFor', 'mediaPosterFor', 'normalizeMediaItems', 'bindProofTileState', 'renderProofRail'])}
+      const absolutizeMediaUrl = url => url;
+      const qsa = selector => Array.from(document.querySelectorAll(selector));
+      ${extract('bundles.js', ['renderProofHeroMedia', 'buildProofMediaStyle'])}
+      window.renderFixtureHero = renderProofHeroMedia;
+      window.renderFixtureRail = renderProofRail;
+      window.fixtureMediaStyle = buildProofMediaStyle;
+    `);
+    const hero = resolve('bundles', 'hero');
+    const rail = resolve('commercial_intake', 'commercial_security_rail');
+    assert.deepEqual(Array.from(hero, asset => asset.asset_id), [assetId]);
+    assert.deepEqual(Array.from(rail, asset => asset.asset_id), [alternateId, assetId]);
+    assert.equal(window.renderFixtureHero(window.document.getElementById('hero'), hero[0]), true);
+    window.renderFixtureRail(window.document.getElementById('rail'), rail);
+    const heroImage = window.document.querySelector('#hero img');
+    const railImages = window.document.querySelectorAll('#rail img');
+    assert.equal(heroImage.style.objectPosition, '10% 80%');
+    assert.equal(heroImage.style.transform, 'scale(1.75)');
+    assert.equal(railImages[1].style.objectPosition, '90% 80%');
+    assert.equal(railImages[1].style.objectFit, 'contain');
+    assert.equal(railImages[0].getAttribute('src'), pool[1].direct_url);
+    assert.equal(window.fixtureMediaStyle(hero[0]), style(rows[0]));
+    rows[0].focal_x = 25;
+    window.renderFixtureHero(window.document.getElementById('hero'), resolve('bundles', 'hero')[0]);
+    assert.equal(window.document.querySelector('#hero img').style.objectPosition, '25% 80%');
+    assert.equal(railImages[1].style.objectPosition, '90% 80%');
+    assert.equal(resolve('bundles', 'pre_cta').length, 2, 'Exclusion must not hide another area');
+    assert.equal(JSON.stringify(pool), original, 'Source files/shared crop metadata must not change');
+  } finally { dom.window.close(); }
+});
+
 function dbMock(rows = []) {
   const calls = [];
   const client = {

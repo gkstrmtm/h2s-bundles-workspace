@@ -2259,13 +2259,39 @@ function formatCommercialSlotLabel(startIso: any, endIso: any): string | null {
   return `${startText} to ${endText} Eastern Time`;
 }
 
-async function loadCommercialQueueSnapshot(limitValue: any) {
-  const limit = Math.min(Math.max(toInt(limitValue, 150), 25), 250);
+async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number | string | null) {
+  const params = typeof limitValue === 'object' ? limitValue : null;
+  const invalidInput = (message: string): never => { throw Object.assign(new Error(message), { status: 400 }); };
+  const limitText = String(params ? params.get('limit') || '25' : limitValue || '25');
+  if (!/^\d+$/.test(limitText) || Number(limitText) < 1 || Number(limitText) > 250) invalidInput('Queue page size must be between 1 and 250.');
+  const limit = Number(limitText);
+  const queryText = (params?.get('q') || '').trim();
+  if (queryText.length > 120 || /[*\u0000-\u001f\u007f]/.test(queryText)) invalidInput('Search must be at most 120 characters, without asterisks or control characters.');
+  const filter = params?.get('filter') || 'all';
+  if (!['all', 'attention', 'pending', 'approved', 'escalated', 'no_consultation'].includes(filter)) invalidInput('Unknown commercial queue filter.');
+  type Cursor = { submitted: string; created: string; id: string };
+  const encodeCursor = (row: any) => Buffer.from(JSON.stringify({
+    submitted: row.last_submitted_at, created: row.created_at, id: row.lead_id,
+  })).toString('base64url');
+  let cursor: Cursor | null = null;
+  const cursorText = params?.get('cursor') || '';
+  if (cursorText) {
+    try {
+      if (!/^[A-Za-z0-9_-]{1,1024}$/.test(cursorText)) throw new Error('Invalid cursor encoding');
+      const parsed = JSON.parse(Buffer.from(cursorText, 'base64url').toString('utf8'));
+      const timestamp = (value: unknown) => typeof value === 'string' &&
+        /^\d{4}-\d\d-\d\dT[\d:.]+(?:Z|[+-]\d\d:\d\d)$/.test(value) && Number.isFinite(Date.parse(value));
+      if (!parsed || !timestamp(parsed.submitted) || !timestamp(parsed.created) ||
+          typeof parsed.id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(parsed.id)) throw new Error('Invalid cursor fields');
+      cursor = parsed;
+    } catch {
+      invalidInput('Invalid queue cursor. Start again from the first page.');
+    }
+  }
   const db = getSupabase();
 
   const leadColumns = [
     'lead_id',
-    'public_token',
     'full_name',
     'company_name',
     'email',
@@ -2293,30 +2319,10 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
     'updated_at'
   ].join(', ');
 
-  const { data: leads, error: leadError } = await db
-    .from('commercial_leads')
-    .select(leadColumns)
-    .order('last_submitted_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false, nullsFirst: false })
-    .limit(limit);
-
-  if (leadError) {
-    if (isMissingTableError(leadError, 'commercial_leads')) {
-      throw new Error('Commercial queue schema is missing. An authorized operator must inspect the target and prepare a reviewed versioned migration using docs/DATABASE_MIGRATIONS.md; do not run legacy 014 SQL blindly.');
-    }
-    throw new Error(`Failed to load commercial leads: ${leadError.message}`);
-  }
-
-  const leadRows = Array.isArray(leads) ? leads : [];
-  const leadIds = leadRows.map((row: any) => safeTrim(row?.lead_id)).filter(Boolean);
-
-  let consultations: any[] = [];
-  if (leadIds.length) {
-    const consultationColumns = [
+  const consultationColumns = [
       'request_id',
       'lead_id',
       'reference_code',
-      'response_token',
       'status',
       'preferred_slots',
       'selected_slot_start',
@@ -2338,33 +2344,9 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
       'updated_at'
     ].join(', ');
 
-    const { data: consultationRows, error: consultationError } = await db
-      .from('commercial_consultation_requests')
-      .select(consultationColumns)
-      .in('lead_id', leadIds)
-      .order('created_at', { ascending: false, nullsFirst: false })
-      .limit(Math.max(limit * 4, 1000));
-
-    if (consultationError) {
-      if (isMissingTableError(consultationError, 'commercial_consultation_requests')) {
-        throw new Error('Commercial queue schema is missing. An authorized operator must inspect the target and prepare a reviewed versioned migration using docs/DATABASE_MIGRATIONS.md; do not run legacy 014 SQL blindly.');
-      }
-      throw new Error(`Failed to load commercial consultation requests: ${consultationError.message}`);
-    }
-
-    consultations = Array.isArray(consultationRows) ? consultationRows : [];
-  }
-
-  const latestConsultationByLead = new Map<string, any>();
-  for (const consultation of consultations) {
-    const leadId = safeTrim(consultation?.lead_id);
-    if (!leadId || latestConsultationByLead.has(leadId)) continue;
-    latestConsultationByLead.set(leadId, consultation);
-  }
-
-  const queue = leadRows.map((lead: any) => {
+  const shapeLead = (lead: any) => {
     const leadId = safeTrim(lead?.lead_id);
-    const latestConsultation = leadId ? latestConsultationByLead.get(leadId) : null;
+    const latestConsultation = readJsonArraySafe(lead?.commercial_consultation_requests)[0] || null;
     const services = readJsonArraySafe(lead?.service_needs).map((value: any) => safeTrim(value)).filter(Boolean);
     const photoUrls = readJsonArraySafe(lead?.project_photo_urls).map((value: any) => safeTrim(value)).filter(Boolean);
     const consultationStatus = safeTrim(latestConsultation?.status).toLowerCase();
@@ -2375,7 +2357,7 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
     const effectStates = Object.values(workflow).map((entry: unknown) =>
       entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
     const providerReview = effectStates.some(state => state === 'processing' || state === 'uncertain');
-    const appointmentFailed = consultationStatus === 'approved' && !latestConsultation?.related_order_id;
+    const appointmentFailed = ['approved', 'customer_confirmed'].includes(consultationStatus) && !latestConsultation?.related_order_id;
     const windowExpired = !!latestConsultation?.selected_slot_start && new Date(latestConsultation.selected_slot_start).getTime() <= Date.now();
     const persistenceWarning = Object.values(workflow).some((entry: unknown) =>
       entry && typeof entry === 'object' && 'details' in entry && entry.details &&
@@ -2395,15 +2377,18 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
           ? `Manually ${requestedContactMethod === 'email' ? 'email' : 'call'} ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. No automated customer texts or emails are sent.`
           : 'Review the technician response and requested window. Customer texts require Text first and explicit texting permission.',
     };
-    const manualAction = followUp.nextAction;
-    if (providerReview) followUp.nextAction = 'Reconcile the pending or uncertain provider attempt before retrying. Do not resend automatically; delivery and customer acknowledgement are not verified.';
-    else if (appointmentFailed) followUp.nextAction = `Technician approved; appointment is not created. Resolve the appointment error and retry processing. No booking confirmation should be sent before an appointment exists. ${safeTrim(latestConsultation?.metadata?.appointment_error)}`;
-    else if (effectStates.includes('failed')) followUp.nextAction = 'A provider rejected or could not accept a notification. Correct configuration or contact details, then retry processing. Previously accepted notifications will not be resent.';
-    else if (persistenceWarning) followUp.nextAction = 'The SMS provider accepted a notification but message-history persistence failed. Review the audit trail; do not resend an accepted notification.';
-    else if (consultationStatus === 'declined') followUp.nextAction = `Technician declined. Contact ${contactDetail || 'the customer'} to arrange another window; no revised appointment is confirmed.`;
-    else if (latestConsultation?.related_order_id) followUp.nextAction = 'Appointment exists. Check provider acceptance separately; delivery and customer acknowledgement remain unverified.';
-    if (!manualFollowUp && windowExpired && !latestConsultation?.related_order_id) followUp.nextAction = `Requested window has passed. Contact ${contactDetail || 'the customer'} to arrange a new window; do not retry the old window.`;
-    if (manualFollowUp && followUp.nextAction !== manualAction) followUp.nextAction = `${manualAction} Internal notification review: ${followUp.nextAction}`;
+    if (!manualFollowUp && latestConsultation) {
+      if (consultationStatus === 'declined') followUp.nextAction = `Technician declined. Contact ${contactDetail || 'the customer'} to arrange another window; no revised appointment is confirmed.`;
+      else if (appointmentFailed) followUp.nextAction = `Technician approved; appointment is not created. ${windowExpired ? 'The requested window has passed; contact the customer to arrange a new window. Do not retry the old window.' : 'Resolve the appointment error and retry processing.'} No booking confirmation should be sent before an appointment exists. ${safeTrim(latestConsultation.metadata?.appointment_error)}`.trim();
+      else if (latestConsultation.related_order_id) followUp.nextAction = `Technician approved; appointment exists. ${latestConsultation.customer_confirmation_sent_at ? 'The SMS provider accepted the customer confirmation; delivery and customer acknowledgement remain unverified.' : 'Customer confirmation has not been accepted by the SMS provider. Review its processing result.'}`;
+      else if (windowExpired || consultationStatus === 'expired') followUp.nextAction = `Requested window has passed. Contact ${contactDetail || 'the customer'} to arrange a new window; do not retry the old window.`;
+      else if (consultationStatus === 'escalated') followUp.nextAction = 'No technician response recorded; the request is escalated for management review. Arrange technician coverage or an alternate window with the customer.';
+      else if (consultationStatus === 'pending') followUp.nextAction = 'Awaiting technician YES/NO. Scheduled reminders and escalation remain active; no appointment is confirmed.';
+      else if (consultationStatus === 'reschedule_requested') followUp.nextAction = 'The requested window changed. Await the technician decision through the current approval link; no revised appointment is confirmed.';
+    }
+    if (providerReview) followUp.nextAction += ' Reconcile the pending or uncertain provider attempt before retrying. Do not resend automatically; delivery and customer acknowledgement are not verified.';
+    else if (effectStates.includes('failed')) followUp.nextAction += ' A provider rejected or could not accept a notification. Correct configuration or contact details, then retry processing. Previously accepted notifications will not be resent.';
+    else if (persistenceWarning) followUp.nextAction += ' The SMS provider accepted a notification but message-history persistence failed. Review the audit trail; do not resend an accepted notification.';
     const consultation = latestConsultation ? {
       requestId: safeTrim(latestConsultation.request_id),
       referenceCode: safeTrim(latestConsultation.reference_code),
@@ -2416,6 +2401,7 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
       reminderCount: Number(latestConsultation.reminder_count || 0) || 0,
       nextReminderAt: latestConsultation.next_reminder_at || null,
       responseChannel: safeTrim(latestConsultation.response_channel) || null,
+      responseAt: latestConsultation.response_at || null,
       relatedOrderId: latestConsultation.related_order_id || null,
       managementNotifiedAt: latestConsultation.management_notified_at || null,
       customerConfirmationSentAt: latestConsultation.customer_confirmation_sent_at || null,
@@ -2429,7 +2415,6 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
 
     return {
       leadId,
-      publicToken: safeTrim(lead?.public_token),
       fullName: safeTrim(lead?.full_name),
       companyName: safeTrim(lead?.company_name),
       email: safeTrim(lead?.email),
@@ -2457,7 +2442,72 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
       consultation,
       followUp,
     };
-  });
+  };
+
+  const matchesFilter = (item: ReturnType<typeof shapeLead>) => {
+    const status = item.consultation?.status || '';
+    if (filter === 'pending') return ['pending', 'reschedule_requested'].includes(status);
+    if (filter === 'approved') return ['approved', 'customer_confirmed'].includes(status);
+    if (filter === 'escalated') return status === 'escalated';
+    if (filter === 'no_consultation') return !status;
+    if (filter === 'attention') return item.followUp.needsAttention || !status ||
+      ['pending', 'reschedule_requested', 'escalated'].includes(status) || ['high', 'urgent'].includes(item.priorityTier);
+    return true;
+  };
+  const pattern = queryText.replace(/[\\%_]/g, '\\$&').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const searchFields = ['company_name', 'full_name', 'phone', 'email', 'project_city', 'project_state', 'scope_summary', 'notes',
+    ...Array.from({ length: 8 }, (_, index) => `service_needs->>${index}`)];
+  const searchTerms = queryText ? searchFields.map(field => `${field}.ilike."%${pattern}%"`) : [];
+  const phoneDigits = queryText.replace(/[\s()+.-]/g, '');
+  if (/^\d{7,15}$/.test(phoneDigits) && phoneDigits !== queryText) searchTerms.push(`phone.ilike."%${phoneDigits}%"`);
+  const applySearch = <T extends { or: (value: string) => T }>(request: T, boundary: Cursor | null): T => {
+    const clauses: string[] = [];
+    if (searchTerms.length) clauses.push(`or(${searchTerms.join(',')})`);
+    if (boundary) clauses.push(`or(last_submitted_at.lt.${boundary.submitted},and(last_submitted_at.eq.${boundary.submitted},created_at.lt.${boundary.created}),and(last_submitted_at.eq.${boundary.submitted},created_at.eq.${boundary.created},lead_id.lt.${boundary.id}))`);
+    return clauses.length ? request.or(`and(${clauses.join(',')})`) : request;
+  };
+  const countResult = await applySearch(db.from('commercial_leads').select('lead_id', { count: 'exact', head: true }), null);
+  if (countResult.error) throw new Error(`Failed to count commercial leads: ${countResult.error.message}`);
+  if (countResult.count === null) throw new Error('Commercial lead count was not returned by the database.');
+
+  const queue: ReturnType<typeof shapeLead>[] = [];
+  let scanned = 0;
+  let exhausted = false;
+  let extraMatch = false;
+  let lastScanned: any = null;
+  let lastIncluded: any = null;
+  const batchSize = 100;
+  while (scanned < 1000 && !exhausted && !extraMatch) {
+    const { data: rows, error } = await applySearch(db.from('commercial_leads')
+      .select(`${leadColumns}, commercial_consultation_requests(${consultationColumns})`)
+      .order('last_submitted_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .order('lead_id', { ascending: false })
+      .order('created_at', { referencedTable: 'commercial_consultation_requests', ascending: false })
+      .order('request_id', { referencedTable: 'commercial_consultation_requests', ascending: false })
+      .limit(1, { referencedTable: 'commercial_consultation_requests' })
+      .limit(batchSize), cursor);
+    if (error) {
+      if (isMissingTableError(error, 'commercial_leads') || isMissingTableError(error, 'commercial_consultation_requests')) {
+        throw new Error('Commercial queue schema is missing. Inspect the target using docs/DATABASE_MIGRATIONS.md; do not run legacy 014 SQL blindly.');
+      }
+      throw new Error(`Failed to load commercial queue: ${error.message}`);
+    }
+    if (!Array.isArray(rows)) throw new Error('Commercial queue returned an invalid dataset.');
+    for (const row of rows) {
+      scanned += 1;
+      lastScanned = row;
+      const item = shapeLead(row);
+      if (!matchesFilter(item)) continue;
+      if (queue.length === limit) { extraMatch = true; break; }
+      queue.push(item);
+      lastIncluded = row;
+    }
+    exhausted = rows.length < batchSize;
+    if (lastScanned) cursor = { submitted: lastScanned.last_submitted_at, created: lastScanned.created_at, id: lastScanned.lead_id };
+  }
+  const hasMore = extraMatch || !exhausted;
+  const continuation = queue.length === limit ? lastIncluded : lastScanned;
 
   const pendingCount = queue.filter((item: any) => ['pending', 'reschedule_requested'].includes(String(item?.consultation?.status || ''))).length;
   const escalatedCount = queue.filter((item: any) => String(item?.consultation?.status || '') === 'escalated').length;
@@ -2472,6 +2522,16 @@ async function loadCommercialQueueSnapshot(limitValue: any) {
 
   return {
     generatedAt: new Date().toISOString(),
+    pagination: {
+      pageSize: limit,
+      hasMore,
+      nextCursor: hasMore && continuation ? encodeCursor(continuation) : null,
+      totalCandidates: countResult.count,
+      totalMatches: filter === 'all' ? countResult.count : null,
+      scanned,
+      scanLimitReached: !extraMatch && !exhausted,
+      summaryScope: 'page',
+    },
     summary: {
       totalLeads: queue.length,
       newLastDay: newLastDayCount,
@@ -3803,7 +3863,14 @@ export async function GET(request: Request) {
             return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
           }
 
-          result = await loadCommercialQueueSnapshot(searchParams.get('limit'));
+          try {
+            result = await loadCommercialQueueSnapshot(searchParams);
+          } catch (error) {
+            if (error instanceof Error && 'status' in error && error.status === 400) {
+              return NextResponse.json({ ok: false, error: error.message }, { status: 400, headers: corsHeaders(request) });
+            }
+            throw error;
+          }
         }
         break;
       case 'messagesUsers':

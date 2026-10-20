@@ -41,6 +41,8 @@
         // Dashboard account session token (DB-backed login)
         const DASH_SESSION_TOKEN_KEY = 'h2s_dashboard_session_token_v1';
         const OWNER_MEDIA_SESSION_TOKEN_KEY = 'h2s_owner_media_session_token_v1';
+        let verifiedAdminSessionToken = '';
+        let verifiedLegacyAdminKey = '';
         // Global helper for build pills (dash.html uses inline onclick).
         // Must exist even if __dashBoot() fails early.
         try {
@@ -105,7 +107,9 @@
         function setDashboardSessionToken(token) {
             try {
                 const t = String(token || '').trim();
+                if (t !== getDashboardSessionToken()) verifiedAdminSessionToken = '';
                 if (!t) {
+                    verifiedLegacyAdminKey = '';
                     localStorage.removeItem(DASH_SESSION_TOKEN_KEY);
                 } else {
                     localStorage.setItem(DASH_SESSION_TOKEN_KEY, t);
@@ -138,7 +142,7 @@
 
                         const applyHeaders = (headers) => {
                             const h = new Headers(headers || {});
-                            if (sessionToken && !h.get('authorization')) {
+                            if (sessionToken && !h.has('authorization')) {
                                 h.set('authorization', `Bearer ${sessionToken}`);
                             }
                             if (legacyAdmin && !h.get('x-h2s-admin-token')) {
@@ -1257,7 +1261,16 @@
         }
 
         // Initialize on page load (user gate will show first)
-        document.addEventListener('DOMContentLoaded', async () => {
+        const initializeDashboardSession = async () => {
+            if (window.__h2sDashboardScriptsReady) {
+                try {
+                    await window.__h2sDashboardScriptsReady;
+                } catch (error) {
+                    console.error('[dashboard] Startup blocked by missing scripts', error);
+                    return;
+                }
+            }
+            initMobileSidebar();
             // Sidebar Build ID: never show a stale template placeholder.
             try {
                 const el = document.getElementById('sidebarBuildId');
@@ -1405,7 +1418,12 @@
                     restoreActiveTab();
                 }
             }
-        });
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeDashboardSession, { once: true });
+        } else {
+            queueMicrotask(initializeDashboardSession);
+        }
 
         function updateAndToastNewTraining(resources) {
             if (!resources || !Array.isArray(resources)) return;
@@ -1615,6 +1633,90 @@
             setSidebarGroupOpenState(config.sidebarGroupId, true, options);
         }
 
+        let mobileSidebarOpen = false;
+        let mobileSidebarPreviousOverflow = '';
+        let mobileSidebarBackgroundState = [];
+
+        function closeMobileSidebar({ restoreFocus = true } = {}) {
+            const sidebar = document.getElementById('appSidebar');
+            const toggle = document.getElementById('appNavToggle');
+            const wasOpen = mobileSidebarOpen;
+            mobileSidebarOpen = false;
+            if (sidebar) {
+                sidebar.classList.remove('open');
+                sidebar.removeAttribute('role');
+                sidebar.removeAttribute('aria-modal');
+                sidebar.inert = window.matchMedia('(max-width: 1024px)').matches;
+            }
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+            const backdrop = document.getElementById('appSidebarBackdrop');
+            if (backdrop) backdrop.hidden = true;
+            if (wasOpen) {
+                document.body.style.overflow = mobileSidebarPreviousOverflow;
+                mobileSidebarBackgroundState.forEach(([element, inert]) => { element.inert = inert; });
+                mobileSidebarBackgroundState = [];
+                if (restoreFocus && toggle) toggle.focus();
+            }
+        }
+
+        function toggleMobileSidebar() {
+            if (mobileSidebarOpen) {
+                closeMobileSidebar();
+                return;
+            }
+            if (!window.matchMedia('(max-width: 1024px)').matches) return;
+            const sidebar = document.getElementById('appSidebar');
+            if (!sidebar) return;
+            mobileSidebarOpen = true;
+            mobileSidebarPreviousOverflow = document.body.style.overflow;
+            document.body.style.overflow = 'hidden';
+            mobileSidebarBackgroundState = [...document.querySelectorAll('#h2s-app > .app-topbar, #h2s-app > .app-main')]
+                .map(element => [element, element.inert]);
+            mobileSidebarBackgroundState.forEach(([element]) => { element.inert = true; });
+            sidebar.inert = false;
+            sidebar.classList.add('open');
+            sidebar.setAttribute('role', 'dialog');
+            sidebar.setAttribute('aria-modal', 'true');
+            document.getElementById('appNavToggle').setAttribute('aria-expanded', 'true');
+            document.getElementById('appSidebarBackdrop').hidden = false;
+            sidebar.querySelector('.app-nav-close').focus();
+        }
+
+        function initMobileSidebar() {
+            const sidebar = document.getElementById('appSidebar');
+            if (!sidebar) return;
+            closeMobileSidebar({ restoreFocus: false });
+            window.matchMedia('(max-width: 1024px)').addEventListener('change', () => {
+                closeMobileSidebar({ restoreFocus: false });
+            });
+            sidebar.addEventListener('click', event => {
+                if (event.target.closest('.app-sidebar-nav-item')) closeMobileSidebar();
+            }, true);
+            document.addEventListener('keydown', event => {
+                if (!mobileSidebarOpen) return;
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    closeMobileSidebar();
+                } else if (event.key === 'Tab') {
+                    const focusable = [...sidebar.querySelectorAll('button:not([disabled]), a[href], [tabindex="0"]')]
+                        .filter(element => element.getClientRects().length && !element.closest('[inert]'));
+                    const first = focusable[0] || sidebar;
+                    const last = focusable[focusable.length - 1] || sidebar;
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                }
+            });
+            document.addEventListener('focusin', event => {
+                if (mobileSidebarOpen && !sidebar.contains(event.target)) sidebar.querySelector('.app-nav-close').focus();
+            });
+        }
+
         // Tab Switching (updated for sidebar)
         function switchToTab(targetTab, options = {}) {
             const source = String(options && options.source || 'user').trim().toLowerCase() || 'user';
@@ -1645,7 +1747,7 @@
             const useSmoothTransition = smooth && normalizedTargetTab !== 'owneruploads';
 
             if (targetConfig.requiresAdmin && !checkAdminAuth()) {
-                const lockedMessage = `${targetConfig.label} stays locked until the shared admin password is entered.`;
+                const lockedMessage = `${targetConfig.label} requires a verified ADMIN account or shared admin credential.`;
                 if (allowPrompt) {
                     promptAdminPassword((authenticated) => {
                         if (authenticated) {
@@ -1734,11 +1836,13 @@
             // Update sidebar nav with smooth transition
             document.querySelectorAll('.app-sidebar-nav-item').forEach(item => {
                 item.classList.remove('active');
+                item.removeAttribute('aria-current');
                 item.style.transition = 'all 0.2s ease-out';
             });
             const navItem = document.querySelector(`.app-sidebar-nav-item[data-tab="${normalizedTargetTab}"]`);
             if (navItem) {
                 navItem.classList.add('active');
+                navItem.setAttribute('aria-current', 'page');
             }
             ensureSidebarGroupForTab(normalizedTargetTab, { persist: true });
 
@@ -1755,6 +1859,10 @@
                 paneElement.classList.add('active');
                 // Force show with inline style as backup (CSS will override with !important)
                 paneElement.style.display = 'block';
+                if (source === 'user' && window.matchMedia('(max-width: 1024px)').matches) {
+                    paneElement.setAttribute('tabindex', '-1');
+                    paneElement.focus({ preventScroll: true });
+                }
                 if (normalizedTargetTab === 'owneruploads') {
                     paneElement.style.transition = 'none';
                     paneElement.style.opacity = '1';
@@ -1944,6 +2052,7 @@
         let __smsAutoGroupInFlight = false;
         let __smsThreadIsLoading = false;
         let __smsAutoRefreshTimer = null;
+        let __smsAutoRefreshGeneration = 0;
         let __smsActiveLastMessageId = '';
         let __smsDraftRecipients = [];
         let __smsContactsByPhone = {};
@@ -2516,9 +2625,10 @@
         }
 
         function stopSmsAutoRefresh() {
+            __smsAutoRefreshGeneration += 1;
             try {
                 if (__smsAutoRefreshTimer) {
-                    clearInterval(__smsAutoRefreshTimer);
+                    clearTimeout(__smsAutoRefreshTimer);
                     __smsAutoRefreshTimer = null;
                 }
             } catch (e) {
@@ -24652,35 +24762,51 @@ function deliverablesBrowserRender(mode) {
         const STORAGE_KEY = 'h2s_current_user';
         // Shared admin password/credential: uses the same key as Proof Packs admin key.
         const ADMIN_CREDENTIAL_KEY = 'h2s_proof_admin_key';
-        const ADMIN_AUTH_KEY = 'h2s_admin_authenticated';
 
         // Check if admin is authenticated
         function checkAdminAuth() {
+            const token = getDashboardSessionToken();
+            if (token && token === verifiedAdminSessionToken && isAdminRole()) return true;
             try {
                 const key = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim();
-                // Only treat admin as authenticated if the shared admin key exists.
-                // (Session flags alone must never bypass the shared password gate.)
-                if (!key) return false;
-
-                const authState = sessionStorage.getItem(ADMIN_AUTH_KEY);
-                if (authState === 'false') return false;
-                return true;
+                return !!key && key === verifiedLegacyAdminKey;
             } catch (e) {
                 return false;
             }
         }
 
-        // Set admin authentication state
-        function setAdminAuth(authenticated) {
-            try {
-                sessionStorage.setItem(ADMIN_AUTH_KEY, authenticated ? 'true' : 'false');
-            } catch (e) {
-                console.warn('Could not save admin auth state:', e);
+        async function verifySharedAdminCredential(key) {
+            const response = await fetch(`${API_URL}?action=commercialQueue&limit=1`, {
+                method: 'GET',
+                cache: 'no-store',
+                // Verify the shared credential independently of any dashboard session.
+                headers: { authorization: '', 'x-h2s-admin-key': key }
+            });
+            const data = await response.json();
+            if (!response.ok || !data || !data.ok) {
+                throw new Error(data && data.error ? String(data.error) : 'Admin access could not be verified.');
             }
         }
 
         // Prompt for admin password
-        function promptAdminPassword(callback) {
+        async function promptAdminPassword(callback) {
+            if (checkAdminAuth()) {
+                callback(true);
+                return;
+            }
+            let savedKey = '';
+            try { savedKey = (localStorage.getItem(ADMIN_CREDENTIAL_KEY) || '').trim(); } catch (_) {}
+            if (savedKey) {
+                try {
+                    await verifySharedAdminCredential(savedKey);
+                    verifiedLegacyAdminKey = savedKey;
+                    callback(true);
+                    return;
+                } catch (error) {
+                    showToast(error.message || 'Saved admin credential could not be verified.', 'error');
+                }
+            }
+            closeMobileSidebar({ restoreFocus: false });
             const overlay = document.getElementById('modalOverlay');
             const header = document.getElementById('modalHeader');
             const body = document.getElementById('modalBody');
@@ -24693,10 +24819,10 @@ function deliverablesBrowserRender(mode) {
             body.innerHTML = `
                 <div style="padding: 24px 0;">
                     <div style="font-size: 16px; line-height: 1.6; color: #374151; margin-bottom: 10px;">
-                        Enter the shared admin password to unlock Admin + Website Media.
+                        Sign in with an ADMIN dashboard account, or verify a shared admin credential.
                     </div>
                     <div style="font-size: 13px; line-height: 1.5; color: #6b7280; margin-bottom: 16px;">
-                        You only need to enter this once on this browser (it's saved on this device).
+                        Shared credentials are checked with the server before access is granted.
                     </div>
                     <input 
                         type="password" 
@@ -24705,6 +24831,7 @@ function deliverablesBrowserRender(mode) {
                         style="width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 14px; box-sizing: border-box;"
                         autocomplete="off"
                     />
+                    <div id="adminAccessStatus" role="status" aria-live="polite"></div>
                 </div>
             `;
             
@@ -24732,7 +24859,10 @@ function deliverablesBrowserRender(mode) {
                     passwordInput.focus();
                 }, 100);
                 
-                const handleConfirm = () => {
+                let cancelled = false;
+                let verifying = false;
+                const handleConfirm = async () => {
+                    if (verifying) return;
                     const password = passwordInput.value.trim();
                     if (!password) {
                         showToast('Password required', 'error');
@@ -24741,17 +24871,42 @@ function deliverablesBrowserRender(mode) {
                         return;
                     }
 
-                    try { localStorage.setItem(ADMIN_CREDENTIAL_KEY, password); } catch (e) { /* ignore */ }
+                    verifying = true;
+                    newConfirmBtn.disabled = true;
+                    const status = document.getElementById('adminAccessStatus');
+                    status.textContent = 'Verifying admin access...';
+                    try {
+                        await verifySharedAdminCredential(password);
+                    } catch (error) {
+                        if (!cancelled && document.getElementById('adminPasswordInput') === passwordInput) {
+                            status.textContent = error.message || 'Admin access could not be verified.';
+                            showToast(status.textContent, 'error');
+                            passwordInput.focus();
+                        }
+                        return;
+                    } finally {
+                        verifying = false;
+                        newConfirmBtn.disabled = false;
+                    }
+                    if (cancelled || document.getElementById('adminPasswordInput') !== passwordInput) return;
+                    try {
+                        localStorage.setItem(ADMIN_CREDENTIAL_KEY, password);
+                    } catch (error) {
+                        status.textContent = 'Could not save the admin credential on this device.';
+                        showToast(status.textContent, 'error');
+                        return;
+                    }
+                    verifiedLegacyAdminKey = password;
                     const ppKeyEl = document.getElementById('ppAdminKey');
                     if (ppKeyEl) ppKeyEl.value = password;
 
-                    setAdminAuth(true);
                     closeModal();
                     callback(true);
                     showToast('Admin access granted', 'success');
                 };
                 
                 const handleCancel = () => {
+                    cancelled = true;
                     closeModal();
                     callback(false);
                 };
@@ -24798,9 +24953,7 @@ function deliverablesBrowserRender(mode) {
                         if (data && data.ok && data.me) {
                             currentUser = String(data.me.username || '').trim().toUpperCase();
                             currentRole = String(data.me.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
-
-                            // Note: ADMIN *account role* does not bypass the shared admin key gate.
-                            // Admin/Proof Packs tabs still require the shared admin key.
+                            verifiedAdminSessionToken = currentRole === 'ADMIN' ? token : '';
 
                             try {
                                 localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -24868,7 +25021,7 @@ function deliverablesBrowserRender(mode) {
 
                 currentUser = String(user.username || identifier || '').trim().toUpperCase();
                 currentRole = String(user.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
-                // Note: ADMIN *account role* does not bypass the shared admin key gate.
+                verifiedAdminSessionToken = currentRole === 'ADMIN' ? token : '';
 
                 try {
                     localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -29659,12 +29812,6 @@ async function loadRecommendationsForFilter() {
             if (pipeline) {
                 pipeline.style.setProperty('width', '100%', 'important');
                 pipeline.style.setProperty('max-width', '100%', 'important');
-            }
-
-            const appMain = document.querySelector('#h2s-app .app-main');
-            if (appMain) {
-                appMain.style.setProperty('width', 'calc(100% - 240px)', 'important');
-                appMain.style.setProperty('max-width', 'none', 'important');
             }
 
             const appContent = document.querySelector('#h2s-app .app-content');
@@ -45516,7 +45663,7 @@ async function loadRecommendationsForFilter() {
                     };
                     
                     // Title
-                    addText('HOME2SMART OFFER BRIEF', 18, true, [10, 42, 90]);
+                    addText('Home2Smart Offer Brief', 18, true, [10, 42, 90]);
                     yPos += 5;
                     addText(this.offer.name || 'Untitled Offer', 16, true, [10, 42, 90]);
                     addText(`Generated: ${new Date().toLocaleDateString()}`, 9, false, [107, 114, 128]);
@@ -48591,71 +48738,206 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 query: '',
                 filter: 'attention',
                 generatedAt: '',
+                hasLoaded: false,
+                error: '',
+                legacy: false,
+                pagination: null,
+                cursors: [''],
+                pageIndex: 0,
+                appliedPageIndex: 0,
+                appliedQuery: '',
+                appliedFilter: '',
+                detailOpen: false,
+                lastSuccessAt: 0,
             },
+            requestId: 0,
+            inFlight: null,
+            searchTimer: null,
+            freshnessTimer: null,
+            recoveryPending: false,
 
             async refresh(options = {}) {
                 const opts = options && typeof options === 'object' ? options : {};
                 const pane = document.getElementById('commercialqueue-pane');
                 if (!pane) return;
-
-                const firstLoad = !pane.dataset.initialized;
-                if (!opts.silent || firstLoad) {
-                    this.state.loading = true;
-                    this.renderLoading();
-                }
-
-                try {
-                    const response = await fetch(`${API_URL}?action=commercialQueue&limit=150&_ts=${Date.now()}`, {
-                        method: 'GET',
-                        cache: 'no-store'
-                    });
-                    const payload = await response.json().catch(() => null);
-                    if (!response.ok || !payload || !payload.ok) {
-                        throw new Error((payload && payload.error) || 'Could not load the commercial queue.');
+                this.bindFreshness();
+                const context = {
+                    query: this.state.query, filter: this.state.filter, pageIndex: this.state.pageIndex,
+                    cursor: this.state.cursors[this.state.pageIndex] || '',
+                };
+                const key = JSON.stringify(context);
+                if (this.inFlight && this.inFlight.key === key) return this.inFlight.promise;
+                if (this.inFlight) this.inFlight.controller.abort();
+                const controller = new AbortController();
+                const requestId = ++this.requestId;
+                let timedOut = false;
+                const timeoutId = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
+                this.state.loading = true;
+                if (!this.state.hasLoaded) this.renderLoading();
+                this.renderStatus();
+                const execute = async () => {
+                    try {
+                        const params = new URLSearchParams({
+                            action: 'commercialQueue', limit: '25', q: context.query, filter: context.filter, _ts: String(Date.now()),
+                        });
+                        if (context.cursor) params.set('cursor', context.cursor);
+                        const response = await fetch(`${API_URL}?${params}`, {
+                            method: 'GET', cache: 'no-store', signal: controller.signal,
+                        });
+                        const payload = await response.json();
+                        if (requestId !== this.requestId) return;
+                        if (!response.ok || !payload || !payload.ok) {
+                            throw new Error((payload && payload.error) || 'Could not load the commercial queue.');
+                        }
+                        const next = payload.commercialQueue;
+                        if (!next || !Array.isArray(next.queue) || !next.generatedAt) throw new Error('The queue returned an invalid response.');
+                        if (next.pagination && (typeof next.pagination.hasMore !== 'boolean' ||
+                            (next.pagination.hasMore && typeof next.pagination.nextCursor !== 'string') ||
+                            next.pagination.summaryScope !== 'page')) throw new Error('The queue returned invalid pagination.');
+                        this.state.items = next.queue.slice();
+                        this.state.summary = next.summary || {};
+                        this.state.generatedAt = next.generatedAt;
+                        this.state.pagination = next.pagination || null;
+                        this.state.legacy = !next.pagination;
+                        this.state.appliedQuery = context.query;
+                        this.state.appliedFilter = context.filter;
+                        this.state.appliedPageIndex = context.pageIndex;
+                        this.state.cursors.length = context.pageIndex + 1;
+                        if (next.pagination && next.pagination.hasMore) this.state.cursors.push(next.pagination.nextCursor);
+                        const visibleItems = this.getFilteredItems();
+                        if (!this.state.selectedLeadId && visibleItems[0]) this.state.selectedLeadId = String(visibleItems[0].leadId);
+                        this.state.hasLoaded = true;
+                        this.state.lastSuccessAt = Date.now();
+                        this.state.error = '';
+                        pane.dataset.initialized = 'true';
+                        this.render();
+                    } catch (error) {
+                        if (requestId !== this.requestId || (controller.signal.aborted && !timedOut)) return;
+                        console.error('Commercial queue refresh failed:', error);
+                        this.state.error = timedOut ? 'Queue update timed out. Try again.' : error && error.message ? error.message : 'Could not load the commercial queue.';
+                        if (!this.state.hasLoaded) this.renderError(this.state.error);
+                        if (!opts.silent) showToast(this.state.error, 'error');
+                    } finally {
+                        clearTimeout(timeoutId);
+                        if (requestId === this.requestId) {
+                            this.state.loading = false;
+                            this.inFlight = null;
+                            this.renderStatus();
+                            this.renderPagination();
+                        }
                     }
-
-                    const next = payload.commercialQueue || {};
-                    this.state.items = Array.isArray(next.queue) ? next.queue.slice() : [];
-                    this.state.summary = next.summary || null;
-                    this.state.generatedAt = String(next.generatedAt || '').trim();
-
-                    const currentSelected = String(this.state.selectedLeadId || '').trim();
-                    if (!currentSelected || !this.state.items.some((item) => String(item && item.leadId || '') === currentSelected)) {
-                        this.state.selectedLeadId = this.state.items[0] ? String(this.state.items[0].leadId || '') : '';
-                    }
-
-                    pane.dataset.initialized = 'true';
-                    this.state.loading = false;
-                    this.render();
-                } catch (error) {
-                    console.error('Commercial queue refresh failed:', error);
-                    this.state.loading = false;
-                    this.renderError(error && error.message ? error.message : 'Could not load the commercial queue.');
-                    if (!opts.silent) {
-                        showToast(error && error.message ? error.message : 'Could not load the commercial queue.', 'error');
-                    }
-                }
+                };
+                const promise = execute();
+                this.inFlight = { key, controller, promise };
+                return promise;
             },
 
             onSearchInput() {
                 const input = document.getElementById('commercialQueueSearch');
-                this.state.query = String(input && input.value || '').trim().toLowerCase();
-                this.render();
+                this.state.query = String(input && input.value || '').trim();
+                this.resetSearch();
+                this.searchTimer = setTimeout(() => { this.searchTimer = null; this.refresh(); }, 300);
             },
 
             onFilterChange() {
                 const select = document.getElementById('commercialQueueFilter');
                 this.state.filter = String(select && select.value || 'attention').trim().toLowerCase() || 'attention';
-                this.render();
+                this.resetSearch();
+                this.refresh();
+            },
+
+            resetSearch() {
+                clearTimeout(this.searchTimer);
+                this.searchTimer = null;
+                if (this.inFlight) this.inFlight.controller.abort();
+                this.requestId += 1;
+                this.inFlight = null;
+                this.state.pageIndex = 0;
+                this.state.cursors = [''];
+                this.state.selectedLeadId = '';
+                this.state.detailOpen = false;
+                this.resetListScroll = true;
+                this.syncMobileView();
+            },
+
+            goToPage(index) {
+                if (this.state.loading || this.state.legacy || !Number.isInteger(index) || index < 0 || index >= this.state.cursors.length) return;
+                this.state.pageIndex = index;
+                this.state.selectedLeadId = '';
+                this.state.detailOpen = false;
+                this.resetListScroll = true;
+                this.syncMobileView();
+                return this.refresh();
             },
 
             selectLead(leadId) {
+                if (this.isMobile() && !this.state.detailOpen) {
+                    const list = document.getElementById('commercialQueueList');
+                    const parents = [];
+                    for (let element = list; element; element = element.parentElement) {
+                        parents.push({ element, top: element.scrollTop, left: element.scrollLeft });
+                    }
+                    this.listPosition = { parents, top: window.scrollY, left: window.scrollX };
+                }
                 this.state.selectedLeadId = String(leadId || '').trim();
+                this.state.detailOpen = true;
                 this.renderList();
                 this.renderDetail();
+                this.syncMobileView();
+                if (this.isMobile()) {
+                    const detail = document.getElementById('commercialQueueDetail');
+                    detail.focus({ preventScroll: true });
+                    detail.parentElement.scrollIntoView({ block: 'start', behavior: 'instant' });
+                }
+            },
+
+            backToQueue() {
+                this.state.detailOpen = false;
+                this.syncMobileView();
+                const row = Array.from(document.querySelectorAll('#commercialQueueList [data-lead-id]'))
+                    .find(element => element.dataset.leadId === this.state.selectedLeadId);
+                const target = row || document.getElementById('commercialQueueList');
+                if (target) {
+                    if (!row) target.tabIndex = -1;
+                    target.focus({ preventScroll: true });
+                }
+                if (this.listPosition) {
+                    this.listPosition.parents.forEach(({ element, top, left }) => { element.scrollTop = top; element.scrollLeft = left; });
+                    window.scrollTo({ left: this.listPosition.left, top: this.listPosition.top, behavior: 'instant' });
+                }
+            },
+
+            isMobile() {
+                return typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 980px)').matches;
+            },
+
+            syncMobileView() {
+                const pane = document.getElementById('commercialqueue-pane');
+                if (pane) pane.dataset.queueView = this.state.detailOpen ? 'detail' : 'list';
+            },
+
+            bindFreshness() {
+                if (this.freshnessTimer) return;
+                const active = () => {
+                    const pane = document.getElementById('commercialqueue-pane');
+                    return pane && pane.classList.contains('active') && document.visibilityState !== 'hidden' &&
+                        (typeof checkAdminAuth !== 'function' || checkAdminAuth());
+                };
+                const update = (force = false) => {
+                    if (!active() || this.searchTimer || this.recoveryPending) return;
+                    this.renderUpdatedAt();
+                    if (force || Date.now() - this.state.lastSuccessAt >= 45000) this.refresh({ silent: true });
+                };
+                window.addEventListener('focus', () => update());
+                window.addEventListener('online', () => update(true));
+                document.addEventListener('visibilitychange', () => update());
+                this.freshnessTimer = setInterval(() => update(), 60000);
             },
 
             async retryProcessing(requestId) {
+                if (this.recoveryPending) return;
+                this.recoveryPending = true;
+                this.renderDetail();
                 try {
                     const response = await fetch(`${API_URL}?action=commercialRecovery`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -48667,12 +48949,16 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     await this.refresh();
                 } catch (error) {
                     showToast(error.message || 'Could not retry processing.', 'error');
+                } finally {
+                    this.recoveryPending = false;
+                    this.renderDetail();
                 }
             },
 
             getFilteredItems() {
-                const filter = String(this.state.filter || 'attention').trim().toLowerCase();
-                const query = String(this.state.query || '').trim().toLowerCase();
+                if (!this.state.legacy) return this.state.items.slice();
+                const filter = String(this.state.appliedFilter || 'attention').trim().toLowerCase();
+                const query = String(this.state.appliedQuery || '').trim().toLowerCase();
 
                 const items = Array.isArray(this.state.items) ? this.state.items.slice() : [];
                 return items.filter((item) => {
@@ -48709,6 +48995,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const selectedLeadId = String(this.state.selectedLeadId || '').trim();
                 const selected = items.find((item) => String(item && item.leadId || '') === selectedLeadId);
                 if (selected) return selected;
+                if (selectedLeadId) return null;
                 if (items[0]) {
                     this.state.selectedLeadId = String(items[0].leadId || '').trim();
                     return items[0];
@@ -48761,27 +49048,59 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.renderList(filteredItems);
                 this.renderDetail(filteredItems);
                 this.renderUpdatedAt();
+                this.renderStatus();
+                this.renderPagination();
+                this.syncMobileView();
+            },
+
+            renderStatus() {
+                const pane = document.getElementById('commercialqueue-pane');
+                if (pane) pane.setAttribute('aria-busy', String(this.state.loading));
+                const status = document.getElementById('commercialQueueStatus');
+                const warning = this.state.legacy ? 'Backend update required. This is a limited newest-25 snapshot, not a complete search. Search and pagination are unavailable until the matching backend is deployed.' : '';
+                const message = this.state.error
+                    ? `${this.state.hasLoaded ? 'Update failed; showing earlier data. ' : 'Queue unavailable. '}${this.state.error}`
+                    : warning;
+                if (status) {
+                    status.hidden = !message;
+                    status.innerHTML = `${escapeHtml(message)}${this.state.error ? `<button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.refresh()"${this.state.loading ? ' disabled' : ''}>Retry</button>` : ''}`;
+                }
+                ['commercialQueueSearch', 'commercialQueueFilter'].forEach(id => {
+                    const control = document.getElementById(id);
+                    if (control) control.disabled = this.state.legacy;
+                });
+                this.renderUpdatedAt();
+            },
+
+            renderPagination() {
+                const container = document.getElementById('commercialQueuePagination');
+                if (!container) return;
+                const page = this.state.appliedPageIndex;
+                const pagination = this.state.pagination;
+                const contextCurrent = this.state.appliedQuery === this.state.query && this.state.appliedFilter === this.state.filter;
+                container.innerHTML = pagination ? `
+                    <button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.goToPage(${page - 1})"${page === 0 || this.state.loading || !contextCurrent || page - 1 >= this.state.cursors.length ? ' disabled' : ''}>Previous</button>
+                    <span>Page ${page + 1}</span>
+                    <button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.goToPage(${page + 1})"${!pagination.hasMore || this.state.loading || !contextCurrent ? ' disabled' : ''}>${pagination.scanLimitReached ? 'Continue search' : 'Next'}</button>` : '';
             },
 
             renderSummary(filteredItems) {
                 const summaryEl = document.getElementById('commercialQueueSummary');
                 if (!summaryEl) return;
-                const summary = this.state.summary || {};
                 const filteredCount = Array.isArray(filteredItems) ? filteredItems.length : 0;
+                const count = predicate => filteredItems.filter(predicate).length;
                 const metrics = [
-                    { label: 'Visible leads', value: filteredCount, hint: `${Number(summary.totalLeads || 0)} total in this view` },
-                    { label: 'Pending consults', value: Number(summary.pendingConsultations || 0), hint: 'Awaiting technician or operator action' },
-                    { label: 'Escalated', value: Number(summary.escalatedConsultations || 0), hint: 'Needs management follow-up' },
-                    { label: 'Technician approved', value: Number(summary.approvedConsultations || 0), hint: 'Review appointment and notification outcomes separately' },
-                    { label: 'High priority', value: Number(summary.highPriorityLeads || 0), hint: 'Scored high or urgent from intake' },
-                    { label: 'New last 24h', value: Number(summary.newLastDay || 0), hint: 'Fresh commercial intake volume' },
+                    { label: 'On this page', value: filteredCount },
+                    { label: 'Pending', value: count(item => ['pending', 'reschedule_requested'].includes(item.consultation && item.consultation.status)) },
+                    { label: 'Escalated', value: count(item => item.consultation && item.consultation.status === 'escalated') },
+                    { label: 'Approved', value: count(item => ['approved', 'customer_confirmed'].includes(item.consultation && item.consultation.status)) },
+                    { label: 'High priority', value: count(item => ['high', 'urgent'].includes(item.priorityTier)) },
                 ];
 
                 summaryEl.innerHTML = metrics.map((metric) => `
                     <article class="commercial-queue-metric">
                         <div class="commercial-queue-metric__label">${escapeHtml(metric.label)}</div>
                         <div class="commercial-queue-metric__value">${escapeHtml(String(metric.value))}</div>
-                        <div class="commercial-queue-metric__hint">${escapeHtml(metric.hint)}</div>
                     </article>
                 `).join('');
             },
@@ -48793,18 +49112,21 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
                 const items = Array.isArray(filteredItems) ? filteredItems : this.getFilteredItems();
                 if (metaEl) {
-                    metaEl.textContent = items.length
-                        ? `${items.length} lead${items.length === 1 ? '' : 's'} match the current filter.`
-                        : 'No leads match the current search and filter.';
+                    const pagination = this.state.pagination;
+                    const scope = `Results: ${this.labelForStatus(this.state.appliedFilter === 'all' ? 'all commercial intakes' : this.state.appliedFilter)}${this.state.appliedQuery ? ` / "${this.state.appliedQuery}"` : ''}.`;
+                    metaEl.textContent = `${scope} ${items.length} on this page${pagination && pagination.totalMatches !== null ? ` of ${pagination.totalMatches} matches` : ''}. Newest intake first.${pagination && pagination.scanLimitReached ? ' Search continues on the next page; a full matching total is not yet known.' : ''}`;
                 }
 
                 if (!items.length) {
-                    listEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No matching leads', message: 'Try a broader filter or clear the search to bring leads back into the queue.' })}</div>`;
+                    this.listMarkup = null;
+                    listEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No matching leads on this page', message: this.state.pagination && this.state.pagination.hasMore ? 'More commercial intakes remain. Continue search to inspect older records.' : 'Try a broader filter or clear the search.' })}</div>`;
                     return;
                 }
 
                 const selectedLeadId = String(this.state.selectedLeadId || '').trim();
-                listEl.innerHTML = items.map((item) => {
+                const focusedLeadId = listEl.contains(document.activeElement) ? document.activeElement.dataset.leadId : '';
+                const scrollTop = this.resetListScroll ? 0 : listEl.scrollTop;
+                const markup = items.map((item) => {
                     const leadId = String(item.leadId || '').trim();
                     const isActive = leadId && leadId === selectedLeadId;
                     const consultationStatus = String(item.consultation && item.consultation.status || '').trim().toLowerCase() || 'no_consultation';
@@ -48816,15 +49138,15 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     const activityText = this.formatRelativeTime(item.lastActivityAt);
 
                     return `
-                        <button type="button" class="commercial-queue-row${isActive ? ' is-active' : ''}" onclick="window.commercialQueueUI && window.commercialQueueUI.selectLead('${escapeHtml(leadId)}')">
+                        <button type="button" data-lead-id="${escapeHtml(leadId)}" aria-pressed="${isActive ? 'true' : 'false'}" class="commercial-queue-row${isActive ? ' is-active' : ''}" onclick="window.commercialQueueUI && window.commercialQueueUI.selectLead('${escapeHtml(leadId)}')">
                             <div class="commercial-queue-row__top">
                                 <div>
                                     <div class="commercial-queue-row__company">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</div>
                                     <div class="commercial-queue-row__contact">${escapeHtml(item.fullName || item.email || item.phone || 'No direct contact captured')}</div>
                                 </div>
                                 <div class="commercial-queue-pillset">
-                                    ${this.renderPill(consultationStatus, item.followUp && item.followUp.statusLabel || this.labelForStatus(consultationStatus))}
-                                    ${this.renderPill(String(item.priorityTier || 'normal').toLowerCase(), this.labelForStatus(item.priorityTier || 'normal'))}
+                                    ${this.renderPill(consultationStatus, this.statusForItem(item))}
+                                    ${['high', 'urgent'].includes(item.priorityTier) ? this.renderPill(item.priorityTier, this.labelForStatus(item.priorityTier)) : ''}
                                 </div>
                             </div>
                             <div class="commercial-queue-row__meta">
@@ -48837,22 +49159,41 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         </button>
                     `;
                 }).join('');
+                if (this.listMarkup !== markup) {
+                    listEl.innerHTML = markup;
+                    this.listMarkup = markup;
+                    listEl.scrollTop = scrollTop;
+                    const focusedRow = Array.from(listEl.querySelectorAll('[data-lead-id]'))
+                        .find(element => element.dataset.leadId === focusedLeadId);
+                    if (focusedRow) focusedRow.focus({ preventScroll: true });
+                }
+                listEl.scrollTop = scrollTop;
+                this.resetListScroll = false;
             },
 
             renderDetail(filteredItems) {
                 const detailEl = document.getElementById('commercialQueueDetail');
                 if (!detailEl) return;
                 const item = this.getSelectedItem(filteredItems);
+                const signature = JSON.stringify([item, this.recoveryPending]);
+                if (this.detailSignature === signature) return;
+                const sameLead = this.detailLeadId === (item && item.leadId);
+                const diagnosticsOpen = sameLead && detailEl.querySelector('details[open]');
+                const active = detailEl.contains(document.activeElement) ? document.activeElement : null;
+                const activeHref = active && active.getAttribute('href');
+                const activeTag = active && active.tagName;
+                this.detailSignature = signature;
+                this.detailLeadId = item && item.leadId;
                 if (!item) {
-                    detailEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: 'No lead selected', message: 'Choose a lead from the queue to inspect its intake and consultation details.' })}</div>`;
+                    detailEl.innerHTML = `<div class="commercial-queue-empty">${uiRenderState({ tone: 'empty', title: this.state.selectedLeadId ? 'Selected lead is no longer in these results' : 'No lead selected', message: 'Return to the queue and choose a lead. Your search and filters are unchanged.' })}</div>`;
                     return;
                 }
 
                 const consultationStatus = String(item.consultation && item.consultation.status || '').trim().toLowerCase() || 'no_consultation';
                 const projectLocation = [item.projectAddress, [item.projectCity, item.projectState].filter(Boolean).join(', '), item.projectPostalCode].filter(Boolean).join(', ');
                 const requestedMethod = item.followUp && item.followUp.requestedContactMethod || item.contactPreference || 'sms';
-                const primaryContact = (requestedMethod === 'email' ? item.email : item.phone) || 'Contact details need review';
-                const methodLabel = requestedMethod === 'email' ? 'Email first (manual)' : requestedMethod === 'call' ? 'Call first (manual)' : 'Text first (explicit permission required)';
+                const methodLabel = requestedMethod === 'email' ? 'Prefers email' : requestedMethod === 'call' ? 'Prefers call' : 'Prefers text';
+                const routingLabel = requestedMethod === 'email' ? 'Email first (manual)' : requestedMethod === 'call' ? 'Call first (manual)' : 'Text first (explicit permission required)';
                 const consultationCopy = item.consultation
                     ? (item.consultation.slotLabel || 'No preferred window selected.')
                     : 'No consultation request has been created for this lead yet.';
@@ -48865,77 +49206,156 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 detailEl.innerHTML = `
                     <div class="commercial-queue-detail__header">
                         <div>
-                            <div class="commercial-queue-detail__eyebrow">Commercial lead</div>
                             <h3 class="commercial-queue-detail__title">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</h3>
-                            <div class="commercial-queue-detail__subtitle">${escapeHtml(item.scopeSummary || 'Scope summary pending from intake.')}</div>
+                            <div class="commercial-queue-detail__subtitle">${escapeHtml(item.fullName || 'Contact name not provided')}</div>
                             <div class="commercial-queue-detail__meta">Last activity ${escapeHtml(this.formatRelativeTime(item.lastActivityAt))}</div>
                         </div>
                         <div class="commercial-queue-pillset">
-                            ${this.renderPill(consultationStatus, item.followUp && item.followUp.statusLabel || this.labelForStatus(consultationStatus))}
-                            ${this.renderPill(String(item.priorityTier || 'normal').toLowerCase(), this.labelForStatus(item.priorityTier || 'normal'))}
-                            ${this.renderPill(String(item.completenessBucket || 'empty').toLowerCase(), this.labelForStatus(item.completenessBucket || 'empty'))}
+                            ${this.renderPill(consultationStatus, this.statusForItem(item))}
+                            ${['high', 'urgent'].includes(item.priorityTier) ? this.renderPill(item.priorityTier, this.labelForStatus(item.priorityTier)) : ''}
                         </div>
                     </div>
 
-                    <div class="commercial-queue-detail__grid">
-                        ${this.renderDetailCard('Primary contact', primaryContact, item.fullName ? `Contact: ${item.fullName}` : '')}
-                        ${this.renderDetailCard('Requested contact method', methodLabel, [item.email, item.phone].filter(Boolean).join(' / '))}
-                        ${this.renderDetailCard('Next follow-up action', item.followUp && item.followUp.nextAction || 'Review the saved contact preference before contacting the customer.', item.followUp && item.followUp.statusLabel || '')}
-                        ${item.followUp && item.followUp.recoveryAllowed && item.consultation ? `<button type="button" class="btn btn-secondary" onclick="window.commercialQueueUI.retryProcessing('${escapeHtml(item.consultation.requestId)}')">Retry failed processing</button>` : ''}
-                        ${this.renderDetailCard('Project location', projectLocation || 'Location still missing', item.businessType || '')}
-                        ${this.renderDetailCard('Timeline', item.timeline || 'Not provided', item.budgetBand ? `Budget: ${item.budgetBand}` : '')}
-                        ${this.renderDetailCard('Sites / media', item.siteCount ? `${item.siteCount} site${item.siteCount === 1 ? '' : 's'}` : 'Site count not provided', `${Number(item.projectPhotoCount || 0)} file${Number(item.projectPhotoCount || 0) === 1 ? '' : 's'} uploaded`)}
-                        ${this.renderDetailCard('Completeness score', `${Math.round(Number(item.completenessScore || 0))}%`, item.publicToken ? `Lead token: ${item.publicToken}` : '')}
-                    </div>
+                    <section class="commercial-queue-next" aria-label="Next follow-up action">
+                        <h4 class="commercial-queue-detail__section-title">Next action</h4>
+                        <p class="commercial-queue-detail__section-copy">${escapeHtml(item.followUp && item.followUp.nextAction || 'Review the saved contact preference before contacting the customer.')}</p>
+                        <div class="commercial-queue-detail__section-note">${escapeHtml(methodLabel)}</div>
+                        ${this.renderContactDetails(item)}
+                    </section>
 
                     <div class="commercial-queue-detail__stack">
-                        <section class="commercial-queue-detail__section">
-                            <div class="commercial-queue-detail__section-head">
-                                <div class="commercial-queue-detail__section-title">Service mix</div>
-                                <div class="commercial-queue-detail__section-note">${escapeHtml(item.serviceNeeds && item.serviceNeeds.length ? `${item.serviceNeeds.length} requested` : 'No service selections saved')}</div>
-                            </div>
+                        <section class="commercial-queue-detail__section" aria-label="Requested work">
+                            <h4 class="commercial-queue-detail__section-title">Requested work</h4>
                             <div class="commercial-queue-detail__tags">
                                 ${(Array.isArray(item.serviceNeeds) && item.serviceNeeds.length)
-                                    ? item.serviceNeeds.map((service) => this.renderPill('service', service)).join('')
-                                    : this.renderPill('none', 'No service tags')}
+                                    ? item.serviceNeeds.map((service) => `<span>${escapeHtml(service)}</span>`).join('')
+                                    : '<span>No services provided</span>'}
                             </div>
+                            <p class="commercial-queue-detail__section-copy commercial-queue-detail__text">${escapeHtml(item.scopeSummary || 'No project scope provided.')}</p>
+                            ${item.notes ? `<div class="commercial-queue-detail__notes">
+                                <h5 class="commercial-queue-detail__label">Additional notes</h5>
+                                <p class="commercial-queue-detail__section-copy commercial-queue-detail__text">${escapeHtml(item.notes)}</p>
+                            </div>` : ''}
                         </section>
 
-                        <section class="commercial-queue-detail__section">
-                            <div class="commercial-queue-detail__section-head">
-                                <div class="commercial-queue-detail__section-title">Follow-up request and preferred window</div>
-                                <div class="commercial-queue-detail__section-note">${escapeHtml(item.consultation && item.consultation.referenceCode ? item.consultation.referenceCode : 'No request ID yet')}</div>
-                            </div>
-                            <div class="commercial-queue-detail__section-copy">${escapeHtml(consultationCopy)}</div>
-                            <div class="commercial-queue-detail__section-note">${escapeHtml(windowReviewNote)}</div>
-                            <div class="commercial-queue-detail__grid" style="margin-top: 14px;">
-                                ${this.renderDetailCard('Technician', item.consultation && item.consultation.assignedTechnicianName ? item.consultation.assignedTechnicianName : 'Not assigned yet', item.consultation && item.consultation.assignedTechnicianPhone ? item.consultation.assignedTechnicianPhone : '')}
-                                ${this.renderDetailCard('Reminder state', item.consultation ? `${Number(item.consultation.reminderCount || 0)} sent` : 'No reminders yet', item.consultation && item.consultation.nextReminderAt ? `Next: ${this.formatDateTime(item.consultation.nextReminderAt)}` : '')}
-                                ${this.renderDetailCard('Appointment link', item.consultation && item.consultation.relatedOrderId ? String(item.consultation.relatedOrderId) : 'No order linked yet', item.consultation && item.consultation.customerConfirmationSentAt ? `SMS provider accepted ${this.formatRelativeTime(item.consultation.customerConfirmationSentAt)}; delivery unverified` : '')}
-                            </div>
+                        <section class="commercial-queue-detail__section" aria-label="Supporting information">
+                            <h4 class="commercial-queue-detail__section-title">Details</h4>
+                            <dl class="commercial-queue-detail__fields">
+                                ${this.renderDetailRow('Location', projectLocation || 'Not provided', item.businessType || '')}
+                                ${this.renderDetailRow('Timing', item.timeline || 'Not provided', item.budgetBand ? `Budget: ${item.budgetBand}` : '')}
+                                ${this.renderDetailRow('Sites', item.siteCount ? String(item.siteCount) : 'Not provided', '')}
+                                ${this.renderDetailRow('Attachments', `${Number(item.projectPhotoCount || 0)} uploaded`, 'Viewing unavailable in this queue.')}
+                                ${this.renderDetailRow('Preferred window', consultationCopy, windowReviewNote)}
+                                ${this.renderDetailRow('Technician', item.consultation && item.consultation.assignedTechnicianName || 'Not assigned', item.consultation && item.consultation.assignedTechnicianPhone || '')}
+                                ${this.renderDetailRow('Technician response', this.technicianResponseForItem(item), item.consultation && item.consultation.responseAt ? this.formatDateTime(item.consultation.responseAt) : '')}
+                                ${this.renderDetailRow('Appointment', item.consultation && item.consultation.relatedOrderId ? 'Created - opening unavailable in this queue.' : 'Not created', '')}
+                                ${this.renderDetailRow('Customer confirmation', this.confirmationForItem(item), '')}
+                                ${this.renderDetailRow('Customer follow-up', 'Completion not tracked here; a technician response does not complete it.', '')}
+                            </dl>
                         </section>
+                        <details class="commercial-queue-detail__section">
+                            <summary>Technical processing details</summary>
+                            <dl class="commercial-queue-detail__fields">
+                                ${this.renderDetailRow('Contact routing', routingLabel, '')}
+                                ${this.renderDetailRow('Request', item.consultation && item.consultation.referenceCode || 'Not submitted', item.followUp && item.followUp.statusLabel || '')}
+                                ${this.renderDetailRow('Reminder attempts', item.consultation ? String(Number(item.consultation.reminderCount || 0)) : 'None', item.consultation && item.consultation.nextReminderAt ? `Next: ${this.formatDateTime(item.consultation.nextReminderAt)}` : '')}
+                                ${this.renderDetailRow('Completeness', `${Math.round(Number(item.completenessScore || 0))}%`, item.completenessBucket || '')}
+                                ${this.renderDetailRow('Appointment reference', item.consultation && item.consultation.relatedOrderId || 'Not created', '')}
+                            </dl>
+                            <p class="commercial-queue-detail__section-note">Responsibility and completed follow-up are not tracked here yet.</p>
+                            ${item.followUp && item.followUp.recoveryAllowed && item.consultation ? `<button type="button" class="btn btn-secondary" onclick="window.commercialQueueUI.retryProcessing('${escapeHtml(item.consultation.requestId)}')"${this.recoveryPending ? ' disabled' : ''}>${this.recoveryPending ? 'Processing...' : 'Retry failed processing'}</button>` : ''}
+                        </details>
+                    </div>
+                `;
+                if (diagnosticsOpen) detailEl.querySelector('details').open = true;
+                if (active && sameLead) {
+                    const target = activeHref
+                        ? Array.from(detailEl.querySelectorAll('a[href]')).find(link => link.getAttribute('href') === activeHref)
+                        : activeTag === 'SUMMARY' ? detailEl.querySelector('summary') : detailEl;
+                    if (target) target.focus({ preventScroll: true });
+                }
+            },
 
-                        <section class="commercial-queue-detail__section">
-                            <div class="commercial-queue-detail__section-head">
-                                <div class="commercial-queue-detail__section-title">Notes</div>
-                                <div class="commercial-queue-detail__section-note">Captured from the intake</div>
-                            </div>
-                            <div class="commercial-queue-detail__section-copy">${escapeHtml(item.scopeSummary || item.notes || 'No additional project notes were provided yet.')}</div>
-                        </section>
+            renderContactDetails(item) {
+                const phone = String(item.phone || '').trim();
+                const dial = phone.replace(/[\s().-]/g, '');
+                const email = String(item.email || '').trim();
+                const phoneLink = /^\+?\d{7,15}$/.test(dial)
+                    ? `<a class="commercial-queue-contact" href="tel:${escapeHtml(dial)}">Call ${escapeHtml(phone)}</a>`
+                    : `<span>${escapeHtml(phone || 'Phone not provided')}${phone ? ' (needs review)' : ''}</span>`;
+                const emailLink = /^[^\s@<>\u0000-\u001f\u007f]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)
+                    ? `<a class="commercial-queue-contact" href="mailto:${escapeHtml(encodeURIComponent(email).replace(/%40/g, '@'))}">Email ${escapeHtml(email)}</a>`
+                    : `<span>${escapeHtml(email || 'Email not provided')}${email ? ' (needs review)' : ''}</span>`;
+                const links = item.followUp && item.followUp.requestedContactMethod === 'email' ? [emailLink, phoneLink] : [phoneLink, emailLink];
+                return `<div class="commercial-queue-contacts">${links.join('')}</div>`;
+            },
+
+            renderDetailRow(label, value, hint) {
+                const primary = String(value || '').trim() || 'Not provided';
+                const secondary = String(hint || '').trim();
+                return `
+                    <div class="commercial-queue-detail__field">
+                        <dt class="commercial-queue-detail__label">${escapeHtml(label)}</dt>
+                        <dd class="commercial-queue-detail__value">${escapeHtml(primary)}
+                            ${secondary ? `<span class="commercial-queue-detail__section-note">${escapeHtml(secondary)}</span>` : ''}
+                        </dd>
                     </div>
                 `;
             },
 
-            renderDetailCard(label, value, hint) {
-                const primary = String(value || '').trim() || 'Not provided';
-                const secondary = String(hint || '').trim();
-                return `
-                    <article class="commercial-queue-detail__card">
-                        <div class="commercial-queue-detail__label">${escapeHtml(label)}</div>
-                        <div class="commercial-queue-detail__value">${escapeHtml(primary)}</div>
-                        ${secondary ? `<div class="commercial-queue-detail__section-note">${escapeHtml(secondary)}</div>` : ''}
-                    </article>
-                `;
+            statusForItem(item) {
+                const consultation = item.consultation;
+                if (!consultation) return 'Saved draft - not submitted';
+                const status = consultation.status;
+                const method = item.followUp && item.followUp.requestedContactMethod || item.contactPreference;
+                if (item.followUp && item.followUp.kind === 'manual_follow_up' &&
+                    ['pending', 'escalated', 'reschedule_requested'].includes(status)) {
+                    return method === 'email' ? 'Needs email follow-up' : 'Needs call follow-up';
+                }
+                if (status === 'declined') return 'Technician declined - arrange a new time';
+                if (['approved', 'customer_confirmed'].includes(status)) {
+                    if (!consultation.relatedOrderId) return 'Technician approved - appointment needs review';
+                    const confirmation = consultation.workflow && consultation.workflow.customer_confirmation;
+                    if (confirmation && ['processing', 'uncertain'].includes(confirmation.state)) return 'Appointment created - review confirmation';
+                    if (confirmation && confirmation.state === 'failed') return 'Appointment created - confirmation failed';
+                    if (!consultation.customerConfirmationSentAt) return 'Appointment created - confirmation pending';
+                }
+                const effects = Object.values(consultation.workflow || {});
+                if (effects.some(effect => effect && ['processing', 'uncertain'].includes(effect.state))) return 'Review notification attempt';
+                if (effects.some(effect => effect && effect.state === 'failed')) return 'Notification needs review';
+                if (status === 'expired') return 'Arrange a new time';
+                if (!consultation.relatedOrderId && consultation.selectedSlotStart &&
+                    new Date(consultation.selectedSlotStart).getTime() <= Date.now()) return 'Arrange a new time';
+                if (status === 'escalated') return 'Management review needed';
+                if (status === 'reschedule_requested') return 'Review requested time';
+                if (status === 'pending') return 'Awaiting technician response';
+                if (['approved', 'customer_confirmed'].includes(status)) return 'Appointment created';
+                if (status === 'cancelled') return 'Request cancelled';
+                return 'Review request status';
+            },
+
+            technicianResponseForItem(item) {
+                const consultation = item.consultation;
+                if (!consultation) return 'Not requested';
+                if (item.followUp && item.followUp.kind === 'manual_follow_up') return 'Manual customer follow-up required';
+                const channel = { sms: 'SMS', web: 'approval link', manual: 'staff action' }[consultation.responseChannel];
+                const via = channel ? ` via ${channel}` : '';
+                if (['approved', 'customer_confirmed'].includes(consultation.status)) return `Approved${via}`;
+                if (consultation.status === 'declined') return `Declined${via} - alternate window required`;
+                if (consultation.status === 'escalated') return 'No response recorded - escalated to management';
+                if (consultation.status === 'reschedule_requested') return 'Awaiting decision on the revised window';
+                if (consultation.status === 'pending') return 'Awaiting YES/NO';
+                return 'No decision recorded';
+            },
+
+            confirmationForItem(item) {
+                const consultation = item.consultation;
+                if (!consultation || !consultation.relatedOrderId) return 'Not confirmed; no appointment created';
+                if (consultation.customerConfirmationSentAt) return 'SMS provider accepted; delivery and customer acknowledgement unverified';
+                const confirmation = consultation.workflow && consultation.workflow.customer_confirmation;
+                if (confirmation && confirmation.state === 'failed') return 'Provider rejected or could not accept confirmation - review required';
+                if (confirmation && ['processing', 'uncertain'].includes(confirmation.state)) return 'Processing or uncertain provider result - reconcile before retrying';
+                return 'Provider acceptance not recorded';
             },
 
             renderPill(kind, label) {
@@ -48950,7 +49370,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     updatedEl.textContent = 'Waiting for first load';
                     return;
                 }
-                updatedEl.textContent = `Updated ${this.formatRelativeTime(this.state.generatedAt)}`;
+                updatedEl.textContent = `${this.state.loading ? 'Updating / ' : ''}Updated ${this.formatRelativeTime(this.state.generatedAt)}`;
             },
 
             labelForStatus(value) {
