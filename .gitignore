@@ -154,6 +154,7 @@ backend/public/dash.js
 !backend/migrations/029_create_media_placements.sql
 !backend/migrations/030_owner_media_placement_fields.sql
 !backend/migrations/031_commercial_reliability.sql
+!backend/migrations/032_commercial_operations.sql
 
 # Backup files
 *.backup

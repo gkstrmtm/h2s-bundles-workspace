@@ -10468,6 +10468,72 @@
             margin-top: 16px;
         }
 
+        .commercial-operations-form {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 12px;
+            margin: 12px 0;
+        }
+        .commercial-operations { font-size: 14px; line-height: 1.5; }
+        .commercial-operations-form label { display: grid; gap: 4px; min-width: 0; font-size: 13px; color: var(--cobalt); }
+        .commercial-operations-form input,
+        .commercial-operations-form select,
+        .commercial-operations-form textarea {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            font: inherit;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 8px 10px;
+            background: var(--surface);
+            color: var(--text);
+        }
+        .commercial-operations-form .commercial-operations-check { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+        .commercial-operations-form input[type="checkbox"] { width: auto; justify-self: start; margin-top: 4px; }
+        .commercial-operations .btn { width: auto; justify-self: start; min-height: 36px; padding: 8px 12px; font-size: 13px; box-shadow: none; }
+        .commercial-operations [data-operations-status] { font-size: 13px; }
+        .commercial-operations-wide { grid-column: 1 / -1; }
+        .commercial-operations summary { cursor: pointer; }
+        .commercial-operations li { overflow-wrap: anywhere; margin-bottom: 8px; }
+        .commercial-operations [data-operations-status] { overflow-wrap: anywhere; }
+        .commercial-operations-overdue { color: var(--danger); margin-left: 8px; }
+        .commercial-operations-facts { margin: 8px 0 12px; }
+        .commercial-operations-facts > div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .commercial-operations-facts dt { color: var(--muted); font-size: 13px; font-weight: 400; }
+        .commercial-operations-facts dd { margin: 0; overflow-wrap: anywhere; }
+        .commercial-operations-facts strong { font-weight: 600; }
+        .commercial-operations h5 { margin: 0 0 8px; font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600; color: var(--cobalt); }
+        .commercial-operations-section { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+        .commercial-operations-note { margin: 8px 0; color: var(--muted); font-size: 13px; }
+        .commercial-operations details { margin-top: 8px; }
+        .commercial-operations summary { padding: 4px 0; font-size: 13px; color: var(--cobalt); }
+        .commercial-operations [data-operations-status]:empty { display: none; }
+        .commercial-operations [data-operations-status] { color: var(--muted); margin: 8px 0; }
+        .commercial-operations-communications { padding: 0; margin: 8px 0; list-style: none; }
+        .commercial-operations li.commercial-operations-communication { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px; margin: 0; padding: 8px 0; border-bottom: 1px solid var(--border); }
+        .commercial-operations-communication > div { display: grid; justify-items: start; gap: 4px; }
+        .commercial-operations-communication strong { font-size: 13px; font-weight: 600; }
+        .commercial-operations-communication span,
+        .commercial-operations-communication time { font-size: 12px; color: var(--muted); }
+        .commercial-operations-communication .commercial-operations-badge { border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; color: var(--cobalt); }
+        .commercial-operations-badge[data-result="failed"],
+        .commercial-operations-badge[data-result="uncertain"] { color: var(--danger); }
+        .commercial-operations-timeline { list-style: none; margin: 8px 0 16px; padding: 0 0 0 12px; border-left: 1px solid var(--border); }
+        .commercial-operations-timeline li { display: grid; gap: 4px; padding: 4px 0; font-size: 13px; }
+        .commercial-operations-timeline strong { font-weight: 500; }
+        .commercial-operations-timeline time,
+        .commercial-operations-timeline span { color: var(--muted); font-size: 12px; }
+        .commercial-operations-upcoming { border-left-style: dashed; }
+        .commercial-operations-review { padding: 4px 0; border: 0; background: transparent; color: var(--cobalt); font: inherit; font-size: 12px; text-decoration: underline; cursor: pointer; }
+        .commercial-operations .dashboard-custom-select-shell { max-width: 100%; }
+        .commercial-queue-row { border-radius: 0; }
+        @media (max-width: 600px) {
+            .commercial-operations-form { grid-template-columns: minmax(0, 1fr); }
+            .commercial-operations-facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+            .commercial-operations li.commercial-operations-communication { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+        }
+
         .commercial-queue-detail__section {
             border-top: 1px solid var(--border);
             padding: 12px 0 0;

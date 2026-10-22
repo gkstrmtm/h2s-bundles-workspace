@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       // Check if order exists
       const { data: existingOrder } = await supabase
         .from('h2s_orders')
-        .select('order_id')
+        .select('order_id,metadata_json')
         .eq('session_id', session.id)
         .single();
 
@@ -69,7 +69,9 @@ export async function POST(req: NextRequest) {
       
       if (existingOrder) {
          // Parse job_details if present
-         const enrichedMetadata = { ...session.metadata };
+         const retainedMetadata = existingOrder.metadata_json && typeof existingOrder.metadata_json === 'object'
+           && !Array.isArray(existingOrder.metadata_json) ? existingOrder.metadata_json : {};
+         const enrichedMetadata = { ...retainedMetadata, ...session.metadata };
          if (session.metadata?.job_details_json) {
            try {
              enrichedMetadata.job_details = JSON.parse(session.metadata.job_details_json);

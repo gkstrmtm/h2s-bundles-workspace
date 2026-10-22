@@ -85,10 +85,20 @@ The explicit managed list currently contains:
    weight columns and their indexes, with the existing application's defaults.
 3. `031_commercial_reliability.sql`: explicitly authorized, applied and verified
    in production on 2026-10-20 after the security-first rollout.
+4. `032_commercial_operations.sql`: **pending, review-only and not authorized
+   for production apply**. Adds accountable follow-up/activity and explicit links
+   to existing installation/order records. Its single service-only record RPC
+   supports ADMIN assignment/start and facts-only completion; no payout or
+   communication processing RPC exists. Closed disposition requires a non-null,
+   nonblank reason at table, RPC and API boundaries. New foreign keys intentionally
+   block deletion of linked accountability records rather than cascading history.
+   See [compatibility and scope](COMMERCIAL_OPERATIONS.md).
+   Its separate authorization/checksum are unset; the runner blocks apply before
+   connecting until the new scope is explicitly reviewed and authorized.
 
 The two media scripts deliberately fail if untracked objects already exist; do not
 replace that protection with `IF NOT EXISTS` or mark changes applied manually.
-Only these three intended SQL paths are unignored. Although 031 uses conditional
+Only these four intended SQL paths are unignored. Although 031 uses conditional
 DDL, the runner requires an exact commercial baseline with no colliding objects
 before executing it. Never run that file directly to bypass this guard.
 

@@ -21217,6 +21217,13 @@ function deliverablesBrowserRender(mode) {
 
         function dashboardSyncCustomSelect(selectEl) {
             if (!selectEl) return;
+            const commercialSignature = selectEl.closest('.commercial-operations') ? JSON.stringify([
+                selectEl.value, selectEl.disabled, window.innerWidth, Math.round(selectEl.getBoundingClientRect().width),
+                Array.from(selectEl.options || [], option => [option.value, option.text, option.disabled])
+            ]) : null;
+            // Preserve option nodes/focus during the global observer's unrelated updates.
+            if (commercialSignature && selectEl.__commercialSelectSignature === commercialSignature
+                && dashboardGetCustomSelectShell(selectEl)) return;
 
             ensureDashboardCustomSelectBindings();
 
@@ -21362,6 +21369,7 @@ function deliverablesBrowserRender(mode) {
             });
 
             if (selectEl.disabled) dashboardSetCustomSelectOpen(selectEl, false);
+            if (commercialSignature) selectEl.__commercialSelectSignature = commercialSignature;
         }
 
         function dashboardSyncAllCustomSelects(container = null) {
@@ -49097,11 +49105,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                     ${['high', 'urgent'].includes(item.priorityTier) ? this.renderPill(item.priorityTier, this.labelForStatus(item.priorityTier)) : ''}
                                 </div>
                             </div>
-                            <div class="commercial-queue-row__meta">
-                                <div class="commercial-queue-row__detail">${escapeHtml(detailBits.join(' • ') || (item.scopeSummary || 'Scope summary pending'))}</div>
-                            </div>
                             <div class="commercial-queue-row__bottom">
-                                <div class="commercial-queue-row__detail">${escapeHtml(item.consultation && item.consultation.referenceCode ? item.consultation.referenceCode : (item.phone || item.email || 'No contact route'))}</div>
+                                <div class="commercial-queue-row__detail">${escapeHtml(detailBits.join(' · ') || 'Scope pending')}</div>
                                 <div class="commercial-queue-row__timestamp">${escapeHtml(activityText)}</div>
                             </div>
                         </button>
@@ -49126,7 +49131,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const signature = JSON.stringify([item, this.recoveryPending]);
                 if (this.detailSignature === signature) return;
                 const sameLead = this.detailLeadId === (item && item.leadId);
-                const diagnosticsOpen = sameLead && detailEl.querySelector('details[open]');
+                const retainedOperations = sameLead && detailEl.querySelector('[data-commercial-operations]');
+                const diagnosticsOpen = sameLead && detailEl.querySelector('.commercial-queue-detail__stack > details[open]');
                 const active = detailEl.contains(document.activeElement) ? document.activeElement : null;
                 const activeHref = active && active.getAttribute('href');
                 const activeTag = active && active.tagName;
@@ -49165,13 +49171,13 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     </div>
 
                     <section class="commercial-queue-next" aria-label="Next follow-up action">
-                        <h4 class="commercial-queue-detail__section-title">Next action</h4>
-                        <p class="commercial-queue-detail__section-copy">${escapeHtml(item.followUp && item.followUp.nextAction || 'Review the saved contact preference before contacting the customer.')}</p>
-                        <div class="commercial-queue-detail__section-note">${escapeHtml(methodLabel)}</div>
+                        <div class="commercial-queue-detail__section-note"><strong>Next action</strong> · ${escapeHtml(methodLabel)} · ${escapeHtml(item.followUp && item.followUp.nextAction || 'Review saved contact preference before contacting the customer.')}</div>
+                        <div class="commercial-queue-detail__section-note">Technician approval does not complete customer follow-up.</div>
                         ${this.renderContactDetails(item)}
                     </section>
 
                     <div class="commercial-queue-detail__stack">
+                        <section data-commercial-operations></section>
                         <section class="commercial-queue-detail__section" aria-label="Requested work">
                             <h4 class="commercial-queue-detail__section-title">Requested work</h4>
                             <div class="commercial-queue-detail__tags">
@@ -49194,11 +49200,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                 ${this.renderDetailRow('Sites', item.siteCount ? String(item.siteCount) : 'Not provided', '')}
                                 ${this.renderDetailRow('Attachments', `${Number(item.projectPhotoCount || 0)} uploaded`, 'Viewing unavailable in this queue.')}
                                 ${this.renderDetailRow('Preferred window', consultationCopy, windowReviewNote)}
-                                ${this.renderDetailRow('Technician routing', window.H2SCommercialLabels.technician(item.consultation).label, window.H2SCommercialLabels.technician(item.consultation).detail)}
                                 ${this.renderDetailRow('Technician response', this.technicianResponseForItem(item), item.consultation && item.consultation.responseAt ? this.formatDateTime(item.consultation.responseAt) : '')}
                                 ${this.renderDetailRow('Appointment', item.consultation && item.consultation.relatedOrderId ? 'Created - opening unavailable in this queue.' : 'Not created', '')}
                                 ${this.renderDetailRow('Customer confirmation', this.confirmationForItem(item), '')}
-                                ${this.renderDetailRow('Customer follow-up', 'Completion not tracked here; a technician response does not complete it.', '')}
                             </dl>
                         </section>
                         <details class="commercial-queue-detail__section">
@@ -49210,16 +49214,21 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                 ${this.renderDetailRow('Completeness', `${Math.round(Number(item.completenessScore || 0))}%`, item.completenessBucket || '')}
                                 ${this.renderDetailRow('Appointment reference', item.consultation && item.consultation.relatedOrderId || 'Not created', '')}
                             </dl>
-                            <p class="commercial-queue-detail__section-note">Responsibility and completed follow-up are not tracked here yet.</p>
                             ${item.followUp && item.followUp.recoveryAllowed && item.consultation ? `<button type="button" class="btn btn-secondary" onclick="window.commercialQueueUI.retryProcessing('${escapeHtml(item.consultation.requestId)}')"${this.recoveryPending ? ' disabled' : ''}>${this.recoveryPending ? 'Processing...' : 'Retry failed processing'}</button>` : ''}
                         </details>
                     </div>
                 `;
-                if (diagnosticsOpen) detailEl.querySelector('details').open = true;
+                const operationsHost = detailEl.querySelector('[data-commercial-operations]');
+                if (retainedOperations && operationsHost) operationsHost.replaceWith(retainedOperations);
+                if (window.H2SCommercialOperations) window.H2SCommercialOperations.mount(
+                    retainedOperations || operationsHost, item.leadId,
+                    { apiBase: API_BASE, getToken: getDashboardSessionToken }
+                );
+                if (diagnosticsOpen) detailEl.querySelector('.commercial-queue-detail__stack > details').open = true;
                 if (active && sameLead) {
-                    const target = activeHref
+                    const target = retainedOperations && retainedOperations.contains(active) ? active : activeHref
                         ? Array.from(detailEl.querySelectorAll('a[href]')).find(link => link.getAttribute('href') === activeHref)
-                        : activeTag === 'SUMMARY' ? detailEl.querySelector('summary') : detailEl;
+                        : activeTag === 'SUMMARY' ? detailEl.querySelector('.commercial-queue-detail__stack > details > summary') : detailEl;
                     if (target) target.focus({ preventScroll: true });
                 }
             },

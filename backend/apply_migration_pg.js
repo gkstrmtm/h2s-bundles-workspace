@@ -4,12 +4,13 @@ const crypto = require('node:crypto');
 const tls = require('node:tls');
 const { Client } = require('pg');
 const commercialReview = require('./lib/commercial_migration_review.cjs');
+const operationsReview = require('./lib/commercial_operations_review.cjs');
 
 const root = __dirname;
 const prerequisiteTables = ['owner_media_uploads', 'proof_assets'];
 const managedTables = [...prerequisiteTables, 'media_placements'];
 const ledger = 'public.h2s_schema_migrations';
-const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version];
+const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version, operationsReview.version];
 const migrationOrder = versions;
 
 function digest(value) {
@@ -63,6 +64,10 @@ function authorizeApply(target, confirmProject) {
   }
   if (target.commercial031?.reviewOnly !== false || !target.commercial031?.authorization) {
     throw new Error('031 remains review-only; separate explicit authorization is required');
+  }
+  if (target.commercial032?.reviewOnly !== false || !target.commercial032?.authorization
+    || target.commercial032?.sqlSha256 !== migrations().find(file => file.version === operationsReview.version).sha256) {
+    throw new Error('032 remains review-only; separate explicit authorization and reviewed checksum are required');
   }
 }
 
@@ -181,6 +186,7 @@ async function verify(client, target) {
   if (rows.length < 2) throw new Error('Required media migrations have not all been applied');
   assertSchema(schema, rows, files.slice(0, rows.length), target);
   const commercial031 = await commercialReview.inspect(client, target, rows.some(row => row.version === commercialReview.version));
+  const commercial032 = await operationsReview.inspect(client, rows.some(row => row.version === operationsReview.version));
   const access = (await client.query(`
     select has_table_privilege('anon','public.media_placements','SELECT') as anon_select,
       has_table_privilege('authenticated','public.media_placements','INSERT') as authenticated_insert,
@@ -188,7 +194,7 @@ async function verify(client, target) {
         from unnest(array['SELECT','INSERT','UPDATE','DELETE']) p) as service_access`)).rows[0];
   if (access.anon_select || access.authenticated_insert || !access.service_access) throw new Error('Unexpected placement table access grants');
   const pending = files.slice(rows.length).map(file => file.version);
-  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031,
+  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031, commercial032,
     columns: schema.columns.filter((row) => row.table_name === 'media_placements').map((row) => row.name), access, migrations: rows };
 }
 
@@ -210,6 +216,7 @@ async function apply(client, target, confirmProject) {
       throw new Error('Untracked media_placements already exists; reconcile rather than recreating it');
     }
     await commercialReview.inspect(client, target, rows.some(row => row.version === commercialReview.version));
+    await operationsReview.inspect(client, rows.some(row => row.version === operationsReview.version));
     await client.query(`create table if not exists ${ledger} (
       version text primary key,sha256 text not null,project_ref text not null,environment text not null,
       after_schema_sha256 text not null,applied_at timestamptz not null default clock_timestamp(),
@@ -220,6 +227,7 @@ async function apply(client, target, confirmProject) {
     for (const file of files.slice(rows.length)) {
       await client.query(file.sql);
       if (file.version === commercialReview.version) await commercialReview.inspect(client, target, true);
+      if (file.version === operationsReview.version) await operationsReview.inspect(client, true);
       const after = await snapshot(client);
       if (securityDigest(after) !== target.securitySha256) throw new Error('Migration changed existing access controls');
       await client.query(`insert into ${ledger} (version,sha256,project_ref,environment,after_schema_sha256) values ($1,$2,$3,$4,$5)`,
@@ -267,6 +275,7 @@ async function main(argv = process.argv.slice(2)) {
           constraints: schema.constraints, indexes: schema.indexes.map((row) => row.name),
           migrations: rows, pending: migrations().filter((file) => !rows.some((row) => row.version === file.version)).map((file) => file.version),
           commercial031: await commercialReview.inspect(client, target, rows.some(row => row.version === commercialReview.version)),
+          commercial032: await operationsReview.inspect(client, rows.some(row => row.version === operationsReview.version)),
         };
       }
       await client.query('ROLLBACK');

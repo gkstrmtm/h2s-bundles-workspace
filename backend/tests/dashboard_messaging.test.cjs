@@ -133,7 +133,7 @@ test('required scripts load serially and login stays disabled until all dependen
   vm.runInContext(scripts.find(s => s.includes('function loadDashboardScripts()')), dom.getInternalVMContext());
   w.syncDashboardLoginEnabled();
   assert.equal(w.document.getElementById('dashLoginBtn').disabled, true);
-  for (const [index, name] of ['commercial-labels.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js'].entries()) {
+  for (const [index, name] of ['commercial-labels.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js'].entries()) {
     assert.equal(pending.length, index + 1);
     assert.equal(new URL(pending[index].src).pathname, `/${name}`);
     pending[index].onload();
@@ -161,8 +161,10 @@ test('a missing support script is explicit and blocks startup and login rather t
   await settle();
   pending[3].onload();
   await settle();
+  pending[4].onload();
+  await settle();
   const rejected = assert.rejects(w.__h2sDashboardScriptsReady, /media-placements.js/);
-  pending[4].onerror();
+  pending[5].onerror();
   await rejected;
   await settle();
   assert.equal(w.__h2sDashboardScriptsLoaded, false);

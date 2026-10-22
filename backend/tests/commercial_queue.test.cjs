@@ -340,8 +340,10 @@ test('detail hierarchy is action then Requested work then supporting rows, with 
   const { dom, ui } = await mount(fixture);
   try {
     const detail = dom.window.document.getElementById('commercialQueueDetail');
-    assert.deepEqual(Array.from(detail.querySelectorAll('h4'), element => element.textContent), ['Next action', 'Requested work', 'Details']);
+    assert.deepEqual(Array.from(detail.querySelectorAll('h4'), element => element.textContent), ['Requested work', 'Details']);
     const next = detail.querySelector('.commercial-queue-next');
+    assert.match(next.textContent, /Next action/);
+    assert.ok(next.compareDocumentPosition(detail.querySelector('[aria-label="Requested work"]')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
     assert.match(next.textContent, /Prefers email/);
     assert.doesNotMatch(next.textContent, /first \(manual\)|not tracked here/);
     assert.equal(next.querySelector('a').getAttribute('href'), 'mailto:fixture1@example.invalid');
@@ -405,7 +407,7 @@ test('the rendered queue preserves technician decisions and processing results w
     assert.match(detail.textContent, /Technician declined - arrange a new time/);
     assert.match(detail.textContent, /Declined via SMS/);
     assert.match(detail.querySelector('.commercial-queue-next').textContent, /Technician declined.*arrange another window.*provider rejected/s);
-    assert.match(detail.textContent, /Completion not tracked here/);
+    assert.match(detail.textContent, /Technician approval does not complete customer follow-up/);
     Object.assign(row, { status: 'approved', related_order_id: id(50), metadata: { workflow: { customer_confirmation: { state: 'failed' } } } });
     await ui.refresh();
     assert.match(detail.textContent, /Approved via SMS/);
@@ -415,7 +417,7 @@ test('the rendered queue preserves technician decisions and processing results w
     row.metadata.workflow.customer_confirmation.state = 'accepted';
     await ui.refresh();
     assert.match(detail.textContent, /SMS provider accepted; delivery and customer acknowledgement unverified/);
-    assert.match(detail.textContent, /Completion not tracked here/);
+    assert.match(detail.textContent, /Technician approval does not complete customer follow-up/);
   } finally { dom.window.close(); }
 });
 
