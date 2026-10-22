@@ -8,6 +8,33 @@ const catalog = require('../lib/mediaPlacementCatalog.json');
 const root = path.resolve(__dirname, '..', '..');
 const asset = { asset_id: 'candidate', service: 'tv_mounting', original_filename: 'Office install', media_url: '/photo.jpg' };
 
+test('destination links distinguish this frontend from deployed pages and target the exact area', () => {
+  const links = heroes.destinationLinks('commercial_intake', 'commercial_security_rail', 'http://localhost:3002/dash.html');
+  assert.equal(links.local, 'http://localhost:3002/commercial.html#cameraProofRail');
+  assert.equal(links.deployed, 'https://shop.home2smart.com/commercial#cameraProofRail');
+  assert.equal(heroes.destinationLinks('bundles', 'hero', 'http://localhost:3002/dash.html').local, 'http://localhost:3002/bundles.html');
+  assert.throws(() => heroes.destinationLinks('commercial_intake', 'unknown', 'http://localhost/'), /Unsupported/);
+});
+
+test('saved inclusion, exclusion, eligibility and actual feed selection remain independent facts', () => {
+  const visible = { ...asset, is_visible: true };
+  const surface = 'commercial_intake', area = 'commercial_hero';
+  const selections = { [surface]: heroes.commercialSelection({ commercial_hero: { items: [visible, { ...visible, asset_id: 'alternative' }] } }) };
+  const inspect = enabled => ({ placements: [{ surface, area, enabled }] });
+  const describe = (item, inspection, source = 'proof_asset') => heroes.describeUse(item, source, surface, area, selections, inspection);
+  assert.equal(describe(visible, inspect(true)).selected, true);
+  assert.match(describe(visible, inspect(true)).setting, /Explicitly included; not proof/);
+  assert.equal(describe(visible, inspect(false)).setting, 'Excluded from this area');
+  assert.match(describe({ ...visible, asset_id: 'unselected' }, inspect(true)).selection, /^Not selected/);
+  assert.match(describe({ ...visible, asset_id: 'unselected' }, inspect(true)).eligibility, /^Eligible.*not proof/);
+  assert.equal(describe({ ...visible, asset_id: 'alternative' }, { placements: [] }).selection, 'Hero load-error alternative');
+  assert.equal(describe(visible, null).setting, 'Saved setting unverified');
+  assert.equal(describe(visible, { placements: [] }, 'owner_media').selected, false);
+  assert.equal(describe(visible, { placements: [] }, 'owner_media').eligibility, 'Eligibility unverified');
+  assert.equal(heroes.describeUse(visible, 'proof_asset', surface, 'commercial_security_rail', selections, null).eligibility, 'Not eligible for placement');
+  assert.equal(heroes.describeUse(visible, 'proof_asset', surface, area, { [surface]: { mode: 'unavailable' } }, null).selection, 'Selection unverified');
+});
+
 test('Bundles resolves curated fallback, explicit precedence and exclusions through one shared selector', () => {
   assert.equal(heroes.bundlesSelection([], []).fallbackAssetId, heroes.bundlesFallbackAssetId);
   const explicit = { ...asset, media_placement: { enabled: true } };
@@ -53,6 +80,49 @@ test('usage describes only current supported destinations, preserves source iden
   assert.deepEqual(heroes.usesForAsset({ commercial_intake: selected }, 'owner_media', 'camera-0'), []);
   assert.deepEqual(heroes.usesForAsset({ commercial_intake: { ...selected, mode: 'unavailable' } }, 'proof_asset', 'camera-0'), []);
   assert.deepEqual(heroes.usesForAsset({ bundles: { mode: 'automatic', areas: { pre_cta: [asset] } } }, 'proof_asset', asset.asset_id), []);
+});
+
+test('Commercial distinguishes primary hero, load-error alternatives and selected rail items, not every eligible asset', () => {
+  const cameras = Array.from({ length: 6 }, (_, i) => ({ ...asset, asset_id: `camera-${i}` }));
+  const displays = Array.from({ length: 5 }, (_, i) => ({ ...asset, asset_id: `display-${i}` }));
+  const explicit = { ...asset, asset_id: 'chosen-hero', source: 'owner_media', media_placement: { enabled: true } };
+  const selected = heroes.commercialSelection({
+    commercial_hero: { items: [explicit, ...cameras] },
+    commercial_security_rail: { items: cameras },
+    commercial_display_rail: { items: displays },
+  });
+  assert.equal(selected.mode, 'override');
+  assert.deepEqual(selected.areas.commercial_hero.map(item => item.asset_id), ['chosen-hero']);
+  assert.equal(selected.heroCandidates.length, 6);
+  assert.equal(selected.areas.commercial_security_rail.length, 4);
+  assert.equal(selected.areas.commercial_display_rail.length, 4);
+  const selections = { commercial_intake: selected };
+  assert.deepEqual(heroes.usesForAsset(selections, 'proof_asset', 'camera-4'), []);
+  assert.equal(heroes.usesForAsset(selections, 'proof_asset', 'camera-0').length, 1);
+  assert.equal(heroes.usesForAsset(selections, 'owner_media', 'chosen-hero').length, 1);
+  assert.deepEqual(heroes.usesForAsset(selections, 'proof_asset', 'chosen-hero'), []);
+  const fallback = heroes.commercialSelection({
+    commercial_security_rail: { items: cameras },
+    commercial_display_rail: { items: displays },
+  });
+  assert.deepEqual(fallback.heroCandidates.map(item => item.asset_id),
+    ['camera-0', 'camera-1', 'camera-2', 'camera-3', 'display-0', 'display-1']);
+});
+
+test('Commercial unavailable public feed resolves the same capped proof-gallery fallback as the customer page', async () => {
+  const paths = [];
+  const selected = await heroes.read('commercial_intake', async url => {
+    paths.push(url);
+    return url.includes('owner-media') ? { ok: false, error: 'Fixture feed unavailable' }
+      : { ok: true, categories: {
+        cameras: { items: [{ ...asset, media_kind: 'video', asset_id: 'camera-video' }] },
+        tv_mounting: { items: [asset] },
+      } };
+  });
+  assert.equal(paths.length, 2);
+  assert.equal(selected.asset.asset_id, asset.asset_id);
+  assert.deepEqual(selected.heroCandidates.map(item => item.asset_id), [asset.asset_id, 'camera-video']);
+  assert.match(selected.reason, /fallback/);
 });
 
 async function chooser(t, { fail = false, pending = false } = {}) {

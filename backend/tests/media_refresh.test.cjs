@@ -21,7 +21,10 @@ function fixture(t) {
   const dom = new JSDOM('<input id="ppSurface" value="bundles"><input id="search"><div id="ppAssetsStatus"></div><div id="ppAssetsList"></div>', {
     url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true,
   });
-  t.after(() => dom.window.close());
+  t.after(() => {
+    dom.window.document.querySelectorAll('details').forEach(details => { details.ontoggle = null; });
+    dom.window.close();
+  });
   const w = dom.window;
   w.console.error = () => {};
   let scroll = 450;
@@ -42,6 +45,216 @@ function fixture(t) {
   ui.setAssetsUi(ui.state.assets);
   return { w, ui, document: w.document };
 }
+
+async function destinationFixture(t) {
+  const e = fixture(t), { ui, w, document } = e;
+  w.H2SPageHeroes = require('../../frontend/media-page-heroes.js');
+  w.H2SMediaPlacements = { style: () => '' };
+  w.getDashboardSessionToken = () => 'fixture-only';
+  document.body.insertAdjacentHTML('beforeend', '<div id="ppPageHeroesContent"></div><p id="ppPageMediaStatus"></p><p id="ppPageMediaContext"></p><button id="ppInspectSavedMedia"></button><p id="ppPageMediaInventoryStatus"></p><div id="ppPlacementSelection" hidden></div><button data-filter="live:yes"></button><button data-filter="live:no"></button>');
+  const camera = { ...asset('two'), media_url: '/camera.jpg', original_filename: 'Camera installation' };
+  const hero = { ...asset('one'), media_url: '/hero.jpg', original_filename: 'Chosen hero', media_placement: { enabled: true } };
+  const eligible = { ...asset('eligible'), media_url: '/eligible.jpg' };
+  const sections = { commercial_hero: { items: [hero, eligible] },
+    commercial_security_rail: { items: [camera] }, commercial_display_rail: { items: [] } };
+  e.reads = [];
+  ui.fetchJson = async url => {
+    e.reads.push(url);
+    return url.includes('proof-slots') ? { ok: true, hero_media: [], hero_exclusions: [
+      { asset_source: 'proof_asset', asset_id: w.H2SPageHeroes.bundlesFallbackAssetId },
+    ], slots: { hero: { tv_mounting: [eligible] } } }
+      : { ok: true, sections };
+  };
+  ui.state.assets.items.push(eligible);
+  ui.setAssetsUi(ui.state.assets);
+  await ui.refreshLivePreview();
+  return { ...e, sections, camera, hero, eligible };
+}
+
+test('destination provenance and bounded deduplicated saved-settings inspection never write or disturb edits', async t => {
+  const { ui, document } = await destinationFixture(t);
+  assert.match(document.getElementById('ppPageMediaContext').textContent, /Local customer rules.*http:\/\/localhost.*Checked.*rendering unverified/);
+  assert.equal(document.querySelector('[data-page-area="commercial_security_rail"] a').href, 'http://localhost/commercial.html#cameraProofRail');
+  const draft = { focal_x: 22, zoom: 1.4 };
+  ui.state.edit = draft;
+  const focus = document.getElementById('search');
+  focus.focus();
+  const requests = [];
+  let active = 0, peak = 0;
+  ui.fetchJson = async (url, options) => {
+    requests.push(url);
+    assert.equal(options.headers.Authorization, 'Bearer fixture-only');
+    assert.equal(options.method, undefined);
+    active++; peak = Math.max(peak, active);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    active--;
+    return { ok: true, placements: new URL('http://localhost' + url).searchParams.get('asset_id') === 'eligible'
+      ? [{ surface: 'commercial_intake', area: 'commercial_hero', enabled: false }] : [] };
+  };
+  const first = ui.loadPageMediaInventory();
+  assert.equal(ui.loadPageMediaInventory(), first);
+  await first;
+  assert.ok(peak <= 3);
+  assert.equal(requests.length, 3);
+  assert.equal(new Set(requests).size, 3);
+  assert.match(document.getElementById('ppPageMediaInventoryStatus').textContent, /3\/3 loaded assets verified.*not an audit/);
+  assert.equal(document.querySelector('[data-media-inventory] img'), null, 'collapsed inventory does not fan out media requests');
+  const inventory = document.querySelector('[data-page-area="commercial_hero"] [data-media-inventory]');
+  inventory.closest('details').open = true;
+  ui.renderPageMediaInventory();
+  assert.match(inventory.textContent, /Hero load-error alternative.*Excluded from this area/s);
+  const edited = [];
+  ui.beginPlacementEdit = options => edited.push(options);
+  inventory.querySelector('[data-inspect-open="proof_asset:eligible"]').click();
+  assert.equal(edited[0].initialPlacement.area, 'commercial_hero');
+  assert.equal(edited[0].asset.asset_id, 'eligible');
+  assert.equal(ui.state.edit, draft);
+  assert.equal(document.activeElement, focus);
+  assert.equal(ui.state.selectedIds.has('one'), true);
+});
+
+test('saved-settings authorization failures stop bounded work and retain unverified rather than empty assignments', async t => {
+  const { ui, document } = await destinationFixture(t);
+  ui.state.assets.items.push(...Array.from({ length: 125 }, (_, i) => asset('extra-' + i)));
+  let requests = 0;
+  ui.fetchJson = async () => { requests++; throw Object.assign(new Error('Fixture forbidden'), { status: 403 }); };
+  await ui.loadPageMediaInventory();
+  assert.ok(requests <= 3);
+  assert.equal(Object.keys(ui.state.pageMediaInventory.records).length, 100);
+  assert.match(document.getElementById('ppPageMediaInventoryStatus').textContent, /0\/100 loaded assets verified.*unverified/);
+  const inventory = document.querySelector('[data-page-area="commercial_hero"] [data-media-inventory]');
+  inventory.closest('details').open = true;
+  ui.renderPageMediaInventory();
+  assert.match(inventory.textContent, /Saved setting unverified/);
+  assert.doesNotMatch(inventory.textContent, /No explicit assignment/);
+});
+
+test('a placement save invalidates inspection and rejects concurrent stale inspection results', async t => {
+  const { ui, document } = await destinationFixture(t);
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  ui.fetchJson = async () => { await pending; return { ok: true, placements: [] }; };
+  const inspection = ui.loadPageMediaInventory();
+  ui.invalidatePageMediaInventory();
+  release();
+  await inspection;
+  assert.equal(ui.state.pageMediaInventory, null);
+  assert.match(document.getElementById('ppPageMediaInventoryStatus').textContent, /saved settings changed.*inspect.*again/);
+  assert.match(document.querySelector('[data-media-inventory]').textContent, /Expand/);
+});
+
+test('destination inspection and usage filters use public selections rather than legacy eligibility or hero alternatives', async t => {
+  const { ui, document, reads } = await destinationFixture(t);
+  assert.equal(document.querySelectorAll('[data-page-area]').length, 4);
+  assert.match(document.querySelector('[data-page-area="commercial_security_rail"]').textContent, /Camera installation.*Automatic selection/s);
+  assert.match(document.querySelector('[data-page-area="commercial_hero"]').textContent, /Chosen for this area/);
+  assert.match(document.querySelector('[data-page-area="commercial_hero"] summary').textContent, /load-error alternative.*not selected/);
+  assert.equal(ui.state.liveAssetIds.has('eligible'), false);
+  assert.equal(document.querySelector('[data-asset-id="eligible"] .pp-media-usage'), null);
+  assert.equal(document.querySelectorAll('.pp-media-usage').length, 2);
+  ui.libraryFilters.live = 'yes';
+  ui.applyAllFilters();
+  assert.equal(document.querySelector('[data-asset-id="eligible"]').dataset.matchesFilters, '0');
+  ui.libraryFilters.live = 'no';
+  ui.applyAllFilters();
+  assert.equal(document.querySelector('[data-asset-id="eligible"]').dataset.matchesFilters, '1');
+  assert.equal(document.querySelector('[data-asset-id="one"]').dataset.matchesFilters, '0');
+  assert.equal(reads.some(url => url.includes('limit=50')), false);
+});
+
+test('Replace immediately opens a compatible picker without touching the gallery, then opens exact framing', async t => {
+  const { w, ui, document, sections, hero } = await destinationFixture(t);
+  sections.commercial_display_rail.items = [hero];
+  await ui.refreshLivePreview();
+  const messages = [];
+  w.showToast = message => messages.push(message);
+  ui.libraryFilters.service = 'cameras';
+  ui.libraryFilters.media = 'photo';
+  const edits = [];
+  ui.beginPlacementEdit = options => edits.push(options);
+  let picker;
+  w.H2SMediaPlacements.chooseReplacement = options => { picker = options; };
+  const gallery = document.getElementById('ppAssetsList');
+  const previous = gallery.innerHTML;
+  document.querySelector('[data-page-area="commercial_display_rail"] [data-media-replace]').click();
+  assert.equal(picker.current.asset_id, 'one');
+  assert.match(picker.title, /Commercial.*Display and TV rail/);
+  assert.equal(picker.assets.every(asset => asset.service === 'tv_mounting' && asset.is_visible), true);
+  assert.equal(picker.selectedIds.includes('one'), true);
+  assert.equal(gallery.innerHTML, previous);
+  assert.equal(document.getElementById('ppPlacementSelection').hidden, true);
+  picker.onSelect(hero);
+  assert.equal(edits.length, 0, 'cannot replace with media already selected in this area');
+  assert.equal(messages.length, 1);
+  picker.onSelect(picker.assets.find(asset => asset.asset_id === 'eligible'));
+  assert.equal(edits.length, 1);
+  assert.equal(edits[0].replacement.asset_id, 'one');
+  assert.equal(edits[0].initialPlacement.area, 'commercial_display_rail');
+  assert.equal(ui.state.placementTarget == null, true);
+  assert.equal(ui.libraryFilters.service, 'cameras');
+  assert.equal(ui.libraryFilters.media, 'photo');
+  assert.equal(document.querySelectorAll('[data-media-replace]').length, 2, 'no replacement controls on heroes or alternatives');
+});
+
+test('every destination opens exact existing placement controls without saving and rail-only updates repaint', async t => {
+  const { w, ui, document, sections } = await destinationFixture(t);
+  const edits = [];
+  ui.beginPlacementEdit = options => edits.push(options);
+  document.querySelector('[data-page-area="commercial_security_rail"] [data-hero-edit]').click();
+  assert.deepEqual(JSON.parse(JSON.stringify(edits[0].initialPlacement)),
+    { surface: 'commercial_intake', area: 'commercial_security_rail' });
+  assert.equal(edits[0].asset.asset_id, 'two');
+  const notice = document.getElementById('ppPlacementSelection');
+  notice.scrollIntoView = () => {};
+  document.querySelector('[data-hero-choose][data-media-area="commercial_display_rail"]').click();
+  assert.equal(ui.state.placementTarget.area, 'commercial_display_rail');
+  assert.match(notice.textContent, /Display and TV rail/);
+  notice.querySelector('button').click();
+  assert.equal(ui.state.placementTarget, null);
+  assert.equal(edits.length, 1);
+  sections.commercial_security_rail.items[0] = { ...sections.commercial_security_rail.items[0], original_filename: 'Replacement camera' };
+  await ui.refreshLivePreview();
+  assert.match(document.querySelector('[data-page-area="commercial_security_rail"]').textContent, /Replacement camera/);
+  const image = document.querySelector('[data-page-area="commercial_security_rail"] img');
+  image.dispatchEvent(new w.Event('error'));
+  assert.equal(image.hidden, true);
+  assert.equal(image.closest('[data-hero-edit]').disabled, false);
+  assert.match(image.parentElement.textContent, /Preview unavailable/);
+  document.querySelector('[data-preview-retry]').click();
+  assert.equal(image.hidden, false);
+  assert.equal(image.parentElement.querySelector('[data-thumbnail-error]').hidden, true);
+  assert.equal(document.querySelector('[data-preview-retry]'), null);
+});
+
+test('partial read failures retain unverified thumbnails, pause usage filters and recover without clearing drafts', async t => {
+  const { ui, document } = await destinationFixture(t);
+  const draft = { focal_x: 23, zoom: 1.6 };
+  ui.state.edit = draft;
+  ui.libraryFilters.live = 'no';
+  const get = ui.fetchJson;
+  ui.fetchJson = async url => {
+    if (url.includes('owner-media') || url.includes('proof-gallery')) throw new Error('Fixture offline');
+    return get(url);
+  };
+  await ui.refreshLivePreview();
+  assert.equal(ui.state.pageMediaUsageComplete, false);
+  assert.match(document.getElementById('ppPageMediaStatus').textContent, /filters are paused/);
+  assert.equal(document.querySelector('[data-filter="live:no"]').disabled, true);
+  const row = document.querySelector('[data-page-area="commercial_security_rail"]');
+  assert.match(row.textContent, /retained media is not a verified current selection/);
+  assert.equal(row.querySelector('[data-hero-edit]').disabled, true);
+  assert.equal(row.querySelector('img').getAttribute('src'), '/camera.jpg');
+  assert.equal(ui.state.edit, draft);
+  assert.equal(document.querySelector('[data-asset-id="one"]').dataset.matchesFilters, '1');
+  ui.fetchJson = get;
+  await ui.refreshLivePreview();
+  assert.equal(ui.state.pageMediaUsageComplete, true);
+  assert.equal(document.querySelector('[data-filter="live:no"]').disabled, false);
+  assert.equal(document.querySelector('[data-asset-id="one"]').dataset.matchesFilters, '0');
+  assert.equal(ui.state.edit, draft);
+  assert.equal(ui.libraryFilters.live, 'no');
+});
+
 test('background refresh deduplicates and preserves gallery nodes, selection, filters, focus, scroll and an open draft', async t => {
   const { w, ui, document } = fixture(t);
   const original = document.querySelector('[data-asset-id="one"]');
@@ -152,20 +365,21 @@ test('gallery mouse, Enter, Space and context Edit Asset share the existing edit
   ]);
 });
 
-test('Page heroes report resolved selections without exposing legacy lists or replacing unchanged rows', async t => {
+test('page media reports resolved selections without exposing legacy lists or replacing unchanged rows', async t => {
   const { w, ui, document } = fixture(t);
   const container = document.createElement('div');
   container.id = 'ppPageHeroesContent';
   document.body.appendChild(container);
   w.H2SPageHeroes = {
-    pages: { bundles: { title: 'Bundles', area: 'hero' }, commercial_intake: { title: 'Commercial', area: 'commercial_hero' } },
-    read: async surface => ({ mode: surface === 'bundles' ? 'automatic' : 'override', asset: asset(surface) }),
+    ...require('../../frontend/media-page-heroes.js'),
+    read: async surface => ({ mode: surface === 'bundles' ? 'automatic' : 'override',
+      asset: asset(surface, surface === 'bundles' ? {} : { media_placement: { enabled: true } }) }),
   };
   w.H2SMediaPlacements = { style: () => '' };
   await ui.refreshLivePreview();
-  assert.equal(container.querySelectorAll('[data-page-hero]').length, 2);
-  assert.match(container.textContent, /Shown on Bundles · chosen automatically/);
-  assert.match(container.textContent, /Shown on Commercial · chosen for this page/);
+  assert.equal(container.querySelectorAll('[data-page-hero]').length, 4);
+  assert.match(container.textContent, /Bundles \/ Hero background.*Automatic selection/s);
+  assert.match(container.textContent, /Commercial \/ Hero photo.*Chosen for this area/s);
   assert.doesNotMatch(container.textContent, /Historical|\bLIVE\b|retained|asset_id/);
   const original = container.firstElementChild;
   await ui.refreshLivePreview();
@@ -173,7 +387,8 @@ test('Page heroes report resolved selections without exposing legacy lists or re
   const focused = original.querySelector('button');
   focused.focus();
   w.H2SPageHeroes.read = async surface => ({
-    mode: surface === 'bundles' ? 'automatic' : 'override', asset: asset(surface),
+    mode: surface === 'bundles' ? 'automatic' : 'override',
+    asset: asset(surface, surface === 'bundles' ? {} : { media_placement: { enabled: true } }),
     areas: { commercial_security_rail: [asset('new-rail-item')] },
   });
   await ui.refreshLivePreview();
@@ -191,7 +406,7 @@ test('quiet gallery use cues update in place without changing selection, focus, 
   ui.state.pageHeroes = { bundles: { mode: 'automatic', asset: asset('one') } };
   ui.syncPageMediaUsage();
   assert.equal(tile.querySelector('.pp-media-usage').textContent, 'In use');
-  assert.equal(tile.title, 'Used on Bundles / Hero background');
+  assert.equal(tile.title, "Selected on Bundles / Hero background by this frontend's rules, not confirmed deployed rendering. Hero selection can change if media fails to load.");
   assert.equal(tile.getAttribute('aria-description'), tile.title);
   assert.equal(document.querySelector('[data-asset-id="one"]'), tile);
   assert.equal(document.activeElement, focused);

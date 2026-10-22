@@ -275,8 +275,56 @@ test('placement API rejects unpublished owner media and incompatible commercial 
 test('placement API requires an authenticated administrator', async () => {
   for (const [user, status] of [[null, 401], [{ role: 'VA' }, 403]]) {
     const route = adminRoute(user, null);
-    const response = await route.GET(new Request('http://localhost/api/admin/media-placements'));
-    assert.equal(response.status, status);
+    for (const method of ['GET', 'PUT']) {
+      const response = await route[method](new Request('http://localhost/api/admin/media-placements', { method }));
+      assert.equal(response.status, status);
+    }
+  }
+});
+
+test('rail replacement includes the candidate and excludes the original in one atomic placement statement', async () => {
+  const db = dbMock([{ asset_id: assetId, is_visible: true, service: 'cameras' }]);
+  const writes = [];
+  const from = db.client.from;
+  const original = { ...placement({ asset_source: 'owner_media', asset_id: 'owner-original' }), focal_x: 37, zoom: 1.8 };
+  db.client.from = table => table !== 'media_placements' ? from(table) : {
+    select() { return this; }, eq() { return this; },
+    async maybeSingle() { return { data: original, error: null }; },
+    upsert(rows) {
+      writes.push(rows);
+      return { select: async () => ({ error: null, data: rows.map(row => ({ ...row,
+        asset_source: row.proof_asset_id ? 'proof_asset' : 'owner_media', asset_id: row.proof_asset_id || row.owner_asset_id,
+      })) }) };
+    },
+  };
+  const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, db.client);
+  const response = await route.PUT(new Request('http://localhost/api/admin/media-placements', {
+    method: 'PUT', body: JSON.stringify(placement({ surface: 'commercial_intake', area: 'commercial_security_rail',
+      replace: { asset_source: 'owner_media', asset_id: 'owner-original' } })),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].length, 2);
+  assert.equal(response.body.placement.enabled, true);
+  assert.equal(response.body.replaced.enabled, false);
+  assert.equal(response.body.replaced.asset_id, 'owner-original');
+  assert.equal(response.body.replaced.focal_x, 37);
+  assert.equal(response.body.replaced.zoom, 1.8);
+  assert.equal(writes[0].every(row => row.surface === 'commercial_intake' && row.area === 'commercial_security_rail' && row.updated_by === 'admin-one'), true);
+  assert.equal(db.calls.some(call => ['update', 'upsert'].includes(call.method)), false, 'source assets are never written');
+});
+
+test('replacement rejects invalid scopes, the same asset and excluded candidates before any write', async () => {
+  for (const patch of [
+    { surface: 'bundles', area: 'hero' }, { enabled: false },
+    { replace: { asset_source: 'proof_asset', asset_id: assetId } },
+  ]) {
+    const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, null);
+    const response = await route.PUT(new Request('http://localhost/api/admin/media-placements', {
+      method: 'PUT', body: JSON.stringify(placement({ surface: 'commercial_intake', area: 'commercial_security_rail',
+        replace: { asset_source: 'owner_media', asset_id: 'original' }, ...patch })),
+    }));
+    assert.equal(response.status, 400);
   }
 });
 
@@ -292,7 +340,7 @@ test('placement API restores only the exact source/asset/page/area key', async (
   }
 });
 
-async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo', initialPlacement = { surface: 'bundles', area: 'hero' } } = {}) {
+async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo', initialPlacement = { surface: 'bundles', area: 'hero' }, replacement, supportsReplacement = true } = {}) {
   const dom = new JSDOM('<button id="origin">Open editor</button><div id="ppLibraryEditor"><div id="ppLibraryEditorBody"></div></div>', { runScripts: 'outside-only', url: 'http://localhost/' });
   const { window } = dom;
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -308,15 +356,17 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
     requests.push({ url, ...options });
     if (options.method === 'GET') return {
       ok: !failLoad,
-      json: async () => failLoad ? { ok: false, error: 'Could not load saved placements' } : { ok: true, pages, placements: stored.slice() },
+      json: async () => failLoad ? { ok: false, error: 'Could not load saved placements' } : { ok: true, pages, placements: stored.slice(), capabilities: { replace: supportsReplacement } },
     };
     if (saveGate) { const gate = saveGate; saveGate = null; await gate; }
     if (failSave) return { ok: false, json: async () => ({ ok: false, error: 'Database unavailable' }) };
-    const row = JSON.parse(options.body);
+    const { replace, ...row } = JSON.parse(options.body);
     const index = stored.findIndex((item) => item.surface === row.surface && item.area === row.area);
     if (index >= 0) stored.splice(index, 1);
     if (options.method === 'PUT') stored.push(row);
-    return { ok: true, json: async () => ({ ok: true, ...(options.method === 'PUT' ? { placement: unconfirmedSave ? null : row } : {}) }) };
+    return { ok: true, json: async () => ({ ok: true, ...(options.method === 'PUT' ? {
+      placement: unconfirmedSave ? null : row, ...(replace ? { replaced: { ...replace, enabled: false } } : {}),
+    } : {}) }) };
   };
   window.eval(editorSource);
   const dash = fs.readFileSync(path.join(root, 'frontend', 'dash.js'), 'utf8');
@@ -326,6 +376,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   const proof = {
     ...methods, state: {}, escapeHtml: (value) => String(value),
     refreshLivePreview() {},
+    invalidatePageMediaInventory() { this.inventoryInvalidations = (this.inventoryInvalidations || 0) + 1; },
     cancelEdit() {
       this._placementEditor.destroy();
       window.document.getElementById('ppLibraryEditor').classList.add('is-hidden');
@@ -339,7 +390,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
       'http://localhost/api/proof-asset-media?bucket=proof&path=uploads%2Fphoto.webp&v=test',
       mediaKind === 'video', window.document.getElementById('ppLibraryEditorBody'), null, null,
       {
-        asset: { asset_id: assetId, media_kind: mediaKind }, source: 'proof_asset', base: '', token: 'test-session', initialPlacement,
+        asset: { asset_id: assetId, media_kind: mediaKind }, source: 'proof_asset', base: '', token: 'test-session', initialPlacement, replacement,
         previewFactory({ onState, viewport }) {
           onState({ ready: true, width: 1440, height: 610, viewport });
           return { ready: Promise.resolve(), update() {}, destroy() {} };
@@ -375,6 +426,90 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   };
 }
 
+test('replacement modal has immediate thumbnails, search, photo/video filters and focus-safe Cancel/Escape', () => {
+  const dom = new JSDOM('<button id="origin">Replace</button><div id="gallery">Existing gallery</div>', { url: 'http://localhost/', runScripts: 'outside-only' });
+  const w = dom.window;
+  w.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  w.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  w.fetch = () => { throw new Error('Picker must not fetch or save placements'); };
+  w.eval(editorSource);
+  const original = w.document.getElementById('origin');
+  original.focus();
+  const choices = [
+    { asset_id: 'current', media_kind: 'photo', media_url: '/current.jpg', original_filename: 'Current camera' },
+    { asset_id: 'photo', media_kind: 'photo', media_url: '/office.jpg', original_filename: 'Office cameras' },
+    { asset_id: 'video', media_kind: 'video', media_url: '/loading.webm', original_filename: 'Loading dock video' },
+  ];
+  const selected = [];
+  const options = { title: 'Commercial / Security camera rail', current: choices[0], assets: choices,
+    selectedIds: ['current'], onSelect: asset => selected.push(asset.asset_id) };
+  const open = () => w.H2SMediaPlacements.chooseReplacement(options);
+  const picker = open();
+  const dialog = w.document.querySelector('dialog');
+  assert.equal(dialog.open, true);
+  assert.equal(dialog.querySelectorAll('.media-replacement-option').length, 3);
+  assert.equal(dialog.querySelector('[data-asset-id="current"]').disabled, true);
+  assert.equal(w.document.activeElement.type, 'search');
+  assert.equal(w.document.body.style.overflow, 'hidden');
+  dialog.querySelector('[data-kind="video"]').click();
+  assert.equal(dialog.querySelector('[data-asset-id="photo"]').hidden, true);
+  assert.equal(dialog.querySelector('[data-asset-id="video"]').hidden, false);
+  const input = dialog.querySelector('input');
+  input.value = 'does not exist'; input.dispatchEvent(new w.Event('input'));
+  assert.match(dialog.querySelector('[role="status"]').textContent, /No available matches/);
+  picker.close();
+  assert.equal(w.document.activeElement, original);
+  assert.equal(w.document.body.style.overflow, '');
+  assert.equal(w.document.getElementById('gallery').textContent, 'Existing gallery');
+  assert.deepEqual(selected, []);
+  open();
+  w.document.querySelector('dialog').dispatchEvent(new w.Event('cancel', { cancelable: true }));
+  assert.equal(w.document.querySelector('dialog'), null);
+  assert.equal(w.document.activeElement, original);
+  open();
+  w.document.querySelector('[data-asset-id="photo"]').click();
+  assert.deepEqual(selected, ['photo']);
+  assert.equal(w.document.querySelector('dialog'), null);
+  dom.window.close();
+});
+
+test('replacement preview and Cancel never write; save confirms both assets and stops replaying replacement', async () => {
+  const options = { initialPlacement: { surface: 'commercial_intake', area: 'commercial_display_rail' },
+    replacement: { asset_source: 'owner_media', asset_id: 'old-media', name: 'Original TV', display_order: 23 } };
+  const cancelled = await editor(options);
+  assert.equal(cancelled.find('#ppApplyEdits').textContent, 'Save replacement');
+  assert.equal(cancelled.requests.every(r => r.method === 'GET'), true);
+  assert.equal(cancelled.proof._placementEditor.cancel(), true);
+  assert.equal(cancelled.requests.every(r => r.method === 'GET'), true);
+  cancelled.dom.window.close();
+  const e = await editor(options);
+  assert.equal(e.find('[name="display_order"]').value, '23');
+  e.fail();
+  assert.equal(await e.proof._placementEditor.save(), false);
+  assert.match(e.find('#ppEditStatus').textContent, /draft is still open/);
+  e.recover();
+  assert.equal(await e.proof._placementEditor.save(), true);
+  assert.equal(e.find('#ppApplyEdits').textContent, 'Save this placement');
+  const saved = JSON.parse(e.requests.filter(r => r.method === 'PUT').at(-1).body);
+  assert.equal(saved.replace.asset_id, 'old-media');
+  assert.equal(saved.area, 'commercial_display_rail');
+  await e.proof._placementEditor.save();
+  assert.equal(JSON.parse(e.requests.at(-1).body).replace, undefined);
+  e.dom.window.close();
+});
+
+test('an older placement API cannot silently accept replacement as ordinary inclusion', async () => {
+  const e = await editor({ supportsReplacement: false,
+    initialPlacement: { surface: 'commercial_intake', area: 'commercial_display_rail' },
+    replacement: { asset_source: 'owner_media', asset_id: 'old-media', name: 'Original TV', display_order: 23 } });
+  assert.match(e.find('#ppEditStatus').textContent, /requires the updated placement API/);
+  assert.equal(e.find('[data-page="commercial_intake"]').getAttribute('aria-pressed'), 'true', 'framing can still be previewed with the older API');
+  assert.equal(e.find('#ppApplyEdits').disabled, true);
+  assert.equal(await e.proof._placementEditor.save(), false);
+  assert.equal(e.requests.every(r => r.method === 'GET'), true);
+  e.dom.window.close();
+});
+
 test('a hero shortcut opens its requested registered page/area without changing saved placements', async () => {
   const e = await editor({ initialPlacement: { surface: 'commercial_intake', area: 'commercial_hero' } });
   assert.equal(e.find('[data-page="commercial_intake"]').getAttribute('aria-pressed'), 'true');
@@ -399,6 +534,7 @@ test('candidate framing, saved override and actual customer selection are labele
   e.find('[name="enabled"]').dispatchEvent(new e.window.Event('input', { bubbles: true }));
   await e.proof._placementEditor.save();
   assert.match(e.find('#ppEditStatus').textContent, /Saved for this area:.*excluded/);
+  assert.equal(e.proof.inventoryInvalidations, 2);
   e.dom.window.close();
 });
 
@@ -522,6 +658,11 @@ test('drag geometry follows the pointer for cover, zoomed panning and contain le
   assert.equal(pan({ ...initial, fit: 'contain' }, 0, 20, frame, source).focal_y, 70);
   assert.equal(pan(initial, 9999, 0, frame, source).focal_x, 0);
   assert.equal(pan(initial, -9999, 0, frame, source).focal_x, 100);
+  for (const scale of [0.5, 2.5]) {
+    assert.deepEqual(pan(initial, 20 * scale, 20 * scale,
+      { width: frame.width * scale, height: frame.height * scale }, source),
+    pan(initial, 20, 20, frame, source));
+  }
 });
 
 test('wheel zoom previews immediately, undo/redo restore exact framing, and cancel never writes', async () => {
@@ -619,6 +760,70 @@ test('destination documents retain page markup/styles but cannot run startup, tr
   assert.equal(doc.querySelector('base').href, 'http://localhost/bundles.html');
   assert.equal(doc.querySelector('.hero h1').textContent, 'Actual page content');
   dom.window.close();
+});
+
+test('destination preview stays hidden until cropped, enlarges small frames and releases responsive listeners', async () => {
+  const dom = new JSDOM('<div style="padding:12px"><div id="stage"></div></div>', {
+    url: 'http://localhost/', runScripts: 'outside-only',
+  });
+  const { window } = dom;
+  let availableWidth = 1200, disconnected = false;
+  window.fetch = async () => ({ ok: true, text: async () => '<div id="rail"></div>' });
+  window.ResizeObserver = class { observe() {} disconnect() { disconnected = true; } };
+  window.visualViewport = Object.assign(new window.EventTarget(), { height: 900 });
+  window.eval(editorSource);
+  const stage = window.document.getElementById('stage');
+  Object.defineProperty(stage.parentElement, 'clientWidth', { get: () => availableWidth });
+  const settings = placement({ focal_x: 27, focal_y: 62, zoom: 1.4 });
+  const original = { ...settings };
+  const preview = window.H2SMediaPlacements.destinationPreview({
+    stage, config: { page: '/commercial.html', frame: '#rail', tileClass: 'proof-tile' },
+    url: '/fixture.svg', isVideo: false, settings, viewport: { width: 1440, height: 900 }, onState() {},
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  const iframe = stage.querySelector('iframe'), doc = iframe.contentDocument;
+  assert.equal(iframe.style.visibility, 'hidden');
+  assert.equal(iframe.style.transform, '');
+  let releaseFonts;
+  Object.defineProperty(doc, 'fonts', { value: { ready: new Promise(resolve => { releaseFonts = resolve; }) } });
+  doc.body.innerHTML = '<div id="rail"></div>';
+  iframe.contentWindow.scrollTo = () => {};
+  doc.defaultView.HTMLElement.prototype.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 150 });
+  Object.defineProperties(doc.defaultView.HTMLImageElement.prototype, {
+    complete: { get: () => true }, naturalWidth: { get: () => 1200 },
+  });
+  const loading = iframe.onload();
+  assert.equal(iframe.style.visibility, 'hidden', 'uncropped page stays hidden while its layout loads');
+  releaseFonts();
+  await loading;
+  await preview.ready;
+  assert.equal(iframe.style.visibility, 'visible');
+  assert.match(iframe.style.transform, /^scale\(.+\) translate\(-10px, -20px\)$/);
+  assert.equal(parseFloat(stage.style.width), 696);
+  assert.equal(parseFloat(stage.style.height), 522);
+  assert.equal(stage.dataset.frameWidth, '200');
+  assert.equal(stage.dataset.frameHeight, '150');
+  window.visualViewport.height = 600;
+  window.dispatchEvent(new window.Event('resize'));
+  assert.equal(parseFloat(stage.style.height), 348);
+  window.visualViewport.height = 500;
+  window.visualViewport.dispatchEvent(new window.Event('resize'));
+  assert.equal(parseFloat(stage.style.height), 290);
+  availableWidth = 390;
+  window.visualViewport.height = 844;
+  window.dispatchEvent(new window.Event('resize'));
+  assert.equal(parseFloat(stage.style.width), 366);
+  assert.equal(parseFloat(stage.style.height), 274.5);
+  assert.deepEqual(settings, original);
+  preview.destroy();
+  assert.equal(disconnected, true);
+  assert.equal(stage.querySelector('iframe'), null);
+  const lastSize = stage.style.cssText;
+  window.visualViewport.height = 100;
+  window.dispatchEvent(new window.Event('resize'));
+  window.visualViewport.dispatchEvent(new window.Event('resize'));
+  assert.equal(stage.style.cssText, lastSize);
+  window.close();
 });
 
 test('destination preview mounts the real consumer classes and shares the public framing style', () => {

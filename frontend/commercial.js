@@ -1708,10 +1708,11 @@
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Failed to load commercial media');
 
       const sections = payload.sections || {};
-      const cameraItems = normalizeMediaItems(sections.commercial_security_rail && sections.commercial_security_rail.items, 4);
-      const tvItems = normalizeMediaItems(sections.commercial_display_rail && sections.commercial_display_rail.items, 4);
+      const selected = window.H2SPageHeroes.commercialSelection(sections);
+      const cameraItems = normalizeMediaItems(selected.areas.commercial_security_rail, 4);
+      const tvItems = normalizeMediaItems(selected.areas.commercial_display_rail, 4);
       const hasHeroSelection = !!sections.commercial_hero;
-      const heroItems = normalizeMediaItems(window.H2SPageHeroes.commercialCandidates(sections), 6);
+      const heroItems = normalizeMediaItems(selected.heroCandidates, 6);
       recordMediaDiagnostic('info', 'owner-media-result', {
         status: response.status,
         cameraCount: cameraItems.length,

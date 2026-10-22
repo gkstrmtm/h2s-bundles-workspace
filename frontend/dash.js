@@ -6595,6 +6595,22 @@ function smsStartNewMessage(prefillPhone) {
             },
 
             syncPageMediaUsage() {
+                const heroes = window.H2SPageHeroes;
+                if (heroes && this.state.pageHeroes) {
+                    const uses = heroes.selectedUses(this.state.pageHeroes).filter(use => use.source === 'proof_asset');
+                    this.state.liveAssetIds = new Set(uses.map(use => use.asset.asset_id));
+                    this.state.assetUsageCounts = new Map();
+                    uses.forEach(use => this.state.assetUsageCounts.set(use.asset.asset_id,
+                        (this.state.assetUsageCounts.get(use.asset.asset_id) || 0) + 1));
+                    this.state.pageMediaUsageComplete = Object.keys(heroes.pages).every(surface =>
+                        this.state.pageHeroes[surface] && this.state.pageHeroes[surface].mode !== 'unavailable');
+                    const status = document.getElementById('ppPageMediaStatus');
+                    if (status) status.textContent = this.state.pageMediaUsageComplete ? ''
+                        : 'Some page selections could not be verified. Usage filters are paused; retained thumbnails are not confirmed current selections.';
+                    document.querySelectorAll('[data-filter="live:yes"],[data-filter="live:no"]').forEach(button => {
+                        button.disabled = !this.state.pageMediaUsageComplete;
+                    });
+                }
                 document.querySelectorAll('#ppAssetsList .gallery-tile').forEach(tile => {
                     const uses = window.H2SPageHeroes?.usesForAsset?.(this.state.pageHeroes, 'proof_asset', tile.dataset.assetId) || [];
                     let cue = tile.querySelector('.pp-media-usage');
@@ -6604,7 +6620,7 @@ function smsStartNewMessage(prefillPhone) {
                         tile.removeAttribute('title');
                         return;
                     }
-                    const description = `Used on ${uses.map(use => use.label).join('; ')}`;
+                    const description = `Selected on ${uses.map(use => use.label).join('; ')} by this frontend's rules, not confirmed deployed rendering. Hero selection can change if media fails to load.`;
                     if (!cue) {
                         cue = document.createElement('span');
                         cue.className = 'pp-media-usage';
@@ -6617,17 +6633,17 @@ function smsStartNewMessage(prefillPhone) {
                 });
             },
 
-            patchMediaTiles(container, html) {
+            patchMediaTiles(container, html, key = 'assetId') {
                 if (!this._mediaTileSignatures) this._mediaTileSignatures = new WeakMap();
                 const template = document.createElement('template');
                 template.innerHTML = html;
-                const existing = new Map(Array.from(container.children).map(node => [node.dataset.assetId, node]));
+                const existing = new Map(Array.from(container.children).map(node => [node.dataset[key], node]));
                 const active = document.activeElement;
                 const scroll = window.scrollY;
                 let focusTarget = active;
                 let position = 0;
                 for (const candidate of Array.from(template.content.children)) {
-                    const old = existing.get(candidate.dataset.assetId);
+                    const old = existing.get(candidate.dataset[key]);
                     const signature = candidate.outerHTML;
                     let node = old || candidate;
                     if (old && this._mediaTileSignatures.get(old) !== signature) {
@@ -6639,7 +6655,7 @@ function smsStartNewMessage(prefillPhone) {
                     this._mediaTileSignatures.set(node, signature);
                     if (container.children[position] !== node) container.insertBefore(node, container.children[position] || null);
                     position++;
-                    existing.delete(candidate.dataset.assetId);
+                    existing.delete(candidate.dataset[key]);
                 }
                 for (const obsolete of existing.values()) obsolete.remove();
                 if (focusTarget?.isConnected && document.activeElement !== focusTarget) focusTarget.focus({ preventScroll: true });
@@ -7195,6 +7211,126 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
+            pageMediaInventoryAssets() {
+                const assets = new Map();
+                for (const asset of (this.state.assets?.items || []).slice(0, 100)) assets.set(`proof_asset:${asset.asset_id}`, { ...asset, source: 'proof_asset' });
+                for (const selected of Object.values(this.state.pageHeroes || {})) {
+                    const items = Object.values(selected.areas || {}).flat().concat(selected.heroCandidates || []);
+                    for (const asset of items) {
+                        const source = asset.source || asset.media_placement?.asset_source || 'proof_asset';
+                        const key = `${source}:${asset.asset_id}`;
+                        const library = assets.get(key);
+                        assets.set(key, { ...library, ...asset, source, original_filename: asset.original_filename || library?.original_filename });
+                    }
+                }
+                return assets;
+            },
+
+            loadPageMediaInventory() {
+                if (this._pageMediaInventoryRequest) return this._pageMediaInventoryRequest;
+                const token = getDashboardSessionToken();
+                const status = document.getElementById('ppPageMediaInventoryStatus');
+                if (!token) {
+                    if (status) status.textContent = 'Sign in as an administrator to inspect saved settings.';
+                    return Promise.resolve();
+                }
+                const base = this.getConfig().base, assets = this.pageMediaInventoryAssets();
+                const revision = this._pageMediaInventoryRevision || 0;
+                const queue = [...assets.entries()], total = queue.length, records = {};
+                const button = document.getElementById('ppInspectSavedMedia');
+                if (button) button.disabled = true;
+                if (status) status.textContent = `Reading saved settings for ${total} loaded assets; no writes.`;
+                let stopped = false, failed = 0;
+                const worker = async () => {
+                    while (queue.length) {
+                        const [key, asset] = queue.shift();
+                        if (stopped) { records[key] = null; failed++; continue; }
+                        const controller = new AbortController();
+                        const timeout = setTimeout(() => controller.abort(), 15000);
+                        try {
+                            const result = await this.fetchJson(`/api/admin/media-placements?asset_source=${encodeURIComponent(asset.source)}&asset_id=${encodeURIComponent(asset.asset_id)}`, {
+                                headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
+                            });
+                            if (!result?.ok || !Array.isArray(result.placements)) {
+                                stopped = true;
+                                throw new Error('Saved placement inspection response is unavailable.');
+                            }
+                            records[key] = { placements: result.placements };
+                        } catch (error) {
+                            console.error('[Page media inspection]', error);
+                            if (controller.signal.aborted || [400, 401, 403, 404, 503].includes(error.status)) stopped = true;
+                            records[key] = null; failed++;
+                        } finally { clearTimeout(timeout); }
+                    }
+                };
+                this._pageMediaInventoryRequest = Promise.all([worker(), worker(), worker()]).then(() => {
+                    if (base !== this.getConfig().base || token !== getDashboardSessionToken() || revision !== (this._pageMediaInventoryRevision || 0)) {
+                        if (status) status.textContent = 'Connection, session or saved settings changed; inspect saved settings again.';
+                        return;
+                    }
+                    this.state.pageMediaInventory = { base, records, assets, checkedAt: new Date().toISOString() };
+                    if (status) status.textContent = `Saved settings checked ${new Date().toLocaleString()}. ${total - failed}/${total} loaded assets verified${failed ? '; other saved settings unverified' : ''}. Scope: first 100 loaded Shared library assets plus selected media; not an audit of every Owner Upload.`;
+                    this.renderPageMediaInventory();
+                }).finally(() => {
+                    this._pageMediaInventoryRequest = null;
+                    if (button) button.disabled = false;
+                });
+                return this._pageMediaInventoryRequest;
+            },
+
+            invalidatePageMediaInventory() {
+                this._pageMediaInventoryRevision = (this._pageMediaInventoryRevision || 0) + 1;
+                this.state.pageMediaInventory = null;
+                const status = document.getElementById('ppPageMediaInventoryStatus');
+                if (status) status.textContent = 'Placement changed. Inspect saved settings again to refresh inclusion and exclusions.';
+                this.renderPageMediaInventory();
+            },
+
+            renderPageMediaInventory() {
+                const inventory = this.state.pageMediaInventory;
+                const verified = inventory?.base === this.getConfig().base;
+                const assets = this.pageMediaInventoryAssets();
+                document.querySelectorAll('[data-media-inventory]').forEach(container => {
+                    const { surface, area } = container.dataset;
+                    const details = container.closest('details');
+                    details.ontoggle = () => this.renderPageMediaInventory();
+                    if (!details.open) {
+                        container.textContent = 'Expand to inspect other loaded media.';
+                        return;
+                    }
+                    if (!inventory || !verified) {
+                        container.textContent = 'Use Inspect saved settings to distinguish exclusions and inclusion from selection. Only loaded library and selected media are inspected.';
+                        return;
+                    }
+                    const html = [...assets.entries()].map(([key, asset]) => {
+                        const state = window.H2SPageHeroes.describeUse(asset, asset.source, surface, area, this.state.pageHeroes, inventory.records[key]);
+                        if (state.selected) return '';
+                        const service = area === 'commercial_security_rail' ? 'cameras' : area === 'commercial_display_rail' ? 'tv_mounting' : null;
+                        if (service && (asset.service || asset.service_type) !== service && !state.placement) return '';
+                        const name = asset.original_filename || asset.label || asset.display_name || (asset.media_kind === 'video' ? 'Video' : 'Photo');
+                        const url = asset.media_url || asset.public_url || this.buildAssetUrl(asset);
+                        const media = asset.media_kind === 'video'
+                            ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${this.escapeHtml(asset.video_thumbnail_url)}"` : ''}`
+                            : `<img loading="lazy" alt="${this.escapeHtml(name)}"`;
+                        return `<div class="pp-media-inventory-row" data-inventory-key="${this.escapeHtml(key)}">
+                            <span class="pp-media-inventory-thumb">${url ? `${media} src="${this.escapeHtml(url)}">${asset.media_kind === 'video' ? '</video>' : ''}` : ''}</span>
+                            <div><strong>${this.escapeHtml(name)}</strong><p>${this.escapeHtml(state.selection)}</p><p>${this.escapeHtml(state.setting)} · ${this.escapeHtml(state.eligibility)}</p></div>
+                            <button type="button" class="media-placement-secondary" data-inspect-open="${this.escapeHtml(key)}">Page placement</button>
+                        </div>`;
+                    }).join('');
+                    this.patchMediaTiles(container, html || '<p>No other matching media in this inspection scope.</p>', 'inventoryKey');
+                    container.querySelectorAll('[data-inspect-open]').forEach(button => {
+                        button.onclick = () => {
+                            const asset = this.pageMediaInventoryAssets().get(button.dataset.inspectOpen);
+                            if (!asset) { showToast('This asset is no longer loaded. Refresh the media list.', 'error'); return; }
+                            return this.beginPlacementEdit({ asset, source: asset.source, base: this.getConfig().base,
+                                token: getDashboardSessionToken(), url: asset.media_url || asset.public_url || this.buildAssetUrl(asset),
+                                initialPlacement: { surface, area } });
+                        };
+                    });
+                });
+            },
+
             refreshLivePreview() {
                 const base = this.getConfig().base;
                 if (this._livePreviewRequest?.base === base) return this._livePreviewRequest.promise;
@@ -7226,58 +7362,104 @@ function smsStartNewMessage(prefillPhone) {
                         })];
                     } catch (error) {
                         console.error(`[Page heroes/${surface}]`, error);
-                        return [surface, { mode: 'unavailable', asset: this.state.pageHeroes?.[surface]?.asset || null, error: error.message }];
+                        return [surface, { ...this.state.pageHeroes?.[surface], mode: 'unavailable', error: error.message }];
                     }
                 }));
                 if (request.sequence !== this._pageHeroSequence || request.base !== this.getConfig().base) return;
                 this.state.pageHeroes = Object.fromEntries(entries);
+                this.state.pageMediaCheckedAt = new Date().toISOString();
+                const context = document.getElementById('ppPageMediaContext');
+                if (context) {
+                    const origin = new URL(request.base || location.origin, location.href).origin;
+                    const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+                    context.textContent = `${local ? 'Local customer rules' : 'This frontend build'} at ${location.origin} · Media feed: ${origin} · Checked ${new Date(this.state.pageMediaCheckedAt).toLocaleString()} · Customer rendering unverified. Public-page code may differ.`;
+                }
                 this.syncPageMediaUsage();
-                const snapshot = JSON.stringify(entries.map(([surface, selected]) => [surface, {
-                    asset: selected.asset, mode: selected.mode, error: selected.error, reason: selected.reason,
-                }]));
-                if (container.dataset.snapshot === snapshot) return;
-                container.innerHTML = entries.map(([surface, selected]) => {
-                    const page = heroes.pages[surface], asset = selected.asset;
-                    const label = selected.mode === 'override' ? `Shown on ${page.title} · chosen for this page`
-                        : selected.mode === 'automatic' ? `Shown on ${page.title} · chosen automatically`
-                        : selected.mode === 'empty' ? 'No hero selected' : 'Unavailable · selection could not be verified';
-                    const url = asset ? this.buildAssetUrl(asset) : '';
-                    return `<div class="pp-page-hero" data-page-hero="${surface}">
-                        <div class="pp-hero-thumbnail">${url ? `<${asset.media_kind === 'video' ? 'video muted playsinline preload="metadata"' : 'img alt="Current hero thumbnail"'} src="${this.escapeHtml(url)}" style="${this.escapeHtml(window.H2SMediaPlacements.style(asset.media_placement))}"></${asset.media_kind === 'video' ? 'video' : 'img'}>` : ''}</div>
-                        <div><strong>${this.escapeHtml(page.title)}</strong><p data-hero-status>${label}</p>
-                            ${selected.error || selected.reason ? `<p role="${selected.error ? 'alert' : 'status'}">${this.escapeHtml(selected.error || selected.reason)}</p>` : ''}
-                            ${selected.mode === 'unavailable' && asset ? '<p>Last known image retained; not a verified current selection.</p>' : ''}
+                this.applyAllFilters();
+                const snapshot = JSON.stringify(entries);
+                if (container.dataset.snapshot === snapshot) { this.renderPageMediaInventory(); return; }
+                const html = entries.flatMap(([surface, selected]) => {
+                    const page = heroes.pages[surface];
+                    return Object.entries(page.areas).map(([area, title]) => {
+                    const items = selected.areas?.[area] || (area === page.area && selected.asset ? [selected.asset] : []);
+                    const unavailable = selected.mode === 'unavailable';
+                    const label = unavailable ? 'Unavailable · retained media is not a verified current selection'
+                        : !items.length ? 'No media selected'
+                        : area === page.area ? 'Primary hero selected by these rules · rendering unverified'
+                        : `${items.length} selected by these rules · up to 4 photos or videos, in display order`;
+                    const links = heroes.destinationLinks(surface, area, location.href);
+                    const assetButton = (asset, index, alternative = false) => {
+                        const url = asset.media_url || asset.public_url || this.buildAssetUrl(asset);
+                        const source = asset.source || asset.media_placement?.asset_source || 'proof_asset';
+                        const library = source === 'proof_asset' ? this.state.assets?.items?.find(item => item.asset_id === asset.asset_id) : null;
+                        const name = asset.original_filename || library?.original_filename || asset.label || asset.display_name || (asset.media_kind === 'video' ? 'Video' : 'Photo');
+                        const mode = asset.media_placement ? 'Chosen for this area' : 'Automatic selection';
+                        const media = asset.media_kind === 'video'
+                            ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${this.escapeHtml(asset.video_thumbnail_url)}"` : ''}`
+                            : `<img alt="${this.escapeHtml(name)}"`;
+                        const canReplace = !alternative && surface === 'commercial_intake' && area !== page.area;
+                        return `<div class="pp-destination-item"><button type="button" class="pp-destination-asset" data-hero-edit="${surface}" data-media-area="${area}" data-media-index="${index}" data-media-alternative="${alternative}" ${unavailable ? 'disabled' : ''} aria-label="${this.escapeHtml(`Edit placement: ${name}, ${page.title} / ${title}${alternative ? ', load-error alternative' : ''}`)}">
+                            <span class="pp-hero-thumbnail">${url ? `${media} src="${this.escapeHtml(url)}" style="${this.escapeHtml(window.H2SMediaPlacements.style(asset.media_placement))}">${asset.media_kind === 'video' ? '</video>' : ''}` : ''}<span data-thumbnail-error hidden>Preview unavailable</span></span>
+                            <span class="pp-destination-name">${this.escapeHtml(name)}</span>
+                            <span>${unavailable ? 'Last known selection' : `${mode}${alternative ? ' · load-error alternative' : ''}`}</span>
+                            <span class="pp-destination-edit">Page placement</span>
+                        </button>${canReplace ? `<button type="button" class="media-placement-secondary pp-destination-replace" data-media-replace="${surface}" data-media-area="${area}" data-media-index="${index}" ${unavailable ? 'disabled' : ''} aria-label="${this.escapeHtml(`Replace ${name} in ${page.title} / ${title}`)}">Replace</button>` : ''}</div>`;
+                    };
+                    const alternatives = area === page.area ? (selected.heroCandidates || []).slice(1) : [];
+                    return `<div class="pp-page-hero" data-page-hero="${surface}" data-page-area="${area}" data-page-media-key="${surface}:${area}">
+                        <div><strong>${this.escapeHtml(page.title)} / ${this.escapeHtml(title)}</strong><p data-hero-status>${label}</p>
+                            ${area === page.area && (selected.error || selected.reason) ? `<p role="${selected.error ? 'alert' : 'status'}">${this.escapeHtml(selected.error || selected.reason)}</p>` : ''}
                         </div>
                         <div class="pp-page-hero-actions">
-                            <button type="button" class="btn btn-tonal" data-hero-choose="${surface}">Choose media</button>
-                            <button type="button" class="media-placement-secondary" data-hero-edit="${surface}" ${!asset || selected.mode === 'unavailable' ? 'disabled' : ''}>Edit framing</button>
+                            <a class="media-placement-secondary" href="${this.escapeHtml(links.local)}" target="_blank" rel="noopener">Open this frontend's page</a>
+                            <a class="media-placement-secondary" href="${this.escapeHtml(links.deployed)}" target="_blank" rel="noopener">Open deployed page</a>
+                            <button type="button" class="btn btn-tonal" data-hero-choose="${surface}" data-media-area="${area}">Choose media</button>
                             ${selected.error ? '<button type="button" class="media-placement-secondary" data-hero-retry>Retry</button>' : ''}
                         </div>
+                        <div class="pp-destination-assets">${items.map((asset, index) => assetButton(asset, index)).join('')}</div>
+                        ${alternatives.length ? `<details class="pp-destination-alternatives"><summary>${alternatives.length} load-error alternative${alternatives.length === 1 ? '' : 's'} · not selected while the primary loads successfully</summary><div class="pp-destination-assets">${alternatives.map((asset, index) => assetButton(asset, index + 1, true)).join('')}</div></details>` : ''}
+                        <details class="pp-destination-alternatives"><summary>Other loaded media · saved inclusion, exclusions and eligibility</summary><div data-media-inventory data-surface="${surface}" data-area="${area}"></div></details>
                     </div>`;
+                    });
                 }).join('');
-                container.querySelectorAll('[data-hero-choose]').forEach(button => button.addEventListener('click', () => this.choosePageHero(button.dataset.heroChoose)));
-                container.querySelectorAll('[data-hero-edit]').forEach(button => button.addEventListener('click', () => this.editPageHero(button.dataset.heroEdit)));
-                container.querySelectorAll('[data-hero-retry]').forEach(button => button.addEventListener('click', () => this.refreshLivePreview()));
-                container.querySelectorAll('.pp-hero-thumbnail img,.pp-hero-thumbnail video').forEach(media => media.addEventListener('error', () => {
+                this.patchMediaTiles(container, html, 'pageMediaKey');
+                container.querySelectorAll('[data-hero-choose]').forEach(button => { button.onclick = () => this.choosePageHero(button.dataset.heroChoose, button.dataset.mediaArea); });
+                container.querySelectorAll('[data-hero-edit]').forEach(button => { button.onclick = () => this.editPageHero(button.dataset.heroEdit,
+                    button.dataset.mediaArea, Number(button.dataset.mediaIndex), button.dataset.mediaAlternative === 'true'); });
+                container.querySelectorAll('[data-media-replace]').forEach(button => { button.onclick = () => this.replacePageMedia(
+                    button.dataset.mediaReplace, button.dataset.mediaArea, Number(button.dataset.mediaIndex)); });
+                container.querySelectorAll('[data-hero-retry]').forEach(button => { button.onclick = () => this.refreshLivePreview(); });
+                container.querySelectorAll('.pp-hero-thumbnail img,.pp-hero-thumbnail video').forEach(media => { media.onerror = () => {
                     media.hidden = true;
-                    const row = media.closest('[data-page-hero]');
-                    row.querySelector('[data-hero-status]').textContent = 'Media preview unavailable; verify selection on the customer page.';
-                    row.querySelector('[data-hero-edit]').disabled = true;
+                    media.closest('.pp-hero-thumbnail').querySelector('[data-thumbnail-error]').hidden = false;
+                    const row = media.closest('[data-page-area]');
+                    if (row.querySelector('[data-preview-retry]')) return;
                     const retry = document.createElement('button');
-                    retry.type = 'button'; retry.className = 'media-placement-secondary'; retry.textContent = 'Retry preview';
-                    retry.addEventListener('click', () => { delete container.dataset.snapshot; this.refreshLivePreview(); });
+                    retry.type = 'button'; retry.className = 'media-placement-secondary'; retry.textContent = 'Retry previews';
+                    retry.dataset.previewRetry = '';
+                    retry.onclick = () => {
+                        row.querySelectorAll('.pp-hero-thumbnail img[hidden],.pp-hero-thumbnail video[hidden]').forEach(failed => {
+                            failed.hidden = false;
+                            failed.parentElement.querySelector('[data-thumbnail-error]').hidden = true;
+                            failed.src = this.getCacheBustedUrl(failed.src);
+                        });
+                        retry.remove();
+                    };
                     row.querySelector('.pp-page-hero-actions').appendChild(retry);
-                }, { once: true }));
+                }; });
                 container.dataset.snapshot = snapshot;
+                this.renderPageMediaInventory();
             },
 
-            choosePageHero(surface) {
+            choosePageHero(surface, area) {
                 const page = window.H2SPageHeroes.pages[surface];
-                if (!page) { showToast('This page has no supported hero destination.', 'error'); return; }
-                this.state.placementTarget = { surface, area: page.area };
+                area = area || page?.area;
+                if (!page?.areas[area]) { showToast('This page area is not supported.', 'error'); return; }
+                this.cancelHeroSelection();
+                this.state.placementTarget = { surface, area };
                 const notice = document.getElementById('ppPlacementSelection');
                 notice.hidden = false;
-                notice.innerHTML = `Choose media for <strong>${this.escapeHtml(page.title)} / hero</strong> using its existing Page placement action. <button type="button" class="media-placement-secondary">Cancel choice</button>`;
+                notice.innerHTML = `Choose media for <strong>${this.escapeHtml(page.title)} / ${this.escapeHtml(page.areas[area])}</strong> using its existing Page placement action. <button type="button" class="media-placement-secondary">Cancel choice</button>`;
                 notice.querySelector('button').addEventListener('click', () => this.cancelHeroSelection());
                 notice.scrollIntoView({ block: 'center', behavior: 'smooth' });
                 notice.focus({ preventScroll: true });
@@ -7289,16 +7471,54 @@ function smsStartNewMessage(prefillPhone) {
                 if (notice) { notice.hidden = true; notice.replaceChildren(); }
             },
 
-            editPageHero(surface) {
-                const page = window.H2SPageHeroes.pages[surface], current = this.state.pageHeroes?.[surface];
-                if (!page || !current?.asset || current.mode === 'unavailable') {
-                    showToast('The current hero is unavailable. Choose media or retry loading the page selection.', 'error'); return;
+            replacePageMedia(surface, area, index) {
+                const current = this.state.pageHeroes?.[surface], asset = current?.areas?.[area]?.[index];
+                const service = area === 'commercial_security_rail' ? 'cameras' : area === 'commercial_display_rail' ? 'tv_mounting' : null;
+                if (surface !== 'commercial_intake' || !service || !asset || current.mode === 'unavailable') {
+                    showToast('Reload this destination before replacing its media.', 'error'); return;
                 }
-                const asset = current.asset;
+                if (!window.H2SMediaPlacements?.chooseReplacement) {
+                    showToast('The media picker did not load. Refresh the dashboard.', 'error'); return;
+                }
+                const replacement = {
+                    asset_source: asset.source || asset.media_placement?.asset_source || 'proof_asset', asset_id: asset.asset_id,
+                    name: asset.original_filename || asset.label || (asset.media_kind === 'video' ? 'this video' : 'this photo'),
+                    display_order: asset.media_placement?.display_order ?? 100,
+                };
+                const preview = item => ({ ...item, media_url: item.media_url || item.public_url || this.buildAssetUrl(item) });
+                const title = window.H2SPageHeroes.pages[surface];
+                return window.H2SMediaPlacements.chooseReplacement({
+                    title: `${title.title} / ${title.areas[area]}`, current: preview(asset),
+                    assets: (this.state.assets?.items || []).filter(item => item.service === service && item.is_visible === true
+                        && ['photo', 'video'].includes(item.media_kind)).map(preview),
+                    selectedIds: current.areas[area].filter(item => (item.source || item.media_placement?.asset_source || 'proof_asset') === 'proof_asset').map(item => item.asset_id),
+                    onSelect: candidate => {
+                        const latest = this.state.pageHeroes?.[surface];
+                        const selected = latest?.areas?.[area] || [];
+                        if (latest?.mode === 'unavailable' || !selected.some(item => item.asset_id === replacement.asset_id
+                            && (item.source || item.media_placement?.asset_source || 'proof_asset') === replacement.asset_source)
+                            || selected.some(item => item.asset_id === candidate.asset_id && (item.source || item.media_placement?.asset_source || 'proof_asset') === 'proof_asset')) {
+                            showToast('This area changed. Reopen Replace to choose from its current media.', 'error'); return;
+                        }
+                        return this.beginPlacementEdit({ asset: candidate, source: 'proof_asset',
+                            base: this.getConfig().base, token: getDashboardSessionToken(), url: candidate.media_url,
+                            initialPlacement: { surface, area }, replacement });
+                    },
+                });
+            },
+
+            editPageHero(surface, area, index = 0, alternative = false) {
+                const page = window.H2SPageHeroes.pages[surface], current = this.state.pageHeroes?.[surface];
+                area = area || page?.area;
+                const asset = alternative && area === page?.area ? current?.heroCandidates?.[index]
+                    : (current?.areas?.[area] || (area === page?.area && current?.asset ? [current.asset] : []))[index];
+                if (!page?.areas[area] || !asset || current.mode === 'unavailable') {
+                    showToast('The selected media is unavailable. Choose media or retry loading the page selection.', 'error'); return;
+                }
                 return this.beginPlacementEdit({
                     asset, source: asset.source || asset.media_placement?.asset_source || 'proof_asset',
-                    base: this.getConfig().base, token: getDashboardSessionToken(), url: this.buildAssetUrl(asset),
-                    initialPlacement: { surface, area: page.area },
+                    base: this.getConfig().base, token: getDashboardSessionToken(), url: asset.media_url || asset.public_url || this.buildAssetUrl(asset),
+                    initialPlacement: { surface, area },
                 });
             },
 
@@ -8065,45 +8285,9 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
-            async fetchLiveAssetIds(surface) {
-                try {
-                    const backendUrl = this.getBackendUrl();
-                    const url = `${backendUrl}/api/proof-slots?surface=${surface || 'bundles'}&limit=50`;
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        credentials: 'omit',
-                        cache: 'no-store'
-                    });
-                    
-                    if (!response.ok) throw new Error(`Media usage request failed (${response.status})`);
-                    
-                    const resp = await response.json();
-                    if (!resp?.ok || !resp?.slots) throw new Error(resp?.error || 'Invalid media usage response');
-                    
-                    const slotsData = resp.slots;
-                    const assetIds = new Set();
-                    const usageCounts = new Map();
-                    
-                    // Extract all asset_id values and count usage from nested structure
-                    Object.values(slotsData).forEach(slotGroup => {
-                        Object.values(slotGroup).forEach(serviceAssets => {
-                            if (Array.isArray(serviceAssets)) {
-                                serviceAssets.forEach(asset => {
-                                    if (asset?.asset_id) {
-                                        assetIds.add(asset.asset_id);
-                                        usageCounts.set(asset.asset_id, (usageCounts.get(asset.asset_id) || 0) + 1);
-                                    }
-                                });
-                            }
-                        });
-                    });
-                    
-                    console.log('[fetchLiveAssetIds] Found', assetIds.size, 'live assets, max usage:', Math.max(...Array.from(usageCounts.values()), 0));
-                    return { ids: assetIds, counts: usageCounts };
-                } catch (e) {
-                    console.error('[fetchLiveAssetIds] Error:', e);
-                    throw e;
-                }
+            async fetchLiveAssetIds() {
+                await this.refreshLivePreview();
+                return { ids: this.state.liveAssetIds || new Set(), counts: this.state.assetUsageCounts || new Map() };
             },
 
             async assignAssetToSlot(surface, slotKey, service, optionalAssetId = null) {
@@ -8541,7 +8725,8 @@ function smsStartNewMessage(prefillPhone) {
                 const destination = initialPlacement || this.state.placementTarget;
                 this.cancelHeroSelection();
                 return this.beginPlacementEdit({
-                    asset, source: 'proof_asset', base: this.getConfig().base, initialPlacement: destination,
+                    asset, source: 'proof_asset', base: this.getConfig().base,
+                    initialPlacement: destination ? { surface: destination.surface, area: destination.area } : null,
                     token: getDashboardSessionToken(),
                     url: this.publicStorageUrl(asset.storage_bucket || 'proof', asset.storage_path),
                 });
@@ -9353,7 +9538,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (placementOptions) {
                     this._placementEditor = window.H2SMediaPlacements.mount({
                         ...placementOptions, host: editorBody, onClose: () => this.cancelEdit(true),
-                        onSaved: () => this.refreshLivePreview(),
+                        onSaved: () => { this.invalidatePageMediaInventory(); return this.refreshLivePreview(); },
                     });
                     await this._placementEditor.ready;
                     return;
@@ -10304,7 +10489,7 @@ function smsStartNewMessage(prefillPhone) {
                     }
                     
                     // Live status filter
-                    if (this.libraryFilters.live !== null) {
+                    if (this.libraryFilters.live !== null && this.state.pageMediaUsageComplete !== false) {
                         const assetId = item.dataset.assetId;
                         const isLive = this.state.liveAssetIds && this.state.liveAssetIds.has(assetId);
                         

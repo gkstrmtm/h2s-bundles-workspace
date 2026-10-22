@@ -84,6 +84,7 @@
     iframe.setAttribute('sandbox', 'allow-same-origin');
     iframe.setAttribute('tabindex', '-1');
     iframe.setAttribute('aria-hidden', 'true');
+    iframe.style.visibility = 'hidden';
     const abort = new root.AbortController();
     let closed = false;
     let target;
@@ -96,11 +97,13 @@
       const box = stage.parentElement;
       const padding = root.getComputedStyle(box);
       const available = box.clientWidth - parseFloat(padding.paddingLeft || 0) - parseFloat(padding.paddingRight || 0);
-      const scale = Math.min(1, available / rect.width, root.innerHeight * 0.5 / rect.height);
+      const height = root.visualViewport?.height || root.innerHeight;
+      const scale = Math.min(available / rect.width, height * 0.58 / rect.height);
       stage.style.cssText = `position:relative;overflow:hidden;display:block;flex:none;width:${rect.width * scale}px;height:${rect.height * scale}px;max-width:100%;`;
       stage.dataset.frameWidth = rect.width;
       stage.dataset.frameHeight = rect.height;
       iframe.style.transform = `scale(${scale}) translate(${-rect.left}px, ${-rect.top}px)`;
+      iframe.style.visibility = 'visible';
       onState({ ready: true, width: rect.width, height: rect.height, viewport });
     };
     const ready = (async () => {
@@ -133,6 +136,8 @@
               resize();
               observer = new root.ResizeObserver(resize);
               observer.observe(stage.parentElement);
+              root.addEventListener('resize', resize);
+              root.visualViewport?.addEventListener('resize', resize);
               resolve();
             } catch (error) { reject(error); }
           };
@@ -153,7 +158,12 @@
       ready,
       update(next) { settings = next; if (target) target.media.style.cssText = style(next); },
       video() { return target?.media; },
-      destroy() { closed = true; abort.abort(); observer?.disconnect(); root.clearTimeout(timeout); iframe.onload = null; iframe.remove(); },
+      destroy() {
+        closed = true; abort.abort(); observer?.disconnect(); root.clearTimeout(timeout);
+        root.removeEventListener('resize', resize);
+        root.visualViewport?.removeEventListener('resize', resize);
+        iframe.onload = null; iframe.remove();
+      },
     };
   }
 
@@ -249,6 +259,89 @@
     return { close, ready };
   }
 
+  function chooseReplacement(options) {
+    const existing = root.document.querySelector('.media-replacement-picker');
+    if (existing) { existing.focus(); return; }
+    const previousFocus = root.document.activeElement;
+    const previousOverflow = root.document.body.style.overflow;
+    const dialog = root.document.createElement('dialog');
+    dialog.className = 'media-placement-decision media-replacement-picker';
+    dialog.setAttribute('aria-labelledby', 'mediaReplacementTitle');
+    dialog.setAttribute('aria-describedby', 'mediaReplacementDescription');
+    const thumbnail = (asset, current = false) => asset.media_kind === 'video'
+      ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${escape(asset.video_thumbnail_url)}"` : ''} src="${escape(asset.media_url)}"></video>`
+      : `<img ${current ? '' : 'loading="lazy"'} src="${escape(asset.media_url)}" alt="">`;
+    dialog.innerHTML = `<header><h3 id="mediaReplacementTitle">Choose replacement media</h3>
+      <p id="mediaReplacementDescription">${escape(options.title)}. Choose a photo or video, then adjust framing. Nothing changes until you save.</p>
+      <div class="media-replacement-current">${thumbnail(options.current, true)}<span>Replacing<br><strong>${escape(options.current.original_filename || options.current.label || 'Current media')}</strong></span></div></header>
+      <div class="media-replacement-filters"><input type="search" aria-label="Search replacement media" placeholder="Search media">
+        <div role="group" aria-label="Media type"><button type="button" data-kind="all" aria-pressed="true">All</button><button type="button" data-kind="photo" aria-pressed="false">Photos</button><button type="button" data-kind="video" aria-pressed="false">Videos</button></div></div>
+      <p class="media-replacement-count" role="status"></p><div class="media-replacement-grid"></div>
+      <footer class="media-destination-actions"><button type="button" class="btn btn-tonal" data-close>Cancel</button></footer>`;
+    let closed = false, kind = 'all';
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      dialog.remove();
+      root.document.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+    const close = () => { dialog.close(); cleanup(); };
+    dialog.addEventListener('close', cleanup);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    dialog.querySelector('[data-close]').onclick = close;
+    dialog.addEventListener('click', event => {
+      const rect = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right
+        || event.clientY < rect.top || event.clientY > rect.bottom)) close();
+    });
+    const grid = dialog.querySelector('.media-replacement-grid');
+    for (const asset of options.assets) {
+      const name = asset.original_filename || asset.label || (asset.media_kind === 'video' ? 'Video' : 'Photo');
+      const selected = options.selectedIds.includes(asset.asset_id);
+      const button = root.document.createElement('button');
+      button.type = 'button';
+      button.className = 'media-replacement-option';
+      button.dataset.assetId = asset.asset_id;
+      button.dataset.kind = asset.media_kind;
+      button.dataset.search = `${name} ${asset.city || ''}`.toLowerCase();
+      button.disabled = selected;
+      button.innerHTML = `<span class="media-replacement-thumbnail">${thumbnail(asset)}<span data-preview-error hidden>Preview unavailable</span></span>
+        <strong>${escape(name)}</strong><small>${selected ? 'Already in this area' : asset.media_kind === 'video' ? 'Video' : 'Photo'}</small>`;
+      button.querySelector('img,video').onerror = event => {
+        event.target.hidden = true;
+        button.querySelector('[data-preview-error]').hidden = false;
+      };
+      button.onclick = () => { close(); options.onSelect(asset); };
+      grid.appendChild(button);
+    }
+    const filter = () => {
+      const query = dialog.querySelector('input').value.trim().toLowerCase();
+      let count = 0;
+      grid.querySelectorAll('button').forEach(button => {
+        button.hidden = (kind !== 'all' && button.dataset.kind !== kind) || !button.dataset.search.includes(query);
+        if (!button.hidden && !button.disabled) count++;
+      });
+      dialog.querySelector('.media-replacement-count').textContent = count
+        ? `${count} available choices from the loaded library. Media already in this area cannot be selected again.`
+        : options.assets.length ? 'No available matches. Try another search or media type.' : 'No compatible media in the loaded library. Upload or load matching media first.';
+    };
+    dialog.querySelector('input').oninput = filter;
+    dialog.querySelectorAll('.media-replacement-filters [data-kind]').forEach(button => {
+      button.onclick = () => {
+        kind = button.dataset.kind;
+        dialog.querySelectorAll('.media-replacement-filters [data-kind]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        filter();
+      };
+    });
+    root.document.body.appendChild(dialog);
+    root.document.body.style.overflow = 'hidden';
+    dialog.showModal();
+    filter();
+    dialog.querySelector('input').focus({ preventScroll: true });
+    return { close };
+  }
+
   function mount(options) {
     const host = options.host;
     const find = (selector) => host.querySelector(selector);
@@ -285,6 +378,8 @@
     let destination = null;
     let destinationReady = false;
     let device = 'desktop';
+    let replacement = options.replacement || null;
+    let replacementSupported = false;
     const viewport = () => device === 'mobile' ? { width: 390, height: 844 } : { width: 1440, height: 900 };
     const areaConfig = () => pages[surface]?.areas.find(entry => entry.key === area);
     const defaults = () => ({
@@ -300,14 +395,19 @@
       status.setAttribute('role', state === 'failed' ? 'alert' : 'status');
     };
     const draftStatus = () => {
-      setStatus(dirty() ? 'Unsaved changes to candidate framing'
+      if (replacement && !replacementSupported) {
+        setStatus('Preview only. Saving this replacement requires the updated placement API. Nothing has been changed.', 'failed');
+        return;
+      }
+      setStatus(replacement ? `Replacing ${replacement.name} in ${scopeLabel()}. Nothing changes until Save replacement. Explicit placements are shown before automatic selections.`
+        : dirty() ? 'Unsaved changes to candidate framing'
         : saved() ? `Saved for this area: ${saved().enabled ? 'included' : 'excluded'}`
           : 'Preview only; no placement saved for this media.',
       dirty() ? 'unsaved' : saved() ? 'saved' : 'automatic');
     };
     const enableSave = () => {
-      saveButton.disabled = busy || !loaded || !previewReady || !destinationReady;
-      saveButton.textContent = busy ? 'Saving placement...' : 'Save this placement';
+      saveButton.disabled = busy || !loaded || !previewReady || !destinationReady || (!!replacement && !replacementSupported);
+      saveButton.textContent = busy ? 'Saving placement...' : replacement ? 'Save replacement' : 'Save this placement';
       find('#ppUndoBtn').disabled = busy || index <= 0;
       find('#ppRedoBtn').disabled = busy || index >= states.length - 1;
       const form = find('form');
@@ -435,6 +535,7 @@
       const row = saved();
       settings = { ...defaults() };
       if (row) for (const key of Object.keys(settings)) settings[key] = row[key];
+      if (replacement) { settings.display_order = replacement.display_order; settings.enabled = true; }
       cleanSettings = JSON.stringify(settings);
       states = [{ ...settings }];
       index = 0;
@@ -442,6 +543,7 @@
     };
     const changeScope = (nextSurface, nextArea) => {
       if (surface === nextSurface && area === nextArea) return;
+      if (replacement) { setStatus('Save or cancel this replacement before changing destination.', 'failed'); return; }
       const title = `${pages[nextSurface].title} / ${pages[nextSurface].areas.find((entry) => entry.key === nextArea).title}`;
       return transition(() => loadScope(nextSurface, nextArea), title);
     };
@@ -568,6 +670,7 @@
       });
     };
     const save = async () => {
+      if (replacement && !replacementSupported) { draftStatus(); return false; }
       if (!loaded || !previewReady || !destinationReady || busy || closed) {
         if (!busy && !closed) setStatus('Cannot save this placement until its saved settings and media preview have loaded.', 'failed');
         return false;
@@ -583,14 +686,22 @@
       drag = null;
       stage.classList.remove('is-dragging');
       const draft = { ...settings };
+      if (replacement && !draft.enabled) { setStatus('Include the replacement in this area before saving.', 'failed'); return false; }
       busy = true; enableSave();
       setStatus(`Saving placement: ${scopeLabel()}...`, 'saving');
       try {
-        const result = await request('PUT', draft);
+        const result = await request('PUT', replacement ? { ...draft, replace: {
+          asset_source: replacement.asset_source, asset_id: replacement.asset_id,
+        } } : draft);
         if (!result.placement || Object.keys(draft).some((key) => result.placement[key] !== draft[key])) {
           throw new Error('The server did not confirm the requested placement settings. Retry saving before leaving.');
         }
+        if (replacement && (result.replaced?.asset_source !== replacement.asset_source
+          || result.replaced?.asset_id !== replacement.asset_id || result.replaced?.enabled !== false)) {
+          throw new Error('The server did not confirm replacement. Reload saved settings before trying again.');
+        }
         if (closed) return false;
+        replacement = null;
         placements = placements.filter((row) => row.surface !== surface || row.area !== area).concat(result.placement);
         cleanSettings = JSON.stringify(draft);
         find('[data-reset]').disabled = false;
@@ -604,6 +715,7 @@
       } finally { busy = false; enableSave(); }
     };
     const restore = async () => {
+      if (replacement) { setStatus('Cancel this replacement before restoring automatic selection.', 'failed'); return; }
       if (busy || decision || !root.confirm(`Restore automatic selection for ${scopeLabel()}? This removes only this media's saved placement${dirty() ? ' and discards the current draft' : ''}. It does not change the shared asset or other placements.`)) return;
       busy = true; enableSave();
       setStatus(`Restoring automatic selection: ${scopeLabel()}...`, 'saving');
@@ -680,6 +792,7 @@
       try {
         const result = await request('GET');
         if (closed) return;
+        replacementSupported = result.capabilities?.replace === true;
         pages = result.pages && Object.fromEntries(Object.entries(result.pages).map(([key, page]) => [
           key, { ...page, areas: page.areas?.map(entry => ({ ...entry, ...destinationPreviews[key]?.[entry.key] })) },
         ]));
@@ -724,7 +837,7 @@
     return controller;
   }
 
-  const api = { style, pan, mount, chooseDestination, inertDestination, destinationFrame, destinationPreview };
+  const api = { style, pan, mount, chooseDestination, chooseReplacement, inertDestination, destinationFrame, destinationPreview };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.H2SMediaPlacements = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

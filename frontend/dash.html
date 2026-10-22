@@ -3525,7 +3525,14 @@
 
                         <div id="ppLibraryWorkspace" class="u-mt-4">
                             <section class="pp-page-heroes" aria-labelledby="ppPageHeroesTitle">
-                                <h3 id="ppPageHeroesTitle">Page heroes</h3>
+                                <h3 id="ppPageHeroesTitle">Page media</h3>
+                                <p class="pp-page-media-note">The In use stamp/filter means selected by this frontend's rules for the destinations below, not confirmed display on a deployed page. Hero alternatives are used only after load failures; there is no timed rotation. Devices change layout and framing.</p>
+                                <p id="ppPageMediaContext" class="pp-page-media-note" role="status">Selection source and rendering are unverified.</p>
+                                <p id="ppPageMediaStatus" class="pp-page-media-note" role="status"></p>
+                                <div class="pp-page-media-inspect">
+                                    <button id="ppInspectSavedMedia" type="button" class="media-placement-secondary" onclick="proofPacks.loadPageMediaInventory()">Inspect saved settings</button>
+                                    <span id="ppPageMediaInventoryStatus" class="pp-page-media-note" role="status">Read-only inspection of loaded library and selected media; no settings are saved.</span>
+                                </div>
                                 <div id="ppPageHeroesContent" aria-live="polite"><p>Loading current page selections...</p></div>
                             </section>
                             <div id="ppPlacementSelection" class="pp-placement-selection" role="status" tabindex="-1" hidden></div>
@@ -3607,8 +3614,8 @@
                                             <div class="pp-filter-label">Status</div>
                                             <div class="pp-filter-options">
                                                 <button class="pp-pill active" data-filter="live:all" onclick="proofPacks.toggleFilter('live', 'all', this)">All Assets</button>
-                                                <button class="pp-pill" data-filter="live:yes" onclick="proofPacks.toggleFilter('live', 'yes', this)">Live Only</button>
-                                                <button class="pp-pill" data-filter="live:no" onclick="proofPacks.toggleFilter('live', 'no', this)">Unused Only</button>
+                                                <button class="pp-pill" data-filter="live:yes" onclick="proofPacks.toggleFilter('live', 'yes', this)">In use</button>
+                                                <button class="pp-pill" data-filter="live:no" onclick="proofPacks.toggleFilter('live', 'no', this)">Not selected</button>
                                             </div>
                                         </div>
 

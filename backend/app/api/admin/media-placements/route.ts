@@ -43,12 +43,25 @@ async function handle(request: Request) {
           areas: MEDIA_AREAS, pages: MEDIA_PAGES,
         }, 503);
       }
-      return reply({ ok: true, areas: MEDIA_AREAS, pages: MEDIA_PAGES, placements: data || [] });
+      return reply({ ok: true, areas: MEDIA_AREAS, pages: MEDIA_PAGES, placements: data || [], capabilities: { replace: true } });
     }
 
     let placement;
+    let replacement;
     try {
-      placement = parseMediaPlacement(await request.json());
+      const body = await request.json();
+      placement = parseMediaPlacement(body);
+      if (body.replace !== undefined) {
+        if (request.method !== 'PUT' || !placement.enabled || placement.surface !== 'commercial_intake'
+          || !['commercial_security_rail', 'commercial_display_rail'].includes(placement.area)) {
+          throw new Error('Replacement requires an included Commercial rail placement');
+        }
+        replacement = parseMediaPlacement({ ...placement, asset_source: body.replace?.asset_source,
+          asset_id: body.replace?.asset_id, enabled: false });
+        if (replacement.asset_source === placement.asset_source && replacement.asset_id === placement.asset_id) {
+          throw new Error('Choose a different asset to replace this media');
+        }
+      }
     } catch (error) {
       return reply({ ok: false, error: error instanceof Error ? error.message : 'Invalid placement' }, 400);
     }
@@ -82,11 +95,33 @@ async function handle(request: Request) {
       }
     }
     const { asset_source, asset_id, ...settings } = placement;
-    const { data, error } = await client.from('media_placements').upsert({
+    const record = {
       ...settings,
       proof_asset_id: asset_source === 'proof_asset' ? asset_id : null,
       owner_asset_id: asset_source === 'owner_media' ? asset_id : null,
       updated_at: new Date().toISOString(), updated_by: user.userId,
+    };
+    if (replacement) {
+      const { data: previous, error: readError } = await client.from('media_placements').select('*')
+        .eq('asset_source', replacement.asset_source).eq('asset_id', replacement.asset_id)
+        .eq('surface', placement.surface).eq('area', placement.area).maybeSingle();
+      if (readError) throw new Error(readError.message);
+      const excluded = {
+        ...record, enabled: false,
+        display_order: previous?.display_order ?? 100, fit: previous?.fit ?? 'cover',
+        focal_x: previous?.focal_x ?? 50, focal_y: previous?.focal_y ?? 50, zoom: previous?.zoom ?? 1,
+        proof_asset_id: replacement.asset_source === 'proof_asset' ? replacement.asset_id : null,
+        owner_asset_id: replacement.asset_source === 'owner_media' ? replacement.asset_id : null,
+      };
+      // One PostgREST statement: include the replacement and exclude the old media together.
+      const { data, error } = await client.from('media_placements')
+        .upsert([record, excluded], { onConflict: 'asset_source,asset_id,surface,area' }).select('*');
+      if (error) throw new Error(error.message);
+      return reply({ ok: true, placement: data?.find(row => row.asset_source === asset_source && row.asset_id === asset_id),
+        replaced: data?.find(row => row.asset_source === replacement.asset_source && row.asset_id === replacement.asset_id) });
+    }
+    const { data, error } = await client.from('media_placements').upsert({
+      ...record,
     }, { onConflict: 'asset_source,asset_id,surface,area' }).select('*').single();
     if (error) throw new Error(error.message);
     return reply({ ok: true, placement: data });
