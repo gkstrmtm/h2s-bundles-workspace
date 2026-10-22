@@ -654,11 +654,11 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
     return {
       handled: true as const,
       ok: false,
-      replyText: 'No pending commercial consultation was found for that reply. Include the reference code or use the approval link in the original text.',
+      replyText: 'Home2Smart | No pending commercial consultation was found for that reply. Include the reference code or use the approval link in the original text.',
     };
   }
   if (context.consultation.metadata?.last_reschedule_key) {
-    return { handled: true as const, ok: false, replyText: 'This consultation window changed. Use the current approval link to review the new window; a delayed text reply cannot approve it.' };
+    return { handled: true as const, ok: false, replyText: 'Home2Smart | This consultation window changed. Use the current approval link to review the new window; a delayed text reply cannot approve it.' };
   }
 
   const outcome = await applyConsultationDecision({
@@ -674,7 +674,7 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
     return {
       handled: true as const,
       ok: false,
-      replyText: outcome.error || 'We could not record that response. Please use the approval link or reply again with the reference code.',
+      replyText: `Home2Smart | ${outcome.error || 'We could not record that response. Please use the approval link or reply again with the reference code.'}`,
     };
   }
 
@@ -683,8 +683,8 @@ export async function handleTechnicianReply(request: Request, fromPhone: string,
     handled: true as const,
     ok: true,
     replyText: action === 'approve'
-      ? `${reference} approval recorded. Check Commercial Queue for appointment and customer communication results; approval alone does not confirm an appointment.`
-      : `${reference} declined. ${outcome.managementSms?.some((item: SmsResult) => item.ok)
+      ? `Home2Smart | ${reference} approval recorded. Check Commercial Queue for appointment and customer communication results; approval alone does not confirm an appointment.`
+      : `Home2Smart | ${reference} declined. ${outcome.managementSms?.some((item: SmsResult) => item.ok)
         ? 'Management notification accepted for follow-up.'
         : 'Management notification needs review in Commercial Queue.'} Customer follow-up is still required.`,
     outcome,

@@ -13,6 +13,20 @@ The selected payment scope is **existing priced orders only**. Leads without an
 explicit linked installation display **Quote/payment setup required**. Payment
 collection is not connected for those leads.
 
+### Commercial branding
+
+New consultation requests, manual-follow-up alerts, acknowledgements,
+confirmations, reminders, escalations and technician SMS replies use Home2Smart,
+including decline, reschedule, safe recovery and error replies. The approval
+page retains that visible brand on its loading and error states. Historical
+message bodies, domains, references, consent records and provider/effect keys
+are not rewritten; accepted/uncertain effects are not replayed for branding.
+Email-first is manual follow-up, not an automated email workflow. Consultation
+approval creates its appointment through the guarded RPC, not the legacy
+schedule/checkout mail path. The shared mail sender already uses Home2Smart
+Portal; no new email or downstream completion communication is enabled.
+Branding fixtures do not verify real SMS/email delivery or provider configuration.
+
 ## Compatibility evidence and relationships
 
 The registered production catalog was inspected in a verified-TLS, read-only

@@ -157,7 +157,7 @@ function isManualCommercialFollowUp(consultation, lead) {
 function buildManualFollowUpMessage(consultation, lead, slotLabel) {
   const method = lead.contact_preference === 'email' ? 'email' : 'phone';
   const detail = method === 'email' ? lead.email : lead.phone;
-  return `${consultation.reference_code}: manual follow-up requested for ${lead.company_name || lead.full_name || 'Commercial lead'}. Contact by ${method}: ${detail || 'details need review'}. Preferred window (pending review): ${consultation.selected_slot_start ? slotLabel : 'none requested'}. Review Commercial Queue and contact the customer manually. No appointment is confirmed.`;
+  return `Home2Smart | ${consultation.reference_code}: manual follow-up requested for ${lead.company_name || lead.full_name || 'Commercial lead'}. Contact by ${method}: ${detail || 'details need review'}. Preferred window (pending review): ${consultation.selected_slot_start ? slotLabel : 'none requested'}. Review Commercial Queue and contact the customer manually. No appointment is confirmed.`;
 }
 
 function normalizeProjectPhotoUrls(value) {
@@ -463,7 +463,7 @@ function buildEscalationMessage(input) {
   const reference = normalizeText(input.referenceCode, 32) || 'COM';
   const companyName = normalizeText(input.companyName, 120) || 'Commercial lead';
   const ageMinutes = clampInt(input.ageMinutes, 0, 0, 100000);
-  return `${reference} needs review. ${companyName} has no technician response after ${ageMinutes} minutes.`;
+  return `Home2Smart | ${reference} needs review. ${companyName} has no technician response after ${ageMinutes} minutes.`;
 }
 
 module.exports = {
