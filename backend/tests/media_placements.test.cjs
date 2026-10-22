@@ -8,7 +8,30 @@ const { JSDOM } = require('jsdom');
 
 const root = path.resolve(__dirname, '..', '..');
 const helperPath = path.join(root, 'frontend', 'media-placements.js');
+const styleSource = fs.readFileSync(path.join(root, 'frontend', 'media-placement-style.js'), 'utf8');
+const editorSource = styleSource + '\n' + fs.readFileSync(helperPath, 'utf8');
 const { style } = require(helperPath);
+
+test('customer sources contain no review fixture assets or editor mounts', () => {
+  for (const file of ['bundles.html', 'bundles.js', 'commercial.html', 'commercial.js', 'media-placement-style.js']) {
+    const source = fs.readFileSync(path.join(root, 'frontend', file), 'utf8');
+    assert.doesNotMatch(source, /fixture-image\.svg|HOME2SMART FIXTURE|SHARED ORIGINAL|127\.0\.0\.1:3012/, file);
+    assert.doesNotMatch(source, /H2SMediaPlacements\.mount\s*\(|media-placements\.js/, file);
+  }
+});
+
+test('loading the shared placement helper on a customer page never mounts admin controls or changes its media', () => {
+  const dom = new JSDOM('<section class="hero"><h1>Existing customer content</h1><img src="/assigned.jpg" style="object-position:23% 71%"></section>', {
+    url: 'http://localhost/', runScripts: 'outside-only',
+  });
+  const before = dom.window.document.body.innerHTML;
+  dom.window.eval(styleSource);
+  assert.deepEqual(Object.keys(dom.window.H2SMediaPlacements), ['style']);
+  assert.equal(dom.window.document.body.innerHTML, before);
+  assert.equal(dom.window.document.querySelector('[data-placement-controls],.media-placement-scope,iframe'), null);
+  assert.equal(typeof dom.window.H2SMediaPlacements.style, 'function');
+  dom.window.close();
+});
 
 function loadTs(relativePath, imports) {
   const filename = path.join(root, relativePath);
@@ -118,7 +141,7 @@ test('shared assets retain independent page/area selection and framing in the ac
   const dom = new JSDOM('<div id="hero"></div><div id="rail"></div>', { runScripts: 'outside-only' });
   try {
     const { window } = dom;
-    window.eval(fs.readFileSync(helperPath, 'utf8'));
+    window.eval(editorSource);
     const extract = (filename, names) => {
       const source = fs.readFileSync(path.join(root, 'frontend', filename), 'utf8');
       const ast = ts.createSourceFile(filename, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -269,7 +292,7 @@ test('placement API restores only the exact source/asset/page/area key', async (
   }
 });
 
-async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo' } = {}) {
+async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo', initialPlacement = null } = {}) {
   const dom = new JSDOM('<button id="origin">Open editor</button><div id="ppLibraryEditor"><div id="ppLibraryEditorBody"></div></div>', { runScripts: 'outside-only', url: 'http://localhost/' });
   const { window } = dom;
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -295,7 +318,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
     if (options.method === 'PUT') stored.push(row);
     return { ok: true, json: async () => ({ ok: true, ...(options.method === 'PUT' ? { placement: unconfirmedSave ? null : row } : {}) }) };
   };
-  window.eval(fs.readFileSync(helperPath, 'utf8'));
+  window.eval(editorSource);
   const dash = fs.readFileSync(path.join(root, 'frontend', 'dash.js'), 'utf8');
   const start = dash.indexOf('async renderEditorUI(');
   const end = dash.indexOf('// Video Resizer Logic', start);
@@ -314,7 +337,13 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
       { asset_id: assetId, media_kind: mediaKind },
       'http://localhost/api/proof-asset-media?bucket=proof&path=uploads%2Fphoto.webp&v=test',
       mediaKind === 'video', window.document.getElementById('ppLibraryEditorBody'), null, null,
-      { asset: { asset_id: assetId, media_kind: mediaKind }, source: 'proof_asset', base: '', token: 'test-session' },
+      {
+        asset: { asset_id: assetId, media_kind: mediaKind }, source: 'proof_asset', base: '', token: 'test-session', initialPlacement,
+        previewFactory({ onState, viewport }) {
+          onState({ ready: true, width: 1440, height: 610, viewport });
+          return { ready: Promise.resolve(), update() {}, destroy() {} };
+        },
+      },
     );
     const media = window.document.getElementById('ppEditorVideo');
     if (mediaKind === 'video') {
@@ -344,6 +373,15 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
     flush: () => new Promise((resolve) => setImmediate(resolve)),
   };
 }
+
+test('a hero shortcut opens its requested registered page/area without changing saved placements', async () => {
+  const e = await editor({ initialPlacement: { surface: 'commercial_intake', area: 'commercial_hero' } });
+  assert.equal(e.find('[data-page="commercial_intake"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(e.find('[data-area="commercial_hero"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(e.stored.length, 0);
+  assert.equal(e.requests.every(request => request.method === 'GET'), true);
+  e.dom.window.close();
+});
 
 test('editor saves different framing for the same image on Bundles and Commercial and reloads persisted settings', async () => {
   const e = await editor();
@@ -464,7 +502,7 @@ test('failed preview disables saving, retry preserves the storage path, and a lo
 test('saved-settings failures block saving until a successful retry and new developer pages use the same workbench', async () => {
   const pages = {
     ...library.MEDIA_PAGES,
-    developer_page: { title: 'Developer page', areas: [{ key: 'project_header', title: 'Project header', aspect: '3 / 2' }] },
+    developer_page: { title: 'Developer page', areas: [{ key: 'project_header', title: 'Project header', aspect: '3 / 2', preview: { page: 'developer.html', frame: '.project-header' } }] },
   };
   const e = await editor({ failLoad: true, pages });
   assert.equal(e.find('#ppApplyEdits').disabled, true);
@@ -490,6 +528,57 @@ test('cache-busting initial and post-save URLs preserves query parameters and fr
     if (value.includes('bucket')) assert.equal(output.searchParams.get('path'), 'uploads/photo.webp');
   }
   assert.ok(dash.includes('const url = this.getCacheBustedUrl(baseUrl);'));
+});
+
+test('removed Bundles destinations stay unavailable without deleting or reassigning saved settings', async () => {
+  const e = await editor();
+  e.stored.push(placement({ surface: 'bundles', area: 'pre_cta', focal_x: 23, display_order: 4 }));
+  await e.reopen();
+  e.find('[data-area="pre_cta"]').click();
+  assert.match(e.find('[data-destination-status]').textContent, /removed.*Historical placement settings are retained/);
+  assert.equal(e.find('[name="focal_x"]').value, '23');
+  assert.equal(e.find('#ppApplyEdits').disabled, true);
+  assert.equal(e.find('.media-placement-form fieldset').disabled, true);
+  assert.equal(e.requests.filter(request => request.method !== 'GET').length, 0);
+  assert.equal(e.stored[0].focal_x, 23);
+  e.dom.window.close();
+});
+
+test('destination documents retain page markup/styles but cannot run startup, tracking, forms or handlers', () => {
+  const dom = new JSDOM('', { url: 'http://localhost/', runScripts: 'outside-only' });
+  dom.window.eval(editorSource);
+  const html = dom.window.H2SMediaPlacements.inertDestination(
+    '<html><head><script src="/startup.js"></script><link rel="stylesheet" media="print" onload="this.media=\'all\'" href="/page.css"><style media="print" onload="this.media=\'all\'">.hero{padding:88px}</style></head><body onload="send()"><section class="hero"><h1>Actual page content</h1></section><form action="/booking"><button onclick="send()">Book</button></form><noscript><img src="/tracking"></noscript><img width="1" height="1" src="/tracking-pixel"><iframe src="/other"></iframe></body></html>',
+    'http://localhost/bundles.html',
+  );
+  const doc = new dom.window.DOMParser().parseFromString(html, 'text/html');
+  assert.equal(doc.querySelector('script,iframe,noscript,[onclick],[onload],[action]'), null);
+  assert.equal(doc.querySelector('img'), null);
+  assert.equal(doc.querySelector('link').media, 'all');
+  assert.equal(doc.querySelector('style').media, 'all');
+  assert.equal(doc.querySelector('base').href, 'http://localhost/bundles.html');
+  assert.equal(doc.querySelector('.hero h1').textContent, 'Actual page content');
+  dom.window.close();
+});
+
+test('destination preview mounts the real consumer classes and shares the public framing style', () => {
+  const dom = new JSDOM('<section class="hero"><h1>Hero copy</h1></section><div id="heroMediaStage"></div><div id="cameraProofRail"></div>', { runScripts: 'outside-only' });
+  dom.window.eval(editorSource);
+  const helper = dom.window.H2SMediaPlacements;
+  const settings = placement({ focal_x: 21, focal_y: 73, zoom: 1.6 });
+  const hero = helper.destinationFrame(dom.window.document,
+    { frame: '.hero', mediaClass: 'page-placement-hero', readyClass: 'has-page-placement' }, '/fixture.svg', false, settings);
+  assert.ok(hero.frame.classList.contains('has-page-placement'));
+  assert.equal(hero.frame.querySelector('h1').textContent, 'Hero copy');
+  assert.ok(hero.media.closest('.page-placement-hero'));
+  assert.equal(hero.media.style.transform, 'scale(1.6)');
+  assert.equal(hero.media.style.objectPosition, '21% 73%');
+  const rail = helper.destinationFrame(dom.window.document,
+    { frame: '#cameraProofRail', tileClass: 'proof-tile' }, '/fixture.svg', false, settings);
+  assert.equal(rail.frame.className, 'proof-tile');
+  assert.equal(rail.frame.parentElement.id, 'cameraProofRail');
+  assert.equal(rail.media.style.cssText, hero.media.style.cssText);
+  dom.window.close();
 });
 
 test('saving clears dirty state, while keyboard undo/redo and exclusion remain placement scoped', async () => {

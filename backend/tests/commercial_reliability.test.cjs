@@ -356,6 +356,7 @@ async function frontend(f, options = {}) {
     return Response.json({ ok: true, assets: [], items: [], photos: [] });
   };
   const source = fs.readFileSync(path.join(root, 'commercial.js'), 'utf8');
+  w.eval(fs.readFileSync(path.join(root, 'commercial-labels.js'), 'utf8'));
   w.eval(source.replace(/\}\)\(\);\s*$/, 'window.fixture = {state,saveLead,requestConsultation,persistDraft,hydrateForm,showStep};})();'));
   await new Promise(resolve => setImmediate(resolve));
   return dom;

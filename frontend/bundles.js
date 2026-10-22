@@ -3762,34 +3762,8 @@ function updateQuantity(idx, delta){
 // === HERO REVIEW CAROUSEL ===
 let heroReviewInterval;
 let currentHeroReviewIndex = 0;
-// Initialize with fallback data IMMEDIATELY so LCP is fast
-heroReviews = [
-    {
-      text: "Professional, on-time, and clean installation.",
-      author: "Recent Customer",
-      stars: 5
-    },
-    {
-      text: "Had 4 cameras installed. The app setup was seamless and now I have total peace of mind.",
-      author: "Mike T.",
-      stars: 5
-    },
-    {
-      text: "Quick, clean, professional. They hid all the wires perfectly. Looks like it came with the house!",
-      author: "Jennifer L.",
-      stars: 5
-    },
-    {
-      text: "Same-day service saved me! TV mounted and streaming setup done in under an hour.",
-      author: "David R.",
-      stars: 5
-    },
-    {
-      text: "The whole-home security package was a game changer. Professional install, great support.",
-      author: "Amanda K.",
-      stars: 5
-    }
-];
+// Start empty so the hero never shows fabricated reviews.
+heroReviews = [];
 
 // Fetch real reviews from Vercel endpoint (Background)
 async function loadHeroReviews() {

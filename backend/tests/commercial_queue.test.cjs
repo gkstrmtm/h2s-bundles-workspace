@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { createFixture, queuePage } = require('./helpers/commercial_contact_fixture.cjs');
 const utils = require('../lib/commercial_consultation.js');
+const labels = require('../../frontend/commercial-labels.js');
 
 const id = number => `00000000-0000-4000-8000-${number.toString(16).padStart(12, '0')}`;
 const params = values => new URLSearchParams({ limit: '25', filter: 'all', ...values });
@@ -39,6 +40,49 @@ const deferred = () => {
   return { promise, resolve };
 };
 
+test('shared labels format supported and legacy identifiers without changing stored values', () => {
+  for (const [value, expected] of [
+    ['5k_10k', '$5,000\u2013$10,000'], ['10k_25k', '$10,000\u2013$25,000'],
+    ['under_5k', 'Under $5,000'], ['10k_plus', '$10,000+'], ['25k_plus', '$25,000+'],
+    ['enterprise', 'Enterprise / phased rollout'], ['not_sure', 'Not sure yet'],
+    ['5000_10000', '$5,000\u2013$10,000'], ['custom_legacy_band', 'Custom legacy band'],
+  ]) assert.equal(labels.budget(value), expected);
+  for (const [value, expected] of [
+    ['asap', 'As soon as possible'], ['ASAP', 'As soon as possible'], ['2_weeks', 'Within 2 weeks'],
+    ['this_week', 'This week'], ['this_month', 'This month'], ['this_quarter', 'This quarter'],
+    ['planning', 'Planning ahead'], ['custom_legacy_window', 'Custom legacy window'],
+  ]) assert.equal(labels.timeline(value), expected);
+  assert.equal(labels.budget(''), 'Not provided');
+  assert.equal(labels.timeline('', 'Not added yet'), 'Not added yet');
+});
+
+test('technician routing reports current-window provider acceptance, not an invented assignment or completed follow-up', async () => {
+  const fixture = createFixture();
+  const leads = seed(fixture, 1);
+  leads[0].timeline = 'asap';
+  leads[0].budget_band = '5k_10k';
+  leads[0].contact_preference = 'sms';
+  const selected = '2099-01-01T15:00:00.000Z';
+  const consultation = request(fixture, 1, 'pending', {
+    selected_slot_start: selected, metadata: { last_reschedule_key: 'current', workflow: {
+      [`dispatch:${selected}:current:+15550000005`]: { state: 'accepted' },
+      [`dispatch:${selected}:old:+15550000006`]: { state: 'failed' },
+      'customer_confirmation': { state: 'accepted' },
+    } },
+  });
+  let item = (await fixture.queue(params())).queue[0];
+  assert.deepEqual(JSON.parse(JSON.stringify(item.consultation.technicianRouting)), { acceptedCount: 1, failedCount: 0, pendingCount: 0 });
+  assert.equal(item.consultation.assignedTechnicianName, null);
+  assert.match(labels.technician(item.consultation).label, /accepted by SMS provider/);
+  assert.match(labels.technician(item.consultation).detail, /Delivery and reading are unverified/);
+  assert.equal(item.timeline, 'asap');
+  assert.equal(item.budgetBand, '5k_10k');
+  assert.match(item.followUp.nextAction, /Awaiting technician YES\/NO/);
+  consultation.metadata.workflow[`dispatch:${selected}:current:+15550000005`].state = 'uncertain';
+  item = (await fixture.queue(params())).queue[0];
+  assert.match(labels.technician(item.consultation).label, /needs review/);
+  assert.match(labels.technician({ status: 'pending' }).label, /No named assignment recorded/);
+});
 test('server search and cursors reach every intake beyond the old 150 cap without leaking bearer tokens', async () => {
   const fixture = createFixture();
   seed(fixture, 201);

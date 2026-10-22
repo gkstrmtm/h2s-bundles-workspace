@@ -3,24 +3,9 @@
 <head>
 <meta charset="UTF-8">
 
-<!-- VERSION: 2026-01-27-234022 -->
-<script>console.log('SHOP VERSION: 2026-01-27-234022');</script>
-
-<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) - start -->
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION (measures pre-bundles.js phase) start -->
 <script>
 (function(){
-  // Performance: only enable verbose boot instrumentation when explicitly requested.
-  try {
-    var qs = String(window.location && window.location.search || '');
-    var host = String(window.location && window.location.hostname || '');
-    var enabled = (qs.indexOf('debug_boot=1') !== -1) || (qs.indexOf('boot=1') !== -1) || (host === 'localhost') || (host === '127.0.0.1') || (host.indexOf('vercel.app') !== -1);
-    if (!enabled) {
-      // Keep a lightweight hook so bundles.js can signal execution when debugging.
-      window.__H2S_BUNDLES_START = window.__H2S_BUNDLES_START || function(){};
-      return;
-    }
-  } catch(_e) {}
-
   window.__H2S_BOOT = {start: performance.now(), events: []};
   function log(msg, detail) {
     var t = performance.now();
@@ -45,7 +30,7 @@
   window.addEventListener('load', function(){
     log('WINDOW_LOAD');
     setTimeout(function(){
-      console.group('?? BOOT TIMELINE');
+      console.group('BOOT TIMELINE');
       window.__H2S_BOOT.events.forEach(function(e){
         console.log(e.t.toFixed(0) + 'ms:', e.msg, e.detail);
       });
@@ -61,7 +46,7 @@
   window.__H2S_BUNDLES_START = function(){ log('BUNDLES_JS_EXEC'); };
 })();
 </script>
-<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION - end -->
+<!-- PS PATCH: ROOT CAUSE INSTRUMENTATION end -->
 
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
 <title>Smart Home Packages &bull; Home2Smart</title>
@@ -71,35 +56,8 @@
 
 <!-- Scroll Lock Utils (Required by modals/drawers) -->
 <script>
-(function(){
-  // NOTE: Do not “guess” a scroll container to lock.
-  // That behavior can accidentally lock the drawer body itself on mobile (no scroll anywhere).
-  var lockCount = 0;
-  var prev = null;
-
-  window.H2S_lockScroll = function(){
-    try {
-      lockCount++;
-      if (lockCount > 1) return;
-      prev = {
-        bodyOverflow: document.body.style.overflow,
-        htmlOverflow: document.documentElement.style.overflow
-      };
-      document.body.style.overflow = 'hidden';
-      document.documentElement.style.overflow = 'hidden';
-    } catch (_) {}
-  };
-
-  window.H2S_unlockScroll = function(){
-    try {
-      lockCount = Math.max(0, lockCount - 1);
-      if (lockCount > 0) return;
-      document.body.style.overflow = (prev && typeof prev.bodyOverflow === 'string') ? prev.bodyOverflow : '';
-      document.documentElement.style.overflow = (prev && typeof prev.htmlOverflow === 'string') ? prev.htmlOverflow : '';
-      prev = null;
-    } catch (_) {}
-  };
-})();
+window.H2S_lockScroll=function(){document.body.style.overflow='hidden';document.documentElement.style.overflow='hidden';var s=Array.from(document.querySelectorAll('div')).find(d=>d.scrollHeight>d.clientHeight&&(getComputedStyle(d).overflowY==='auto'||getComputedStyle(d).overflowY==='scroll'));if(s){s.dataset.wasOverflow=s.style.overflow;s.style.overflow='hidden';window._ghlScrollContainer=s;}};
+window.H2S_unlockScroll=function(){document.body.style.overflow='';document.documentElement.style.overflow='';if(window._ghlScrollContainer){window._ghlScrollContainer.style.overflow=window._ghlScrollContainer.dataset.wasOverflow||'';delete window._ghlScrollContainer;}};
 </script>
 
 <!-- Critical CSS - Inline for instant paint -->
@@ -107,12 +65,12 @@
 *,*::before,*::after{box-sizing:border-box;}
 html,body{margin:0;font-family:system-ui,-apple-system,sans-serif;line-height:1.6;color:#1a2332;min-height:100%;}
 body{background:#fff;}
-.hero{background-color:#0a2a5a;background-image:linear-gradient(135deg,rgba(10,42,90,0.55) 0%,rgba(26,77,143,0.50) 100%),var(--hero-bg-url,none);background-size:cover;background-position:center;background-repeat:no-repeat;color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
+.hero{background:linear-gradient(135deg,#0a2a5a 0%,#1a4d8f 100%);color:#fff;padding:120px 16px 96px;text-align:center;min-height:400px;}
 .hero h1{font-size:clamp(32px,7vw,56px);font-weight:900;margin:0 0 20px;letter-spacing:-0.03em;line-height:1.1;}
 .hero p{font-size:clamp(16px,2.5vw,20px);opacity:0.95;margin:0 0 32px;max-width:600px;margin-left:auto;margin-right:auto;}
 .hero-ctas{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .btn{padding:14px 32px;border-radius:12px;font-weight:700;font-size:15px;border:none;cursor:pointer;transition:all 0.2s;}
-.btn-primary{background:var(--azure);color:#fff;}
+.btn-primary{background:#1493ff;color:#fff;}
 .btn-ghost{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);}
 </style>
 
@@ -132,11 +90,6 @@ body{background:#fff;}
 <!-- Deferred Resources -->
 <link rel="preconnect" href="https://h2s-backend.vercel.app" crossorigin>
 <link rel="preconnect" href="https://checkout.stripe.com" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://storage.googleapis.com" crossorigin>
-
-<link rel="preload" as="image" href="https://ulbzmgmxrqyipclrbohi.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp" type="image/webp">
 <link rel="dns-prefetch" href="https://connect.facebook.net">
 <link rel="dns-prefetch" href="https://fonts.googleapis.com">
 <link rel="dns-prefetch" href="https://storage.googleapis.com">
@@ -156,35 +109,149 @@ body{background:#fff;}
 <!-- Meta Pixel - Deferred (non-blocking) -->
 <script>
 (function(){
-  var started = false;
   function initPixel(){
-    if (started || window.__H2S_FB_INIT__) return;
-    started = true;
-    try {
-      !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '2384221445259822');
-      fbq('track', 'PageView');
-      window.__H2S_FB_INIT__ = true;
-    } catch(_e) {}
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init', '2384221445259822');
+    fbq('track', 'PageView');
+    window.__H2S_FB_INIT__ = true;
   }
-
-  function scheduleInit(){
-    if (window.__H2S_FB_INIT__) return;
-    var run = function(){ initPixel(); };
-    if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 8000 });
-    else setTimeout(run, 8000);
-  }
-
-  // Keep early interactivity clean: load after first interaction OR as a late fallback.
-  ['pointerdown','touchstart','keydown','scroll'].forEach(function(evt){
-    window.addEventListener(evt, scheduleInit, { once: true, passive: true });
-  });
-  window.addEventListener('load', function(){ setTimeout(scheduleInit, 8000); }, { once: true });
+  // Load after page interactive
+  if(document.readyState==='complete'){initPixel();}else{window.addEventListener('load',initPixel,{once:true});}
 })();
 </script>
 <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=2384221445259822&ev=PageView&noscript=1"/></noscript>
 
-<!-- H2S Backend Tracking is intentionally moved near the end of <body> to avoid blocking CSS parse / early paint. -->
+<!-- H2S Backend Tracking - Deferred -->
+<script>
+(function() {
+  function __h2sStartTracking() {
+  const ls = window.localStorage;
+  
+  function uuidv4Fallback() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  function getOrCreateVisitorId() {
+    let vid = ls.getItem('h2s_visitor_id');
+    if (!vid) {
+      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_visitor_id', vid);
+    }
+    return vid;
+  }
+  
+  function getOrCreateSessionId() {
+    let sid = ls.getItem('h2s_session_id');
+    if (!sid) {
+      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
+      ls.setItem('h2s_session_id', sid);
+    }
+    return sid;
+  }
+  
+  async function sendBackend(event_type, params={}) {
+    const visitor_id = getOrCreateVisitorId();
+    const session_id = getOrCreateSessionId();
+    
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(visitor_id)) {
+      ls.removeItem('h2s_visitor_id');
+      return sendBackend(event_type, params);
+    }
+    if (!uuidRegex.test(session_id)) {
+      ls.removeItem('h2s_session_id');
+      return sendBackend(event_type, params);
+    }
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const utm_source = urlParams.get('utm_source') || null;
+    const utm_medium = urlParams.get('utm_medium') || null;
+    const utm_campaign = urlParams.get('utm_campaign') || null;
+    const utm_term = urlParams.get('utm_term') || null;
+    const utm_content = urlParams.get('utm_content') || null;
+    
+    function normalizePathname(p) {
+      const s = (p || '').toString().trim();
+      if (!s) return '/';
+      if (s === '/') return '/';
+      return s.replace(/\/+$/g, '');
+    }
+
+    const payload = {
+      event_type,
+      visitor_id,
+      session_id,
+      occurred_at: new Date().toISOString(),
+      page_url: location.href,
+      page_path: normalizePathname(location.pathname),
+      referrer: document.referrer || '(direct)',
+      user_agent: navigator.userAgent,
+      utm_source,
+      utm_medium,
+      utm_campaign,
+      utm_term,
+      utm_content,
+      ...params
+    };
+    
+    const endpoint = 'https://h2s-backend.vercel.app/api/track';
+    const body = JSON.stringify(payload);
+    const isLocalPreview = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
+
+    try {
+      if (isLocalPreview) {
+        await fetch(endpoint, {
+          method: 'POST',
+          mode: 'no-cors',
+          credentials: 'omit',
+          body,
+          cache: 'no-store',
+          keepalive: true
+        });
+        return { ok: true, via: 'no-cors' };
+      }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        mode: 'cors',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        credentials: 'omit',
+        cache: 'no-store',
+        keepalive: true
+      });
+
+      if (res.ok) return { ok: true };
+
+      const txt = await res.text();
+      let errorDetails = txt;
+      try {
+        const errorJson = JSON.parse(txt);
+        errorDetails = errorJson.error || errorJson.details || txt;
+        if (String(errorDetails).includes('invalid input syntax for type uuid')) {
+          ls.removeItem('h2s_visitor_id');
+          ls.removeItem('h2s_session_id');
+        }
+      } catch (e) {}
+
+      return { ok: false, error: errorDetails, status: res.status };
+    } catch (err) {
+      return { ok: false, error: err && err.message ? err.message : String(err) };
+    }
+  }
+  
+  window.h2sSendBackend = sendBackend;
+  window.__H2S_TRACKING_READY__ = true;
+  }
+  
+  // Load after page interactive (don't block main thread)
+  if(document.readyState==='complete'){__h2sStartTracking();}else{window.addEventListener('load',__h2sStartTracking,{once:true});}
+})();
+</script>
 
 <!-- Full Styles -->
 <style>
@@ -232,9 +299,8 @@ img, video { max-width: 100%; height: auto; }
 }
 
 :root {
-  --hero-bg-url: url("https://ulbzmgmxrqyipclrbohi.supabase.co/storage/v1/object/public/proof/uploads/9a7c0383-ad63-4b8f-b45d-3e186c1c04c9.webp");
   --cobalt: #0a2a5a;
-  --azure: #0e6bc6;  /* Darkened for WCAG AA contrast on white (~5.3:1) */
+  --azure: #1493ff;
   --ink: #0b1420;
   --bg: #ffffff;
   --border: #e1e6ed;
@@ -645,7 +711,7 @@ body.modal-open {
   top: 4px;
   right: 4px;
   background: var(--azure);
-  color: #fff;
+  color: var(--cobalt);
   font-size: 11px;
   font-weight: 900;
   padding: 2px 5px;
@@ -658,15 +724,11 @@ body.modal-open {
 /* === HERO === */
 .hero {
   background-color: var(--cobalt);
-  background-image: linear-gradient(160deg, rgba(10,42,90,0.55) 0%, rgba(11,20,32,0.55) 100%), var(--hero-bg-url, none);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-image: linear-gradient(160deg, var(--cobalt) 0%, #0b1420 100%);
   color: #fff;
   padding: 72px 16px 56px;
   text-align: center;
   position: relative;
-  overflow: hidden;
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
@@ -674,47 +736,9 @@ body.modal-open {
   transition: padding-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.hero.has-proof-hero {
-  background-image: none;
-}
-
-.hero-media {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
-.hero-media-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(11, 20, 32, 0.65) 0%, rgba(11, 20, 32, 0.50) 35%, rgba(11, 20, 32, 0.70) 100%);
-}
-
-.hero-media img,
-.hero-media video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.hero-media-bg {
-  filter: blur(28px);
-  transform: scale(1.08);
-  opacity: 0.85;
-}
-
-.hero-media-fg {
-  object-fit: contain;
-}
-
 .hero-inner {
   max-width: 640px;
   margin: 0 auto;
-  position: relative;
-  z-index: 2;
 }
 
 .hero.has-page-placement { isolation: isolate; overflow: hidden; }
@@ -743,36 +767,6 @@ body.modal-open {
   gap: 12px;
   max-width: 480px;
   margin: 0 auto 24px;
-}
-
-
-
-/* We use the curated hero underlay background now.
-   Hide the legacy hero-media containers so they never render as a stray overlay “box”. */
-#heroMedia,
-#proofHeroMedia {
-  display: none !important;
-}
-
-/* Optional hero banner media (populated by bundles.js from proof slot: hero) */
-.hero-media {
-  max-width: 640px;
-  margin: 0 auto 18px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.18);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
-  aspect-ratio: 4 / 3;
-  height: clamp(180px, 55vw, 320px);
-}
-
-.hero-media img,
-.hero-media video {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
 }
 
 /* Ghost buttons on hero (dark background) need light styling */
@@ -885,205 +879,6 @@ body.modal-open {
 
 .hero-reviews:hover .hero-review-dots::after {
   opacity: 0.7;
-}
-
-/* === PROOF RAIL (WORK HISTORY) === */
-.proof-rail-section {
-  padding: 48px 16px;
-  background: #fff;
-}
-
-.proof-rail-inner {
-  max-width: 980px;
-  margin: 0 auto;
-}
-
-.proof-rail {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  padding: 8px 2px 4px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge legacy */
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-}
-
-@media (min-width: 860px) {
-  .proof-rail { justify-content: center; }
-}
-
-.proof-rail::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-.proof-tile {
-  flex: 0 0 auto;
-  width: 160px;
-  height: 120px;
-  aspect-ratio: 4 / 3;
-  border-radius: 12px;
-  background: #f1f5f9;
-  border: 1px solid var(--border);
-  position: relative;
-  overflow: hidden;
-  scroll-snap-align: start;
-}
-
-.proof-tile.loading {
-  background: linear-gradient(
-    90deg,
-    #f1f5f9 0%,
-    #e2e8f0 20%,
-    #f1f5f9 40%,
-    #f1f5f9 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.proof-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.proof-stats-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.proof-stats-badge {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 900;
-  background: #3b82f6;
-  color: #fff;
-}
-
-.proof-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  max-width: calc(100% - 16px);
-  padding: 4px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: rgba(10, 42, 90, 0.78);
-  color: #fff;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.trust-badge, .quality-badge {
-  position: absolute;
-  padding: 3px 6px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.trust-badge {
-  top: 8px;
-  right: 8px;
-}
-
-.trust-fresh {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
-}
-
-.trust-recent {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
-}
-
-.quality-badge {
-  bottom: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.7);
-  color: #fbbf24;
-  border: 1px solid rgba(251, 191, 36, 0.3);
-}
-
-.proof-tile img,
-.proof-tile video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.proof-mini {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 12px;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-}
-
-.proof-mini-title {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--ink);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.proof-mini-track {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge legacy */
-  overscroll-behavior-x: contain;
-  touch-action: pan-x;
-}
-
-.proof-mini-track::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  display: none;
-}
-
-.proof-mini .proof-tile {
-  width: 96px;
-  height: 72px;
-  border-radius: 10px;
-}
-
-.proof-mini .proof-badge {
-  top: 6px;
-  left: 6px;
-  max-width: calc(100% - 12px);
-  padding: 3px 5px;
-  font-size: 9px;
 }
 
 .hero-review-dot {
@@ -1230,8 +1025,6 @@ body.modal-open {
 #tv.section,
 #security.section {
   overflow: visible;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 1600px;
 }
 
 .section::before {
@@ -1492,7 +1285,6 @@ body.modal-open {
   color: #fbbf24;
   font-size: 14px;
   letter-spacing: 2px;
-  font-family: "Segoe UI Symbol", "Arial Unicode MS", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
 }
 
 .review-time {
@@ -1790,17 +1582,8 @@ body.modal-open {
 }
 
 .cta-bridge-inner svg {
-  display: none;
-}
-
-/* Mobile: ensure CTA bridge stays readable even if a dark background is applied behind it */
-@media (max-width: 768px) {
-  .cta-bridge {
-    background: #fff;
-  }
-  .cta-bridge-inner p {
-    color: var(--ink) !important;
-  }
+  color: var(--azure);
+  animation: bounce 2s infinite;
 }
 
 @keyframes bounce {
@@ -1809,19 +1592,11 @@ body.modal-open {
   60% { transform: translateY(-5px); }
 }
 
-/* Proof rail local preview controls (local/dev only; enabled via ?proof=local) */
-.proof-local-controls {
-  margin: 8px 0 14px;
-  text-align: center;
-}
-
 /* === WHY ORDER SECTION === */
 .why-order-section {
   background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
   padding: 80px 20px;
   position: relative;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 900px;
 }
 
 .why-order-inner {
@@ -2008,17 +1783,6 @@ body.modal-open {
 .faq-section {
   background: #fff;
   padding: 80px 20px;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 900px;
-}
-
-/* Keep FAQ useful without feeling endless: show top items, toggle the rest */
-.faq-item.faq-more {
-  display: none;
-}
-
-.faq-section.show-more .faq-item.faq-more {
-  display: block;
 }
 
 .faq-inner {
@@ -2103,8 +1867,6 @@ body.modal-open {
   color: #fff;
   position: relative;
   overflow: hidden;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 600px;
 }
 
 .final-cta-section::before {
@@ -3481,9 +3243,9 @@ body.modal-open {
 </head>
 <body>
 
-<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS - start -->
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS start -->
 <!-- No overlay needed - success page exists in DOM and displays via html[data-success-mode="1"] selector -->
-<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS - end -->
+<!-- PS PATCH: Overlay removed - static success page shows immediately via CSS end -->
 
 <div id="pageShell">
 
@@ -3494,13 +3256,13 @@ body.modal-open {
     <span class="urgency-separator">|</span>
     <span>We're available 7 days/week</span>
   </div>
-  <button class="urgency-close" onclick="dismissUrgencyBanner()" aria-label="Dismiss banner">x</button>
+  <button class="urgency-close" onclick="dismissUrgencyBanner()" aria-label="Dismiss banner">?&mdash;</button>
 </div>
 
 <!-- HEADER -->
 <header class="header">
   <div class="header-inner">
-    <a href="/bundles" class="logo" aria-label="Home2Smart home">
+    <a href="#" class="logo" aria-label="Home2Smart home" onclick="navSet({view:'shop'}); return false;">
       <img src="https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png" alt="Home2Smart" class="logo-img" width="36" height="36" fetchpriority="high" decoding="async">
     </a>
 
@@ -3725,10 +3487,9 @@ body.modal-open {
 <!-- END STATIC SUCCESS PAGE -->
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-media" id="proofHeroMedia" aria-hidden="true"></div>
   <div class="hero-inner">
-    <h1>TV Mounting and Camera Installs<br>This Week.</h1>
-    <p>Licensed and insured installs. Book online in minutes, we'll confirm details and handle the rest. Same-week availability.</p>
+    <h1>Get Your TV Mounted<br>This Week, Not Next Month.</h1>
+    <p>Professional TV mounting & security cameras. Book online, we handle the rest. Licensed, insured, same-week slots.</p>
     <div class="hero-ctas">
       <button class="btn btn-primary" onclick="scrollToSection('tv')">
         Browse TV Packages
@@ -3737,18 +3498,14 @@ body.modal-open {
         Browse Camera Options
       </button>
     </div>
-
-    <!-- Hero banner media (optional) -->
-    <div class="hero-media" id="heroMedia" style="display:none;" aria-hidden="true"></div>
-
+    
     <!-- Hero Review Carousel -->
     <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
       <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
       <!-- API will populate this on load via renderHeroReviews() -->
       <div class="hero-review-slide active">
-        <div class="hero-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
-        <div class="hero-review-author">Recent Customer</div>
+        <div class="hero-review-text">Recent verified reviews are loading.</div>
+        <div class="hero-review-author">Home2Smart reviews</div>
       </div>
       <div class="hero-review-dots">
         <div class="hero-review-dot active"></div>
@@ -3820,229 +3577,189 @@ body.modal-open {
           </svg>
         </div>
         <h3>Flat-rate pricing</h3>
-        <!-- REVIEW CAROUSEL -->
-        <section class="review-carousel">
-          <div class="review-carousel-header">
-            <h2>What our customers say</h2>
-            <p>Real reviews from real installations. See why 500+ homeowners trust Home2Smart.</p>
-          </div>
-  
-          <div class="review-track-container">
-            <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
-              <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">JM</div>
-                  <div class="review-meta">
-                    <div class="review-name">John M.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
-              </div>
+        <p>No hidden fees, no surprises. The price you see is the price you pay.</p>
+      </div>
       
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">SL</div>
-                  <div class="review-meta">
-                    <div class="review-name">Sarah L.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
-              </div>
-      
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">MT</div>
-                  <div class="review-meta">
-                    <div class="review-name">Michael T.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
-              </div>
-            </div>
-          </div>
-  
-          <div class="review-controls">
-            <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-            </button>
-            <button class="review-nav review-next" onclick="scrollReviews('next')" aria-label="Next reviews">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          </div>
-        </section>
-
-        <!-- FAQ SECTION -->
-        <section class="faq-section">
-          <div class="faq-inner">
-            <div class="section-header" style="margin-bottom: 48px;">
-              <h2>Common questions</h2>
-              <p>Quick answers about our service, pricing, and process.</p>
-            </div>
-    
-            <div class="faq-list">
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>How quickly can you install?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Most installations happen within 48-72 hours of booking (subject to availability). Check real-time availability when you checkout to pick your preferred time.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you provide the mounting hardware?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes! All mounting brackets, hardware, and materials are included in your package price. We bring commercial-grade equipment rated for your specific TV/camera weight.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What if I need to cancel or reschedule?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Cancel or reschedule anytime before 24 hours of your appointment - no fees. Need to change last-minute? Call us at (864) 387-8413 and we'll work with you.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Can you hide all the wires?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes - in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What payment methods do you accept?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking - nothing due at installation.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you offer a warranty?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes. Every install includes a 90-day workmanship warranty (labor). If a mount loosens or wiring we installed needs re-secured due to workmanship, we'll come back and fix it. Excludes equipment failures, pre-existing wall issues, damage from impacts/modifications, or changes made by others after the install.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What if my walls are brick or stone?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Not a problem. We have specialized anchors and mounting hardware for masonry surfaces. Installations on brick, stone, or concrete are covered under the same flat-rate pricing.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you provide the TVs and cameras, or just install them?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>We install equipment you already own or recently purchased. If you need help choosing the right TV or camera system, we're happy to provide recommendations based on your needs.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What areas do you serve?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>We serve Greenville, Spartanburg, and the surrounding Upstate SC region. Not sure if we cover your area? Enter your address at checkout or call us at (864) 387-8413 to confirm.</p>
-                </div>
-              </div>
-            </div>
-
-            <div style="text-align:center; margin-top: 22px;">
-              <button id="faqMoreBtn" class="btn btn-ghost" type="button" onclick="toggleFaqMore()" aria-expanded="false" style="display:inline-flex;">
-                Show more questions
-              </button>
-            </div>
-    
-            <div style="text-align: center; margin-top: 36px;">
-              <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Have a question that’s not listed?</p>
-              <a href="tel:+18643878413" class="btn btn-ghost" style="display: inline-flex;">Call (864) 387-8413</a>
-            </div>
-          </div>
-        </section>
-
-        <!-- FINAL CTA SECTION -->
-        <section class="final-cta-section">
-          <div class="final-cta-inner">
-            <h2>Book your installation today - Next available slots filling fast</h2>
-            <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
-            <div class="final-cta-buttons">
-              <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
-                Schedule TV Installation
-              </button>
-              <button class="btn" onclick="scrollToSection('security')" style="padding: 16px 32px; font-size: 17px; background: #fff; color: var(--cobalt); border: 2px solid #fff; font-weight: 800;">
-                Schedule Camera Install
-              </button>
-            </div>
-            <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-              <span style="margin-right: 20px;">- Book instantly online</span>
-              <span style="margin-right: 20px;">- 90-day workmanship warranty</span>
-              <span>- Same-week availability</span>
-            </div>
-          </div>
-        </section>
-
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
         </div>
-        <!-- End Outlet -->
-        </main>
-
-        <!-- Global Loader Overlay -->
-        <div id="h2s-loader" class="h2s-loader" aria-hidden="true" style="display:none">
-          <div class="h2s-loader-stage">
-            <div id="h2sLoaderSlices" class="h2s-loader-slices"></div>
-          </div>
+        <h3>Workmanship guaranteed</h3>
+        <p>We stand behind our work. If something's wrong, we make it right.</p>
+      </div>
+      
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
         </div>
+        <h3>Leave it cleaner</h3>
+        <p>Professional cleanup included. We treat your home like our own.</p>
+      </div>
+      
+      <div class="why-card">
+        <div class="why-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+            <line x1="12" y1="18" x2="12.01" y2="18"></line>
+          </svg>
+        </div>
+        <h3>Tech support included</h3>
+        <p>Device setup, app config, troubleshooting. We make sure it works.</p>
+      </div>
+    </div>
+    
+    <div class="guarantee-banner">
+      <div class="guarantee-content">
+        <div class="guarantee-badge">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+            <path d="M9 12l2 2 4-4"></path>
+          </svg>
+        </div>
+        <div class="guarantee-text">
+          <strong>100% Satisfaction Guarantee</strong>
+          <p>Not happy with the install? We'll make it right or refund you. No questions asked.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <!-- MENU DRAWER -->
+<!-- CTA BRIDGE -->
+<section class="cta-bridge">
+  <div class="cta-bridge-inner">
+    <p>Ready to book? Pick your package below</p>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <line x1="12" y1="5" x2="12" y2="19"></line>
+      <polyline points="19 12 12 19 5 12"></polyline>
+    </svg>
+  </div>
+</section>
+
+<!-- TV MOUNTING SECTION -->
+<section class="section content-reveal reveal-delay-2" id="tv">
+  <div class="section-header">
+    <h2>TVs: pick by TV count</h2>
+    <p>Clean installs, book instantly. First TV $249, each additional discounted.</p>
+  </div>
+
+  <div class="package-grid">
+    <!-- Single TV -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">1 TV</h3>
+        <div class="package-price">$249</div>
+      </div>
+      <p class="package-promise">One TV mounted clean and ready to watch tonight.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>TV securely mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming setup</li>
+          <li>Ready to go</li>
+        </ul>
+        <div class="warranty-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          90-Day Workmanship Warranty
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_single', '1 TV', 249)">
+        Schedule Installation
+      </button>
+      <div class="urgency-text">Limited Availability</div>
+    </article>
+
+    <!-- 2-TV Package (FEATURED) -->
+    <article class="package featured">
+      <div class="package-header">
+        <h3 class="package-name">2 TVs (recommended)</h3>
+        <div class="package-price">$428 <small style="opacity:.6">(save $70)</small></div>
+      </div>
+      <p class="package-promise">Two rooms, theater-ready. Same visit, better deal.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>Both TVs mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming on both</li>
+          <li>One appointment</li>
+        </ul>
+        <div class="warranty-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          90-Day Workmanship Warranty
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_2pack', '2 TVs (recommended)', 428)">
+        Schedule Installation
+      </button>
+      <div class="urgency-text">Next Available: Tomorrow</div>
+    </article>
+
+    <!-- Multi-Room -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">3-4 TVs</h3>
+        <div class="package-price">From $699</div>
+      </div>
+      <p class="package-promise">Whole-home entertainment in one visit.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>3-4 TVs mounted</li>
+          <li>Wire concealment (in-wall when feasible)</li>
+          <li>Streaming + soundbar</li>
+          <li>Universal remote</li>
+        </ul>
+        <div class="warranty-badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          90-Day Workmanship Warranty
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3-4 TVs', 699)">
+        Schedule Installation
+      </button>
+      <div class="urgency-text">4 Slots Left This Week</div>
+    </article>
+
+    <!-- Custom -->
+    <article class="package">
+      <div class="package-header">
+        <h3 class="package-name">5+ TVs (quote)</h3>
+        <div class="package-price">Request Quote</div>
+      </div>
+      <p class="package-promise">Large properties or commercial setups&mdash;we'll design a plan.</p>
+      <div class="package-includes">
+        <strong>What's Included</strong>
+        <ul>
+          <li>Site consultation</li>
+          <li>Custom wiring plan</li>
+          <li>Volume pricing</li>
+          <li>Project manager</li>
+        </ul>
+      </div>
+      <button class="btn btn-secondary" onclick="safeRequestQuote('tv_custom')">
+        Request Quote
+      </button>
+    </article>
+  </div>
+</section>
+
+<!-- SECURITY CAMERAS SECTION -->
+<section class="section" id="security">
+  <div class="section-header">
+    <h2>Cameras: pick by coverage level</h2>
     <p>Choose coverage by outcome - faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
@@ -4163,43 +3880,12 @@ body.modal-open {
   
   <div class="review-track-container">
     <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
-      <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">JM</div>
-          <div class="review-meta">
-            <div class="review-name">John M.</div>
-            <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          </div>
-        </div>
-        <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
-      </div>
-      
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">SL</div>
-          <div class="review-meta">
-            <div class="review-name">Sarah L.</div>
-            <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          </div>
-        </div>
-        <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
-      </div>
-      
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">MT</div>
-          <div class="review-meta">
-            <div class="review-name">Michael T.</div>
-            <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          </div>
-        </div>
-        <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
-      </div>
+      <p class="review-loading" style="text-align: center; color: var(--muted); padding: 40px;">Loading recent reviews...</p>
     </div>
   </div>
   
   <div class="review-controls">
+    <div id="reviewNav" class="review-nav" aria-label="Review pages"></div>
     <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
@@ -4290,11 +3976,11 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Yes. Every install includes a 90-day workmanship warranty (labor). If a mount loosens or wiring we installed needs re-secured due to workmanship, we'll come back and fix it. Excludes equipment failures, pre-existing wall issues, damage from impacts/modifications, or changes made by others after the install.</p>
+          <p>Absolutely. All installations include a 90-day workmanship warranty. If any mount becomes loose or wiring fails, we'll fix it at no charge.</p>
         </div>
       </div>
       
-      <div class="faq-item faq-more">
+      <div class="faq-item">
         <button class="faq-question" onclick="toggleFaq(this)">
           <span>What if my walls are brick or stone?</span>
           <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4306,7 +3992,7 @@ body.modal-open {
         </div>
       </div>
       
-      <div class="faq-item faq-more">
+      <div class="faq-item">
         <button class="faq-question" onclick="toggleFaq(this)">
           <span>Do you provide the TVs and cameras, or just install them?</span>
           <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4318,7 +4004,7 @@ body.modal-open {
         </div>
       </div>
       
-      <div class="faq-item faq-more">
+      <div class="faq-item">
         <button class="faq-question" onclick="toggleFaq(this)">
           <span>What areas do you serve?</span>
           <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4330,15 +4016,9 @@ body.modal-open {
         </div>
       </div>
     </div>
-
-    <div style="text-align:center; margin-top: 22px;">
-      <button id="faqMoreBtn" class="btn btn-ghost" type="button" onclick="toggleFaqMore()" aria-expanded="false" style="display:inline-flex;">
-        Show more questions
-      </button>
-    </div>
     
-    <div style="text-align: center; margin-top: 36px;">
-      <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Have a question that’s not listed?</p>
+    <div style="text-align: center; margin-top: 40px;">
+      <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Still have questions?</p>
       <a href="tel:+18643878413" class="btn btn-ghost" style="display: inline-flex;">Call (864) 387-8413</a>
     </div>
   </div>
@@ -4358,9 +4038,9 @@ body.modal-open {
       </button>
     </div>
     <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-      <span style="margin-right: 20px;">- Book instantly online</span>
-      <span style="margin-right: 20px;">- 90-day workmanship warranty</span>
-      <span>- Same-week availability</span>
+      <span style="margin-right: 20px;">&#10003; Book instantly online</span>
+      <span style="margin-right: 20px;">&#10003; 90-day warranty</span>
+      <span>&#10003; Same-week availability</span>
     </div>
   </div>
 </section>
@@ -4384,8 +4064,7 @@ body.modal-open {
   </div>
   <nav class="menu-body">
     <div class="menu-nav">
-      <a href="/bundles" class="menu-link">Home</a>
-      <a href="/gallery" class="menu-link">Gallery</a>
+      <a href="/" class="menu-link">Home</a>
       <button class="menu-link" onclick="scrollToSection('tv'); toggleMenu();">TV Mounting</button>
       <button class="menu-link" onclick="scrollToSection('security'); toggleMenu();">Security Cameras</button>
       <button class="menu-link" onclick="openBooking(); toggleMenu();">Schedule Appointment</button>
@@ -4398,48 +4077,32 @@ body.modal-open {
 <aside class="cart-drawer" id="cartDrawer" onclick="event.stopPropagation()" style="content-visibility: auto;">
   <div class="cart-header">
     <h3 class="cart-title">Your Cart</h3>
-    <h1>TV Mounting and Camera Installs<br>This Week.</h1>
-    <p>Licensed and insured installs. Book online in minutes, we'll confirm details and handle the rest. Same-week availability.</p>
-    <div class="hero-ctas">
-      <button class="btn btn-primary" onclick="scrollToSection('tv')">
-        Browse TV Packages
-      </button>
-      <button class="btn btn-ghost" onclick="scrollToSection('security')">
-        Browse Camera Options
-      </button>
+    <button class="btn-subtle" onclick="toggleCart()" style="padding: 6px 10px; font-size: 13px;">Close</button>
+  </div>
+  
+  <!-- Scrollable body -->
+  <div class="cart-body">
+    <!-- Bundle recommendations (smart swap suggestions) -->
+    <div id="bundlePanel" class="bundle-panel" style="display:none;min-height:60px"></div>
+    
+    <!-- Empty state -->
+    <div id="cartEmpty" class="cart-empty" hidden>
+      <p>Your cart is empty</p>
+      <p style="font-size: 13px; margin-top: 8px;">Pick a package to get started</p>
     </div>
-        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
-        <div class="hero-review-author">Recent Customer</div>
-      </div>
-
-    <!-- Hero Review Carousel -->
-    <div class="hero-reviews" id="heroReviews" data-api-reviews="hero" style="min-height: 120px; contain: content;">
-      <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
-      <!-- API will populate this on load via renderHeroReviews() -->
-      <div class="hero-review-slide active">
-        <div class="hero-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
-        <div class="hero-review-author">Recent Customer</div>
-      </div>
-      <div class="hero-review-dots">
-        <div class="hero-review-dot active"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-      </div>
+    
+    <!-- Cart items -->
+    <div id="cartItems" class="cart-lines">
+      <!-- Items rendered by paintCart() -->
     </div>
-      <div class="hero-review-dots">
-        <div class="hero-review-dot active"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-        <div class="hero-review-dot"></div>
-      </div>
-    </div>
+  </div>
+  
+  <!-- Footer -->
+  <div class="cart-foot">
+    <!-- Error display -->
     <div id="checkoutError" class="checkout-error" role="alert" aria-live="polite" hidden>
       <span id="checkoutErrorMsg"></span>
-      <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">x</button>
+      <button id="dismissError" class="error-dismiss" aria-label="Dismiss error">?&mdash;</button>
     </div>
 
     <!-- Promo Code -->
@@ -4480,231 +4143,185 @@ body.modal-open {
       <div class="kv" style="font-size: 16px; font-weight: 700; padding-top: 12px; border-top: 1px solid var(--border);">
         <span id="totalLabel">Total</span>
         <strong id="grandTotal">$0.00</strong>
-        <!-- REVIEW CAROUSEL -->
-        <section class="review-carousel">
-          <div class="review-carousel-header">
-            <h2>What our customers say</h2>
-            <p>Real reviews from real installations. See why 500+ homeowners trust Home2Smart.</p>
-          </div>
-  
-          <div class="review-track-container">
-            <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
-              <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">JM</div>
-                  <div class="review-meta">
-                    <div class="review-name">John M.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
-              </div>
-      
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">SL</div>
-                  <div class="review-meta">
-                    <div class="review-name">Sarah L.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
-              </div>
-      
-              <div class="review-card">
-                <div class="review-header">
-                  <div class="review-avatar">MT</div>
-                  <div class="review-meta">
-                    <div class="review-name">Michael T.</div>
-                    <div class="review-stars" aria-label="5 out of 5 stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                  </div>
-                </div>
-                <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
-              </div>
-            </div>
-          </div>
-  
-          <div class="review-controls">
-            <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
-            </button>
-            <button class="review-nav review-next" onclick="scrollReviews('next')" aria-label="Next reviews">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </button>
-          </div>
-        </section>
-
-        <!-- FAQ SECTION -->
-        <section class="faq-section">
-          <div class="faq-inner">
-            <div class="section-header" style="margin-bottom: 48px;">
-              <h2>Common questions</h2>
-              <p>Quick answers about our service, pricing, and process.</p>
-            </div>
+      </div>
+      <div class="note">Flat-rate pricing. No hidden fees. Workmanship guaranteed.</div>
+    </div>
     
-            <div class="faq-list">
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>How quickly can you install?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Most installations happen within 48-72 hours of booking (subject to availability). Check real-time availability when you checkout to pick your preferred time.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you provide the mounting hardware?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes! All mounting brackets, hardware, and materials are included in your package price. We bring commercial-grade equipment rated for your specific TV/camera weight.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What if I need to cancel or reschedule?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Cancel or reschedule anytime before 24 hours of your appointment - no fees. Need to change last-minute? Call us at (864) 387-8413 and we'll work with you.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Can you hide all the wires?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes - in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What payment methods do you accept?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking - nothing due at installation.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you offer a warranty?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Yes. Every install includes a 90-day workmanship warranty (labor). If a mount loosens or wiring we installed needs re-secured due to workmanship, we'll come back and fix it. Excludes equipment failures, pre-existing wall issues, damage from impacts/modifications, or changes made by others after the install.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What if my walls are brick or stone?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>Not a problem. We have specialized anchors and mounting hardware for masonry surfaces. Installations on brick, stone, or concrete are covered under the same flat-rate pricing.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>Do you provide the TVs and cameras, or just install them?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>We install equipment you already own or recently purchased. If you need help choosing the right TV or camera system, we're happy to provide recommendations based on your needs.</p>
-                </div>
-              </div>
-      
-              <div class="faq-item faq-more">
-                <button class="faq-question" onclick="toggleFaq(this)">
-                  <span>What areas do you serve?</span>
-                  <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </button>
-                <div class="faq-answer">
-                  <p>We serve Greenville, Spartanburg, and the surrounding Upstate SC region. Not sure if we cover your area? Enter your address at checkout or call us at (864) 387-8413 to confirm.</p>
-                </div>
-              </div>
-            </div>
+    <!-- Actions -->
+    <div class="foot-actions">
+      <button class="btn btn-ghost" onclick="window.location.href='tel:+18643878413'">
+        Prefer to call?
+      </button>
+      <button id="checkoutBtn" class="btn btn-primary">
+        Checkout
+      </button>
+    </div>
+  </div>
+</aside>
 
-            <div style="text-align:center; margin-top: 22px;">
-              <button id="faqMoreBtn" class="btn btn-ghost" type="button" onclick="toggleFaqMore()" aria-expanded="false" style="display:inline-flex;">
-                Show more questions
-              </button>
-            </div>
-    
-            <div style="text-align: center; margin-top: 36px;">
-              <p style="font-size: 15px; color: var(--muted); margin-bottom: 16px;">Have a question that’s not listed?</p>
-              <a href="tel:+18643878413" class="btn btn-ghost" style="display: inline-flex;">Call (864) 387-8413</a>
-            </div>
-          </div>
-        </section>
+<!-- BACKDROP -->
+<div class="backdrop" id="backdrop"></div>
 
-        <!-- FINAL CTA SECTION -->
-        <section class="final-cta-section">
-          <div class="final-cta-inner">
-            <h2>Book your installation today - Next available slots filling fast</h2>
-            <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
-            <div class="final-cta-buttons">
-              <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
-                Schedule TV Installation
-              </button>
-              <button class="btn" onclick="scrollToSection('security')" style="padding: 16px 32px; font-size: 17px; background: #fff; color: var(--cobalt); border: 2px solid #fff; font-weight: 800;">
-                Schedule Camera Install
-              </button>
-            </div>
-            <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-              <span style="margin-right: 20px;">- Book instantly online</span>
-              <span style="margin-right: 20px;">- 90-day workmanship warranty</span>
-              <span>- Same-week availability</span>
-            </div>
-          </div>
-        </section>
-
+<!-- QUOTE REQUEST MODAL -->
+<div class="modal" id="quoteModal">
+  <div class="modal-content" style="max-width: 520px;">
+    <div class="modal-header">
+      <h3 id="quoteModalTitle">Request Custom Quote</h3>
+      <p id="quoteModalSubtitle">Tell us what you need and we'll get back to you fast</p>
+    </div>
+    <div class="modal-body" style="padding: 24px;">
+      <!-- Smart Fields for Dynamic Quote -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Type</label>
+          <select id="quoteType" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
+            <option value="tv">TV Mounting</option>
+            <option value="camera">Security Cameras</option>
+            <option value="both">Both / Other</option>
+          </select>
         </div>
-        <!-- End Outlet -->
-        </main>
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Quantity</label>
+          <input type="number" id="quoteQty" class="inp" value="1" min="1" max="50" style="width: 100%;" onchange="updateQuoteEstimate()" oninput="updateQuoteEstimate()">
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Surface / Wall Type</label>
+        <select id="quoteSurface" class="inp" style="width: 100%;" onchange="updateQuoteEstimate()">
+          <option value="drywall">Drywall (Standard)</option>
+          <option value="brick">Brick / Stone / Concrete (+$50/item)</option>
+          <option value="commercial">Commercial / High Ceiling</option>
+        </select>
+      </div>
 
-    var isExpanded = section.classList.toggle('show-more');
-    btn.textContent = isExpanded ? 'Show fewer questions' : 'Show more questions';
-    btn.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 600; color: #166534; font-size: 14px;">Estimated Range:</span>
+        <span id="quoteEstimateValue" style="font-weight: 800; color: #15803d; font-size: 18px;">$149 - $199</span>
+      </div>
+      
+      <div style="display: grid; gap: 16px;">
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Your Name *</label>
+          <input type="text" id="quoteName" class="inp" placeholder="John Smith" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Email *</label>
+          <input type="email" id="quoteEmail" class="inp" placeholder="john@example.com" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Phone *</label>
+          <input type="tel" id="quotePhone" class="inp" placeholder="(864) 387-8413" style="width: 100%;" required>
+        </div>
+        
+        <div>
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px;">Project Details</label>
+          <textarea id="quoteDetails" class="inp" placeholder="Tell us about your project..." style="width: 100%; min-height: 100px; resize: vertical; font-family: inherit;"></textarea>
+        </div>
+        
+        <div id="quoteMessage" class="help" style="margin-top: 4px;"></div>
+      </div>
+      
+      <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);">
+        <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 12px;">Prefer to call?</div>
+        <a href="tel:+18643878413" style="display: flex; align-items: center; gap: 10px; padding: 12px 16px; background: #f5f9ff; border: 1px solid #d7eafc; border-radius: 8px; text-decoration: none; color: var(--cobalt); font-weight: 600; transition: all 0.2s;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
+          </svg>
+          <span>(864) 387-8413</span>
+        </a>
+      </div>
+    </div>
+    <div class="modal-footer" style="gap: 8px;">
+      <button class="btn btn-primary" id="submitQuoteBtn" onclick="submitQuoteRequest()" style="flex: 1;">
+        Send Request
+      </button>
+      <button class="btn btn-subtle" id="cancelQuoteBtn" onclick="safeCloseQuoteModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
-    if (!isExpanded) {
-      var openMore = section.querySelectorAll('.faq-item.faq-more.open');
-      openMore.forEach(function(el) { el.classList.remove('open'); });
-    }
+<!-- MODAL -->
+<div class="modal" id="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modalTitle">Package Selected</h3>
+      <p id="modalSubtitle">We'll finalize the details during your free consultation.</p>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <!-- Dynamic content -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="modalPrimaryCTA" onclick="addPackageToCart()">Add to Cart</button>
+      <button class="btn btn-subtle" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- SEO: Structured Data (JSON-LD) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "Home2Smart",
+  "description": "Professional smart home installation services including TV mounting and security camera installation",
+  "url": "https://home2smart.com",
+  "telephone": "+1-864-387-8413",
+  "priceRange": "$$",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.9",
+    "reviewCount": "500"
+  },
+  "areaServed": {
+    "@type": "State",
+    "name": "South Carolina"
+  },
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Installation Services",
+    "itemListElement": [
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "TV Mounting Installation",
+          "description": "Professional TV mounting with wire concealment"
+        },
+        "price": "249",
+        "priceCurrency": "USD"
+      },
+      {
+        "@type": "Offer",
+        "itemOffered": {
+          "@type": "Service",
+          "name": "Security Camera Installation",
+          "description": "Complete security camera system installation"
+        },
+        "price": "599",
+        "priceCurrency": "USD"
+      }
+    ]
+  }
+}
+</script>
+
+<!-- Performance: Detect when Archivo font loads and apply it -->
+<!-- Font loading handled by CSS font-display: swap -->
+
+<!-- FAQ & Review Navigation Functions -->
+<script>
+// FAQ toggle
+window.toggleFaq = function(btn) {
+  try {
+    var item = btn.closest('.faq-item');
+    if (!item) return;
+    var wasOpen = item.classList.contains('open');
+    item.classList.toggle('open');
   } catch (e) {
-    console.error('toggleFaqMore error:', e);
+    console.error('toggleFaq error:', e);
   }
 };
 
@@ -4728,140 +4345,8 @@ window.scrollReviews = function(direction) {
 };
 </script>
 
-<script defer src="/media-placements.js?v=PAGE_PLACEMENTS_V1"></script>
-<script defer src="/bundles.js?v=PROOF_RAIL_STABILITY_FEB11_2026_V1"></script>
-
-<!-- H2S Backend Tracking - Deferred (moved below for LCP/TTI) -->
-<script>
-(function() {
-  function __h2sStartTracking() {
-  const ls = window.localStorage;
-  
-  function uuidv4Fallback() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
-  
-  function getOrCreateVisitorId() {
-    let vid = ls.getItem('h2s_visitor_id');
-    if (!vid) {
-      vid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_visitor_id', vid);
-    }
-    return vid;
-  }
-  
-  function getOrCreateSessionId() {
-    let sid = ls.getItem('h2s_session_id');
-    if (!sid) {
-      sid = (self.crypto && self.crypto.randomUUID) ? self.crypto.randomUUID() : uuidv4Fallback();
-      ls.setItem('h2s_session_id', sid);
-    }
-    return sid;
-  }
-  
-  async function sendBackend(event_type, params={}) {
-    const visitor_id = getOrCreateVisitorId();
-    const session_id = getOrCreateSessionId();
-    
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(visitor_id)) {
-      ls.removeItem('h2s_visitor_id');
-      return sendBackend(event_type, params);
-    }
-    if (!uuidRegex.test(session_id)) {
-      ls.removeItem('h2s_session_id');
-      return sendBackend(event_type, params);
-    }
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const utm_source = urlParams.get('utm_source') || null;
-    const utm_medium = urlParams.get('utm_medium') || null;
-    const utm_campaign = urlParams.get('utm_campaign') || null;
-    const utm_term = urlParams.get('utm_term') || null;
-    const utm_content = urlParams.get('utm_content') || null;
-    
-    function normalizePathname(p) {
-      const s = (p || '').toString().trim();
-      if (!s) return '/';
-      if (s === '/') return '/';
-      return s.replace(/\/+$/g, '');
-    }
-
-    const payload = {
-      event_type,
-      visitor_id,
-      session_id,
-      occurred_at: new Date().toISOString(),
-      page_url: location.href,
-      page_path: normalizePathname(location.pathname),
-      referrer: document.referrer || '(direct)',
-      user_agent: navigator.userAgent,
-      utm_source,
-      utm_medium,
-      utm_campaign,
-      utm_term,
-      utm_content,
-      ...params
-    };
-    
-    const endpoint = 'https://h2s-backend.vercel.app/api/track';
-    const body = JSON.stringify(payload);
-    const isLocalPreview = (location.hostname === '127.0.0.1' || location.hostname === 'localhost');
-
-    try {
-      if (isLocalPreview) {
-        await fetch(endpoint, {
-          method: 'POST',
-          mode: 'no-cors',
-          credentials: 'omit',
-          body,
-          cache: 'no-store',
-          keepalive: true
-        });
-        return { ok: true, via: 'no-cors' };
-      }
-
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        mode: 'cors',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        credentials: 'omit',
-        cache: 'no-store',
-        keepalive: true
-      });
-
-      if (res.ok) return { ok: true };
-
-      const txt = await res.text();
-      let errorDetails = txt;
-      try {
-        const errorJson = JSON.parse(txt);
-        errorDetails = errorJson.error || errorJson.details || txt;
-        if (String(errorDetails).includes('invalid input syntax for type uuid')) {
-          ls.removeItem('h2s_visitor_id');
-          ls.removeItem('h2s_session_id');
-        }
-      } catch (e) {}
-
-      return { ok: false, error: errorDetails, status: res.status };
-    } catch (err) {
-      return { ok: false, error: err && err.message ? err.message : String(err) };
-    }
-  }
-  
-  window.h2sSendBackend = sendBackend;
-  window.__H2S_TRACKING_READY__ = true;
-  }
-  
-  // Load after page interactive (don't block main thread)
-  if(document.readyState==='complete'){__h2sStartTracking();}else{window.addEventListener('load',__h2sStartTracking,{once:true});}
-})();
-</script>
+<script defer src="media-placement-style.js?v=PAGE_PLACEMENTS_V1"></script>
+<script defer src="bundles.js?v=SOLID_RENDER_JAN10_V1"></script>
 
 <!-- Safe wrappers for inline onclick handlers (loaded before bundles.js) -->
 <script>
@@ -4940,8 +4425,8 @@ window.toggleCart = function() {
         try {
           if (typeof out === 'string') {
             out = out
-              .replace(/\?&mdash;|\?\u2014|\?\uFFFD/g, '-')
-              .replace(/&mdash;/g, '-');
+              .replace(/\?&mdash;|\?\u2014|\?\uFFFD/g, ' - ')
+              .replace(/&mdash;/g, ' - ');
           }
         } catch (_) {}
         return out;
@@ -5156,8 +4641,4 @@ window.toggleCart = function() {
 </script>
 </body>
 </html>
-
-
-
-
 

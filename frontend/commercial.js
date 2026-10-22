@@ -971,7 +971,7 @@
     const lines = ['Hi, I need help with a commercial Home2Smart project.'];
     const services = summarizeServicesForMessage(payload.serviceNeeds);
     const siteType = payload.businessType ? humanizeToken(payload.businessType, '') : '';
-    const timeline = payload.timeline ? humanizeToken(payload.timeline, '') : '';
+    const timeline = window.H2SCommercialLabels.timeline(payload.timeline, '');
     const nameOrCompany = [payload.fullName, payload.companyName].filter(Boolean).join(' / ');
     const locationBits = [payload.projectCity, payload.projectState].filter(Boolean);
     const location = locationBits.length ? locationBits.join(', ') : payload.projectAddress;
@@ -1034,7 +1034,7 @@
     const scopeText = payload.scopeSummary || (payload.serviceNeeds.length ? payload.serviceNeeds.join(', ') : 'Add a short scope summary');
 
     setText('assessmentBusinessType', humanizeToken(payload.businessType, 'Not selected'));
-    setText('assessmentTimeline', humanizeToken(payload.timeline, 'Not selected'));
+    setText('assessmentTimeline', window.H2SCommercialLabels.timeline(payload.timeline, 'Not selected'));
     setText('assessmentContact', contact);
     setText('assessmentPhotos', state.uploadedPhotos.length ? `${state.uploadedPhotos.length} file${state.uploadedPhotos.length === 1 ? '' : 's'}` : 'No files yet');
 

@@ -3375,6 +3375,8 @@
                                             <input id="ppOptimizeImages" type="checkbox" checked />
                                             Optimize images (WebP/AVIF + compress)
                                         </label>
+                                        <details class="pp-image-advanced">
+                                        <summary>Advanced image settings</summary>
                                         <div class="u-text-xs u-muted u-mt-1 pp-dropzone-settings__row" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; align-items:center;">
                                             <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                                 Format
@@ -3386,7 +3388,7 @@
                                             </label>
                                             <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
                                                 Quality
-                                                <input id="ppImageQuality" type="range" min="35" max="95" value="72" style="width:120px;" />
+                                                <input id="ppImageQuality" type="range" min="35" max="95" value="72" style="width:120px;" oninput="document.getElementById('ppImageQualityLabel').textContent=this.value" />
                                                 <span id="ppImageQualityLabel" style="min-width:30px; text-align:right; font-variant-numeric: tabular-nums;">72</span>
                                             </label>
                                             <label class="u-flex u-center u-gap-1" style="cursor:pointer; user-select:none;">
@@ -3400,7 +3402,8 @@
                                                 </select>
                                             </label>
                                         </div>
-                                        <div class="u-text-xs u-muted pp-dropzone-settings__note" style="margin-top:4px; opacity:0.85;">Runs locally in your browser before upload. Videos unaffected.</div>
+                                        </details>
+                                        <div class="u-text-xs u-muted pp-dropzone-settings__note" style="margin-top:4px; opacity:0.85;">Automatic format, 72% quality, max 1920 px by default. AVIF when supported; otherwise WebP. Videos unaffected.</div>
                                     </div>
                                 </div>
 
@@ -3555,40 +3558,12 @@
                             <div class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
                                 <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Your Assets</div>
                                 
-                                <div style="display:flex;gap:12px;margin-bottom:20px;">
-                                    <!-- Total Assets -->
-                                    <div class="pp-stat-card">
-                                        <div class="pp-stat-icon">
-                                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                                        </div>
-                                        <div class="pp-stat-content">
-                                            <div class="pp-stat-value" id="ppAssetsCount">-</div>
-                                            <div class="pp-stat-label">Total Assets</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Video Key Stats -->
-                                    <div class="pp-stat-card">
-                                        <div class="pp-stat-icon">
-                                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                                        </div>
-                                        <div class="pp-stat-content">
-                                            <div class="pp-stat-value" id="ppVideoStats">-</div>
-                                            <div class="pp-stat-label">Videos</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Photo Key Stats -->
-                                    <div class="pp-stat-card">
-                                        <div class="pp-stat-icon">
-                                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                                        </div>
-                                        <div class="pp-stat-content">
-                                            <div class="pp-stat-value" id="ppPhotoStats">-</div>
-                                            <div class="pp-stat-label">Photos</div>
-                                        </div>
-                                    </div>
+                                <div class="pp-library-counts" aria-label="Loaded library counts">
+                                    <span><strong id="ppAssetsCount">0</strong> loaded assets</span>
+                                    <span><strong id="ppPhotoStats">0</strong> photos</span>
+                                    <span><strong id="ppVideoStats">0</strong> videos</span>
                                 </div>
+                                <div class="u-text-xs u-muted" id="ppAssetsCountScope">Loaded shared library, before filters; not a storage-wide total.</div>
                                 <div class="pp-stat-label u-mt-2" id="ppAssetsStatus"></div>
                                 <!-- Retired Legacy Summary: id="ppLibrarySummary" -->
                             </div>
@@ -5399,7 +5374,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
-                for (const filename of ['dash.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
+                for (const filename of ['commercial-labels.js', 'dash.js', 'media-placement-style.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
                     await loadScript(filename);
                 }
                 window.__h2sDashboardScriptsLoaded = true;
@@ -5630,9 +5605,6 @@
     </script>
 </body>
 </html>
-
-
-
 
 
 

@@ -6184,19 +6184,8 @@ function smsStartNewMessage(prefillPhone) {
                 return this.formatYmd(start);
             },
 
-            renderMixGoals() {
-                const el = document.getElementById('ppMixGoals');
-                if (!el) return;
-
-                const pack = this.getSelectedPack();
-                if (!pack?.pack_id) {
-                    el.innerHTML = '';
-                    return;
-                }
-
-                const service = document.getElementById('ppService')?.value || 'tv_mounting';
+            renderLibraryCounts() {
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
-                const visible = items.filter(a => a?.is_visible !== false);
                 let totalVid = 0; let totalPho = 0;
                 for (const a of items) {
                     const kind = String(a.media_kind || a.kind || '').toLowerCase();
@@ -6208,6 +6197,20 @@ function smsStartNewMessage(prefillPhone) {
                 if (vidEl) vidEl.textContent = totalVid;
                 const phoEl = document.getElementById('ppPhotoStats');
                 if (phoEl) phoEl.textContent = totalPho;
+            },
+
+            renderMixGoals() {
+                this.renderLibraryCounts();
+                const el = document.getElementById('ppMixGoals');
+                if (!el) return;
+                const pack = this.getSelectedPack();
+                if (!pack?.pack_id) {
+                    el.innerHTML = '';
+                    return;
+                }
+                const service = document.getElementById('ppService')?.value || 'tv_mounting';
+                const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
+                const visible = items.filter(a => a?.is_visible !== false);
 
                 const shotCounts = new Map();
                 for (const a of visible) {
@@ -6350,20 +6353,23 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
-            async ensureLibraryPacksLoaded(surface) {
+            async ensureLibraryPacksLoaded(surface, { signal, commit = true } = {}) {
                 const s = String(surface || 'bundles');
-                try {
-                    const [tvResp, camResp] = await Promise.all([
-                        this.fetchJson(`/api/admin/proof-packs?surface=${encodeURIComponent(s)}&service=tv_mounting`),
-                        this.fetchJson(`/api/admin/proof-packs?surface=${encodeURIComponent(s)}&service=cameras`),
-                    ]);
-                    const tv = Array.isArray(tvResp?.packs) ? tvResp.packs : (Array.isArray(tvResp) ? tvResp : []);
-                    const cams = Array.isArray(camResp?.packs) ? camResp.packs : (Array.isArray(camResp) ? camResp : []);
-                    this.state.libraryPacks = { tv_mounting: tv, cameras: cams };
-                } catch {
-                    // If this fails, refreshAssets() will handle fallback/cache per request.
-                    this.state.libraryPacks = { tv_mounting: [], cameras: [] };
+                const [tvResp, camResp] = await Promise.all([
+                    this.fetchJson(`/api/admin/proof-packs?surface=${encodeURIComponent(s)}&service=tv_mounting`, { signal }),
+                    this.fetchJson(`/api/admin/proof-packs?surface=${encodeURIComponent(s)}&service=cameras`, { signal }),
+                ]);
+                for (const response of [tvResp, camResp]) {
+                    if (response?.ok === false || response?.message || (!Array.isArray(response?.packs) && !Array.isArray(response))) {
+                        throw new Error(response?.error || response?.message || 'Invalid media library response');
+                    }
                 }
+                const packs = {
+                    tv_mounting: Array.isArray(tvResp?.packs) ? tvResp.packs : tvResp,
+                    cameras: Array.isArray(camResp?.packs) ? camResp.packs : camResp,
+                };
+                if (commit && !signal?.aborted) this.state.libraryPacks = packs;
+                return packs;
             },
 
             getCoverageTargets() {
@@ -6379,6 +6385,26 @@ function smsStartNewMessage(prefillPhone) {
             setAssetsUi(model) {
                 const listEl = document.getElementById('ppAssetsList');
                 if (!listEl) return;
+                const statusEl = document.getElementById('ppAssetsStatus');
+                if (statusEl) {
+                    if (!statusEl.querySelector('[data-library-status]')) {
+                        statusEl.innerHTML = '<span data-library-status role="status" aria-live="polite"></span> <button type="button" class="media-placement-secondary" data-library-retry hidden>Retry library update</button>';
+                        statusEl.querySelector('[data-library-retry]').addEventListener('click', () => this.refreshAssets());
+                    }
+                    statusEl.querySelector('[data-library-status]').textContent = model?.error
+                        ? `${model.error}${model.items?.length ? ' Showing retained library.' : ''}`
+                        : model?.refreshing ? 'Updating library...'
+                        : `${model?.scopeNote || 'Library up to date'}${model?.lastFetchedAt ? ` · ${this.formatAge(model.lastFetchedAt)}` : ''}`;
+                    const retry = statusEl.querySelector('[data-library-retry]');
+                    const restoreStatusFocus = !model?.error && document.activeElement === retry;
+                    retry.hidden = !model?.error;
+                    retry.disabled = !!model?.refreshing;
+                    if (restoreStatusFocus) {
+                        const status = statusEl.querySelector('[data-library-status]');
+                        status.tabIndex = -1;
+                        status.focus({ preventScroll: true });
+                    }
+                }
                 
                 // Inject Bulk Actions Bar if missing
                 if (!document.getElementById('ppBulkActionsBar')) {
@@ -6416,7 +6442,7 @@ function smsStartNewMessage(prefillPhone) {
                 const limit = Number(model?.renderLimit || 20);
                 
                 // --- Loading State ---
-                if (loading) {
+                if (loading && !items.length) {
                     listEl.innerHTML = `
                         <div class="gallery-container">
                             <div class="gallery-loading">
@@ -6464,20 +6490,23 @@ function smsStartNewMessage(prefillPhone) {
                 // Setup infinite scroll
                 const totalCount = items.length;
                 const visibleCount = Math.min(items.length, limit);
+                let loadMore = listEl.querySelector('#ppLoadMoreSentinel');
                 if (totalCount > visibleCount) {
-                     const loadMore = document.createElement('div');
+                     if (!loadMore) {
+                     loadMore = document.createElement('div');
                      loadMore.id = 'ppLoadMoreSentinel';
                      loadMore.style.textAlign = 'center';
                      loadMore.style.padding = '40px';
-                     loadMore.innerHTML = `<button onclick="proofPacks.loadMoreAssets()" class="pp-btn-secondary">Load More (${totalCount - visibleCount} remaining)</button>`;
+                     loadMore.innerHTML = '<button onclick="proofPacks.loadMoreAssets()" class="pp-btn-secondary"></button>';
                      listEl.querySelector('.gallery-container').appendChild(loadMore);
-                }
+                     }
+                     loadMore.querySelector('button').textContent = `Load More (${totalCount - visibleCount} remaining)`;
+                } else loadMore?.remove();
                 
                 this.setupLibraryInfiniteScroll();
                 
                 // Initialize filters logic if needed
                 this.initLibraryFilters();
-                this.reconcileLibraryFiltersWithItems(items);
                 
                 // Apply client-side text filtering if present
                 this.applyAllFilters();
@@ -6524,15 +6553,23 @@ function smsStartNewMessage(prefillPhone) {
                     const isSelected = this.state.selectedIds && this.state.selectedIds.has(assetId);
 
                     return `
-                        <div class="gallery-tile ${isSelected ? 'selected' : ''}"
+                        <div class="gallery-tile pp-library-item ${isSelected ? 'selected' : ''}"
                              data-asset-id="${this.escapeHtml(assetId)}"
+                             data-filename="${this.escapeHtml(asset.original_filename || asset.storage_path || '')}"
+                             data-media-type="${isVideo ? 'video' : 'photo'}"
+                             data-service="${this.escapeHtml(asset.service || '')}"
+                             data-intent="${this.escapeHtml(asset.customer_intent || asset.intent || '')}"
+                             data-visible="${asset.is_visible !== false}"
+                             tabindex="0" role="button" aria-label="Edit ${this.escapeHtml(titleLabel)}"
+                             onkeydown="if(event.target===this &amp;&amp; (event.key==='Enter'||event.key===' ')){event.preventDefault();proofPacks.editAsset('${this.escapeHtml(assetId)}');}"
                              data-type="${isVideo ? 'video' : 'image'}"
                              oncontextmenu="proofPacks.showLibraryContextMenu(event, '${this.escapeHtml(assetId)}'); return false;"
                              onclick="proofPacks.editAsset('${this.escapeHtml(assetId)}')">
                              
-                            <div class="mac-select-ring" onclick="event.stopPropagation(); proofPacks.toggleSelection('${this.escapeHtml(assetId)}', !${isSelected})"></div>
+                            <button type="button" class="mac-select-ring tile-checkbox" aria-label="Select ${this.escapeHtml(titleLabel)}" aria-pressed="${!!isSelected}" onclick="event.stopPropagation(); proofPacks.toggleSelection('${this.escapeHtml(assetId)}', !proofPacks.state.selectedIds?.has('${this.escapeHtml(assetId)}'))"></button>
                             
-                            <img src="${this.escapeHtml(url)}" class="tile-image" loading="lazy" alt="Asset" onerror="this.src='data:image/svg+xml;base64,...'">
+                            <img src="${this.escapeHtml(url)}" class="tile-image" loading="lazy" alt="Asset" onerror="this.onerror=null;this.hidden=true;this.nextElementSibling.hidden=false">
+                            <span class="gallery-preview-error" hidden>Thumbnail unavailable</span>
 
                             ${isVideo ? `
                                 <div class="play-icon">
@@ -6549,17 +6586,39 @@ function smsStartNewMessage(prefillPhone) {
                     `;
                 }).join('');
 
-                container.innerHTML = `
-                    <div class="gallery-container">
-                        <div class="gallery-filters" id="ppGalleryFiltersPlace"></div>
-                        <div class="gallery-grid">
-                            ${gridHtml}
-                        </div>
-                    </div>
-                `;
-                
-                // Best-effort: backfill missing video thumbnails for visible items.
-                this.backfillMissingVideoThumbnails?.(assets);
+                if (!container.querySelector('.gallery-grid')) {
+                    container.innerHTML = '<div class="gallery-container"><div class="gallery-grid"></div></div>';
+                }
+                this.patchMediaTiles(container.querySelector('.gallery-grid'), gridHtml);
+            },
+
+            patchMediaTiles(container, html) {
+                if (!this._mediaTileSignatures) this._mediaTileSignatures = new WeakMap();
+                const template = document.createElement('template');
+                template.innerHTML = html;
+                const existing = new Map(Array.from(container.children).map(node => [node.dataset.assetId, node]));
+                const active = document.activeElement;
+                const scroll = window.scrollY;
+                let focusTarget = active;
+                let position = 0;
+                for (const candidate of Array.from(template.content.children)) {
+                    const old = existing.get(candidate.dataset.assetId);
+                    const signature = candidate.outerHTML;
+                    let node = old || candidate;
+                    if (old && this._mediaTileSignatures.get(old) !== signature) {
+                        const focusIndex = Array.from(old.querySelectorAll('button,a,input,[tabindex]')).indexOf(active);
+                        for (const attribute of Array.from(candidate.attributes)) old.setAttribute(attribute.name, attribute.value);
+                        old.replaceChildren(...candidate.childNodes);
+                        if (focusIndex >= 0) focusTarget = old.querySelectorAll('button,a,input,[tabindex]')[focusIndex];
+                    }
+                    this._mediaTileSignatures.set(node, signature);
+                    if (container.children[position] !== node) container.insertBefore(node, container.children[position] || null);
+                    position++;
+                    existing.delete(candidate.dataset.assetId);
+                }
+                for (const obsolete of existing.values()) obsolete.remove();
+                if (focusTarget?.isConnected && document.activeElement !== focusTarget) focusTarget.focus({ preventScroll: true });
+                if (window.scrollY !== scroll) window.scrollTo({ top: scroll, behavior: 'instant' });
             },
 
             backfillMissingVideoThumbnails(assets) {
@@ -6590,6 +6649,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (tile) {
                     if (isSelected) tile.classList.add('selected');
                     else tile.classList.remove('selected');
+                    tile.querySelector('.mac-select-ring')?.setAttribute('aria-pressed', String(!!isSelected));
                 }
                 
                 this.updateBulkActionsBar();
@@ -6617,6 +6677,7 @@ function smsStartNewMessage(prefillPhone) {
                 this.state.selectedIds = new Set();
                 document.querySelectorAll('.tile-checkbox').forEach(cb => cb.checked = false);
                 document.querySelectorAll('.gallery-tile.selected').forEach(el => el.classList.remove('selected'));
+                document.querySelectorAll('.mac-select-ring[aria-pressed]').forEach(el => el.setAttribute('aria-pressed', 'false'));
                 this.updateBulkActionsBar();
             },
             
@@ -6776,21 +6837,31 @@ function smsStartNewMessage(prefillPhone) {
             },
 
             getOptimizeImagesPreference() {
-                // Default on: bulk + replace should always enforce WebP/AVIF.
-                return true;
+                const control = document.getElementById('ppOptimizeImages');
+                return control ? control.checked : true;
             },
 
             getImageFormatPreference() {
-                // Prefer AVIF when available, else WebP.
-                return 'auto';
+                const format = document.getElementById('ppImageFormat')?.value || 'auto';
+                if (!['auto', 'avif', 'webp'].includes(format)) throw new Error('Unsupported image optimization format');
+                return format;
             },
 
             getImageQualityPreference() {
-                return 0.72;
+                const control = document.getElementById('ppImageQuality');
+                return this.clampNumber(control ? Number(control.value) / 100 : 0.72, 0.35, 0.95, 0.72);
             },
 
             getImageMaxDimPreference() {
-                return 1920;
+                const control = document.getElementById('ppImageMaxDim');
+                return this.clampNumber(control ? Number(control.value) : 1920, 0, 6000, 1920);
+            },
+
+            async prepareImageFile(file) {
+                if (!this.getOptimizeImagesPreference() || !this.isImageFile(file)) return file;
+                const converted = await this.convertImageFile(file);
+                if (!converted) throw new Error('Image optimization did not produce an output file');
+                return converted;
             },
 
             async convertImageFile(file, { format, quality, maxDim } = {}) {
@@ -6846,13 +6917,13 @@ function smsStartNewMessage(prefillPhone) {
                     }
                 });
 
-                if (!blob) {
-                    // Fallback to WebP
+                if (!blob || blob.type !== outMime) {
+                    console.warn('[ProofPacks] Requested image encoding unavailable; retrying as WebP.');
                     outMime = 'image/webp';
                     const blob2 = await new Promise((resolve) => {
                         try { canvas.toBlob((b) => resolve(b), outMime, q); } catch { resolve(null); }
                     });
-                    if (!blob2) return null;
+                    if (!blob2 || blob2.type !== outMime) throw new Error('This browser could not encode the optimized image as WebP');
                     const outName2 = String(file?.name || 'image').replace(/\.[^.]+$/, '') + '.webp';
                     return new File([blob2], outName2, { type: outMime });
                 }
@@ -7099,12 +7170,18 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
-            async refreshLivePreview() {
+            refreshLivePreview() {
+                if (this._livePreviewRequest) return this._livePreviewRequest;
+                this._livePreviewRequest = this.loadLivePreview().finally(() => { this._livePreviewRequest = null; });
+                return this._livePreviewRequest;
+            },
+
+            async loadLivePreview() {
                 const container = document.getElementById('ppLivePreviewContent');
                 if (!container) return;
 
                 try {
-                    container.innerHTML = `
+                    if (!container.dataset.loaded) container.innerHTML = `
                         <div style="text-align:center;padding:20px;color:#64748b;">
                             <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin:0 auto 8px;animation:spin 1s linear infinite;">
                                 <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
@@ -7137,16 +7214,9 @@ function smsStartNewMessage(prefillPhone) {
 
                     const resp = await response.json();
                     
-                    if (!resp?.ok) {
-                        const msg = resp?.error || 'Failed to load live content';
-                        container.innerHTML = `
-                            <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                                <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:4px;">Could not load live preview</div>
-                                <div style="color:#991b1b;font-size:12px;">${msg}</div>
-                            </div>
-                        `;
-                        return;
-                    }
+                    if (!resp?.ok) throw new Error(resp?.error || 'Failed to load historical slots');
+                    container.querySelector('[data-legacy-retry]')?.remove();
+                    if (container.dataset.snapshot === JSON.stringify(resp.slots)) return;
 
                     const slotsData = resp.slots || {};
                     
@@ -7258,11 +7328,13 @@ function smsStartNewMessage(prefillPhone) {
                     }
                     html += `</div></div></div>`;
                     
-                    container.innerHTML = html;
+                    container.innerHTML = `<details><summary>Historical Bundles slots (read-only)</summary><p>These legacy slots are not a preview of the current page. Use an asset's Page placement editor for the active destination. The removed installation rail and cart strip remain unavailable; historical settings are retained.</p><div inert>${html}</div></details>`;
+                    container.dataset.loaded = 'true';
+                    container.dataset.snapshot = JSON.stringify(resp.slots);
 
                 } catch (e) {
                     console.error('[Live Preview] Error:', e);
-                    container.innerHTML = `
+                    if (!container.dataset.loaded) container.innerHTML = `
                         <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
                             <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">Failed to load live preview</div>
                             <div style="color:#991b1b;font-size:12px;margin-bottom:12px;">${this.escapeHtml(e?.message || 'Unknown error')}</div>
@@ -7271,6 +7343,18 @@ function smsStartNewMessage(prefillPhone) {
                             </button>
                         </div>
                     `;
+                    else {
+                        let retry = container.querySelector('[data-legacy-retry]');
+                        if (!retry) {
+                            retry = document.createElement('button');
+                            retry.type = 'button';
+                            retry.className = 'media-placement-secondary';
+                            retry.dataset.legacyRetry = '';
+                            retry.addEventListener('click', () => this.refreshLivePreview());
+                            container.prepend(retry);
+                        }
+                        retry.textContent = 'Historical slot update failed. Retry';
+                    }
                 }
             },
 
@@ -7509,6 +7593,53 @@ function smsStartNewMessage(prefillPhone) {
                 this.beginEditAssetMedia(assetId);
             },
 
+            async appendHeroPlacementMenu(menu, assetId) {
+                const section = document.createElement('details');
+                section.className = 'pp-hero-placements';
+                section.innerHTML = `<summary>Hero placement</summary>
+                    <div data-hero-usage role="status">Loading saved usage for this asset...</div>
+                    <div data-hero-choices></div>`;
+                menu.appendChild(section);
+                const choices = [
+                    { surface: 'bundles', area: 'hero', label: 'Bundles / Hero background' },
+                    { surface: 'commercial_intake', area: 'commercial_hero', label: 'Commercial / Hero photo' },
+                ];
+                for (const choice of choices) {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'media-placement-secondary';
+                    button.dataset.heroSurface = choice.surface;
+                    button.innerHTML = `${choice.label}<small data-hero-state>Usage not yet verified</small>`;
+                    button.addEventListener('click', () => {
+                        this.openPagePlacement(assetId, { surface: choice.surface, area: choice.area });
+                        menu.remove();
+                    });
+                    section.querySelector('[data-hero-choices]').appendChild(button);
+                }
+                try {
+                    const query = new URLSearchParams({ asset_source: 'proof_asset', asset_id: assetId });
+                    const result = await this.fetchJson(`/api/admin/media-placements?${query}`, {
+                        headers: { Authorization: `Bearer ${getDashboardSessionToken()}` },
+                    });
+                    if (!result?.ok || !Array.isArray(result.placements)) throw new Error(result?.error || 'Invalid placement usage response');
+                    if (!menu.isConnected) return;
+                    const rows = result.placements;
+                    section.querySelector('[data-hero-usage]').textContent = `${rows.filter(row => row.enabled).length} enabled saved overrides for this asset. Automatic selection may also use it.`;
+                    for (const choice of choices) {
+                        const row = rows.find(row => row.surface === choice.surface && row.area === choice.area);
+                        section.querySelector(`[data-hero-surface="${choice.surface}"] [data-hero-state]`).textContent = row
+                            ? `${row.enabled ? 'Included' : 'Excluded'} · order ${row.display_order}`
+                            : 'No saved override';
+                    }
+                } catch (error) {
+                    console.error('[Hero placement usage]', error);
+                    if (!menu.isConnected) return;
+                    const status = section.querySelector('[data-hero-usage]');
+                    status.setAttribute('role', 'alert');
+                    status.textContent = 'Saved usage unavailable. Open a placement to retry; nothing has been changed.';
+                }
+            },
+
             showLibraryContextMenu(event, assetId) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -7541,13 +7672,9 @@ function smsStartNewMessage(prefillPhone) {
                 const items = Array.isArray(this.state.assets?.items) ? this.state.assets.items : [];
                 const asset = items.find(a => a.asset_id === assetId);
                 const isVideo = asset && asset.media_kind === 'video';
+                this.appendHeroPlacementMenu(menu, assetId);
                 
                 const menuItems = [
-                    { 
-                        label: 'Assign to Hero Banner', 
-                        icon: getUntitledIconMarkup('image'),
-                        action: () => this.assignAssetToSlot('bundles', 'hero', 'tv_mounting', assetId) 
-                    },
                     { 
                         label: 'Edit Asset', 
                         icon: getUntitledIconMarkup('edit'),
@@ -8004,10 +8131,10 @@ function smsStartNewMessage(prefillPhone) {
                         cache: 'no-store'
                     });
                     
-                    if (!response.ok) return { ids: new Set(), counts: new Map() };
+                    if (!response.ok) throw new Error(`Media usage request failed (${response.status})`);
                     
                     const resp = await response.json();
-                    if (!resp?.ok || !resp?.slots) return { ids: new Set(), counts: new Map() };
+                    if (!resp?.ok || !resp?.slots) throw new Error(resp?.error || 'Invalid media usage response');
                     
                     const slotsData = resp.slots;
                     const assetIds = new Set();
@@ -8031,7 +8158,7 @@ function smsStartNewMessage(prefillPhone) {
                     return { ids: assetIds, counts: usageCounts };
                 } catch (e) {
                     console.error('[fetchLiveAssetIds] Error:', e);
-                    return { ids: new Set(), counts: new Map() };
+                    throw e;
                 }
             },
 
@@ -8321,204 +8448,76 @@ function smsStartNewMessage(prefillPhone) {
                 asset.smart_crop_details = merged;
             },
 
-            async refreshAssets() {
-                // Concurrency safety: if the user switches packs quickly (or refresh is triggered twice),
-                // we must prevent out-of-order responses from overwriting the latest library state.
-                // Abort the previous request and tag this request with a monotonically increasing id.
-                try {
-                    if (this.state._assetsAbortCtrl) this.state._assetsAbortCtrl.abort();
-                } catch { /* ignore */ }
-                const assetsReqId = Number(this.state._assetsReqId || 0) + 1;
-                this.state._assetsReqId = assetsReqId;
-                const ctrl = new AbortController();
-                this.state._assetsAbortCtrl = ctrl;
-                
+            refreshAssets() {
                 const surface = document.getElementById('ppSurface')?.value || 'bundles';
-                // Always use library mode - show all assets
-                const isLibrary = true;
+                const key = `${this.getConfig().base}|${surface}`;
+                if (this._assetsRequest?.key === key) return this._assetsRequest.promise;
+                this._assetsRequest?.controller.abort();
+                const request = { key, surface, controller: new AbortController() };
+                this._assetsRequest = request;
+                request.promise = this.loadAssetsSnapshot(request).finally(() => {
+                    if (this._assetsRequest === request) this._assetsRequest = null;
+                });
+                return request.promise;
+            },
 
-                let packId = '';
-                let packIds = [];
-                let tvCandidates = [];
-                let camCandidates = [];
-                if (isLibrary) {
-                    await this.ensureLibraryPacksLoaded(surface);
-                    const tvPacks = Array.isArray(this.state?.libraryPacks?.tv_mounting) ? this.state.libraryPacks.tv_mounting : [];
-                    const camPacks = Array.isArray(this.state?.libraryPacks?.cameras) ? this.state.libraryPacks.cameras : [];
-                    tvCandidates = this.getPackIdCandidates(tvPacks);
-                    camCandidates = this.getPackIdCandidates(camPacks);
-                    packIds = [tvCandidates[0], camCandidates[0]].filter(Boolean);
-                    packId = (tvCandidates.length || camCandidates.length) ? 'merged' : '';
-                } else {
-                    const pack = this.getSelectedPack();
-                    packId = pack?.pack_id || '';
-                }
-                const statusEl = document.getElementById('ppAssetsStatus');
-                
-                if (!packId) {
-                    this.mergeOptimisticThumbnailUrls([]);
-                    this.state.assets = { loading: false, pack_id: null, items: [], scopeNote: '' };
-                    this.setAssetsUi(this.state.assets);
-                    return;
-                }
-
-                const prevPackId = String(this.state?.assets?.pack_id || '');
-                const prevLimit = Number(this.state?.assets?.renderLimit || 30);
-                const keepLimit = prevPackId && String(prevPackId) === String(packId);
-                const renderLimit = keepLimit ? prevLimit : 30;
-
-                this.state.assets = { loading: true, pack_id: packId, items: [], scopeNote: '', renderLimit, filter: this.state.assets?.filter || 'all' };
+            async loadAssetsSnapshot(request) {
+                const { surface, controller } = request;
+                const current = () => this._assetsRequest === request && !controller.signal.aborted;
+                const previous = this.state.assets || {};
+                const cached = this.safeReadJson(this.getAssetsCacheKey('merged', 'merged'));
+                const retained = previous.items?.length ? previous.items : (Array.isArray(cached?.items) ? cached.items : []);
+                this.state.assets = {
+                    ...previous, items: retained, pack_id: 'merged', surface,
+                    loading: !retained.length, refreshing: true, error: '',
+                    renderLimit: previous.renderLimit || 30,
+                    lastFetchedAt: previous.lastFetchedAt || Number(cached?.ts || 0),
+                };
                 this.setAssetsUi(this.state.assets);
-
                 try {
-                    await this.ensureSupabaseConfig();
-                    
-// Fetch live asset IDs and usage counts from proof-slots API
-                const liveData = await this.fetchLiveAssetIds(surface);
-                this.state.liveAssetIds = liveData.ids;
-                this.state.assetUsageCounts = liveData.counts;
-                    
-                    // Unified Library: Load ALL assets for this pack, ignoring the upload service selector
-                    // This creates a "Smart Library" where users can browse everything
-                    let items = [];
-                    let scopeNote = '';
-                    if (isLibrary) {
-                        // Merge: choose the first non-empty pack for each service.
-                        const fetchFirstNonEmpty = async (candidates) => {
-                            const ids = Array.isArray(candidates) ? candidates.filter(Boolean) : [];
-                            let lastId = ids[0] || '';
-                            let lastItems = [];
-
-                            for (const id of ids.slice(0, 6)) {
-                                lastId = id;
-                                const resp = await this.fetchJson(`/api/admin/proof-assets?pack_id=${encodeURIComponent(id)}&limit=500`, { signal: ctrl.signal });
-                                const arr = Array.isArray(resp?.assets) ? resp.assets : [];
-                                lastItems = arr;
-                                if (arr.length > 0) {
-                                    return { id, items: arr };
-                                }
-                            }
-
-                            return { id: lastId, items: lastItems };
-                        };
-
-                        const [tvRes, camRes] = await Promise.all([
-                            fetchFirstNonEmpty(tvCandidates),
-                            fetchFirstNonEmpty(camCandidates),
-                        ]);
-
-                        packIds = [String(tvRes?.id || '').trim(), String(camRes?.id || '').trim()].filter(Boolean);
-                        items = [];
-                        if (Array.isArray(tvRes?.items)) items.push(...tvRes.items);
-                        if (Array.isArray(camRes?.items)) items.push(...camRes.items);
-                        scopeNote = packIds.length ? 'Merged library: TV Mounting + Cameras' : '';
-                    } else {
-                        const respScoped = await this.fetchJson(
-                            `/api/admin/proof-assets?pack_id=${encodeURIComponent(packId)}&limit=500`,
-                            { signal: ctrl.signal }
-                        );
-                        items = Array.isArray(respScoped?.assets) ? respScoped.assets : [];
-                    }
-
-                    // Ignore stale responses.
-                    if (Number(this.state._assetsReqId || 0) !== assetsReqId) {
-                        return;
-                    }
-
-                    items = this.mergeOptimisticThumbnailUrls(items);
-                    
-                    const fetchedAt = Date.now();
-
-                    this.state.assets = { 
-                        loading: false, 
-                        pack_id: packId, 
-                        items, 
-                        scopeNote, 
-                        renderLimit, 
-                        filter: this.state.assets?.filter || 'all',
-                        serviceFilter: this.state.assets?.serviceFilter || 'all',
-                        lastFetchedAt: fetchedAt,
-                        sourcePackIds: isLibrary ? packIds.slice() : [packId],
-                    };
-                    
-                    // Intelligent Thumbnail Repair: Check and fix missing thumbnails automatically
-                    // Run with a slight delay to allow UI to render first
-                    setTimeout(() => { 
-                        if (typeof this.generateBatchThumbnails === 'function') {
-                            this.generateBatchThumbnails(); 
+                    const packs = await this.ensureLibraryPacksLoaded(surface, { signal: controller.signal, commit: false });
+                    if (!current()) return;
+                    const fetchFirstNonEmpty = async (candidates) => {
+                        let result = { id: '', items: [] };
+                        for (const id of candidates.slice(0, 6)) {
+                            const response = await this.fetchJson(`/api/admin/proof-assets?pack_id=${encodeURIComponent(id)}&limit=500`, { signal: controller.signal });
+                            if (response?.ok === false || !Array.isArray(response?.assets)) throw new Error(response?.error || 'Invalid media assets response');
+                            result = { id, items: response.assets };
+                            if (result.items.length) break;
                         }
-                    }, 1000);
-
-                    // Reset Library backoff on success.
-                    if (isLibrary) {
-                        if (!this._libraryAuto) this._libraryAuto = { lastAttemptAt: 0, failCount: 0, nextAttemptAt: 0 };
+                        return result;
+                    };
+                    const [tv, cameras, liveData] = await Promise.all([
+                        fetchFirstNonEmpty(this.getPackIdCandidates(packs.tv_mounting)),
+                        fetchFirstNonEmpty(this.getPackIdCandidates(packs.cameras)),
+                        this.fetchLiveAssetIds(surface),
+                    ]);
+                    if (!current()) return;
+                    const unique = new Map([...tv.items, ...cameras.items].map(asset => [String(asset.asset_id), asset]));
+                    const items = this.mergeOptimisticThumbnailUrls(Array.from(unique.values()));
+                    const packIds = [tv.id, cameras.id].filter(Boolean);
+                    const scopeNote = packIds.length ? 'Shared library: TV Mounting + Cameras' : 'No media packs yet';
+                    this.state.libraryPacks = packs;
+                    this.state.liveAssetIds = liveData.ids;
+                    this.state.assetUsageCounts = liveData.counts;
+                    this.state.assets = {
+                        ...this.state.assets, loading: false, refreshing: false, error: '',
+                        items, scopeNote, lastFetchedAt: Date.now(), sourcePackIds: packIds,
+                    };
+                    if (this._libraryAuto) {
                         this._libraryAuto.failCount = 0;
                         this._libraryAuto.nextAttemptAt = 0;
                     }
-                    
-                    // Cache key (merged for library, or pack_id for scoped)
-                    this.safeWriteJson(this.getAssetsCacheKey(packId, isLibrary ? 'merged' : 'all'), {
-                        ts: Date.now(),
-                        items,
-                        scopeNote,
-                    });
+                    this.safeWriteJson(this.getAssetsCacheKey('merged', 'merged'), { ts: Date.now(), items, scopeNote });
                     this.setAssetsUi(this.state.assets);
-                } catch (e) {
-                    // Ignore aborted requests (usually due to pack switching)
-                    if (e?.name === 'AbortError' || String(e?.message || '').toLowerCase().includes('aborted')) {
-                        return;
-                    }
-
-                    // Ignore stale failures.
-                    if (Number(this.state._assetsReqId || 0) !== assetsReqId) {
-                        return;
-                    }
-
-                    // Library: back off retries a bit to avoid hammering on transient failures.
-                    if (isLibrary) {
-                        if (!this._libraryAuto) this._libraryAuto = { lastAttemptAt: 0, failCount: 0, nextAttemptAt: 0 };
-                        const now = Date.now();
-                        this._libraryAuto.failCount = Math.min(6, Number(this._libraryAuto.failCount || 0) + 1);
-                        const delay = Math.min(300_000, 5_000 * Math.pow(2, this._libraryAuto.failCount));
-                        this._libraryAuto.nextAttemptAt = now + delay;
-                    }
-                    
-                    // Fallback to all cache
-                    const cached = this.safeReadJson(this.getAssetsCacheKey(packId, isLibrary ? 'merged' : 'all'));
-                    const cachedItems = this.mergeOptimisticThumbnailUrls(Array.isArray(cached?.items) ? cached.items : []);
-                    const age = this.formatAge(cached?.ts);
-                    
-                    if (cachedItems.length) {
-                        const note = `Using cached library${age ? ` (${age})` : ''}. Sign in to refresh.`;
-                        this.state.assets = {
-                            loading: false,
-                            pack_id: packId,
-                            items: cachedItems,
-                            scopeNote: note,
-                            renderLimit,
-                            filter: this.state.assets?.filter || 'all',
-                            serviceFilter: this.state.assets?.serviceFilter || 'all',
-                            lastFetchedAt: Number(this.state?.assets?.lastFetchedAt || 0),
-                            sourcePackIds: isLibrary ? packIds.slice() : [packId],
-                        };
-                        this.setAssetsUi(this.state.assets);
-                        if (statusEl) statusEl.textContent = e?.status === 401 ? 'Unauthorized (showing cached).' : `Offline (showing cached): ${e.message}`;
-                    } else {
-                        this.mergeOptimisticThumbnailUrls([]);
-                        this.state.assets = {
-                            loading: false,
-                            pack_id: packId,
-                            items: [],
-                            scopeNote: '',
-                            renderLimit,
-                            filter: this.state.assets?.filter || 'all',
-                            serviceFilter: this.state.assets?.serviceFilter || 'all',
-                            lastFetchedAt: Number(this.state?.assets?.lastFetchedAt || 0),
-                            sourcePackIds: isLibrary ? packIds.slice() : [packId],
-                        };
-                        this.setAssetsUi(this.state.assets);
-                        if (statusEl) statusEl.textContent = e?.status === 401 ? 'Unauthorized (set admin key).' : `Failed to load assets: ${e.message}`;
-                    }
+                } catch (error) {
+                    if (!current()) return;
+                    console.error('[Website Media refresh]', error);
+                    if (!this._libraryAuto) this._libraryAuto = { lastAttemptAt: 0, failCount: 0, nextAttemptAt: 0 };
+                    this._libraryAuto.failCount = Math.min(6, this._libraryAuto.failCount + 1);
+                    this._libraryAuto.nextAttemptAt = Date.now() + Math.min(300_000, 5_000 * 2 ** this._libraryAuto.failCount);
+                    this.state.assets = { ...this.state.assets, loading: false, refreshing: false, error: `Library update failed: ${error.message}` };
+                    this.setAssetsUi(this.state.assets);
                 }
             },
 
@@ -8584,7 +8583,7 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
-            openPagePlacement(assetId) {
+            openPagePlacement(assetId, initialPlacement = null) {
                 const asset = this.state.assets?.items?.find((item) => String(item.asset_id) === String(assetId))
                     || this.state.edit?.asset;
                 if (!asset || String(asset.asset_id) !== String(assetId)) {
@@ -8596,7 +8595,7 @@ function smsStartNewMessage(prefillPhone) {
                     return;
                 }
                 this.beginPlacementEdit({
-                    asset, source: 'proof_asset', base: this.getConfig().base,
+                    asset, source: 'proof_asset', base: this.getConfig().base, initialPlacement,
                     token: getDashboardSessionToken(),
                     url: this.publicStorageUrl(asset.storage_bucket || 'proof', asset.storage_path),
                 });
@@ -10569,19 +10568,18 @@ function smsStartNewMessage(prefillPhone) {
                     `;
                 }).join('');
                 
-                gridEl.innerHTML = gridItems;
+                this.patchMediaTiles(gridEl, gridItems);
                 
-                // GAP 11 FIX: Bind click handlers with stopPropagation
-                setTimeout(() => {
-                    gridEl.querySelectorAll('.pp-grid-item').forEach(item => {
-                        item.addEventListener('click', (e) => {
-                            if (e.target.type === 'checkbox') return;
-                            e.stopPropagation();
-                            const assetId = item.dataset.assetId;
-                            this.beginEditAssetMedia(assetId);
-                        });
+                if (!gridEl.dataset.editBound) {
+                    gridEl.dataset.editBound = 'true';
+                    gridEl.addEventListener('click', event => {
+                        if (event.target.closest('button,input,a')) return;
+                        const item = event.target.closest('.pp-grid-item');
+                        if (!item) return;
+                        event.stopPropagation();
+                        this.beginEditAssetMedia(item.dataset.assetId);
                     });
-                }, 50);
+                }
             },
             
             // Export Presets
@@ -11721,22 +11719,10 @@ function smsStartNewMessage(prefillPhone) {
                     let analysis = await this.analyzeFile(file);
                     const media_kind = String(analysis?.media_kind || '').trim() || (file?.type?.startsWith('video/') ? 'video' : 'photo');
 
-                    // Always optimize images on replace (WebP/AVIF) when enabled.
-                    try {
-                        const optOn = this.getOptimizeImagesPreference();
-                        if (optOn && media_kind !== 'video' && this.isImageFile(file)) {
-                            const fmt = this.getImageFormatPreference();
-                            const q = this.getImageQualityPreference();
-                            const maxDim = this.getImageMaxDimPreference();
-                            if (statusEl) statusEl.textContent = 'Optimizing image...';
-                            const converted = await this.convertImageFile(file, { format: fmt, quality: q, maxDim });
-                            if (converted) {
-                                file = converted;
-                                analysis = await this.analyzeFile(file);
-                            }
-                        }
-                    } catch (e) {
-                        console.warn('[ProofPacks] Replace image optimization failed; using original:', e);
+                    const prepared = await this.prepareImageFile(file);
+                    if (prepared !== file) {
+                        file = prepared;
+                        analysis = await this.analyzeFile(file);
                     }
 
                     const existingKind = String(targetAsset?.media_kind || '').trim();
@@ -13445,7 +13431,7 @@ function smsStartNewMessage(prefillPhone) {
                 const surface = document.getElementById('ppSurface')?.value || 'bundles';
                 const pack = this.getSelectedPack(); // Now always returns a pack
 
-                const file = this.state.file;
+                let file = this.state.file;
                 if (!file) {
                     throw new Error('No file selected');
                 }
@@ -13510,7 +13496,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (statusEl) statusEl.textContent = 'Uploading...';
                 if (warnEl) warnEl.textContent = '';
 
-                const analysis = this.state.analysis || { file_size_kb: Math.round((file.size || 0) / 1024) };
+                let analysis = this.state.analysis || { file_size_kb: Math.round((file.size || 0) / 1024) };
                 const media_kind = this.effectiveMediaKind();
 
                 // Hard guardrails: allow but force an explicit confirmation.
@@ -13534,6 +13520,11 @@ function smsStartNewMessage(prefillPhone) {
                 }
 
                 try {
+                    const prepared = await this.prepareImageFile(file);
+                    if (prepared !== file) {
+                        file = prepared;
+                        analysis = { ...analysis, ...await this.analyzeFile(file) };
+                    }
                     const rotateDeg = this.getRotateDegPreference();
                     const trimStartSec = this.getTrimStartSecPreference();
                     const trimEndSec = this.getTrimEndSecPreference();
@@ -49242,11 +49233,11 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             <h4 class="commercial-queue-detail__section-title">Details</h4>
                             <dl class="commercial-queue-detail__fields">
                                 ${this.renderDetailRow('Location', projectLocation || 'Not provided', item.businessType || '')}
-                                ${this.renderDetailRow('Timing', item.timeline || 'Not provided', item.budgetBand ? `Budget: ${item.budgetBand}` : '')}
+                                ${this.renderDetailRow('Timing', window.H2SCommercialLabels.timeline(item.timeline), item.budgetBand ? `Budget: ${window.H2SCommercialLabels.budget(item.budgetBand)}` : '')}
                                 ${this.renderDetailRow('Sites', item.siteCount ? String(item.siteCount) : 'Not provided', '')}
                                 ${this.renderDetailRow('Attachments', `${Number(item.projectPhotoCount || 0)} uploaded`, 'Viewing unavailable in this queue.')}
                                 ${this.renderDetailRow('Preferred window', consultationCopy, windowReviewNote)}
-                                ${this.renderDetailRow('Technician', item.consultation && item.consultation.assignedTechnicianName || 'Not assigned', item.consultation && item.consultation.assignedTechnicianPhone || '')}
+                                ${this.renderDetailRow('Technician routing', window.H2SCommercialLabels.technician(item.consultation).label, window.H2SCommercialLabels.technician(item.consultation).detail)}
                                 ${this.renderDetailRow('Technician response', this.technicianResponseForItem(item), item.consultation && item.consultation.responseAt ? this.formatDateTime(item.consultation.responseAt) : '')}
                                 ${this.renderDetailRow('Appointment', item.consultation && item.consultation.relatedOrderId ? 'Created - opening unavailable in this queue.' : 'Not created', '')}
                                 ${this.renderDetailRow('Customer confirmation', this.confirmationForItem(item), '')}

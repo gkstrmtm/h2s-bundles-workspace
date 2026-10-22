@@ -2354,6 +2354,10 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
     const manualFollowUp = isManualCommercialFollowUp(latestConsultation, { contact_preference: requestedContactMethod });
     const contactDetail = requestedContactMethod === 'email' ? safeTrim(lead?.email) : safeTrim(lead?.phone);
     const workflow = latestConsultation?.metadata?.workflow || {};
+    const dispatchPrefix = `dispatch:${latestConsultation?.selected_slot_start || 'manual'}:${latestConsultation?.metadata?.last_reschedule_key || 'initial'}:`;
+    const technicianEffects = Object.entries(workflow)
+      .filter(([key]) => key.startsWith(dispatchPrefix))
+      .map(([, entry]) => entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
     const effectStates = Object.values(workflow).map((entry: unknown) =>
       entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
     const providerReview = effectStates.some(state => state === 'processing' || state === 'uncertain');
@@ -2398,6 +2402,11 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
       selectedSlotEnd: latestConsultation.selected_slot_end || null,
       assignedTechnicianName: safeTrim(latestConsultation.assigned_technician_name) || null,
       assignedTechnicianPhone: safeTrim(latestConsultation.assigned_technician_phone) || null,
+      technicianRouting: {
+        acceptedCount: technicianEffects.filter(state => state === 'accepted').length,
+        failedCount: technicianEffects.filter(state => state === 'failed').length,
+        pendingCount: technicianEffects.filter(state => !['accepted', 'failed'].includes(state)).length,
+      },
       reminderCount: Number(latestConsultation.reminder_count || 0) || 0,
       nextReminderAt: latestConsultation.next_reminder_at || null,
       responseChannel: safeTrim(latestConsultation.response_channel) || null,

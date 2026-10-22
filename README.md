@@ -98,7 +98,7 @@ Regression checks: `node --test backend\tests\dashboard_shell.test.cjs`.
 
 ## Dashboard messaging dependencies
 
-The canonical dashboard loads `dash.js`, `media-placements.js`, `dash-messages.js`,
+The canonical dashboard loads `commercial-labels.js`, `dash.js`, `media-placement-style.js`, `media-placements.js`, `dash-messages.js`,
 then `sms-no-flicker.js` in order. Session startup and login wait for the required
 scripts; a load failure is reported at the login gate instead of silently falling
 back to customer SMS handlers.
@@ -159,17 +159,84 @@ notification fails. No response remains pending with existing reminders or
 escalated for management review. Provider acceptance is not delivery, customer
 acknowledgement, or completed follow-up; neither technician response marks a lead
 handled. A revised window still requires the current approval link.
+Customer pages load only `frontend/media-placement-style.js` for saved framing.
+The dashboard loads the same formatter plus the admin-only `frontend/media-placements.js`
+editor. Customer pages do not download editor controls, preview labels, or destination-preview code.
+Fixture images and crop-guide fixtures remain outside production source files.
+
+Budget and timing identifiers are formatted by `frontend/commercial-labels.js`
+without changing their stored values. The Commercial page uses the same timing
+formatter for summaries and newly composed messages. Technician routing reports
+current-window dispatch-effect counts, separately from a named assignment.
+An accepted provider attempt does not establish delivery, reading, appointment
+creation, customer confirmation, or completed customer follow-up. Older backend
+snapshots without routing evidence explicitly leave notification status unverified.
 
 Website Media remains a shared asset pool with independent source/asset/page/area
 overrides for inclusion, order, fit, focus and zoom. Placement saves do not edit
 the source asset or another placement. Fixture regressions cover save/reopen,
 cancel, scoped exclusion/order, and the Bundles/Commercial consuming renderers:
 `node --test backend\tests\media_placements.test.cjs`.
-Saved CSS framing is consumed independently on both pages. Pixel-identical
-editor/site cropping is not yet verified: the Bundles hero uses a responsive
-content-height frame, while its catalog preview is fixed at 16:9. Preserve the
-shared pool and scoped overrides when reconciling that preview; do not change
-all placements or the source crop to compensate.
+The existing workbench previews active destinations at desktop 1440x900 and mobile
+390x844. It reads the actual local destination HTML/CSS, including deferred styles,
+fonts, responsive content sizing, and overlays, into a script-disabled, read-only
+frame. Page startup, tracking, forms, and inline handlers do not execute there.
+The public renderer and editor share the same fit/focus/zoom CSS. The same saved
+framing is previewed at both sizes; no mobile columns or production migration
+are introduced. Live personalized/dynamic content is not run inside the preview.
+
+The current Bundles layout has no installation rail or cart reassurance strip.
+Those historical destinations are labeled unavailable and are not editable;
+their saved overrides are neither deleted nor reassigned. Legacy slot diagnostics
+are collapsed/read-only, not presented as a competing current-page editor.
+For another developer-integrated page, register its surface/area in
+`backend/lib/mediaPlacementCatalog.json` and its actual page/frame/consumer
+classes in `frontend/media-placements.js` (or the catalog area's `preview`
+metadata). A missing destination fails explicitly rather than inventing a frame.
+
+Library updates retain usable items, keyed gallery nodes, filters, selection,
+focus, scroll and open editor drafts. Same-scope requests are deduplicated;
+superseded responses cannot replace the current asset or usage snapshot. Failed
+updates retain data with contextual Retry. Initial placeholders are used only
+without usable data. Read-only browsing no longer schedules write-backed video
+thumbnail repair; upload/explicit optimization tools remain separate. Broken
+thumbnails stop their error handler and show an unavailable label instead of an
+invalid-data-URL retry loop.
+
+Library counts describe the loaded shared library before filters, not all storage.
+Captions sit below thumbnails. Image uploads, replacements and explicit optimization
+use automatic AVIF/WebP selection, 72% quality and a 1920px maximum edge by default.
+Optional advanced settings control format, quality and maximum size (including
+original dimensions); disabling optimization preserves the upload. Videos bypass
+image conversion. Unsupported AVIF falls back to correctly labeled WebP; an encoding
+failure stops the upload rather than silently substituting the original.
+The expandable Hero placement menu identifies Bundles/Commercial destinations and
+saved inclusion/order for the selected asset, then opens the existing placement
+editor without writing. An absent override does not imply the asset is unused:
+automatic selection may still use it.
+
+Fixture checks:
+`node --test backend\tests\media_placements.test.cjs backend\tests\media_refresh.test.cjs backend\tests\commercial_queue.test.cjs`.
+
+### Commercial media category extension - proposed, not implemented
+
+Upload staging/storage does not itself guarantee placement eligibility. The
+placement API and shared-edit service parser currently admit only `tv_mounting`
+and `cameras`; the shared library loads those two services, and the public
+Commercial security/display rails have matching service filters. Owner Uploads
+stores `service_type` as text, but that does not bypass placement/public filters.
+No new rejected dropdown options have been added.
+
+The smallest compatible extension is a shared service registry used by upload
+metadata/edit validation, library queries, placement eligibility/catalog and
+public consumers. Review identifiers for networking/Wi-Fi, structured cabling
+and access control first. Keep existing identifiers and service-specific rails
+unchanged; allow approved new services in a general hero before proposing more
+page sections. Reconcile actual remote `proof_packs`/`proof_assets` constraints
+and legacy metadata before preparing any additive constraint migration; those
+remote constraints have not been verified in this local-only pass. Rights,
+visibility, optimization, source isolation and existing role checks must remain
+unchanged. No category schema, permissions or production migration were changed.
 
 Refresh runs on entry, stale focus/visibility, reconnect, after processing,
 and every minute while this authorized view is visible. Requests are deduplicated;

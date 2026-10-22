@@ -1,18 +1,24 @@
 (function (root) {
   'use strict';
 
+  const destinationPreviews = {
+    bundles: {
+      hero: { preview: { page: 'bundles.html', frame: 'section.hero', mediaClass: 'page-placement-hero', readyClass: 'has-page-placement' } },
+      mid_proof_rail: { unavailableReason: 'Unavailable: this section was removed from the current Bundles layout. Historical placement settings are retained and are not applied to another area.' },
+      pre_cta: { unavailableReason: 'Unavailable: this cart strip was removed from the current Bundles layout. Historical placement settings are retained and are not applied to another area.' },
+    },
+    commercial_intake: {
+      commercial_hero: { preview: { page: 'commercial.html', frame: '#heroMediaStage', mediaClass: 'media-stage__media', readyClass: 'is-ready' } },
+      commercial_security_rail: { preview: { page: 'commercial.html', frame: '#cameraProofRail', tileClass: 'proof-tile' } },
+      commercial_display_rail: { preview: { page: 'commercial.html', frame: '#tvProofRail', tileClass: 'proof-tile' } },
+    },
+  };
   const bounded = (value, min, max, fallback) => {
     const number = Number(value);
     return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
   };
-  function style(settings) {
-    if (!settings) return '';
-    const x = bounded(settings.focal_x, 0, 100, 50);
-    const y = bounded(settings.focal_y, 0, 100, 50);
-    const zoom = bounded(settings.zoom, 1, 3, 1);
-    const fit = settings.fit === 'contain' ? 'contain' : 'cover';
-    return `object-fit:${fit};object-position:${x}% ${y}%;transform-origin:${x}% ${y}%;transform:scale(${zoom});`;
-  }
+  const { style } = typeof module === 'object' && module.exports
+    ? require('./media-placement-style.js') : root.H2SMediaPlacements;
 
   function pan(settings, dx, dy, frame, media) {
     if (!frame.width || !frame.height || !media.width || !media.height) return { ...settings };
@@ -31,6 +37,124 @@
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[char]));
+  }
+
+  function inertDestination(html, url) {
+    const doc = new root.DOMParser().parseFromString(html, 'text/html');
+    // Preview layout and overlays, never page startup, tracking, forms, or operational handlers.
+    doc.querySelectorAll('script,noscript,iframe,object,embed,base,meta[http-equiv],link[as="fetch"],img[width="1"][height="1"]').forEach(node => node.remove());
+    doc.querySelectorAll('*').forEach(node => {
+      if (['LINK', 'STYLE'].includes(node.tagName) && node.media === 'print' && node.hasAttribute('onload')) node.media = 'all';
+      for (const attribute of Array.from(node.attributes)) {
+        if (/^on/i.test(attribute.name) || ['action', 'formaction', 'autofocus', 'srcdoc'].includes(attribute.name)) node.removeAttribute(attribute.name);
+      }
+    });
+    const base = doc.createElement('base');
+    base.href = url;
+    doc.head.prepend(base);
+    return '<!doctype html>' + doc.documentElement.outerHTML;
+  }
+
+  function destinationFrame(doc, config, url, isVideo, settings) {
+    const area = doc.querySelector(config.frame);
+    if (!area) throw new Error('The registered destination is absent from the current page. Saved settings have not been changed.');
+    const wrap = doc.createElement('div');
+    wrap.className = config.tileClass || config.mediaClass || '';
+    const media = doc.createElement(isVideo ? 'video' : 'img');
+    media.src = url;
+    media.setAttribute('alt', '');
+    if (isVideo) { media.muted = true; media.playsInline = true; media.preload = 'auto'; }
+    media.style.cssText = style(settings);
+    wrap.appendChild(media);
+    if (config.tileClass) area.replaceChildren(wrap);
+    else if (config.mediaClass) {
+      area.querySelectorAll('.' + config.mediaClass).forEach(node => node.remove());
+      area.prepend(wrap);
+    } else area.replaceChildren(media);
+    area.classList.remove('is-loading', 'is-empty', 'has-proof-hero');
+    if (config.readyClass) area.classList.add(config.readyClass);
+    area.style.removeProperty('--hero-bg-url');
+    return { frame: config.tileClass ? wrap : area, media };
+  }
+
+  function destinationPreview({ stage, config, url, isVideo, settings, viewport, onState }) {
+    const iframe = root.document.createElement('iframe');
+    iframe.title = 'Read-only destination framing preview';
+    iframe.className = 'media-destination-preview';
+    iframe.setAttribute('sandbox', 'allow-same-origin');
+    iframe.setAttribute('tabindex', '-1');
+    iframe.setAttribute('aria-hidden', 'true');
+    const abort = new root.AbortController();
+    let closed = false;
+    let target;
+    let observer;
+    let timeout;
+    const resize = () => {
+      if (!target || closed) return;
+      const rect = target.frame.getBoundingClientRect();
+      if (!rect.width || !rect.height) throw new Error('The destination frame has no visible dimensions.');
+      const box = stage.parentElement;
+      const padding = root.getComputedStyle(box);
+      const available = box.clientWidth - parseFloat(padding.paddingLeft || 0) - parseFloat(padding.paddingRight || 0);
+      const scale = Math.min(1, available / rect.width, root.innerHeight * 0.5 / rect.height);
+      stage.style.cssText = `position:relative;overflow:hidden;display:block;flex:none;width:${rect.width * scale}px;height:${rect.height * scale}px;max-width:100%;`;
+      stage.dataset.frameWidth = rect.width;
+      stage.dataset.frameHeight = rect.height;
+      iframe.style.transform = `scale(${scale}) translate(${-rect.left}px, ${-rect.top}px)`;
+      onState({ ready: true, width: rect.width, height: rect.height, viewport });
+    };
+    const ready = (async () => {
+      try {
+        const page = new URL(config.page, root.location.href);
+        if (page.origin !== root.location.origin) throw new Error('Destination previews must use a page on this frontend.');
+        onState({ ready: false });
+        const response = await root.fetch(page.href, { signal: abort.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error(`Destination page failed to load (${response.status})`);
+        const html = inertDestination(await response.text(), page.href);
+        if (closed) return;
+        const loaded = new Promise((resolve, reject) => {
+          abort.signal.addEventListener('abort', resolve, { once: true });
+          timeout = root.setTimeout(() => reject(new Error('Destination styles or media did not finish loading. Retry the preview.')), 20000);
+          iframe.onload = async () => {
+            try {
+              const doc = iframe.contentDocument;
+              if (!doc) throw new Error('Destination preview is inaccessible.');
+              if (doc.fonts) await doc.fonts.ready;
+              if (closed) return resolve();
+              target = destinationFrame(doc, config, url, isVideo, settings);
+              await new Promise((mediaReady, mediaFailed) => {
+                target.media.addEventListener(isVideo ? 'loadeddata' : 'load', mediaReady, { once: true });
+                target.media.addEventListener('error', () => mediaFailed(new Error('Destination media failed to load.')), { once: true });
+                if ((!isVideo && target.media.complete && target.media.naturalWidth) || target.media.readyState >= 2) mediaReady();
+              });
+              if (closed) return resolve();
+              const rect = target.frame.getBoundingClientRect();
+              iframe.contentWindow.scrollTo({ left: 0, top: Math.max(0, rect.top - 120), behavior: 'instant' });
+              resize();
+              observer = new root.ResizeObserver(resize);
+              observer.observe(stage.parentElement);
+              resolve();
+            } catch (error) { reject(error); }
+          };
+        });
+        iframe.style.width = `${viewport.width}px`;
+        iframe.style.height = `${viewport.height}px`;
+        iframe.srcdoc = html;
+        stage.appendChild(iframe);
+        await loaded;
+      } catch (error) {
+        if (!closed) {
+          console.error('[Destination preview]', error);
+          onState({ ready: false, error: error.message });
+        }
+      } finally { root.clearTimeout(timeout); }
+    })();
+    return {
+      ready,
+      update(next) { settings = next; if (target) target.media.style.cssText = style(next); },
+      video() { return target?.media; },
+      destroy() { closed = true; abort.abort(); observer?.disconnect(); root.clearTimeout(timeout); iframe.onload = null; iframe.remove(); },
+    };
   }
 
   function mount(options) {
@@ -66,6 +190,11 @@
     let zoomTimer;
     let invalidDraft = false;
     let decision = null;
+    let destination = null;
+    let destinationReady = false;
+    let device = 'desktop';
+    const viewport = () => device === 'mobile' ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    const areaConfig = () => pages[surface]?.areas.find(entry => entry.key === area);
     const defaults = () => ({
       asset_source: options.source, asset_id: options.asset.asset_id, surface, area,
       enabled: true, display_order: 100, fit: 'cover', focal_x: 50, focal_y: 50, zoom: 1,
@@ -84,12 +213,12 @@
       dirty() ? 'unsaved' : saved() ? 'saved' : 'automatic');
     };
     const enableSave = () => {
-      saveButton.disabled = busy || !loaded || !previewReady;
+      saveButton.disabled = busy || !loaded || !previewReady || !destinationReady;
       saveButton.textContent = busy ? 'Saving placement...' : 'Save this placement';
       find('#ppUndoBtn').disabled = busy || index <= 0;
       find('#ppRedoBtn').disabled = busy || index >= states.length - 1;
       const form = find('form');
-      if (form) form.querySelector('fieldset').disabled = busy || !loaded;
+      if (form) form.querySelector('fieldset').disabled = busy || !loaded || !!areaConfig()?.unavailableReason;
       scopeControls.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
       if (decision) decision.element.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
     };
@@ -107,6 +236,8 @@
     const applyPreview = () => {
       if (!settings) return;
       media.style.cssText = `display:block;width:100%;height:100%;max-width:none;margin:0;${style(settings)}`;
+      if (destination) media.style.visibility = 'hidden';
+      destination?.update(settings);
       find('#ppUndoBtn').disabled = busy || index <= 0;
       find('#ppRedoBtn').disabled = busy || index >= states.length - 1;
       for (const name of ['focal_x', 'focal_y', 'zoom', 'display_order']) {
@@ -156,6 +287,7 @@
     const destroy = () => {
       closed = true;
       clearTimeout(zoomTimer);
+      destination?.destroy();
       closeDecision();
       if (media.tagName === 'VIDEO') media.pause();
     };
@@ -201,7 +333,7 @@
     };
     const cancel = () => transition(close);
     const zoomBy = (delta, group = false) => {
-      if (!loaded || busy || decision || invalidDraft || !previewReady) return;
+      if (!loaded || busy || decision || invalidDraft || !previewReady || !destinationReady) return;
       settings.zoom = Math.round(bounded(settings.zoom + delta, 1, 3, 1) * 100) / 100;
       applyPreview();
       draftStatus();
@@ -237,16 +369,21 @@
           ${Object.entries(pages).map(([key, page]) => `<button type="button" class="btn btn-tonal" data-page="${escape(key)}" aria-pressed="${surface === key}">${escape(page.title)}</button>`).join('')}
         </div></fieldset>
         ${pages[surface].areas.length > 1 ? `<fieldset><legend>Display area</legend><div class="media-placement-options">
-          ${pages[surface].areas.map((entry) => `<button type="button" class="btn btn-tonal" data-area="${escape(entry.key)}" aria-pressed="${area === entry.key}">${escape(entry.title)}</button>`).join('')}
+          ${pages[surface].areas.map((entry) => `<button type="button" class="btn btn-tonal" data-area="${escape(entry.key)}" aria-pressed="${area === entry.key}">${escape(entry.title)}${entry.unavailableReason ? ' (unavailable)' : ''}</button>`).join('')}
         </div></fieldset>` : ''}
-        <strong>${escape(pages[surface].title)} / ${escape(config.title)} - placement only</strong>`;
+        <strong>${escape(pages[surface].title)} / ${escape(config.title)} - placement only</strong>
+        <div class="media-placement-options" aria-label="Preview viewport">
+          <button type="button" class="btn btn-tonal" data-device="desktop" aria-pressed="${device === 'desktop'}">Desktop 1440</button>
+          <button type="button" class="btn btn-tonal" data-device="mobile" aria-pressed="${device === 'mobile'}">Mobile 390</button>
+        </div>
+        <small data-destination-status role="status" aria-live="polite"></small>
+        <button type="button" class="media-placement-secondary" data-destination-retry hidden>Retry destination preview</button>`;
       scopeControls.querySelectorAll('[data-page]').forEach((button) => button.addEventListener('click', () => {
         if (button.dataset.page !== surface) changeScope(button.dataset.page, pages[button.dataset.page].areas[0].key);
       }));
       scopeControls.querySelectorAll('[data-area]').forEach((button) => button.addEventListener('click', () => {
         if (button.dataset.area !== area) changeScope(surface, button.dataset.area);
       }));
-      stage.style.cssText = `position:relative;overflow:hidden;aspect-ratio:${config.aspect};width:min(100%, 50vh * (${config.aspect}));height:auto;max-height:50vh;background:var(--cobalt);`;
       find('.editor-title').textContent = `Placement framing: ${pages[surface].title} / ${config.title}`;
       find('#ppEditorOverlayLabel').textContent = `${pages[surface].title} / ${config.title}`;
       controls.innerHTML = `
@@ -266,7 +403,7 @@
               <label>Vertical focus (%)<input name="focal_y" type="number" min="0" max="100" step="any" required></label>
               <label>Display order<input name="display_order" type="number" min="0" max="999" step="1" required></label>
             </div>
-            <small>Lower order appears first within the area's service group. Preview uses the registered frame ratio; responsive sizes can vary.</small>
+            <small>Lower order appears first within the area's service group. Desktop and mobile use the same saved framing. Fit whole photo can leave space around the image.</small>
           </details>
           <div class="media-placement-options">
             <button type="button" class="media-placement-secondary" data-reset ${saved() ? '' : 'disabled'} title="Remove only this saved placement override and let the page select media automatically.">Restore automatic selection</button>
@@ -296,18 +433,57 @@
       const playback = find('[data-playback]');
       if (playback) playback.addEventListener('click', async () => {
         try {
-          if (media.paused) { await media.play(); playback.textContent = 'Pause preview'; }
-          else { media.pause(); playback.textContent = 'Play preview'; }
+          if (media.paused) { await media.play(); await destination?.video?.()?.play(); playback.textContent = 'Pause preview'; }
+          else { media.pause(); destination?.video?.()?.pause(); playback.textContent = 'Play preview'; }
         } catch (error) {
           console.error('[Placement video preview]', error);
           setStatus('Video playback failed. Retry loading the preview.', 'failed');
         }
       });
+      find('[data-destination-retry]').addEventListener('click', showDestination);
+      findAllDevices().forEach(button => button.addEventListener('click', () => {
+        device = button.dataset.device;
+        findAllDevices().forEach(entry => entry.setAttribute('aria-pressed', String(entry.dataset.device === device)));
+        showDestination();
+      }));
       renderValues();
+      showDestination();
       enableSave();
     };
+    const findAllDevices = () => Array.from(host.querySelectorAll('[data-device]'));
+    const showDestination = () => {
+      destination?.destroy();
+      destination = null;
+      destinationReady = false;
+      const config = areaConfig();
+      const note = find('[data-destination-status]');
+      const retry = find('[data-destination-retry]');
+      retry.hidden = true;
+      if (config.unavailableReason || !config.preview) {
+        stage.style.display = 'none';
+        note.textContent = config.unavailableReason || 'Destination preview is not connected. The developer must register the page and frame selector. Saved settings are retained.';
+        enableSave();
+        return;
+      }
+      stage.style.cssText = 'position:relative;overflow:hidden;width:100%;height:240px;';
+      media.style.visibility = 'hidden';
+      destination = (options.previewFactory || destinationPreview)({
+        stage, config: config.preview, url: media.src, isVideo: media.tagName === 'VIDEO',
+        settings, viewport: viewport(),
+        onState(state) {
+          if (closed) return;
+          destinationReady = state.ready;
+          note.setAttribute('role', state.error ? 'alert' : 'status');
+          note.textContent = state.error ? `Preview unavailable: ${state.error} Your draft is retained.`
+            : state.ready ? `${Math.round(state.width)} \u00d7 ${Math.round(state.height)} px destination frame at ${state.viewport.width} \u00d7 ${state.viewport.height}. Actual page layout and overlays; drag here to frame.`
+            : 'Loading the destination page layout and media...';
+          retry.hidden = !state.error;
+          enableSave();
+        },
+      });
+    };
     const save = async () => {
-      if (!loaded || !previewReady || busy || closed) {
+      if (!loaded || !previewReady || !destinationReady || busy || closed) {
         if (!busy && !closed) setStatus('Cannot save this placement until its saved settings and media preview have loaded.', 'failed');
         return false;
       }
@@ -376,13 +552,14 @@
       url.searchParams.set('v', Date.now());
       previewState(false);
       media.src = url.href;
+      showDestination();
       if (media.tagName === 'VIDEO') media.load();
     });
     errorOverlay.querySelector('.pp-error-box').appendChild(retry);
     if ((media.tagName === 'IMG' && media.complete && media.naturalWidth) || media.readyState >= 2) onLoad();
     else if (media.tagName === 'IMG' && media.complete) previewState(false, true);
     stage.addEventListener('pointerdown', (event) => {
-      if (busy || decision || invalidDraft || !loaded || !previewReady || event.button !== 0) return;
+      if (busy || decision || invalidDraft || !loaded || !previewReady || !destinationReady || event.button !== 0) return;
       finishZoom();
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, start: { ...settings } };
       stage.setPointerCapture(event.pointerId);
@@ -416,13 +593,20 @@
       try {
         const result = await request('GET');
         if (closed) return;
-        pages = result.pages;
+        pages = result.pages && Object.fromEntries(Object.entries(result.pages).map(([key, page]) => [
+          key, { ...page, areas: page.areas?.map(entry => ({ ...entry, ...destinationPreviews[key]?.[entry.key] })) },
+        ]));
         if (!pages || !Object.values(pages).every((page) => page.title && page.areas?.length
           && page.areas.every((entry) => /^[0-9.]+ \/ [0-9.]+$/.test(entry.aspect)))) throw new Error('Invalid developer page catalog');
         placements = result.placements;
         loaded = true;
-        surface = Object.keys(pages)[0];
-        loadScope(surface, pages[surface].areas[0].key);
+        const initial = options.initialPlacement;
+        if (initial && !pages[initial.surface]?.areas.some(entry => entry.key === initial.area)) {
+          throw new Error('The requested page placement is not registered.');
+        }
+        surface = initial?.surface || Object.keys(pages)[0];
+        loadScope(surface, initial?.area || pages[surface].areas[0].key);
+        await destination?.ready;
       } catch (error) {
         if (closed) return;
         console.error('[Placement load]', error);
@@ -453,7 +637,7 @@
     return controller;
   }
 
-  const api = { style, pan, mount };
+  const api = { style, pan, mount, inertDestination, destinationFrame, destinationPreview };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.H2SMediaPlacements = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

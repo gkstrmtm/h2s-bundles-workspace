@@ -299,6 +299,7 @@ function queuePage() {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Commercial Queue - local fixture</title><link rel="stylesheet" href="/dashboard-design-system.css"><link rel="stylesheet" href="/dash.css"></head><body>
   <p>In-memory test data only. No real SMS, emails, or appointments.</p>${pane}
   <script>
+  ${fs.readFileSync(path.join(root, 'frontend', 'commercial-labels.js'), 'utf8')}
   const API_URL='/api/v1';
   const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const uiRenderState=options=>escapeHtml(options.title+' '+options.message);

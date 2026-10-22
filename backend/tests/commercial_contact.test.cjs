@@ -321,6 +321,7 @@ test('full commercial frontend restores distinct draft, manual and text request 
         return Response.json({ ok: true, assets: [], items: [], photos: [] });
       };
       try {
+        dom.window.eval(fs.readFileSync(path.join(frontend, 'commercial-labels.js'), 'utf8'));
         dom.window.eval(fs.readFileSync(path.join(frontend, 'commercial.js'), 'utf8'));
         await new Promise(resolve => setImmediate(resolve));
         const document = dom.window.document;
