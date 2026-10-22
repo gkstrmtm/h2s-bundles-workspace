@@ -68,6 +68,7 @@ async function createOperationsFixture() {
       '{"status":"queued"}',now());
   `);
   await db.exec(fs.readFileSync(path.join(root,'migrations','032_commercial_operations.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'migrations','033_atomic_stripe_order_metadata.sql'),'utf8'));
   const quote = raw => { const name = raw.trim(); assert.match(name,/^[A-Za-z_][A-Za-z0-9_]*$/); return `"${name}"`; };
   function from(table) {
     const conditions = [], args = [];
@@ -98,6 +99,7 @@ async function createOperationsFixture() {
             rows = (await db.query(`update ${quote(table)} set ${assignments.join(',')}${conditions.length ? ` where ${conditions.join(' and ')}` : ''} returning ${selected}`,args)).rows;
           } else rows = (await db.query(`select to_jsonb(result) value from (select ${selected} from ${quote(table)}${conditions.length ? ` where ${conditions.join(' and ')}` : ''}${ordering} limit ${Number(limit)}) result`,args)).rows.map(row => row.value);
           const data = JSON.parse(JSON.stringify(single ? rows[0] || null : rows));
+          if (table === 'h2s_orders' && !patch && !upsert && faults.afterOrderRead) await faults.afterOrderRead(data);
           resolve({ data, error: null });
         } catch (error) { resolve({ data: null, error: { message: error.message, code: error.code } }); }
       },
@@ -105,6 +107,14 @@ async function createOperationsFixture() {
     return builder;
   }
   const client = { from, async rpc(name, args) {
+    if (name === 'stripe_patch_order') {
+      if (faults.stripePatch) return { data:null,error:{code:'PGRST202',message:'Fixture atomic patch unavailable'} };
+      try {
+        const result = await db.query('select stripe_patch_order($1,$2::jsonb,$3::jsonb) result',
+          [args.p_order_id,JSON.stringify(args.p_metadata),args.p_checkout == null ? null : JSON.stringify(args.p_checkout)]);
+        return { data:result.rows[0].result,error:null };
+      } catch (error) { return { data:null,error:{code:error.code,message:error.message} }; }
+    }
     assert.equal(name,'commercial_record_operation');
     const values = Object.values(args).map(value => value && typeof value === 'object' ? JSON.stringify(value) : value);
     const casts = ['uuid','integer','uuid','jsonb','text','jsonb'];

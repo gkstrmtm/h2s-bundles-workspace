@@ -24,6 +24,8 @@ test('registered production authorization includes exactly the owner-approved re
   assert.match(config.commercial031.authorization, /2026-10-20/);
   assert.equal(config.commercial031.sqlSha256, 'c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071');
   assert.equal(config.commercial032.reviewOnly, true);
+  assert.equal(config.stripe033.reviewOnly, true);
+  assert.equal(config.stripe033.sqlSha256, null);
   assert.throws(() => runner.authorizeApply(config, ref), /scope/);
 });
 
@@ -55,9 +57,14 @@ test('unknown/unapproved targets, missing baseline, missing confirmation, and ex
     ...future, commercial031: { ...future.commercial031, reviewOnly: false, authorization: 'Local test only; no remote authority' },
   };
   assert.throws(() => runner.authorizeApply(reviewed031, ref), /032 remains review-only/);
-  assert.doesNotThrow(() => runner.authorizeApply({ ...reviewed031,
+  const reviewed032 = { ...reviewed031,
     commercial032: { reviewOnly: false, authorization: 'Local test only; no remote authority',
-      sqlSha256: runner.migrations().at(-1).sha256 } }, ref));
+      sqlSha256: runner.migrations().find(file => file.version.startsWith('032_')).sha256 } };
+  assert.throws(() => runner.authorizeApply(reviewed032, ref), /033 remains review-only/);
+  assert.throws(() => runner.authorizeApply({ ...reviewed032,
+    stripe033:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:'changed'} },ref), /033 remains review-only/);
+  assert.doesNotThrow(() => runner.authorizeApply({ ...reviewed032,
+    stripe033:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().at(-1).sha256} },ref));
 });
 
 test('TLS requires a CA, keeps certificate/hostname verification, and rejects insecure global overrides', () => {
@@ -81,8 +88,8 @@ test('TLS requires a CA, keeps certificate/hostname verification, and rejects in
 
 test('only reviewed migrations are selected and history detects changed or out-of-order SQL', () => {
   const files = runner.migrations();
-  assert.equal(files.length, 4);
-  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql']);
+  assert.equal(files.length, 5);
+  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql']);
   const config = target();
   const rows = files.map((file) => ({
     version: file.version, sha256: file.sha256, project_ref: ref, environment: 'production',
@@ -103,7 +110,8 @@ test('apply rolls back on unreviewed schema drift before running any migration o
   const config = target();
   const future = { ...config, authorizedMigrations: runner.migrations().map(file => file.version),
     commercial031: { ...config.commercial031, reviewOnly: false, authorization: 'Local test only; no remote authority' },
-    commercial032: { reviewOnly: false, authorization: 'Local test only; no remote authority', sqlSha256: runner.migrations().at(-1).sha256 } };
+    commercial032: { reviewOnly: false, authorization: 'Local test only; no remote authority', sqlSha256: runner.migrations().find(file => file.version.startsWith('032_')).sha256 },
+    stripe033: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().at(-1).sha256 } };
   await assert.rejects(runner.apply(client, future, ref), /differs from.*baseline/);
   assert.equal(queries.at(-1), 'ROLLBACK');
   assert.ok(!queries.some((sql) => /create table|insert into|alter table/i.test(sql)));

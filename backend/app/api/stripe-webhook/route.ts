@@ -69,9 +69,7 @@ export async function POST(req: NextRequest) {
       
       if (existingOrder) {
          // Parse job_details if present
-         const retainedMetadata = existingOrder.metadata_json && typeof existingOrder.metadata_json === 'object'
-           && !Array.isArray(existingOrder.metadata_json) ? existingOrder.metadata_json : {};
-         const enrichedMetadata = { ...retainedMetadata, ...session.metadata };
+         const enrichedMetadata = { ...session.metadata };
          if (session.metadata?.job_details_json) {
            try {
              enrichedMetadata.job_details = JSON.parse(session.metadata.job_details_json);
@@ -81,13 +79,12 @@ export async function POST(req: NextRequest) {
            }
          }
          
-         // Update existing
-         const { data: updated, error: updateError } = await supabase
-            .from('h2s_orders')
-            .update({
+         // The lookup above is advisory; merge against the locked database row, not its snapshot.
+         const { data: updated, error: updateError } = await getSupabase().rpc('stripe_patch_order', {
+            p_order_id: existingOrder.order_id,
+            p_metadata: enrichedMetadata,
+            p_checkout: {
                payment_intent_id: session.payment_intent as string,
-               status: 'paid',
-               metadata_json: enrichedMetadata,
                // Update address fields if missing
                address: address,
                city: city,
@@ -95,13 +92,14 @@ export async function POST(req: NextRequest) {
                zip: zip,
                customer_name: customerName,
                customer_phone: customerPhone
-            })
-            .eq('order_id', existingOrder.order_id)
-            .select('order_id')
-            .single();
+            }
+         });
          
          if (updateError) {
            console.error('[Stripe Webhook] Failed to update order:', updateError);
+           throw new Error('Atomic checkout order update failed');
+         } else if (!updated?.order_id) {
+           throw new Error('Atomic checkout order update returned no order');
          } else {
            console.log('[Stripe Webhook] Updated existing order:', updated?.order_id);
            
@@ -267,26 +265,14 @@ export async function POST(req: NextRequest) {
 
                 // Update order metadata with job_id
                 try {
-                  const { data: orderData } = await supabase
-                    .from('h2s_orders')
-                    .select('metadata_json')
-                    .eq('order_id', orderId)
-                    .single();
-
-                  const currentMeta = (orderData?.metadata_json && typeof orderData.metadata_json === 'object')
-                    ? orderData.metadata_json
-                    : {};
-
-                  await supabase
-                    .from('h2s_orders')
-                    .update({
-                      metadata_json: {
-                        ...currentMeta,
+                  const { error: metadataError } = await getSupabase().rpc('stripe_patch_order', {
+                      p_order_id: orderId,
+                      p_metadata: {
                         dispatch_job_id: jobId,
                         dispatch_recipient_id: recipientId
                       }
-                    })
-                    .eq('order_id', orderId);
+                  });
+                  if (metadataError) throw metadataError;
 
                   console.log('[Stripe Webhook] ✅ Linked job to order metadata');
                 } catch (metaErr: any) {

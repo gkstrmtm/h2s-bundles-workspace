@@ -22,7 +22,7 @@ transaction. Applied migrations are 029, 030 and 031. Both `h2s_jobs` and
 | Consumer | Established contract retained |
 | --- | --- |
 | [Bundles/catalog checkout](../backend/app/api/shop/route.ts) | Validated catalog cart creates Stripe checkout and order/dispatch records. No custom quote is forced into the cart contract. |
-| [Checkout webhook](../backend/app/api/stripe-webhook/route.ts) | Existing checkout and payment-intent events remain in place. The narrow change merges existing order metadata so event replay cannot erase an installation schedule. Existing provider idempotency keys are retained. |
+| [Checkout webhook](../backend/app/api/stripe-webhook/route.ts) | Existing checkout and payment-intent events remain in place. Migration 033 moves existing-order checkout updates and dispatch metadata linking into a service-role-only, row-locking merge. Current operational schedule fields take precedence over stale checkout metadata. Existing provider idempotency keys are retained. |
 | [Job creation](../backend/app/api/create_jobs_from_orders/route.ts) | Uses dispatch rows linked by order reference. This increment never calls it or any backfill. |
 | [Portal jobs](../backend/app/api/portal_jobs/route.ts) | No portal changes are included in this proposal. Future compatibility concern only; portal adoption is not required. |
 | [Scheduling](../backend/app/api/schedule-appointment/route.ts) | The production-shaped contract is dispatch `due_at` plus order delivery fields/metadata. New scheduling updates only an explicitly linked existing job/order; it does not create appointments, send confirmations, or claim capacity/technician availability was checked. |
@@ -56,6 +56,36 @@ Explicit relationships:
    never paid. This read path does not change payment records.
 
 ## Persisted operations and concurrency
+
+### Atomic webhook release correction (033)
+
+[033](../backend/migrations/033_atomic_stripe_order_metadata.sql) is additive,
+review-only, separately checksum-guarded, and not authorized for production.
+Committed migration 032 remains unchanged. The guarded runner registers 033
+after 032; both require explicit authorization before release. Apply/verify the
+approved migrations before deploying the corrected webhook: a missing/failed
+checkout RPC returns HTTP 500 for Stripe retry, not a successful acknowledgement
+or dispatch/notification continuation.
+
+`stripe_patch_order` locks the existing order inside the database transaction,
+merges only the supplied patch into the current JSON object, and preserves
+existing `scheduled_date`, `scheduled_end`, `scheduled_tz`, `time_window`,
+`schedule_status`, `scheduled_at`, and `scheduled_via`, including explicit nulls.
+Checkout values for these keys still initialize them when no current key exists.
+Delivery date/window columns are untouched. The RPC advances `updated_at` so a
+previously opened installation form detects intervening checkout changes.
+Checkout payment/address/contact updates remain in the same transaction;
+parsed job details still replace their stringified form. New-order insertion,
+payment-intent-only events, dispatch behavior and management notification
+idempotency are unchanged. Dispatch metadata linking uses the same merge without
+changing payment/contact fields. It retains the existing logged, non-blocking
+link-failure policy; no new downstream action is introduced.
+
+The function is security-invoker, with EXECUTE denied to PUBLIC, anonymous and
+authenticated clients and granted only to service_role. No table grants,
+existing rows, foreign keys, or dashboard permissions change. It uses the existing
+server-side `getSupabase()` credentials; no browser credential or new secret is
+introduced. Non-object legacy metadata fails explicitly rather than being erased.
 
 The new tables contain responsible staff, next customer follow-up, open/closed
 disposition/reason, explicit installation link and completion actor/time.

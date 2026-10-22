@@ -13,6 +13,11 @@
       "authorization": null,
       "sqlSha256": null
     },
+    "stripe033": {
+      "reviewOnly": true,
+      "authorization": null,
+      "sqlSha256": null
+    },
     "commercial031": {
       "reviewOnly": false,
       "authorization": "Workspace owner authorized applying the reviewed migration 031 on 2026-10-20 after verifying the security/build release. Security deployment dpl_6ngVyygN8t8FeEXP3V4pkemwxJrK was verified live; the owner also approved retirement of the six superseded runtime-DDL deployments. Apply only after their 300-second function drain.",
