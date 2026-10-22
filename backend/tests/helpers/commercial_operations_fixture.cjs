@@ -22,7 +22,7 @@ async function createOperationsFixture() {
     create role anon; create role authenticated; create role service_role bypassrls;
     create table "Dashboard_Users"("User_ID" uuid primary key,"Display_Name" text,"Username" text,"Role" text,"Is_Disabled" boolean);
     create table commercial_leads(lead_id uuid primary key,email text,phone text,project_address text,project_city text,
-      project_state text,project_postal_code text,updated_at timestamptz default now(),revision integer not null default 0,
+      project_state text,project_postal_code text,updated_at timestamptz default now(),revision bigint not null default 0,
       contact_preference text default 'email');
     create table commercial_consultation_requests(request_id uuid primary key,lead_id uuid,status text,selected_slot_start timestamptz,response_at timestamptz,
       next_reminder_at timestamptz,reminder_count integer,related_order_id text,metadata jsonb,created_at timestamptz default now());

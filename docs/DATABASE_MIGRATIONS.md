@@ -118,6 +118,17 @@ changes, and tests together after validation.
 
 ## Access-control boundary
 
+### Commercial release preflight (2026-10-22, read-only)
+
+Production has applied 029-031 only. Applied migration 031 correctly defines
+`commercial_leads.revision` as `bigint`; the 032 prerequisite checker and local
+SQL fixtures now require that actual type, rather than `integer`. Regression
+coverage rejects an integer or missing revision column. This checker-only
+correction does not alter production schema, migration SQL, baseline hashes,
+or authorization. Commercial rollout remains blocked on explicit authorization
+and application of 032/033. Do not change the production column to satisfy a
+checker or modify applied 031.
+
 Existing owner/proof policies and grants are fingerprinted and preserved.
 Inspection found that `owner_media_uploads` already has RLS disabled and broad
 API-role grants; this foundation intentionally does not silently change that

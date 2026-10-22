@@ -11,7 +11,7 @@ test('032 executes against the sparse production dispatch contract without chang
   await db.exec(`
     create role anon; create role authenticated; create role service_role bypassrls;
     create table commercial_leads(lead_id uuid primary key,email text,phone text,project_address text,project_city text,
-      project_state text,project_postal_code text,revision integer not null default 0,updated_at timestamptz not null default now());
+      project_state text,project_postal_code text,revision bigint not null default 0,updated_at timestamptz not null default now());
     create table h2s_orders(id uuid primary key,order_id text unique,total numeric,currency text,
       commercial_request_id uuid,metadata_json jsonb,customer_email text,customer_phone text,phone text,address text default '100 Fixture Lane',
       delivery_date date,delivery_time text,updated_at timestamptz not null default now());
@@ -37,6 +37,16 @@ test('032 executes against the sparse production dispatch contract without chang
   `);
   const review = require('../lib/commercial_operations_review.cjs');
   assert.equal((await review.inspect(db,false)).applied,false);
+  await t.test('preflight accepts the applied 031 bigint revision and rejects integer drift or a missing column', async () => {
+    const catalog = await db.query(`select table_name,column_name,data_type from information_schema.columns
+      where table_schema='public'`);
+    assert.equal(catalog.rows.find(row => row.table_name === 'commercial_leads' && row.column_name === 'revision').data_type, 'bigint');
+    for (const type of ['integer', null]) {
+      const rows = catalog.rows.flatMap(row => row.table_name === 'commercial_leads' && row.column_name === 'revision'
+        ? type ? [{ ...row, data_type: type }] : [] : [row]);
+      await assert.rejects(review.preflight({ query: async () => ({ rows }) }), /032 prerequisite changed: commercial_leads.revision/);
+    }
+  });
   await db.exec(fs.readFileSync(path.join(__dirname, '..', 'migrations', '032_commercial_operations.sql'), 'utf8'));
   assert.equal((await review.inspect(db,true)).defaultDenyVerified,true);
   await db.exec('set role service_role');

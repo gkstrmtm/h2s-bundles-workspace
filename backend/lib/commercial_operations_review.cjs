@@ -8,7 +8,7 @@ async function preflight(client) {
     ['commercial_leads','h2s_orders','h2s_dispatch_jobs','h2s_dispatch_job_assignments','h2s_pros'],
   ])).rows;
   for (const [table, column, type] of [
-    ['commercial_leads','lead_id','uuid'],['commercial_leads','revision','integer'],['commercial_leads','updated_at','timestamp with time zone'],
+    ['commercial_leads','lead_id','uuid'],['commercial_leads','revision','bigint'],['commercial_leads','updated_at','timestamp with time zone'],
     ['h2s_orders','id','uuid'],['h2s_orders','commercial_request_id','uuid'],['h2s_orders','metadata_json','jsonb'],
     ['h2s_orders','address','text'],
     ['h2s_orders','updated_at','timestamp with time zone'],
