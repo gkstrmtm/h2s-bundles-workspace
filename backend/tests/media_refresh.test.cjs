@@ -127,6 +127,84 @@ test('failed thumbnails stop their error handler instead of repeatedly requestin
   assert.equal(image.nextElementSibling.textContent, 'Thumbnail unavailable');
 });
 
+test('gallery mouse, Enter, Space and context Edit Asset share the existing editor; placement has its own visible action', t => {
+  const { w, ui, document } = fixture(t);
+  const calls = [];
+  ui.beginEditAssetMedia = id => { calls.push(['shared', id]); };
+  ui.openPagePlacement = id => { calls.push(['placement', id]); };
+  ui.appendHeroPlacementMenu = async () => {};
+  w.getUntitledIconMarkup = () => '';
+  const tile = document.querySelector('[data-asset-id="one"]');
+  w.Function(tile.getAttribute('onclick')).call(tile);
+  for (const key of ['Enter', ' ']) {
+    const event = new w.KeyboardEvent('keydown', { key, cancelable: true });
+    Object.defineProperty(event, 'target', { value: tile });
+    w.Function('event', tile.getAttribute('onkeydown')).call(tile, event);
+    assert.equal(event.defaultPrevented, true);
+  }
+  ui.showLibraryContextMenu(new w.MouseEvent('contextmenu'), 'one');
+  [...document.querySelectorAll('#ppAssetContextMenu button')].find(button => button.textContent === 'Edit Asset').click();
+  const placementButton = tile.querySelector('.media-placement-secondary');
+  assert.equal(placementButton.textContent, 'Page placement');
+  w.Function('event', placementButton.getAttribute('onclick')).call(placementButton, new w.MouseEvent('click'));
+  assert.deepEqual(calls, [
+    ['shared', 'one'], ['shared', 'one'], ['shared', 'one'], ['shared', 'one'], ['placement', 'one'],
+  ]);
+});
+
+test('Page heroes report resolved selections without exposing legacy lists or replacing unchanged rows', async t => {
+  const { w, ui, document } = fixture(t);
+  const container = document.createElement('div');
+  container.id = 'ppPageHeroesContent';
+  document.body.appendChild(container);
+  w.H2SPageHeroes = {
+    pages: { bundles: { title: 'Bundles', area: 'hero' }, commercial_intake: { title: 'Commercial', area: 'commercial_hero' } },
+    read: async surface => ({ mode: surface === 'bundles' ? 'automatic' : 'override', asset: asset(surface) }),
+  };
+  w.H2SMediaPlacements = { style: () => '' };
+  await ui.refreshLivePreview();
+  assert.equal(container.querySelectorAll('[data-page-hero]').length, 2);
+  assert.match(container.textContent, /Shown on Bundles · chosen automatically/);
+  assert.match(container.textContent, /Shown on Commercial · chosen for this page/);
+  assert.doesNotMatch(container.textContent, /Historical|\bLIVE\b|retained|asset_id/);
+  const original = container.firstElementChild;
+  await ui.refreshLivePreview();
+  assert.equal(container.firstElementChild, original);
+  const focused = original.querySelector('button');
+  focused.focus();
+  w.H2SPageHeroes.read = async surface => ({
+    mode: surface === 'bundles' ? 'automatic' : 'override', asset: asset(surface),
+    areas: { commercial_security_rail: [asset('new-rail-item')] },
+  });
+  await ui.refreshLivePreview();
+  assert.equal(container.firstElementChild, original);
+  assert.equal(document.activeElement, focused);
+});
+
+test('quiet gallery use cues update in place without changing selection, focus, drafts or scroll', t => {
+  const { w, ui, document } = fixture(t);
+  w.H2SPageHeroes = require('../../frontend/media-page-heroes.js');
+  const tile = document.querySelector('[data-asset-id="one"]'), focused = tile.querySelector('button');
+  focused.focus();
+  const draft = { zoom: 1.4 };
+  ui.state.edit = draft;
+  ui.state.pageHeroes = { bundles: { mode: 'automatic', asset: asset('one') } };
+  ui.syncPageMediaUsage();
+  assert.equal(tile.querySelector('.pp-media-usage').textContent, 'In use');
+  assert.equal(tile.title, 'Used on Bundles / Hero background');
+  assert.equal(tile.getAttribute('aria-description'), tile.title);
+  assert.equal(document.querySelector('[data-asset-id="one"]'), tile);
+  assert.equal(document.activeElement, focused);
+  assert.equal(ui.state.selectedIds.has('one'), true);
+  assert.equal(ui.state.edit, draft);
+  assert.equal(w.scrollY, 450);
+  ui.state.pageHeroes.bundles.mode = 'unavailable';
+  ui.syncPageMediaUsage();
+  assert.equal(tile.querySelector('.pp-media-usage'), null);
+  assert.equal(tile.hasAttribute('aria-description'), false);
+  assert.equal(document.activeElement, focused);
+});
+
 test('existing local image optimization still resizes proportionally and emits a WebP without network or placement writes', async t => {
   const { w, ui } = fixture(t);
   let draw;
@@ -286,7 +364,7 @@ test('expandable hero choices report saved scope/usage and open the existing edi
   assert.equal(details.open, false);
   details.open = true;
   assert.match(details.textContent, /Bundles \/ Hero background.*Included.*order 7/s);
-  assert.match(details.textContent, /Commercial \/ Hero photo.*No saved override/s);
+  assert.match(details.textContent, /Commercial \/ Hero photo.*No placement saved/s);
   menu.querySelector('[data-hero-surface="commercial_intake"]').click();
   assert.equal(selected[0], 'one');
   assert.equal(selected[1].surface, 'commercial_intake');

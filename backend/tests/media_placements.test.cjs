@@ -292,7 +292,7 @@ test('placement API restores only the exact source/asset/page/area key', async (
   }
 });
 
-async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo', initialPlacement = null } = {}) {
+async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind = 'photo', initialPlacement = { surface: 'bundles', area: 'hero' } } = {}) {
   const dom = new JSDOM('<button id="origin">Open editor</button><div id="ppLibraryEditor"><div id="ppLibraryEditorBody"></div></div>', { runScripts: 'outside-only', url: 'http://localhost/' });
   const { window } = dom;
   window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -325,6 +325,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   const methods = window.eval(`({${dash.slice(start, end)}})`);
   const proof = {
     ...methods, state: {}, escapeHtml: (value) => String(value),
+    refreshLivePreview() {},
     cancelEdit() {
       this._placementEditor.destroy();
       window.document.getElementById('ppLibraryEditor').classList.add('is-hidden');
@@ -381,6 +382,65 @@ test('a hero shortcut opens its requested registered page/area without changing 
   assert.equal(e.stored.length, 0);
   assert.equal(e.requests.every(request => request.method === 'GET'), true);
   e.dom.window.close();
+});
+
+test('candidate framing, saved override and actual customer selection are labeled separately', async () => {
+  const e = await editor();
+  assert.match(e.find('.editor-header').textContent, /Candidate:/);
+  assert.match(e.find('.media-placement-scope').textContent, /Framing preview only.*controls are inactive/);
+  const link = e.find('.media-placement-scope a');
+  assert.equal(link.href, 'http://localhost/bundles.html');
+  assert.equal(link.target, '_blank');
+  assert.equal(link.rel, 'noopener');
+  assert.match(e.find('#ppEditStatus').textContent, /Preview only; no placement saved/);
+  await e.proof._placementEditor.save();
+  assert.match(e.find('#ppEditStatus').textContent, /Saved for this area:.*included/);
+  e.find('[name="enabled"]').checked = false;
+  e.find('[name="enabled"]').dispatchEvent(new e.window.Event('input', { bubbles: true }));
+  await e.proof._placementEditor.save();
+  assert.match(e.find('#ppEditStatus').textContent, /Saved for this area:.*excluded/);
+  e.dom.window.close();
+});
+
+test('Bundles hero uses its existing curated fallback only without an explicit hero and honors exclusions', async () => {
+  const html = fs.readFileSync(path.join(root, 'frontend', 'bundles.html'), 'utf8');
+  assert.equal((html.match(/var\(--hero-bg-url,\s*none\)/g) || []).length, 2, 'Both critical and full hero CSS must consume the fallback');
+  const source = fs.readFileSync(path.join(root, 'frontend', 'bundles.js'), 'utf8');
+  const tree = ts.createSourceFile('bundles.js', source, ts.ScriptTarget.Latest, true);
+  const update = tree.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'updateProofSections');
+  assert.ok(update);
+  const dom = new JSDOM('<section class="hero"><h1>Existing content</h1></section>', { runScripts: 'outside-only' });
+  const w = dom.window;
+  let fallbackReads = 0;
+  Object.assign(w, {
+    H2SPageHeroes: require('../../frontend/media-page-heroes.js'),
+    _proofSlots: {}, _proofSupabaseUrl: '', _proofPageHero: [], _proofHeroExclusions: [],
+    HERO_UNDERLAY_ASSET_ID: require('../../frontend/media-page-heroes.js').bundlesFallbackAssetId,
+    loadProofData: async () => {}, getProofMode: () => '', ensureLocalProofControls() {},
+    byId: id => w.document.getElementById(id),
+    fetchHeroUnderlayUrl: async () => { fallbackReads++; return '/curated.jpg'; },
+    renderProofHeroMedia: (target, asset) => { target.dataset.assetId = asset.asset_id; },
+  });
+  w.eval(update.getText(tree));
+  try {
+    const hero = w.document.querySelector('.hero');
+    await w.updateProofSections();
+    assert.equal(hero.style.getPropertyValue('--hero-bg-url'), 'url("/curated.jpg")');
+    w._proofPageHero = [{ asset_id: 'explicit' }];
+    await w.updateProofSections();
+    assert.equal(hero.style.getPropertyValue('--hero-bg-url'), '');
+    assert.equal(hero.querySelector('.page-placement-hero').dataset.assetId, 'explicit');
+    assert.equal(fallbackReads, 1);
+    w._proofPageHero = [];
+    w._proofHeroExclusions = [{ asset_source: 'proof_asset', asset_id: w.HERO_UNDERLAY_ASSET_ID }];
+    await w.updateProofSections();
+    assert.equal(hero.style.getPropertyValue('--hero-bg-url'), '');
+    assert.equal(hero.querySelector('.page-placement-hero'), null);
+    w._proofHeroExclusions = [{ asset_source: 'proof_asset', asset_id: 'other' }];
+    await w.updateProofSections();
+    assert.equal(hero.style.getPropertyValue('--hero-bg-url'), 'url("/curated.jpg")');
+    assert.equal(fallbackReads, 2);
+  } finally { w.close(); }
 });
 
 test('editor saves different framing for the same image on Bundles and Commercial and reloads persisted settings', async () => {
@@ -834,7 +894,7 @@ test('failed Restore automatic selection preserves both the saved override and t
   e.find('[data-reset]').click();
   await e.flush();
   assert.equal(e.find('#ppEditStatus').dataset.state, 'failed');
-  assert.match(e.find('#ppEditStatus').textContent, /Could not remove.*draft is still open/);
+  assert.match(e.find('#ppEditStatus').textContent, /Could not restore automatic selection.*draft is still open/);
   assert.equal(e.find('[name="zoom"]').value, '1.5');
   assert.equal(e.stored.length, 1);
   assert.equal(e.stored[0].zoom, 1);

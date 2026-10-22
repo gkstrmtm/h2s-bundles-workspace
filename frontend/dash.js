@@ -5671,7 +5671,7 @@ function smsStartNewMessage(prefillPhone) {
                         { value: 'weather seal', label: 'Exterior / weather sealed', hint: 'Outdoor camera with weatherproofing visible' },
                     ]
                     : [
-                        { value: 'after', label: 'Finished install (after)', hint: 'Clean final result - our most important shot' },
+                        { value: 'after', label: 'Finished install (after)', hint: '' },
                         { value: 'stud level', label: 'Secure mount (stud + level)', hint: 'Shows mounting bracket attached to studs with level tool' },
                         { value: 'conceal', label: 'Wire conceal', hint: 'Hidden cables in wall or raceway' },
                         { value: 'before', label: 'Before', hint: 'Empty wall or old setup before our work' },
@@ -6581,6 +6581,7 @@ function smsStartNewMessage(prefillPhone) {
                             <div class="tile-meta">
                                 <div class="tile-meta-title">${this.escapeHtml(titleLabel)}</div>
                                 <div class="tile-meta-sub">${this.escapeHtml(subLabel)}</div>
+                                <button type="button" class="media-placement-secondary" aria-label="Page placement for ${this.escapeHtml(titleLabel)}" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Page placement</button>
                             </div>
                         </div>
                     `;
@@ -6590,6 +6591,30 @@ function smsStartNewMessage(prefillPhone) {
                     container.innerHTML = '<div class="gallery-container"><div class="gallery-grid"></div></div>';
                 }
                 this.patchMediaTiles(container.querySelector('.gallery-grid'), gridHtml);
+                this.syncPageMediaUsage();
+            },
+
+            syncPageMediaUsage() {
+                document.querySelectorAll('#ppAssetsList .gallery-tile').forEach(tile => {
+                    const uses = window.H2SPageHeroes?.usesForAsset?.(this.state.pageHeroes, 'proof_asset', tile.dataset.assetId) || [];
+                    let cue = tile.querySelector('.pp-media-usage');
+                    if (!uses.length) {
+                        cue?.remove();
+                        tile.removeAttribute('aria-description');
+                        tile.removeAttribute('title');
+                        return;
+                    }
+                    const description = `Used on ${uses.map(use => use.label).join('; ')}`;
+                    if (!cue) {
+                        cue = document.createElement('span');
+                        cue.className = 'pp-media-usage';
+                        cue.textContent = 'In use';
+                        tile.querySelector('.tile-meta-sub').appendChild(cue);
+                    }
+                    cue.title = description;
+                    tile.title = description;
+                    tile.setAttribute('aria-description', description);
+                });
             },
 
             patchMediaTiles(container, html) {
@@ -7171,191 +7196,110 @@ function smsStartNewMessage(prefillPhone) {
             },
 
             refreshLivePreview() {
-                if (this._livePreviewRequest) return this._livePreviewRequest;
-                this._livePreviewRequest = this.loadLivePreview().finally(() => { this._livePreviewRequest = null; });
-                return this._livePreviewRequest;
+                const base = this.getConfig().base;
+                if (this._livePreviewRequest?.base === base) return this._livePreviewRequest.promise;
+                const request = { base, sequence: (this._pageHeroSequence || 0) + 1 };
+                this._pageHeroSequence = request.sequence;
+                this._livePreviewRequest = request;
+                request.promise = this.loadLivePreview(request).finally(() => {
+                    if (this._livePreviewRequest === request) this._livePreviewRequest = null;
+                });
+                return request.promise;
             },
 
-            async loadLivePreview() {
-                const container = document.getElementById('ppLivePreviewContent');
+            async loadLivePreview(request = { base: this.getConfig().base, sequence: this._pageHeroSequence }) {
+                const container = document.getElementById('ppPageHeroesContent');
                 if (!container) return;
-
-                try {
-                    if (!container.dataset.loaded) container.innerHTML = `
-                        <div style="text-align:center;padding:20px;color:#64748b;">
-                            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="margin:0 auto 8px;animation:spin 1s linear infinite;">
-                                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                            </svg>
-                            <div>Loading live content...</div>
+                const heroes = window.H2SPageHeroes;
+                if (!heroes) throw new Error('Page hero controls did not load.');
+                const entries = await Promise.all(Object.entries(heroes.pages).map(async ([surface]) => {
+                    try {
+                        return [surface, await heroes.read(surface, async path => {
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), 15000);
+                            try {
+                                return await this.fetchJson(path, { signal: controller.signal });
+                            } catch (error) {
+                                if (controller.signal.aborted) throw new Error('Page media request timed out. Retry loading this selection.');
+                                throw error;
+                            } finally { clearTimeout(timeout); }
+                        })];
+                    } catch (error) {
+                        console.error(`[Page heroes/${surface}]`, error);
+                        return [surface, { mode: 'unavailable', asset: this.state.pageHeroes?.[surface]?.asset || null, error: error.message }];
+                    }
+                }));
+                if (request.sequence !== this._pageHeroSequence || request.base !== this.getConfig().base) return;
+                this.state.pageHeroes = Object.fromEntries(entries);
+                this.syncPageMediaUsage();
+                const snapshot = JSON.stringify(entries.map(([surface, selected]) => [surface, {
+                    asset: selected.asset, mode: selected.mode, error: selected.error, reason: selected.reason,
+                }]));
+                if (container.dataset.snapshot === snapshot) return;
+                container.innerHTML = entries.map(([surface, selected]) => {
+                    const page = heroes.pages[surface], asset = selected.asset;
+                    const label = selected.mode === 'override' ? `Shown on ${page.title} · chosen for this page`
+                        : selected.mode === 'automatic' ? `Shown on ${page.title} · chosen automatically`
+                        : selected.mode === 'empty' ? 'No hero selected' : 'Unavailable · selection could not be verified';
+                    const url = asset ? this.buildAssetUrl(asset) : '';
+                    return `<div class="pp-page-hero" data-page-hero="${surface}">
+                        <div class="pp-hero-thumbnail">${url ? `<${asset.media_kind === 'video' ? 'video muted playsinline preload="metadata"' : 'img alt="Current hero thumbnail"'} src="${this.escapeHtml(url)}" style="${this.escapeHtml(window.H2SMediaPlacements.style(asset.media_placement))}"></${asset.media_kind === 'video' ? 'video' : 'img'}>` : ''}</div>
+                        <div><strong>${this.escapeHtml(page.title)}</strong><p data-hero-status>${label}</p>
+                            ${selected.error || selected.reason ? `<p role="${selected.error ? 'alert' : 'status'}">${this.escapeHtml(selected.error || selected.reason)}</p>` : ''}
+                            ${selected.mode === 'unavailable' && asset ? '<p>Last known image retained; not a verified current selection.</p>' : ''}
                         </div>
-    %%H2S_STYLE_PLACEHOLDER%%
-`;
-                    
-                    // Get actual backend URL (not portal proxy)
-                    const backendUrl = this.getBackendUrl();
-                    console.log('[Live Preview] Using backend URL:', backendUrl);
-                    
-                    const surface = 'bundles';
-                    const url = `${backendUrl}/api/proof-slots?surface=${surface}&limit=6`;
-                    
-                    const response = await fetch(url, {
-                        method: 'GET',
-                        credentials: 'omit',
-                        cache: 'no-store',
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-
-                    if (!response.ok) {
-                        const errorText = await response.text().catch(() => 'Unknown error');
-                        throw new Error(`API returned ${response.status}: ${errorText}`);
-                    }
-
-                    const resp = await response.json();
-                    
-                    if (!resp?.ok) throw new Error(resp?.error || 'Failed to load historical slots');
-                    container.querySelector('[data-legacy-retry]')?.remove();
-                    if (container.dataset.snapshot === JSON.stringify(resp.slots)) return;
-
-                    const slotsData = resp.slots || {};
-                    
-                    // Extract all sections
-                    const heroTv = (slotsData.hero?.tv_mounting || [])[0];
-                    const railTv = slotsData.mid_proof_rail?.tv_mounting || [];
-                    const railCam = slotsData.mid_proof_rail?.cameras || [];
-                    
-                    // Build actual bundles page preview with proper styling
-                    let html = `
-                        <div style="max-width:1400px;margin:0 auto;">
-                            <div style="background:#f1f5f9;border-radius:12px;padding:20px;margin-bottom:20px;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-                                    <h3 style="margin:0;font-size:16px;font-weight:700;color:#1e293b;">Live Bundles Page</h3>
-                                    <a href="https://shop.home2smart.com/bundles" target="_blank" style="font-size:13px;color:#3b82f6;text-decoration:none;font-weight:600;">View Live &rarr;</a>
-                                </div>
-                    `;
-
-                    // HERO BANNER
-                    html += `<div style="margin-bottom:32px;">`;
-                    html += `<div style="font-size:14px;font-weight:700;color:#475569;margin-bottom:12px;display:flex;align-items:center;gap:8px;">`;
-                    html += `<span title="Full-width image at top of page">Hero Banner</span>`;
-                    html += `<span style="background:#10b981;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">LIVE</span>`;
-                    html += `</div>`;
-                    
-                    if (heroTv) {
-                        const url = this.buildAssetUrl(heroTv);
-                        const style = this.buildProofMediaStyle(heroTv);
-                        const isVideo = heroTv.media_kind === 'video';
-                        const poster = heroTv.video_thumbnail_url ? ` poster="${heroTv.video_thumbnail_url}"` : '';
-                        const mediaHtml = isVideo ? 
-                            `<video src="${url}"${poster} style="width:100%;height:100%;object-fit:cover;${style}" muted loop autoplay playsinline crossorigin="anonymous" onerror="console.error('[HERO LOAD FAIL] Asset ID: ${heroTv.asset_id}, URL: ${url}, Bucket: ${heroTv.storage_bucket}, Path: ${heroTv.storage_path}'); this.style.display='none';this.nextElementSibling.style.display='block'"></video><div style="display:none;padding:40px;text-align:center;color:#ef4444;background:#fee;">Video failed to load<br><small style='font-size:10px;margin-top:8px;display:block;'>Asset ID: ${heroTv.asset_id}</small></div>` :
-                            `<img src="${url}" style="width:100%;height:100%;object-fit:cover;${style}" crossorigin="anonymous" loading="eager" onerror="console.error('[HERO LOAD FAIL] Asset ID: ${heroTv.asset_id}, URL: ${url}, Bucket: ${heroTv.storage_bucket}, Path: ${heroTv.storage_path}'); this.style.display='none';this.nextElementSibling.style.display='block'" /><div style="display:none;padding:40px;text-align:center;color:#ef4444;background:#fee;">Image failed to load<br><small style='font-size:10px;margin-top:8px;display:block;'>Asset ID: ${heroTv.asset_id}</small></div>`;
-                        
-                        html += `
-                            <div onclick="proofPacks.editAssetFromLive('${heroTv.asset_id}', 'hero')" 
-                                 oncontextmenu="proofPacks.showAssetContextMenu(event, '${heroTv.asset_id}', '${heroTv.service}', 'hero'); return false;"
-                                 style="position:relative;width:100%;max-width:900px;aspect-ratio:16/9;border-radius:12px;overflow:hidden;cursor:pointer;border:3px solid #10b981;box-shadow:0 4px 16px rgba(0,0,0,0.15);background:#1a1a1a;transition:all 0.2s;"
-                                 onmouseover="this.style.transform='scale(1.01)'"
-                                 onmouseout="this.style.transform=''">
-                                ${mediaHtml}
-                                <div style="position:absolute;top:12px;right:12px;background:rgba(0,0,0,0.85);color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;pointer-events:none;">
-                                    ${heroTv.service === 'tv_mounting' ? 'TV Mounting' : 'Cameras'}
-                                </div>
-                                <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.95));padding:16px;color:white;pointer-events:none;">
-                                    <div style="font-size:13px;font-weight:700;margin-bottom:4px;">Click to edit framing</div>
-                                    <div style="font-size:11px;opacity:0.9;">${heroTv.shot_type || 'result'} | ${heroTv.width_px}x${heroTv.height_px}</div>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        html += `<div onclick="proofPacks.assignAssetToSlot('bundles', 'hero', 'tv_mounting')" style="padding:60px;text-align:center;border:3px dashed #cbd5e1;border-radius:12px;background:#f8fafc;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(59,130,246,0.15)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='';this.style.boxShadow=''">
-                            <div style="font-size:14px;font-weight:600;color:#3b82f6;margin-bottom:8px;">Click to Assign Hero Banner</div>
-                            <div style="font-size:12px;color:#64748b;">Choose from TV Mounting assets</div>
-                            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">16:9 aspect ratio &bull; result or lifestyle shots</div>
-                        </div>`;
-                    }
-                    html += `</div>`;
-
-                    // PROOF RAIL
-                    const allRail = [...railTv, ...railCam];
-                    html += `<div style="margin-bottom:32px;">`;
-                    html += `<div style="font-size:14px;font-weight:700;color:#475569;margin-bottom:12px;display:flex;align-items:center;gap:8px;">`;
-                    html += `<span title="Grid carousel showing recent completed jobs">Recent Installs</span>`;
-                    html += `<span style="background:#10b981;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">LIVE</span>`;
-                    html += `<span style="color:#64748b;font-size:13px;margin-left:8px;">${allRail.length} assets</span>`;
-                    html += `</div>`;
-                    
-                    if (allRail.length > 0) {
-                        html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;">`;
-                        allRail.slice(0, 10).forEach(asset => {
-                            const url = this.buildAssetUrl(asset);
-                            const style = this.buildProofMediaStyle(asset);
-                            const isVideo = asset.media_kind === 'video';
-                            const poster = asset.video_thumbnail_url ? ` poster="${asset.video_thumbnail_url}"` : '';
-                            const svc = asset.service === 'tv_mounting' ? 'TV' : 'Camera';
-                            const mediaHtml = isVideo ? 
-                                `<video src="${url}"${poster} style="width:100%;height:100%;object-fit:cover;${style}" muted loop preload="metadata" crossorigin="anonymous" onerror="console.error('[RAIL LOAD FAIL] Asset ID: ${asset.asset_id}, URL: ${url}');"></video>` :
-                                `<img src="${url}" style="width:100%;height:100%;object-fit:cover;${style}" crossorigin="anonymous" loading="lazy" onerror="console.error('[RAIL LOAD FAIL] Asset ID: ${asset.asset_id}, URL: ${url}'); this.style.opacity='0.3'; this.parentElement.style.background='#fee';" />`;
-                            
-                            html += `
-                                <div onclick="proofPacks.editAssetFromLive('${asset.asset_id}', 'rail')" 
-                                     oncontextmenu="proofPacks.showAssetContextMenu(event, '${asset.asset_id}', '${asset.service}', 'rail'); return false;"
-                                     style="position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid #10b981;box-shadow:0 2px 8px rgba(16,185,129,0.2);background:#1a1a1a;transition:all 0.2s;"
-                                     onmouseover="this.style.transform='translateY(-4px)';this.style.boxShadow='0 8px 16px rgba(16,185,129,0.3)'"
-                                     onmouseout="this.style.transform='';this.style.boxShadow='0 2px 8px rgba(16,185,129,0.2)'">
-                                    ${mediaHtml}
-                                    <div style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.85);color:white;padding:4px 8px;border-radius:5px;font-size:10px;font-weight:700;pointer-events:none;">
-                                        ${svc}
-                                    </div>
-                                    <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,0.9));padding:10px;color:white;pointer-events:none;">
-                                        <div style="font-size:11px;font-weight:600;">${asset.shot_type || 'result'}</div>
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        html += `</div>`;
-                    } else {
-                        html += `<div style="display:flex;gap:16px;">`;
-                        html += `<div onclick="proofPacks.assignAssetToSlot('bundles', 'mid_proof_rail', 'tv_mounting')" style="flex:1;padding:40px;text-align:center;border:3px dashed #cbd5e1;border-radius:12px;background:#f8fafc;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(59,130,246,0.15)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='';this.style.boxShadow=''">
-                            <div style="font-size:13px;font-weight:600;color:#3b82f6;margin-bottom:6px;">Add TV Asset</div>
-                            <div style="font-size:11px;color:#94a3b8;">4:3 aspect &bull; result shots</div>
-                        </div>`;
-                        html += `<div onclick="proofPacks.assignAssetToSlot('bundles', 'mid_proof_rail', 'cameras')" style="flex:1;padding:40px;text-align:center;border:3px dashed #cbd5e1;border-radius:12px;background:#f8fafc;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.borderColor='#3b82f6';this.style.background='#eff6ff';this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(59,130,246,0.15)'" onmouseout="this.style.borderColor='#cbd5e1';this.style.background='#f8fafc';this.style.transform='';this.style.boxShadow=''">
-                            <div style="font-size:13px;font-weight:600;color:#3b82f6;margin-bottom:6px;">Add Camera Asset</div>
-                            <div style="font-size:11px;color:#94a3b8;">4:3 aspect &bull; result shots</div>
-                        </div>`;
-                        html += `</div>`;
-                    }
-                    html += `</div></div></div>`;
-                    
-                    container.innerHTML = `<details><summary>Historical Bundles slots (read-only)</summary><p>These legacy slots are not a preview of the current page. Use an asset's Page placement editor for the active destination. The removed installation rail and cart strip remain unavailable; historical settings are retained.</p><div inert>${html}</div></details>`;
-                    container.dataset.loaded = 'true';
-                    container.dataset.snapshot = JSON.stringify(resp.slots);
-
-                } catch (e) {
-                    console.error('[Live Preview] Error:', e);
-                    if (!container.dataset.loaded) container.innerHTML = `
-                        <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:16px;">
-                            <div style="color:#dc2626;font-weight:600;font-size:13px;margin-bottom:8px;">Failed to load live preview</div>
-                            <div style="color:#991b1b;font-size:12px;margin-bottom:12px;">${this.escapeHtml(e?.message || 'Unknown error')}</div>
-                            <button onclick="proofPacks.refreshLivePreview()" style="background:#3b82f6;color:white;border:none;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
-                                Try Again
-                            </button>
+                        <div class="pp-page-hero-actions">
+                            <button type="button" class="btn btn-tonal" data-hero-choose="${surface}">Choose media</button>
+                            <button type="button" class="media-placement-secondary" data-hero-edit="${surface}" ${!asset || selected.mode === 'unavailable' ? 'disabled' : ''}>Edit framing</button>
+                            ${selected.error ? '<button type="button" class="media-placement-secondary" data-hero-retry>Retry</button>' : ''}
                         </div>
-                    `;
-                    else {
-                        let retry = container.querySelector('[data-legacy-retry]');
-                        if (!retry) {
-                            retry = document.createElement('button');
-                            retry.type = 'button';
-                            retry.className = 'media-placement-secondary';
-                            retry.dataset.legacyRetry = '';
-                            retry.addEventListener('click', () => this.refreshLivePreview());
-                            container.prepend(retry);
-                        }
-                        retry.textContent = 'Historical slot update failed. Retry';
-                    }
+                    </div>`;
+                }).join('');
+                container.querySelectorAll('[data-hero-choose]').forEach(button => button.addEventListener('click', () => this.choosePageHero(button.dataset.heroChoose)));
+                container.querySelectorAll('[data-hero-edit]').forEach(button => button.addEventListener('click', () => this.editPageHero(button.dataset.heroEdit)));
+                container.querySelectorAll('[data-hero-retry]').forEach(button => button.addEventListener('click', () => this.refreshLivePreview()));
+                container.querySelectorAll('.pp-hero-thumbnail img,.pp-hero-thumbnail video').forEach(media => media.addEventListener('error', () => {
+                    media.hidden = true;
+                    const row = media.closest('[data-page-hero]');
+                    row.querySelector('[data-hero-status]').textContent = 'Media preview unavailable; verify selection on the customer page.';
+                    row.querySelector('[data-hero-edit]').disabled = true;
+                    const retry = document.createElement('button');
+                    retry.type = 'button'; retry.className = 'media-placement-secondary'; retry.textContent = 'Retry preview';
+                    retry.addEventListener('click', () => { delete container.dataset.snapshot; this.refreshLivePreview(); });
+                    row.querySelector('.pp-page-hero-actions').appendChild(retry);
+                }, { once: true }));
+                container.dataset.snapshot = snapshot;
+            },
+
+            choosePageHero(surface) {
+                const page = window.H2SPageHeroes.pages[surface];
+                if (!page) { showToast('This page has no supported hero destination.', 'error'); return; }
+                this.state.placementTarget = { surface, area: page.area };
+                const notice = document.getElementById('ppPlacementSelection');
+                notice.hidden = false;
+                notice.innerHTML = `Choose media for <strong>${this.escapeHtml(page.title)} / hero</strong> using its existing Page placement action. <button type="button" class="media-placement-secondary">Cancel choice</button>`;
+                notice.querySelector('button').addEventListener('click', () => this.cancelHeroSelection());
+                notice.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                notice.focus({ preventScroll: true });
+            },
+
+            cancelHeroSelection() {
+                this.state.placementTarget = null;
+                const notice = document.getElementById('ppPlacementSelection');
+                if (notice) { notice.hidden = true; notice.replaceChildren(); }
+            },
+
+            editPageHero(surface) {
+                const page = window.H2SPageHeroes.pages[surface], current = this.state.pageHeroes?.[surface];
+                if (!page || !current?.asset || current.mode === 'unavailable') {
+                    showToast('The current hero is unavailable. Choose media or retry loading the page selection.', 'error'); return;
                 }
+                const asset = current.asset;
+                return this.beginPlacementEdit({
+                    asset, source: asset.source || asset.media_placement?.asset_source || 'proof_asset',
+                    base: this.getConfig().base, token: getDashboardSessionToken(), url: this.buildAssetUrl(asset),
+                    initialPlacement: { surface, area: page.area },
+                });
             },
 
             async generateBatchThumbnails() {
@@ -7624,12 +7568,12 @@ function smsStartNewMessage(prefillPhone) {
                     if (!result?.ok || !Array.isArray(result.placements)) throw new Error(result?.error || 'Invalid placement usage response');
                     if (!menu.isConnected) return;
                     const rows = result.placements;
-                    section.querySelector('[data-hero-usage]').textContent = `${rows.filter(row => row.enabled).length} enabled saved overrides for this asset. Automatic selection may also use it.`;
+                    section.querySelector('[data-hero-usage]').textContent = `Included in ${rows.filter(row => row.enabled).length} saved page placements. Pages may also choose it automatically.`;
                     for (const choice of choices) {
                         const row = rows.find(row => row.surface === choice.surface && row.area === choice.area);
                         section.querySelector(`[data-hero-surface="${choice.surface}"] [data-hero-state]`).textContent = row
                             ? `${row.enabled ? 'Included' : 'Excluded'} · order ${row.display_order}`
-                            : 'No saved override';
+                            : 'No placement saved for this media';
                     }
                 } catch (error) {
                     console.error('[Hero placement usage]', error);
@@ -8594,8 +8538,10 @@ function smsStartNewMessage(prefillPhone) {
                     showToast('Page placement controls did not load. Refresh the dashboard.', 'error');
                     return;
                 }
-                this.beginPlacementEdit({
-                    asset, source: 'proof_asset', base: this.getConfig().base, initialPlacement,
+                const destination = initialPlacement || this.state.placementTarget;
+                this.cancelHeroSelection();
+                return this.beginPlacementEdit({
+                    asset, source: 'proof_asset', base: this.getConfig().base, initialPlacement: destination,
                     token: getDashboardSessionToken(),
                     url: this.publicStorageUrl(asset.storage_bucket || 'proof', asset.storage_path),
                 });
@@ -8617,6 +8563,12 @@ function smsStartNewMessage(prefillPhone) {
             },
 
             async beginPlacementEdit(options) {
+                if (!options.initialPlacement) {
+                    return window.H2SMediaPlacements.chooseDestination({
+                        ...options, currentHeroes: this.state.pageHeroes,
+                        onSelect: initialPlacement => this.beginPlacementEdit({ ...options, initialPlacement }),
+                    });
+                }
                 if (this._placementEditor) {
                     if (!this._placementEditor.cancel()) return;
                 } else if (this.state.edit?.asset) {
@@ -8635,6 +8587,10 @@ function smsStartNewMessage(prefillPhone) {
                     showToast(error.message || 'Could not open placement framing.', 'error');
                     this.cancelEdit(true);
                 }
+            },
+
+            editAsset(assetId) {
+                return this.beginEditAssetMedia(assetId);
             },
 
             async beginEditAssetMedia(assetId) {
@@ -9044,7 +9000,7 @@ function smsStartNewMessage(prefillPhone) {
                         <div class="editor-header">
                             <div>
                                 <h3 class="editor-title">${placementOptions ? 'Placement framing' : 'Shared media edits'}</h3>
-                                <div class="editor-subtitle">ID: ${assetId} | ${isVideo ? 'Video' : 'Image'} Asset</div>
+                                <div class="editor-subtitle">${placementOptions ? 'Candidate' : 'Shared asset'}: ${this.escapeHtml(asset.original_filename || 'Selected media')} | ${isVideo ? 'Video' : 'Image'}</div>
                                 <div class="editor-subtitle">${placementOptions
                                     ? 'Only this page and display area change. The shared file and other placements stay unchanged.'
                                     : 'These edits affect the shared file. Use Page placement for page-specific framing.'}</div>
@@ -9397,6 +9353,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (placementOptions) {
                     this._placementEditor = window.H2SMediaPlacements.mount({
                         ...placementOptions, host: editorBody, onClose: () => this.cancelEdit(true),
+                        onSaved: () => this.refreshLivePreview(),
                     });
                     await this._placementEditor.ready;
                     return;

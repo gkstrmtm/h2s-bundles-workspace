@@ -12579,6 +12579,11 @@
             text-overflow: ellipsis;
         }
 
+        .tile-meta .media-placement-secondary {
+            pointer-events: auto;
+            margin-top: 8px;
+        }
+
         .gallery-tile:hover .tile-overlay {
             opacity: 1;
         }
@@ -17744,6 +17749,36 @@ input[type="time"].form-input::-webkit-calendar-picker-indicator {
 .media-placement-decision h3 { margin: 0 0 12px; font: 600 16px "Space Grotesk", sans-serif; }
 .media-placement-decision p { margin: 0 0 16px; line-height: 1.5; }
 .media-placement-decision [data-decision-error], .pp-placement-scope #ppEditStatus[data-state="failed"] { color: var(--danger); }
+.media-destination-choice { margin: auto; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.media-destination-choice [data-destinations] { display: flow-root; min-height: 336px; }
+.media-destination-choice [data-destinations][aria-busy="true"] { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.media-destination-actions { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--border); }
+.media-destination-choice [data-close] { min-height: 36px; padding: 8px 12px; border-radius: 6px; font-weight: 600; transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease; }
+.media-destination-choice [data-close]::before, .media-destination-choice [data-close]::after { content: none; }
+.media-destination-choice h3:focus, .media-destination-choice [data-close]:focus:not(:focus-visible) { outline: none; }
+.media-destination-choice button:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+.media-destination-choice [data-close]:active { transform: none; }
+.media-destination-choice fieldset { border: 0; margin: 0 0 12px; padding: 0; }
+.media-destination-choice legend { font-weight: 600; margin-bottom: 4px; }
+.media-destination-option { display: block; width: 100%; text-align: left; padding: 8px 12px; margin-bottom: 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg, #fff); color: var(--cobalt); cursor: pointer; }
+.media-destination-option small { display: block; margin-top: 4px; color: var(--muted); }
+.media-destination-option:disabled { opacity: 0.6; cursor: not-allowed; }
+.pp-page-heroes { padding: 16px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg, #fff); }
+.pp-page-heroes h3 { margin: 0 0 8px; font: 600 16px "Space Grotesk", sans-serif; }
+.pp-page-hero { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+.pp-hero-thumbnail { width: 96px; height: 64px; overflow: hidden; background: var(--bg); }
+.pp-hero-thumbnail img, .pp-hero-thumbnail video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-page-hero p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.pp-page-hero-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.pp-placement-selection { padding: 12px 0; color: var(--cobalt); }
+.pp-placement-selection[hidden] { display: none; }
+.pp-media-usage { margin-left: 8px; color: var(--muted); font-size: 11px; }
+.pp-media-usage::before { content: ""; display: inline-block; width: 4px; height: 4px; margin-right: 4px; border-radius: 50%; background: var(--success); vertical-align: middle; }
+@media (max-width: 600px) {
+  .pp-page-hero { grid-template-columns: 64px minmax(0, 1fr); }
+  .pp-hero-thumbnail { width: 64px; height: 48px; }
+  .pp-page-hero-actions { grid-column: 1 / -1; }
+}
 @media (max-width: 480px) {
   .media-placement-fields { grid-template-columns: 1fr; }
 }

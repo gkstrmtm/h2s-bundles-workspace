@@ -1594,14 +1594,10 @@
 
   function selectHeroMedia(cameraItems, tvItems) {
     if (state.heroMediaApplied) return true;
-    const allCandidates = normalizeMediaItems([].concat(cameraItems || [], tvItems || []), 6);
-    const photoCandidates = allCandidates.filter(function (item) {
-      return String(item.media_kind || 'photo') !== 'video';
+    const candidates = window.H2SPageHeroes.commercialCandidates({
+      commercial_security_rail: { items: normalizeMediaItems(cameraItems, 6) },
+      commercial_display_rail: { items: normalizeMediaItems(tvItems, 6) },
     });
-    const videoCandidates = allCandidates.filter(function (item) {
-      return String(item.media_kind || 'photo') === 'video';
-    });
-    const candidates = photoCandidates.concat(videoCandidates);
     if (!candidates.length) return false;
     return renderHeroMedia(candidates[0], candidates.slice(1));
   }
@@ -1715,7 +1711,7 @@
       const cameraItems = normalizeMediaItems(sections.commercial_security_rail && sections.commercial_security_rail.items, 4);
       const tvItems = normalizeMediaItems(sections.commercial_display_rail && sections.commercial_display_rail.items, 4);
       const hasHeroSelection = !!sections.commercial_hero;
-      const heroItems = normalizeMediaItems(sections.commercial_hero && sections.commercial_hero.items, 6);
+      const heroItems = normalizeMediaItems(window.H2SPageHeroes.commercialCandidates(sections), 6);
       recordMediaDiagnostic('info', 'owner-media-result', {
         status: response.status,
         cameraCount: cameraItems.length,

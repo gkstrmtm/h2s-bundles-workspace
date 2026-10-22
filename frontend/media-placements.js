@@ -157,6 +157,98 @@
     };
   }
 
+  async function placementRequest(options, method, body) {
+    const params = new URLSearchParams({ asset_source: options.source, asset_id: options.asset.asset_id });
+    const response = await root.fetch(`${options.base}/api/admin/media-placements${method === 'GET' ? `?${params}` : ''}`, {
+      method, cache: 'no-store',
+      headers: { Authorization: `Bearer ${options.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load or save page placement');
+    return result;
+  }
+
+  function chooseDestination(options) {
+    const existing = root.document.querySelector('.media-destination-choice');
+    if (existing) { existing.focus(); return; }
+    const dialog = root.document.createElement('dialog');
+    const previousFocus = root.document.activeElement;
+    dialog.className = 'media-placement-decision media-destination-choice';
+    dialog.setAttribute('aria-labelledby', 'mediaDestinationTitle');
+    dialog.setAttribute('aria-describedby', 'mediaDestinationDescription');
+    dialog.innerHTML = `<h3 id="mediaDestinationTitle" tabindex="-1">Choose destination</h3>
+      <p id="mediaDestinationDescription">Candidate: ${escape(options.asset.original_filename || 'Selected media')}. Nothing is saved until you save framing.</p>
+      <div data-destinations role="status" aria-busy="true">Loading destinations and saved uses...</div>
+      <footer class="media-destination-actions"><button type="button" class="btn btn-tonal" data-close>Cancel</button></footer>`;
+    const close = () => {
+      dialog.close(); dialog.remove();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+    dialog.querySelector('[data-close]').addEventListener('click', close);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
+    root.document.body.appendChild(dialog);
+    dialog.showModal();
+    dialog.querySelector('h3').focus({ preventScroll: true });
+    const load = async () => {
+      const host = dialog.querySelector('[data-destinations]');
+      host.setAttribute('role', 'status');
+      host.setAttribute('aria-busy', 'true');
+      host.textContent = 'Loading destinations and saved uses...';
+      try {
+        const result = await placementRequest(options, 'GET');
+        if (!dialog.isConnected) return;
+        if (!result.pages || !Array.isArray(result.placements)) throw new Error('Invalid destination catalog or saved usage.');
+        host.innerHTML = '';
+        let count = 0;
+        for (const [surface, page] of Object.entries(result.pages)) {
+          const supported = page.areas.filter(area => {
+            const config = { ...area, ...destinationPreviews[surface]?.[area.key] };
+            return config.preview && !config.unavailableReason;
+          });
+          if (!supported.length) continue;
+          const group = root.document.createElement('fieldset');
+          group.innerHTML = `<legend>${escape(page.title)}</legend>`;
+          for (const area of supported) {
+            const row = result.placements.find(item => item.surface === surface && item.area === area.key);
+            const current = options.currentHeroes?.[surface];
+            const isCurrent = root.H2SPageHeroes?.usesForAsset(options.currentHeroes, options.source, options.asset.asset_id)
+              .some(use => use.surface === surface && use.area === area.key);
+            const button = root.document.createElement('button');
+            button.type = 'button';
+            button.className = 'media-destination-option';
+            button.dataset.destinationSurface = surface;
+            button.dataset.destinationArea = area.key;
+            const mismatch = area.service && area.service !== (options.asset.service || options.asset.service_type);
+            button.disabled = !!mismatch;
+            button.innerHTML = `<strong>${escape(area.title)}</strong><small>${row
+              ? `${row.enabled ? 'Included here' : 'Excluded here'}; order ${row.display_order}`
+              : 'No placement saved for this media'}${isCurrent ? ' · Shown here' : ''}${mismatch ? ' · Requires ' + escape(area.service.replaceAll('_', ' ')) : ''}</small>
+              <small>${current?.areas?.[area.key] ? `${current.areas[area.key].length} selected · ` : ''}${area.limit === 1 ? '1 photo or video' : `Up to ${area.limit} photos or videos`}</small>`;
+            button.addEventListener('click', () => {
+              close();
+              options.onSelect({ surface, area: area.key });
+            });
+            group.appendChild(button); count++;
+          }
+          host.appendChild(group);
+        }
+        if (!count) throw new Error('No supported destinations are registered for this frontend.');
+        host.removeAttribute('role');
+      } catch (error) {
+        console.error('[Destination chooser]', error);
+        if (!dialog.isConnected) return;
+        host.setAttribute('role', 'alert');
+        host.textContent = error.message;
+        const retry = root.document.createElement('button');
+        retry.type = 'button'; retry.className = 'media-placement-secondary'; retry.textContent = 'Retry destinations';
+        retry.addEventListener('click', load); host.appendChild(retry);
+      } finally { if (dialog.isConnected) host.setAttribute('aria-busy', 'false'); }
+    };
+    const ready = load();
+    return { close, ready };
+  }
+
   function mount(options) {
     const host = options.host;
     const find = (selector) => host.querySelector(selector);
@@ -208,8 +300,9 @@
       status.setAttribute('role', state === 'failed' ? 'alert' : 'status');
     };
     const draftStatus = () => {
-      setStatus(dirty() ? `Unsaved changes: ${scopeLabel()}`
-        : saved() ? `Saved placement: ${scopeLabel()}` : `Automatic selection: ${scopeLabel()} (no override)`,
+      setStatus(dirty() ? 'Unsaved changes to candidate framing'
+        : saved() ? `Saved for this area: ${saved().enabled ? 'included' : 'excluded'}`
+          : 'Preview only; no placement saved for this media.',
       dirty() ? 'unsaved' : saved() ? 'saved' : 'automatic');
     };
     const enableSave = () => {
@@ -222,17 +315,7 @@
       scopeControls.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
       if (decision) decision.element.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
     };
-    const request = async (method, body) => {
-      const params = new URLSearchParams({ asset_source: options.source, asset_id: options.asset.asset_id });
-      const response = await root.fetch(`${options.base}/api/admin/media-placements${method === 'GET' ? `?${params}` : ''}`, {
-        method, cache: 'no-store',
-        headers: { Authorization: `Bearer ${options.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load or save page placement');
-      return result;
-    };
+    const request = (method, body) => placementRequest(options, method, body);
     const applyPreview = () => {
       if (!settings) return;
       media.style.cssText = `display:block;width:100%;height:100%;max-width:none;margin:0;${style(settings)}`;
@@ -372,6 +455,8 @@
           ${pages[surface].areas.map((entry) => `<button type="button" class="btn btn-tonal" data-area="${escape(entry.key)}" aria-pressed="${area === entry.key}">${escape(entry.title)}${entry.unavailableReason ? ' (unavailable)' : ''}</button>`).join('')}
         </div></fieldset>` : ''}
         <strong>${escape(pages[surface].title)} / ${escape(config.title)} - placement only</strong>
+        <small>Framing preview only; customer-page controls are inactive.
+          ${config.preview ? `<a class="media-placement-secondary" href="${escape(new URL(config.preview.page, root.location.href).href)}" target="_blank" rel="noopener" aria-label="View actual customer selection (opens a new tab)">View actual customer selection</a>` : ''}</small>
         <div class="media-placement-options" aria-label="Preview viewport">
           <button type="button" class="btn btn-tonal" data-device="desktop" aria-pressed="${device === 'desktop'}">Desktop 1440</button>
           <button type="button" class="btn btn-tonal" data-device="mobile" aria-pressed="${device === 'mobile'}">Mobile 390</button>
@@ -393,7 +478,7 @@
           <div class="media-placement-options">
             <label><input type="radio" name="fit" value="cover"> Fill frame</label>
             <label><input type="radio" name="fit" value="contain"> Fit whole photo</label>
-            <button type="button" class="media-placement-secondary" data-center title="Center the image and reset zoom. Keeps fit mode, inclusion, order, and the placement override. Save to persist.">Reset framing</button>
+            <button type="button" class="media-placement-secondary" data-center title="Center the image and reset zoom. Keeps fit mode, inclusion, order, and this page's settings. Save to persist.">Reset framing</button>
             ${media.tagName === 'VIDEO' ? '<button type="button" class="btn btn-tonal" data-playback>Play preview</button>' : ''}
           </div>
           <label>Zoom <output data-zoom-value></output><input aria-label="Placement zoom" name="zoom" type="range" min="1" max="3" step="0.01"></label>
@@ -406,8 +491,8 @@
             <small>Lower order appears first within the area's service group. Desktop and mobile use the same saved framing. Fit whole photo can leave space around the image.</small>
           </details>
           <div class="media-placement-options">
-            <button type="button" class="media-placement-secondary" data-reset ${saved() ? '' : 'disabled'} title="Remove only this saved placement override and let the page select media automatically.">Restore automatic selection</button>
-            <small>Removes this override, not the shared asset.</small>
+            <button type="button" class="media-placement-secondary" data-reset ${saved() ? '' : 'disabled'} title="Remove only this media's saved placement and let the page select media automatically.">Restore automatic selection</button>
+            <small>Removes this page's saved settings, not the shared asset.</small>
           </div>
         </fieldset></form>`;
       const form = find('form');
@@ -510,6 +595,7 @@
         cleanSettings = JSON.stringify(draft);
         find('[data-reset]').disabled = false;
         draftStatus();
+        options.onSaved?.();
         return true;
       } catch (error) {
         console.error('[Placement save]', error);
@@ -518,17 +604,18 @@
       } finally { busy = false; enableSave(); }
     };
     const restore = async () => {
-      if (busy || decision || !root.confirm(`Restore automatic selection for ${scopeLabel()}? This removes only its saved override${dirty() ? ' and discards the current draft' : ''}. It does not change the shared asset or other placements.`)) return;
+      if (busy || decision || !root.confirm(`Restore automatic selection for ${scopeLabel()}? This removes only this media's saved placement${dirty() ? ' and discards the current draft' : ''}. It does not change the shared asset or other placements.`)) return;
       busy = true; enableSave();
-      setStatus(`Removing placement override: ${scopeLabel()}...`, 'saving');
+      setStatus(`Restoring automatic selection: ${scopeLabel()}...`, 'saving');
       try {
         await request('DELETE', { ...settings });
         placements = placements.filter((row) => row.surface !== surface || row.area !== area);
         busy = false;
         loadScope(surface, area);
+        options.onSaved?.();
       } catch (error) {
         console.error('[Placement reset]', error);
-        setStatus(`Could not remove this placement override: ${error.message}. Your draft is still open.`, 'failed');
+        setStatus(`Could not restore automatic selection: ${error.message}. Your draft is still open.`, 'failed');
       } finally { busy = false; enableSave(); }
     };
     const previewState = (ready, failed = false) => {
@@ -601,11 +688,11 @@
         placements = result.placements;
         loaded = true;
         const initial = options.initialPlacement;
-        if (initial && !pages[initial.surface]?.areas.some(entry => entry.key === initial.area)) {
+        if (!initial || !pages[initial.surface]?.areas.some(entry => entry.key === initial.area)) {
           throw new Error('The requested page placement is not registered.');
         }
-        surface = initial?.surface || Object.keys(pages)[0];
-        loadScope(surface, initial?.area || pages[surface].areas[0].key);
+        surface = initial.surface;
+        loadScope(surface, initial.area);
         await destination?.ready;
       } catch (error) {
         if (closed) return;
@@ -637,7 +724,7 @@
     return controller;
   }
 
-  const api = { style, pan, mount, inertDestination, destinationFrame, destinationPreview };
+  const api = { style, pan, mount, chooseDestination, inertDestination, destinationFrame, destinationPreview };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.H2SMediaPlacements = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

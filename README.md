@@ -215,6 +215,26 @@ saved inclusion/order for the selected asset, then opens the existing placement
 editor without writing. An absent override does not imply the asset is unused:
 automatic selection may still use it.
 
+Gallery clicks, Enter/Space and Edit Asset open the existing shared-file editor.
+Each tile's underlined Page placement action first asks for a supported page and
+display area, with saved uses shown. An explicit page/area shortcut opens only that
+destination; choosing or previewing never writes. Page heroes shows actual resolved
+automatic or explicit media using the customer-safe `media-page-heroes.js` selection
+rules shared with Bundles and Commercial. Choose media reuses the unchanged gallery
+and carries that page's exact hero context into its Page placement action.
+Page-use labels say “Shown on” rather than exposing internal override terminology.
+Gallery captions show a quiet “In use” cue with the current page/display areas on
+hover and in the tile's accessible description. These use resolved public page feeds,
+not historical slots. Commercial rails accept up to four photos, videos, or a mix;
+their camera/TV service restrictions are unchanged.
+The embedded framing preview shows the selected candidate, not necessarily the
+customer page's selected media; saved overrides are labeled separately. Its page
+controls are inactive. Use the current customer-page link outside the frame to
+inspect actual selection. Bundles retains its existing curated hero fallback when
+no explicit hero applies, unless that asset is excluded. Historical slot data remains
+untouched underneath but is not displayed. Technical tools are collapsed under Advanced
+media tools; normal controls do not expose asset IDs or build diagnostics.
+
 Fixture checks:
 `node --test backend\tests\media_placements.test.cjs backend\tests\media_refresh.test.cjs backend\tests\commercial_queue.test.cjs`.
 

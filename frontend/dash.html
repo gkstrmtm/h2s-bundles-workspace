@@ -3502,7 +3502,8 @@
                         </div>
 
                         <!-- Library (Always Visible) -->
-                        <div class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background:#f8fafc;">
+                        <details class="card u-mt-4" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; background:#f8fafc;">
+                            <summary>Advanced media tools</summary>
                             <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
                                 <div>
                                     <div style="font-size: 13px; font-weight: 800; color:#0f172a; letter-spacing:0.2px;">Quick Asset Tools</div>
@@ -3520,17 +3521,14 @@
                             <div class="u-text-xs u-muted" style="margin-top:10px; opacity:0.92;">
                                 Tip: The optimization settings above (Format/Quality/Max px) apply here too.
                             </div>
-                        </div>
+                        </details>
 
                         <div id="ppLibraryWorkspace" class="u-mt-4">
-                            <div class="card" style="border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px;">
-                                <div class="card-header u-mb-3" style="font-size: 18px; font-weight: 600; color: #0f172a; margin-bottom: 20px;">Live on Website</div>
-                                <div id="ppLivePreviewContent" style="min-height:100px;">
-                                    <div style="text-align:center;padding:40px;color:#94a3b8;">
-                                        <div class="spinner" style="margin:0 auto;"></div>
-                                    </div>
-                                </div>
-                            </div>
+                            <section class="pp-page-heroes" aria-labelledby="ppPageHeroesTitle">
+                                <h3 id="ppPageHeroesTitle">Page heroes</h3>
+                                <div id="ppPageHeroesContent" aria-live="polite"><p>Loading current page selections...</p></div>
+                            </section>
+                            <div id="ppPlacementSelection" class="pp-placement-selection" role="status" tabindex="-1" hidden></div>
 
                             <!-- Modal Overlay Editor -->
                             <div id="ppLibraryEditor" class="pp-editor-modal is-hidden">
@@ -5374,7 +5372,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
-                for (const filename of ['commercial-labels.js', 'dash.js', 'media-placement-style.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
+                for (const filename of ['commercial-labels.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
                     await loadScript(filename);
                 }
                 window.__h2sDashboardScriptsLoaded = true;
@@ -5605,8 +5603,4 @@
     </script>
 </body>
 </html>
-
-
-
-
 

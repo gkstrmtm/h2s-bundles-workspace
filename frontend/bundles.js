@@ -81,7 +81,7 @@ const PROOF_ASSET_EDITS_API = API.replace('/api/shop', '/api/proof-asset-edits')
 const SUPABASE_CONFIG_API = API.replace('/api/shop', '/api/get_supabase_config');
 
 // Hero underlay: this must be the specific curated hero image asset.
-const HERO_UNDERLAY_ASSET_ID = 'de955df6-d4d9-4603-be3a-90ed2fb25e45';
+const HERO_UNDERLAY_ASSET_ID = window.H2SPageHeroes.bundlesFallbackAssetId;
 
 let _heroUnderlayUrlPromise = null;
 
@@ -1199,9 +1199,8 @@ async function updateProofSections() {
     try {
       const heroSectionEl = document.querySelector('section.hero');
       if (heroSectionEl) {
-        const curatedHeroExcluded = _proofHeroExclusions.some((item) =>
-          item.asset_source === 'proof_asset' && item.asset_id === HERO_UNDERLAY_ASSET_ID);
-        const url = curatedHeroExcluded || _proofPageHero.length ? '' : await fetchHeroUnderlayUrl();
+        const selection = window.H2SPageHeroes.bundlesSelection(_proofPageHero, _proofHeroExclusions);
+        const url = selection.fallbackAssetId ? await fetchHeroUnderlayUrl() : '';
         if (url) {
           heroSectionEl.style.setProperty('--hero-bg-url', `url("${String(url).replace(/"/g, '%22')}")`);
         } else {
