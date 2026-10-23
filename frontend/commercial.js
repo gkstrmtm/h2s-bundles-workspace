@@ -17,16 +17,24 @@
   const DRAFT_KEY = 'h2s_commercial_draft';
   const DEFAULT_PHONE = '864-387-8413';
   const MEDIA_REQUEST_TIMEOUT_MS = 4500;
-
   const SMS_CONSENT_COPY = 'I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.';
 
   const WIZARD_STEPS = [
-    { number: 1, title: 'Project focus', message: 'Choose the project type and site details.' },
-    { number: 2, title: 'Contact and site', message: 'Add the main contact and site information.' },
-    { number: 3, title: 'Planning details', message: 'Add any details that affect the visit.' },
-    { number: 4, title: 'Photos', message: 'Add photos only if they help explain the site.' },
-    { number: 5, title: 'Consultation window', message: 'Review the details and choose a time.' }
+    { number: 1, title: 'Services', message: 'Choose the services, property type, and timing.' },
+    { number: 2, title: 'Contact & location', message: 'Tell us who to reach and where the work is happening.' },
+    { number: 3, title: 'Project details', message: 'Add the details that help us prepare an estimate.' },
+    { number: 4, title: 'Photos', message: 'Photos and plans are optional, but they can help.' },
+    { number: 5, title: 'Choose a time', message: 'Review the details and choose a time for follow-up.' }
   ];
+
+  const SERVICE_LABELS = {
+    'Security Cameras': 'Security Cameras',
+    'Commercial Displays': 'TV Mounting & Displays',
+    'Structured Cabling': 'Network & Cable Installation',
+    'Wi-Fi Upgrades': 'Wi-Fi & Network Setup',
+    'Audio / Paging': 'Audio & Paging',
+    'Other Multi-Service': 'Access Control & More'
+  };
 
   const state = {
     leadToken: '',
@@ -152,6 +160,15 @@
     if (node) node.textContent = value;
   }
 
+  function serviceLabel(value) {
+    const normalized = String(value || '').trim();
+    return SERVICE_LABELS[normalized] || normalized;
+  }
+
+  function serviceLabels(values) {
+    return (Array.isArray(values) ? values : []).map(serviceLabel).filter(Boolean);
+  }
+
   function normalizePhoneDigits(value) {
     return String(value || '').replace(/\D+/g, '');
   }
@@ -162,7 +179,7 @@
 
   function smsHref(number, message) {
     const digits = normalizePhoneDigits(number);
-    const body = encodeURIComponent(message || 'Hi, I need help with a commercial Home2Smart project.');
+    const body = encodeURIComponent(message || "Hi Home2Smart, I'd like help with a commercial project.");
     return `sms:${digits}?body=${body}`;
   }
 
@@ -217,19 +234,18 @@
   function getFollowUpCopy() {
     const preference = String(byId('contactPreference') ? byId('contactPreference').value : 'sms').toLowerCase();
     const manual = preference === 'call';
-    const channel = 'phone';
-    const manualCopy = 'Your request is submitted for staff follow-up by phone. No automated customer texts are sent for this request. Any preferred window is pending review; no appointment is confirmed.';
+    const manualCopy = 'Home2Smart received your request. A team member will call you. No automated customer texts are sent for this request. Any preferred time is pending review; no appointment is confirmed.';
     return {
       preference,
-      cta: manual ? 'Request manual follow-up' : 'Submit estimate request',
+      cta: manual ? 'Request a call' : 'Submit estimate request',
       helper: manual
-        ? `Submit for manual follow-up by ${channel}. A preferred window is optional and pending review, not a confirmed consultation.`
-        : 'Submit your requested window for technician review. Project texts require your explicit texting choice. No appointment is confirmed by this submission.',
-      sending: 'Submitting follow-up request...',
-      successTitle: 'Follow-up request submitted.',
+        ? 'Submit your request for a call from Home2Smart. A preferred time is optional; no appointment is confirmed.'
+        : 'Submit your preferred time for review by Home2Smart. Text updates require your consent. Submitting does not confirm an appointment.',
+      sending: 'Submitting your request...',
+      successTitle: 'Request submitted.',
       successCopy: manual ? manualCopy : 'Your request is submitted for technician review. The requested window is not a confirmed appointment.',
       manualReviewCopy: manual ? manualCopy : 'Your request is submitted for manual review. No appointment is confirmed.',
-      status: manual ? `Follow-up request submitted for manual ${channel} review.` : 'Request submitted. Requested window pending review.'
+      status: manual ? 'Call request submitted. Staff follow-up pending.' : 'Request submitted. Requested window pending review.'
     };
   }
 
@@ -238,7 +254,7 @@
     const submitButton = byId('requestConsultationBtn');
     const submitCopy = byId('submitCopy');
     if (submitButton) {
-      submitButton.textContent = state.submission ? 'Follow-up request submitted' : copy.cta;
+      submitButton.textContent = state.submission ? 'Request submitted' : copy.cta;
       submitButton.disabled = !!state.submission || state.submitting;
     }
     if (submitCopy) submitCopy.textContent = copy.helper;
@@ -247,8 +263,8 @@
     if (byId('smsConsent')) byId('smsConsent').disabled = !texting;
     setText('contactMethodHint', !copy.preference
       ? 'Email-only follow-up is no longer offered. Choose Text first or Call first; your saved preference has not been changed automatically.'
-      : texting ? 'Text first requires a valid phone number and your explicit agreement below. You can choose a staff call instead.'
-      : 'A staff member will call the number you provide. No automated customer texts are sent for Call first.');
+      : texting ? 'For text updates from Home2Smart, enter your phone number and check the consent box. Prefer a call? Choose Call first.'
+      : 'A Home2Smart team member will call the number you provide. No automated customer texts are sent for Call first.');
     setText('phoneLabel', 'Phone (required)');
     setText('emailLabel', 'Email (optional)');
     if (byId('clearDraftBtn')) byId('clearDraftBtn').textContent = state.submission ? 'Start a separate project' : 'Clear draft';
@@ -1076,7 +1092,7 @@
   }
 
   function summarizeServicesForMessage(services) {
-    const list = Array.isArray(services) ? services.filter(Boolean) : [];
+    const list = serviceLabels(services);
     if (!list.length) return '';
     if (list.length <= 2) return list.join(' + ');
     return `${list.slice(0, 2).join(' + ')} +${list.length - 2} more`;
@@ -1090,7 +1106,7 @@
 
   function buildCommercialSmsMessage() {
     const payload = collectLeadPayload();
-    const lines = ['Hi, I need help with a commercial Home2Smart project.'];
+    const lines = ["Hi Home2Smart, I'd like a free initial estimate for my commercial project."];
     const services = summarizeServicesForMessage(payload.serviceNeeds);
     const siteType = businessTypeLabel(payload.businessType, '');
     const timeline = window.H2SCommercialLabels.timeline(payload.timeline, '');
@@ -1124,10 +1140,10 @@
     if (!target) return;
     const services = selectedServices();
     if (!services.length) {
-      target.innerHTML = '<span class="status-pill status-pill--muted">Select at least one project focus</span>';
+      target.innerHTML = '<span class="status-pill status-pill--muted">Choose a service to get started</span>';
       return;
     }
-    target.innerHTML = services.map(function (service) {
+    target.innerHTML = serviceLabels(services).map(function (service) {
       return `<span class="status-pill">${escapeHtml(service)}</span>`;
     }).join('');
   }
@@ -1150,17 +1166,17 @@
     const payload = collectLeadPayload();
     const contact = payload.phone || payload.email
       ? [payload.phone, payload.email].filter(Boolean).join(' / ')
-      : 'Add a phone or email';
+      : 'Contact details coming up';
     const locationBits = [payload.projectCity, payload.projectState].filter(Boolean);
     const locationText = locationBits.length ? locationBits.join(', ') : (payload.projectAddress || 'Add site details');
-    const scopeText = payload.scopeSummary || (payload.serviceNeeds.length ? payload.serviceNeeds.join(', ') : 'Add a short scope summary');
+    const scopeText = payload.scopeSummary || (payload.serviceNeeds.length ? serviceLabels(payload.serviceNeeds).join(', ') : 'Add a short project summary');
 
-    setText('assessmentBusinessType', businessTypeLabel(payload.businessType, 'Not selected'));
-    setText('assessmentTimeline', window.H2SCommercialLabels.timeline(payload.timeline, 'Not selected'));
+    setText('assessmentBusinessType', businessTypeLabel(payload.businessType, 'Not added yet'));
+    setText('assessmentTimeline', window.H2SCommercialLabels.timeline(payload.timeline, 'Not added yet'));
     setText('assessmentContact', contact);
-    setText('assessmentPhotos', state.uploadedPhotos.length ? `${state.uploadedPhotos.length} file${state.uploadedPhotos.length === 1 ? '' : 's'}` : 'No files yet');
+    setText('assessmentPhotos', state.uploadedPhotos.length ? `${state.uploadedPhotos.length} file${state.uploadedPhotos.length === 1 ? '' : 's'} added` : 'Photos are optional');
 
-    setText('reviewServices', payload.serviceNeeds.length ? payload.serviceNeeds.join(', ') : 'Select a project focus');
+    setText('reviewServices', payload.serviceNeeds.length ? serviceLabels(payload.serviceNeeds).join(', ') : 'Choose a service to get started');
     setText('reviewLocation', locationText);
     setText('reviewContact', contact);
     setText('reviewScope', scopeText);
@@ -1203,24 +1219,26 @@
     commercialQueueCustomSelectSync();
   }
 
-  function scrollWizardStepIntoView(step) {
-    const card = document.querySelector(`.wizard-card[data-step="${Math.max(1, Math.min(WIZARD_STEPS.length, Number(step || 1)))}"]`);
-    if (!card || !card.scrollIntoView) return;
+  function scrollPanelBelowHeader(panel) {
+    if (!panel) return;
     const behavior = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      ? 'auto'
+      ? 'instant'
       : 'smooth';
-    const run = function () {
-      try {
-        card.scrollIntoView({ behavior, block: 'start', inline: 'nearest' });
-      } catch (_) {}
-    };
-    try {
+    window.requestAnimationFrame(function () {
       window.requestAnimationFrame(function () {
-        window.requestAnimationFrame(run);
+        const header = document.querySelector('.site-header');
+        const headerBottom = header ? Math.max(0, header.getBoundingClientRect().bottom) : 0;
+        window.scrollTo({
+          top: Math.max(0, window.scrollY + panel.getBoundingClientRect().top - headerBottom - 16),
+          behavior,
+        });
       });
-    } catch (_) {
-      window.setTimeout(run, 0);
-    }
+    });
+  }
+
+  function scrollWizardStepIntoView(step, alignHeading) {
+    const card = document.querySelector(`.wizard-card[data-step="${Math.max(1, Math.min(WIZARD_STEPS.length, Number(step || 1)))}"]`);
+    scrollPanelBelowHeader(alignHeading && card ? card.querySelector('.card-step') || card : card);
   }
 
   function validateStep(step) {
@@ -1244,7 +1262,7 @@
     return true;
   }
 
-  function moveToStep(targetStep) {
+  function moveToStep(targetStep, alignHeading) {
     const numericTarget = Math.max(1, Math.min(WIZARD_STEPS.length, Number(targetStep || 1)));
     if (numericTarget > state.currentStep && !validateStep(state.currentStep)) {
       return;
@@ -1253,7 +1271,7 @@
       return;
     }
     showStep(numericTarget);
-    scrollWizardStepIntoView(numericTarget);
+    scrollWizardStepIntoView(numericTarget, alignHeading);
     persistDraft();
   }
 
@@ -1306,7 +1324,7 @@
     setText('heroCallText', callNumber);
     setText('footerPhoneText', callNumber);
 
-    [byId('heroSmsBtn'), byId('footerSmsBtn'), byId('stepSmsBtn')].forEach(function (button) {
+    [byId('heroSmsBtn'), byId('footerSmsBtn')].forEach(function (button) {
       if (!button) return;
       button.onclick = function () {
         track('outbound_click', { target: 'sms', source: button.id });
@@ -1621,7 +1639,7 @@
       manual_review_required: result.notifications.manualReviewRequired,
     });
     const successPanel = byId('consultationSuccessPanel');
-    if (successPanel) successPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    scrollPanelBelowHeader(successPanel);
     state.dirty = false;
     persistDraft();
     } catch (error) {
@@ -1852,8 +1870,8 @@
   }
 
   function applyProofGalleryMedia(cameraRail, tvRail, cameraItems, tvItems) {
-    renderProofRail(cameraRail, cameraItems, 'No approved camera installs are available yet.');
-    renderProofRail(tvRail, tvItems, 'No approved display installs are available yet.');
+    renderProofRail(cameraRail, cameraItems, 'No recent camera installation photos are available right now.');
+    renderProofRail(tvRail, tvItems, 'No recent TV or display installation photos are available right now.');
     if (!selectHeroMedia(cameraItems, tvItems)) {
       renderHeroEmpty('Recent installation media is unavailable right now.');
     }
@@ -1915,8 +1933,8 @@
         await loadProofGalleryFallback();
         return;
       }
-      renderProofRail(cameraRail, cameraItems, 'No approved camera installs are available yet.');
-      renderProofRail(tvRail, tvItems, 'No approved display installs are available yet.');
+      renderProofRail(cameraRail, cameraItems, 'No recent camera installation photos are available right now.');
+      renderProofRail(tvRail, tvItems, 'No recent TV or display installation photos are available right now.');
       if (hasHeroSelection) {
         if (heroItems.length) renderHeroMedia(heroItems[0], heroItems.slice(1));
         else renderHeroEmpty('No installation media is selected for this area.');
@@ -1974,9 +1992,9 @@
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || 'Failed to refresh slots');
       applyConfig(payload.config || {});
-      setStatus('Suggested consultation windows refreshed.', 'success');
+      setStatus('Suggested times updated.', 'success');
     } catch (error) {
-      setStatus(error.message || 'Failed to refresh slots.', 'error');
+      setStatus(error.message || 'Failed to refresh times.', 'error');
     }
   }
 
@@ -1990,7 +2008,7 @@
 
     qsa('[data-step-action="next"]').forEach(function (button) {
       button.addEventListener('click', function () {
-        moveToStep(state.currentStep + 1);
+        moveToStep(state.currentStep + 1, true);
       });
     });
 
@@ -2048,13 +2066,6 @@
       renderSlots(state.slots);
     });
 
-    const saveProgressBtn = byId('saveProgressBtn');
-    if (saveProgressBtn) {
-      saveProgressBtn.addEventListener('click', function () {
-        saveLead('manual_save').catch(function () {});
-      });
-    }
-
     const clearDraftBtn = byId('clearDraftBtn');
     if (clearDraftBtn) {
       clearDraftBtn.addEventListener('click', function () {
@@ -2103,12 +2114,12 @@
     bindForm();
     bindEventTracking();
     showStep(1);
-    setStatus('Loading commercial assessment...', '');
+    setStatus('Loading your estimate form...', '');
 
     try {
       await fetchIntakeConfig();
       commercialSyncAllCustomSelects(document);
-      setStatus('Review your project details and submit your follow-up request when ready.', '');
+      setStatus('Answer a few quick questions, then request your free estimate when you are ready.', '');
     } catch (error) {
       setStatus(getFriendlyLoadMessage(error.message || 'Failed to load commercial intake.'), 'error');
     }

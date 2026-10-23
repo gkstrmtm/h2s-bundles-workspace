@@ -753,6 +753,10 @@ textarea {
   padding: var(--space-4) var(--space-5);
 }
 
+.wizard-card {
+  scroll-margin-top: 108px;
+}
+
 .wizard-card > * + * {
   margin-top: var(--space-5);
 }
@@ -832,6 +836,23 @@ textarea {
   flex: 1 1 280px;
   margin: 0;
   color: var(--ink-soft);
+}
+
+.wizard-meta__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.wizard-meta__note {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .form-grid {

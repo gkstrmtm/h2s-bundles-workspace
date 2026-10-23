@@ -279,6 +279,41 @@ The selected payment scope is **existing priced orders only**. Leads without an
 explicit linked installation display **Quote/payment setup required**. Payment
 collection is not connected for those leads.
 
+### Brand and customer copy (local; not deployed)
+
+System-authored Commercial page text, SMS prefills, technician/customer texts
+and reply templates use **Home2Smart**, with the number 2. Regression coverage
+rejects spoken-brand misspellings without rewriting customer-entered content
+or historical messages. Call/Text instructions use plain next steps; a request
+is not a confirmed appointment, and a consultation is not an installation.
+Consent wording, recipients, approval links and send behavior are unchanged.
+
+### Customer form navigation and returning visitors
+
+The local navigation correction measures the sticky header after the new card
+layout. Continue aligns the next step number and heading with a 16px header gap,
+instead of adding the card's top padding to that gap. Back and step selection
+keep their card-edge target; the submitted receipt keeps its existing target.
+Focus behavior and reduced-motion support are unchanged. Short desktop steps
+still respect the browser's page-bottom scroll limit rather than adding empty
+space below the page. This correction is not included in the deployed release
+recorded above until separately released.
+
+The browser remembers a lead token and draft under `h2s_commercial_lead` and
+`h2s_commercial_draft`; these are origin/browser-profile storage, not a device
+identity or a one-project-per-device rule. Reopening loads the saved lead and its
+active request. Answers remain visible/editable, while an active submission
+disables another submit; the backend also replays an active request rather than
+sending duplicate notifications. Editing details is not a new request.
+
+The numbered stepper describes form progress, not business progress. Status is
+loaded when the page initializes; it is not live-polled. There is no dedicated
+submitted-summary/new-project flow. Closing operational follow-up does not
+automatically close the separate consultation request or reset the browser.
+Any future summary/edit/start-another-project UX must preserve the existing
+request/reference, require an explicit new-project action, and retain server-side
+duplicate protection; that behavior change is not implemented by this scroll fix.
+
 ### Commercial branding
 
 New consultation requests, manual-follow-up alerts, acknowledgements,

@@ -2,10 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const ts = require('typescript');
 const { JSDOM } = require('jsdom');
 const utils = require('../lib/commercial_consultation.js');
 const { createFixture } = require('./helpers/commercial_contact_fixture.cjs');
-const wrongBrand = /\bHome(?:\s+(?:Too|To|Two|2)\s*|Too|Two|2\s+)Smart\b/i;
+const wrongBrand = /\bHome(?:\s*(?:Too|To|Two)\s*|\s+2\s*|2\s+)Smart\b/i;
 function branded(body) {
   assert.match(body, /\bHome2Smart\b/);
   assert.doesNotMatch(body, wrongBrand);
@@ -30,6 +31,54 @@ async function submit(f, method = 'sms') {
   assert.equal(submitted.status, 201);
   return f.tables.commercial_consultation_requests[0];
 }
+test('branding guard rejects misspellings while accepting Home2Smart', () => {
+  branded('Home2Smart');
+  for (const value of ['Home Too Smart', 'HomeTooSmart', 'HomeToSmart', 'Home Two Smart', 'Home 2 Smart', 'Home2 Smart']) {
+    assert.match(value, wrongBrand);
+  }
+});
+test('customer page, prefilled texts and Call/Text instructions use Home2Smart without changing SMS recipients', t => {
+  const root = path.resolve(__dirname, '..', '..', 'frontend');
+  const dom = new JSDOM(fs.readFileSync(path.join(root, 'commercial.html'), 'utf8'), { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  branded(w.document.title);
+  branded(w.document.body.textContent);
+  assert.equal(w.document.querySelector('.brand strong').textContent, 'Home2Smart');
+  assert.equal(w.document.querySelector('.brand__mark').alt, 'Home2Smart');
+  branded(w.document.querySelector('.consent-check__copy').textContent);
+  const source = fs.readFileSync(path.join(root, 'commercial.js'), 'utf8');
+  const ast = ts.createSourceFile('commercial.js', source, ts.ScriptTarget.Latest, true), functions = [];
+  const names = ['byId', 'normalizePhoneDigits', 'smsHref', 'buildCommercialSmsMessage', 'getFollowUpCopy'];
+  function visit(node) {
+    if (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) functions.push(node.getText(ast));
+    else ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  assert.equal(functions.length, names.length);
+  w.H2SCommercialLabels = { timeline: () => '' };
+  w.eval(`const state = { slots: [], selectedSlotStart: '' };
+    function collectLeadPayload() { return { serviceNeeds: [], fullName: '', companyName: '' }; }
+    function summarizeServicesForMessage() { return ''; }
+    function businessTypeLabel() { return ''; }
+    ${functions.join('\n')}`);
+  for (const body of [undefined, w.buildCommercialSmsMessage()]) {
+    const link = w.smsHref('+1 (555) 000-0005', body);
+    assert.ok(link.startsWith('sms:15550000005?body='));
+    branded(new URL(link).searchParams.get('body'));
+  }
+  for (const preference of ['sms', 'call']) {
+    w.document.getElementById('contactPreference').value = preference;
+    const copy = w.getFollowUpCopy();
+    branded(copy.helper);
+    assert.match(copy.helper, /(?:no appointment is confirmed|does not confirm an appointment)/);
+    if (preference === 'call') {
+      assert.equal(copy.cta, 'Request a call');
+      branded(copy.successCopy);
+      assert.match(copy.successCopy, /No automated customer texts are sent/);
+    }
+  }
+});
 test('all commercial message builders use the canonical brand without changing links or references, including legacy sparse inputs', () => {
   const input = { referenceCode: 'COM-BRAND', customerName: 'Fixture Contact', companyName: 'Fixture Offices',
     serviceNeeds: ['Security Cameras'], baseUrl: 'https://approval.example.invalid', responseToken: 'keep-token&value',
@@ -44,6 +93,8 @@ test('all commercial message builders use the canonical brand without changing l
   }
   for (const method of ['call', 'email']) branded(utils.buildManualFollowUpMessage(
     { reference_code: 'COM-LEGACY' }, { contact_preference: method }, 'Pending review'));
+  assert.match(utils.buildCustomerPendingMessage(input), /not a confirmed appointment.*Check your texts for updates/);
+  assert.match(utils.buildCustomerConfirmedMessage(input), /consultation, not an installation/);
 });
 test('initial sends, no-response reminders and escalation stay branded without rewriting historical messages', async () => {
   const f = createFixture();

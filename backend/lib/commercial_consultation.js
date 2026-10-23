@@ -449,13 +449,13 @@ function buildTechnicianRequestMessage(input) {
 
 function buildCustomerPendingMessage(input) {
   const reference = normalizeText(input.referenceCode, 32) || 'your request';
-  return `Thanks for contacting Home2Smart. We received ${reference} for review. Your preferred window is a request, not a confirmed appointment. Project follow-up may be sent by text using your texting choice.`;
+  return `Thanks for contacting Home2Smart. We received ${reference} for review. Your preferred window is a request, not a confirmed appointment. Check your texts for updates.`;
 }
 
 function buildCustomerConfirmedMessage(input) {
   const slotLabel = normalizeText(input.slotLabel, 120) || 'your consultation time';
   const reference = normalizeText(input.referenceCode, 32) || 'your request';
-  return `Home2Smart confirmed ${reference} for ${slotLabel}. Reply to this text if you need to reschedule or add project details before the consultation.`;
+  return `Home2Smart confirmed ${reference} for ${slotLabel}. This confirms a consultation, not an installation. Reply if you need to reschedule or share project details.`;
 }
 
 function buildEscalationMessage(input) {
