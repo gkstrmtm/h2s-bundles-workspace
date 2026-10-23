@@ -25,6 +25,11 @@ test('036 shared calendar and workload execute with default-deny, authenticated 
   try {
     await t.test('review verifies schema, exact functions, trigger enforcement and grants', async () => {
       assert.equal((await require('../lib/commercial_calendar_review.cjs').inspect(f.db,true)).atomicCapacityVerified,true);
+      const trigger=(await f.db.query(`select c.relname table_name,t.tgname name,t.tgenabled enabled,
+        pg_get_triggerdef(t.oid) definition,p.prosrc function_body,p.prosecdef security_definer,p.proconfig config
+        from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_proc p on p.oid=t.tgfoid
+        where c.relname='h2s_orders' and t.tgname='commercial_calendar_order_sync'`)).rows[0];
+      assert.equal(require('../lib/commercial_calendar_review.cjs').isReviewedOrderTrigger(trigger),true);
       await f.db.exec('set role service_role');
       await assert.rejects(f.db.exec("update commercial_calendar set name='Bypass'"), /permission denied/);
       await f.db.exec('reset role');

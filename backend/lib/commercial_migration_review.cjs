@@ -107,7 +107,8 @@ function assertPost(schema, target) {
   equal(schema.relations.filter(row => row.name !== 'commercial_effects'), baseline.relations, 'existing table owners, grants and RLS');
   equal(schema.policies, baseline.policies, 'existing/default-deny policies');
   const newTriggers = ['commercial_appointment_write_guard', 'commercial_appointment_truncate_guard'];
-  equal(schema.triggers.filter(row => !newTriggers.includes(row.name)), baseline.triggers, 'existing trigger definitions and functions');
+  equal(schema.triggers.filter(row => !newTriggers.includes(row.name)
+    && !require('./commercial_calendar_review.cjs').isReviewedOrderTrigger(row)), baseline.triggers, 'existing trigger definitions and functions');
   equal(schema.roles, baseline.roles, 'API role privilege flags');
   equal(schema.defaultPrivileges, baseline.defaultPrivileges, 'existing default privileges');
   const newColumns = ['commercial_leads.revision', 'commercial_leads.last_save_key', 'commercial_consultation_requests.submission_key', 'h2s_orders.commercial_request_id'];

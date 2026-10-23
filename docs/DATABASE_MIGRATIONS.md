@@ -35,6 +35,13 @@ The exact checksum is covered by the release authorization above. Local tests ex
 rollback for both incomplete and overlapping legacy windows, default-deny grants,
 trigger/function bindings and real independent-session capacity serialization.
 
+The first guarded 036 attempt rolled back during final verification because the
+031 inspector did not recognize the new deferred order-calendar trigger.
+The inspector now recognizes only its exact table/name/enabled state, full
+trigger definition, reviewed SQL function body, definer and pinned search path;
+all existing triggers remain baseline-checked. The 036 inspector independently
+checks the migration objects and grants. Migration SQL/checksum is unchanged.
+
 The same unapplied 036 proposal now also contains job-keyed shared preparation,
 authenticated immutable preparation history, service-only review/save RPCs, and
 a job-status trigger enforcing preparation and the Commercial completion boundary.

@@ -169,3 +169,19 @@ test('031 baseline accepts only the inspected catalog and detects untracked obje
   }
   assert.throws(() => review.assertBaseline(baseline, { ...target(), commercial031: { ...target().commercial031, sqlSha256: 'changed' } }), /checksum/);
 });
+
+test('031 recognizes only the exact reviewed 036 order trigger, never a name-only exemption', () => {
+  const review = require('../lib/commercial_calendar_review.cjs');
+  const sql = fs.readFileSync(path.join(__dirname,'..','migrations',review.version),'utf8').replace(/\r\n/g,'\n');
+  const row = {
+    table_name:'h2s_orders',name:'commercial_calendar_order_sync',enabled:'O',
+    definition:'CREATE CONSTRAINT TRIGGER commercial_calendar_order_sync AFTER UPDATE ON public.h2s_orders DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION commercial_sync_calendar()',
+    function_body:/create function public\.commercial_sync_calendar\([\s\S]*?as \$\$([\s\S]*?)\$\$;/.exec(sql)[1],
+    security_definer:true,config:['search_path=public, pg_temp'],
+  };
+  assert.equal(review.isReviewedOrderTrigger(row),true);
+  for(const change of [
+    {table_name:'commercial_leads'},{enabled:'D'},{definition:row.definition.replace('UPDATE','INSERT')},
+    {function_body:'begin return null; end'},{security_definer:false},{config:['search_path=public']},
+  ]) assert.equal(!!review.isReviewedOrderTrigger({...row,...change}),false);
+});
