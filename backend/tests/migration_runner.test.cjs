@@ -180,6 +180,12 @@ test('031 recognizes only the exact reviewed 036 order trigger, never a name-onl
     security_definer:true,config:['search_path=public, pg_temp'],
   };
   assert.equal(review.isReviewedOrderTrigger(row),true);
+  const constraint={table_name:'h2s_orders',name:'commercial_calendar_order_sync',type:'t',
+    definition:'TRIGGER DEFERRABLE INITIALLY DEFERRED',validated:true};
+  assert.equal(review.isReviewedOrderConstraint(constraint,[row]),true);
+  assert.equal(review.isReviewedOrderConstraint(constraint,[]),false);
+  assert.equal(review.isReviewedOrderConstraint({...constraint,type:'f'},[row]),false);
+  assert.equal(review.isReviewedOrderConstraint({...constraint,validated:false},[row]),false);
   for(const change of [
     {table_name:'commercial_leads'},{enabled:'D'},{definition:row.definition.replace('UPDATE','INSERT')},
     {function_body:'begin return null; end'},{security_definer:false},{config:['search_path=public']},

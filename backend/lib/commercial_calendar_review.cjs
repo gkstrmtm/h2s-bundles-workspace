@@ -5,12 +5,18 @@ const functions = ['commercial_guard_reservation','commercial_guard_workload','c
   'commercial_sync_calendar','commercial_calendar_snapshot','h2s_job_readiness','h2s_record_job_preparation',
   'h2s_guard_job_preparation','commercial_record_job_operation','commercial_record_work_location'];
 function isReviewedOrderTrigger(row) {
+  if (row.table_name !== 'h2s_orders' || row.name !== 'commercial_calendar_order_sync' || row.enabled !== 'O') return false;
   const sql = fs.readFileSync(path.join(__dirname,'..','migrations',version),'utf8').replace(/\r\n/g,'\n');
   const body = /create function public\.commercial_sync_calendar\([\s\S]*?as \$\$([\s\S]*?)\$\$;/.exec(sql)?.[1];
   const definition = 'CREATE CONSTRAINT TRIGGER commercial_calendar_order_sync AFTER UPDATE ON public.h2s_orders DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION commercial_sync_calendar()';
   return row.table_name === 'h2s_orders' && row.name === 'commercial_calendar_order_sync' && row.enabled === 'O'
     && row.definition === definition && body && row.function_body.replace(/\r\n/g,'\n').trim() === body.trim()
     && row.security_definer === true && JSON.stringify(row.config) === JSON.stringify(['search_path=public, pg_temp']);
+}
+function isReviewedOrderConstraint(row, triggers) {
+  return row.table_name === 'h2s_orders' && row.name === 'commercial_calendar_order_sync' && row.type === 't'
+    && row.definition === 'TRIGGER DEFERRABLE INITIALLY DEFERRED' && row.validated === true
+    && triggers.some(isReviewedOrderTrigger);
 }
 async function inspect(client, applied) {
   const rows = (await client.query(`select c.relname name,c.relrowsecurity rls,
@@ -69,4 +75,4 @@ async function inspect(client, applied) {
   }
   return { applied: true, serviceOnlyVerified: true, atomicCapacityVerified: true, installationSyncVerified: true };
 }
-module.exports = { version, inspect, isReviewedOrderTrigger };
+module.exports = { version, inspect, isReviewedOrderTrigger, isReviewedOrderConstraint };

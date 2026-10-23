@@ -140,7 +140,8 @@ function assertPost(schema, target) {
   const addedConstraints = ['h2s_orders_email_required_except_commercial', 'commercial_effects_pkey',
     'commercial_effects_request_id_fkey', 'commercial_effects_state_check',
     'h2s_orders_commercial_request_id_fkey', 'h2s_orders_commercial_link'];
-  equal(schema.constraints.filter(row => !addedConstraints.includes(row.name)), baseline.constraints, 'existing constraints');
+  equal(schema.constraints.filter(row => !addedConstraints.includes(row.name)
+    && !require('./commercial_calendar_review.cjs').isReviewedOrderConstraint(row, schema.triggers)), baseline.constraints, 'existing constraints');
   const patterns = {
     h2s_orders_email_required_except_commercial: 'checkcustomer_emailisnotnullorcommercial_request_idisnotnull',
     h2s_orders_commercial_request_id_fkey: 'foreignkeycommercial_request_idreferencescommercial_consultation_requestsrequest_id',

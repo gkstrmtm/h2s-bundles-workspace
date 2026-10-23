@@ -30,6 +30,10 @@ test('036 shared calendar and workload execute with default-deny, authenticated 
         from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_proc p on p.oid=t.tgfoid
         where c.relname='h2s_orders' and t.tgname='commercial_calendar_order_sync'`)).rows[0];
       assert.equal(require('../lib/commercial_calendar_review.cjs').isReviewedOrderTrigger(trigger),true);
+      const constraint=(await f.db.query(`select c.relname table_name,x.conname name,x.contype type,
+        pg_get_constraintdef(x.oid) definition,x.convalidated validated from pg_constraint x
+        join pg_class c on c.oid=x.conrelid where c.relname='h2s_orders' and x.conname='commercial_calendar_order_sync'`)).rows[0];
+      assert.equal(require('../lib/commercial_calendar_review.cjs').isReviewedOrderConstraint(constraint,[trigger]),true);
       await f.db.exec('set role service_role');
       await assert.rejects(f.db.exec("update commercial_calendar set name='Bypass'"), /permission denied/);
       await f.db.exec('reset role');

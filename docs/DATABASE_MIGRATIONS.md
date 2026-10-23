@@ -39,6 +39,8 @@ The first guarded 036 attempt rolled back during final verification because the
 031 inspector did not recognize the new deferred order-calendar trigger.
 The inspector now recognizes only its exact table/name/enabled state, full
 trigger definition, reviewed SQL function body, definer and pinned search path;
+the generated deferred-trigger constraint is recognized only with that verified
+trigger and its exact constraint definition/type/validation state.
 all existing triggers remain baseline-checked. The 036 inspector independently
 checks the migration objects and grants. Migration SQL/checksum is unchanged.
 
