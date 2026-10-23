@@ -157,6 +157,10 @@ test('commercial API: authorized persistence, explicit installation linkage, Str
     let assigned = await post(action('assign',4,{...versions(before),proId:id(500),note:'Installer confirmed by staff'}));
     assert.equal(assigned.response.status,200,JSON.stringify(assigned.data));
     assert.equal(assigned.data.installation.job.status,'assigned');
+    assigned = await post(action('preparation',5,{...versions(assigned.data),
+      preparationRevision:0,context:assigned.data.installation.preparation.context,scopeReviewed:true,
+      materials:'not_required',access:'ready',blockers:'',note:'Existing scope and site reviewed in fixture'}));
+    assert.equal(assigned.response.status,200,JSON.stringify(assigned.data));
     const started = await post(action('start',5,{...versions(assigned.data),note:'Equipment and work address checked; installation started'}));
     assert.equal(started.response.status,200,JSON.stringify(started.data));
     await f.db.query("insert into h2s_payouts_ledger(job_id,pro_id,payout_type,amount,status) values($1,$2,'job',420,'paid')",[id(101),id(500)]);
@@ -306,9 +310,9 @@ test('lost responses replay once; completion survives unavailable response reads
   assert.equal(response.status,200,JSON.stringify(data));
   assert.equal(data.state.revision,1);
   assert.equal(data.history.length,1);
+  await f.db.query("update h2s_dispatch_jobs set status='in_progress',updated_at=now() where job_id=$1",[id(101)]);
   response = await f.request('POST',action('link',1,{orderId:id(100),jobId:id(101)}));
   assert.equal(response.status,200);
-  await f.db.query("update h2s_dispatch_jobs set status='in_progress',updated_at=now() where job_id=$1",[id(101)]);
   const before = await (await f.request('GET')).json();
   const complete = action('complete',2,{note:'Fixture completion with payout processing failure',
     expectedJobUpdatedAt:before.installation.job.updated_at,expectedOrderUpdatedAt:before.installation.order.updated_at});

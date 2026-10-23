@@ -11,7 +11,7 @@ import { getTechnicianPhones, getEscalationPhones, CommercialConfigurationError 
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const schemaErrors = ['42P01','42703','42883','PGRST202','PGRST204','PGRST205'];
-const orderColumns = 'id,order_id,total,currency,status,session_id,payment_intent_id,commercial_request_id,metadata_json,customer_name,customer_email,address,city,state,zip,delivery_date,delivery_time,updated_at';
+const orderColumns = 'id,order_id,total,currency,status,session_id,payment_intent_id,commercial_request_id,metadata_json,customer_name,customer_email,address,city,state,zip,delivery_date,delivery_time,updated_at,service_name,items,special_instructions';
 class OperationError extends Error {
   constructor(message: string, readonly status = 400, readonly code = 'INVALID_OPERATION') { super(message); }
 }
@@ -25,7 +25,9 @@ function checked<T>(result: { data: T; error: { message: string; code?: string }
       console.error('Commercial operations storage authorization unavailable', { context, code });
       throw new OperationError('Operational access unavailable. Administrator review required.', 403, 'PERMISSION_UNAVAILABLE');
     }
-    if (code === '40001' || code === '23505') throw new OperationError('This record changed or is already linked. Reload before saving; your draft is retained.', 409);
+    if (['40001','40P01','23505','23P01'].includes(code || '')) throw new OperationError(
+      code === '23P01' ? 'That installation time is reserved. Review the shared agenda.'
+        : 'This record changed or is already linked. Reload before saving; your draft is retained.', 409);
     if (code === '22023') throw new OperationError(result.error.message);
     console.error('Commercial operations storage error', { context, code });
     throw new OperationError('Operational records are temporarily unavailable.', 503, 'TRANSIENT_READ');
@@ -129,12 +131,19 @@ async function snapshot(leadId: string) {
     }
     const assignments = checked(await db.from('h2s_dispatch_job_assignments').select('pro_id,state')
       .eq('job_id', job.job_id).in('state', ['accepted','assigned','scheduled','in_progress']).limit(100), 'Unable to load installation assignment');
-    installation = { order, job, artifacts, payment, assignments };
+    const preparation = checked(await db.rpc('h2s_job_readiness', { p_job_id: job.job_id }), 'Unable to load job preparation');
+    if (!preparation) throw new OperationError('Job preparation returned an invalid dataset.', 503);
+    const preparationHistory = present(checked(await db.from('h2s_job_preparation_activity')
+      .select('operation_id,revision,actor_name,payload,created_at').eq('job_id', job.job_id)
+      .order('revision', { ascending: false }).limit(51), 'Unable to load preparation history'), 'Unable to load preparation history');
+    installation = { order, job, artifacts, payment, assignments, preparation,
+      preparationHistory: preparationHistory.slice(0,50), hasOlderPreparationHistory: preparationHistory.length>50 };
   }
   return { lead, state, staff: await staff(), history: history.slice(0, 50), hasOlderActivity: history.length > 50,
     installation, installers: installation ? await installers() : [], communications, followUp: await followUpView(leadId), routing: {
       nextReminderAt: consultation?.next_reminder_at || null, reminderCount: consultation?.reminder_count || 0,
       consultationStatus: consultation?.status || null, responseAt: consultation?.response_at || null,
+      selectedSlotStart: consultation?.selected_slot_start || null,
       consultationOrderId: consultation?.related_order_id || null } };
 }
 async function handle(request: Request, write: boolean) {
@@ -166,14 +175,46 @@ async function handle(request: Request, write: boolean) {
     }
     const input = body.payload;
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new OperationError('Operation details required.');
+    if (body.action === 'preparation') {
+      const state = checked(await db.from('commercial_lead_operations').select('installation_job_id')
+        .eq('lead_id',leadId).maybeSingle(),'Unable to load linked job');
+      if (!state?.installation_job_id) throw new OperationError('Link an existing installation before preparing work.');
+      if (!Number.isSafeInteger(input.preparationRevision) || input.preparationRevision<0
+        || typeof input.scopeReviewed !== 'boolean' || !['unreviewed','blocked','ready','not_required'].includes(input.materials)
+        || !['unreviewed','blocked','ready'].includes(input.access) || !input.context || typeof input.context !== 'object'
+        || Array.isArray(input.context)) throw new OperationError('Valid preparation review required.');
+      checked(await db.rpc('h2s_record_job_preparation', {
+        p_job_id:state.installation_job_id,p_revision:input.preparationRevision,p_operation_id:body.operationId,
+        p_actor:{id:actor.userId,name:actor.displayName||actor.username},p_payload:{
+          scopeReviewed:input.scopeReviewed,materials:input.materials,access:input.access,context:input.context,
+          blockers:text(input.blockers || '',4000),note:text(input.note,4000,true),
+          expectedJobUpdatedAt:timestamp(input.expectedJobUpdatedAt),expectedOrderUpdatedAt:timestamp(input.expectedOrderUpdatedAt),
+        },
+      }),'Unable to save job preparation');
+      return NextResponse.json({ok:true,...await snapshot(leadId)},{headers});
+    }
     const prior = checked(await db.from('commercial_lead_activity').select('actor_id,action,payload')
       .eq('operation_id', body.operationId).maybeSingle(), 'Unable to check duplicate operation');
     const payload: Record<string, unknown> = { input };
     if (prior) {
-      if (prior.actor_id !== actor.userId || prior.action !== body.action || canonical(prior.payload.input) !== canonical(input)) {
+      const previous = body.action === 'workload' ? prior.payload.workload : prior.payload;
+      if (prior.actor_id !== actor.userId || prior.action !== (body.action === 'workload' ? 'follow_up' : body.action)
+        || canonical(previous?.input) !== canonical(input)) {
         throw new OperationError('Operation key reused for different content.', 409);
       }
-      Object.assign(payload, prior.payload);
+      Object.assign(payload, previous);
+    } else if (body.action === 'workload') {
+      if (!['next_action','hold','close','reopen'].includes(input.intent)) throw new OperationError('Choose a workload action.');
+      const people = await staff();
+      const responsible = people.find(person => person.User_ID === input.responsibleId);
+      if (input.responsibleId && !responsible || ['next_action','hold'].includes(input.intent) && !responsible) {
+        throw new OperationError('Choose an active responsible staff member.');
+      }
+      Object.assign(payload, { intent: input.intent, responsibleId: responsible?.User_ID || '',
+        responsibleName: responsible ? responsible.Display_Name || responsible.Username : '',
+        reason: text(input.reason, 1000, true), outcome: text(input.outcome || '', 100),
+        resumeConsultationChasing: input.resumeConsultationChasing === true,
+        nextFollowUpAt: input.nextFollowUpAt ? timestamp(input.nextFollowUpAt) : '' });
     } else if (body.action === 'follow_up') {
       const people = await staff();
       const responsible = input.responsibleId ? people.find(person => person.User_ID === input.responsibleId) : null;
@@ -199,6 +240,8 @@ async function handle(request: Request, write: boolean) {
     } else if (body.action === 'location') {
       for (const key of ['address','city','state','postalCode']) payload[key] = text(input[key], key === 'address' ? 300 : 100);
       payload.expectedUpdatedAt = timestamp(input.expectedUpdatedAt);
+      if (input.applyToJob === true) Object.assign(payload,{applyToJob:true,
+        expectedJobUpdatedAt:timestamp(input.expectedJobUpdatedAt),expectedOrderUpdatedAt:timestamp(input.expectedOrderUpdatedAt)});
     } else if (body.action === 'link') {
       if (!uuid.test(input.orderId) || !uuid.test(input.jobId)) throw new OperationError('Choose an existing order and installation job.');
       payload.orderId = input.orderId;
@@ -252,10 +295,13 @@ async function handle(request: Request, write: boolean) {
           'error' in transition && typeof transition.error === 'string' ? transition.error : 'Installation transition is not allowed.');
       }
     } else throw new OperationError('Unknown commercial operation.');
-    checked(await db.rpc(body.action === 'follow_up' ? 'commercial_record_follow_up' : 'commercial_record_operation', {
+    checked(await db.rpc(body.action === 'location' && payload.applyToJob ? 'commercial_record_work_location'
+      : ['start','complete'].includes(body.action) ? 'commercial_record_job_operation'
+      : body.action === 'workload' ? 'commercial_record_workload'
+      : body.action === 'follow_up' ? 'commercial_record_follow_up' : 'commercial_record_operation', {
       p_lead_id: leadId, p_revision: body.revision, p_operation_id: body.operationId,
       p_actor: { id: actor.userId, name: actor.displayName || actor.username },
-      ...(body.action === 'follow_up' ? {} : { p_action: body.action }), p_payload: payload,
+      ...(['follow_up','workload'].includes(body.action) || body.action === 'location' && payload.applyToJob ? {} : { p_action: body.action }), p_payload: payload,
     }), 'Unable to save commercial operation');
     return NextResponse.json({ ok: true, ...await snapshot(leadId) }, { headers });
   } catch (error) {

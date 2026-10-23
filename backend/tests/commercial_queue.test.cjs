@@ -34,6 +34,58 @@ function request(fixture, number, status, patch = {}) {
   return row;
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+test('workload filtering excludes closed/held attention, restores due holds and preserves sparse cursor navigation', async () => {
+  const fixture = createFixture();
+  seed(fixture,45);
+  for (let number=1;number<=41;number++) {
+    request(fixture,number,'approved');
+    fixture.tables.commercial_lead_operations.push({lead_id:id(number),
+      disposition:number<=20?'closed':'open',closure_outcome:number<=20?'declined':null,
+      hold_until:number<=20?null:new Date(Date.now()+(number===41?-60000:3600000)).toISOString(),
+      next_follow_up_at:new Date(Date.now()+(number===41?-60000:3600000)).toISOString(),
+      responsible_name:'Fixture Staff',disposition_reason:'Fixture action',sales_chasing_paused:true});
+  }
+  const first=await fixture.queue(params({filter:'attention',limit:'2'}));
+  assert.deepEqual(leadIds(first),[id(41),id(42)]);
+  assert.equal(first.pagination.hasMore,true);
+  const next=await fixture.queue(params({filter:'attention',limit:'2',cursor:first.pagination.nextCursor}));
+  assert.deepEqual(leadIds(next),[id(43),id(44)]);
+  assert.ok((await fixture.queue(params({filter:'closed'}))).queue.every(item=>item.workload.state==='closed'));
+  assert.equal((await fixture.queue(params({filter:'held'}))).queue.length,20);
+  const all=await fixture.queue(params({filter:'all',q:'Fixture Company 1',limit:'25'}));
+  assert.ok(all.queue.some(item=>item.leadId===id(1)&&item.workload.state==='closed'));
+  const active=await fixture.queue(params({filter:'active'}));
+  assert.equal(active.queue.length,25);
+  assert.ok(active.queue.every(item=>item.workload.state!=='closed'));
+  assert.match(first.queue[0].followUp.nextAction,/Staff action due.*Fixture Staff/);
+});
+test('maintenance pauses sales chasing, retains unresolved consultations and never cancels booked appointments', async () => {
+  for (const state of [
+    {disposition:'closed'}, {disposition:'open',hold_until:'2099-01-01T00:00:00Z'},
+    {disposition:'open',hold_until:'2000-01-01T00:00:00Z',sales_chasing_paused:true},
+    {disposition:'open',sales_chasing_paused:true},
+  ]) {
+    const fixture=createFixture();
+    seed(fixture,1);
+    fixture.tables.commercial_leads[0].contact_preference='sms';
+    const consultation=request(fixture,1,'pending',{next_reminder_at:'2000-01-01T00:00:00Z',
+      selected_slot_start:'2099-01-01T15:00:00Z',reminder_count:0});
+    const appointment=request(fixture,1,'approved',{related_order_id:'APPT-FIXTURE',
+      next_reminder_at:'2000-01-01T00:00:00Z'});
+    fixture.tables.commercial_lead_operations.push({lead_id:id(1),...state});
+    const response=await fixture.route('commercial-consultation-maintenance').GET(new Request('http://fixture.invalid/api/commercial-consultation-maintenance',{
+      headers:{Authorization:['Bearer','fixture-only-cron-secret'].join(' ')},
+    }));
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).processed[0].action,'sales_chasing_paused');
+    assert.equal(consultation.status,'pending');
+    assert.equal(consultation.reminder_count,0);
+    assert.equal(appointment.status,'approved');
+    assert.equal(appointment.related_order_id,'APPT-FIXTURE');
+    assert.deepEqual(fixture.sms,[]);
+    assert.deepEqual(fixture.appointments,[]);
+  }
+});
 const deferred = () => {
   let resolve;
   const promise = new Promise(done => { resolve = done; });
@@ -290,7 +342,8 @@ test('queue hierarchy exposes usable contact links, separate scope/notes, page c
     assert.match(detail.textContent, /Scope 1/);
     assert.match(detail.textContent, /Additional note 1/);
     assert.equal(detail.querySelector('a[href^="tel:"]').getAttribute('href'), 'tel:+15550000005');
-    assert.match(detail.textContent,/Email \(saved only\): fixture1@example.invalid/);
+    assert.match(detail.textContent,/Email: fixture1@example.invalid/);
+    assert.doesNotMatch(detail.textContent, /saved only/i);
     assert.equal(detail.querySelector('[data-compose-commercial-email]'),null);
     assert.equal(detail.querySelector('a[href^="mailto:"]'),null);
     assert.doesNotMatch(detail.textContent, /Lead token|bearer-must-not-leak|Appointment link/);
@@ -452,13 +505,14 @@ test('detail hierarchy is action then Requested work then supporting rows, with 
     assert.ok(next.compareDocumentPosition(detail.querySelector('[aria-label="Requested work"]')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
     assert.match(next.textContent, /Prefers email/);
     assert.doesNotMatch(next.textContent, /first \(manual\)|not tracked here/);
-    assert.match(next.textContent,/Email \(saved only\): fixture1@example.invalid/);
+    assert.match(next.textContent,/Email: fixture1@example.invalid/);
+    assert.doesNotMatch(next.textContent, /saved only/i);
     assert.equal(next.querySelector('[data-compose-commercial-email]'),null);
     assert.match(detail.querySelector('[aria-label="Requested work"]').textContent, /Scope 1.*Additional notes.*Additional note 1/s);
     assert.equal(detail.querySelectorAll('.commercial-queue-detail__card,.commercial-queue-detail__grid').length, 0);
     assert.ok(detail.querySelector('dl .commercial-queue-detail__field dt'));
     assert.equal(detail.querySelector('details').open, false);
-    assert.equal(dom.window.document.getElementById('commercialQueueFilter').dataset.customSelect, 'off');
+    assert.notEqual(dom.window.document.getElementById('commercialQueueFilter').dataset.customSelect, 'off');
     assert.match(detail.querySelector('details').textContent, /Contact routing.*Email first \(manual\)/s);
     assert.match(detail.querySelector('[aria-label="Supporting information"]').textContent, /Viewing unavailable/);
     assert.equal(detail.querySelectorAll('input,textarea,[contenteditable]').length, 0);

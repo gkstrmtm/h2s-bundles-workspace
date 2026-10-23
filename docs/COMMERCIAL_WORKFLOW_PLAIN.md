@@ -2,7 +2,21 @@
 
 ## Read this first
 
-**Release status: deployed on 2026-10-23.** The phone-only Commercial page,
+**Connected workflow release (authorized 2026-10-23 at 14:38 US Eastern):**
+Queue, the shared installation agenda and linked job
+detail now connect without changing Queue filters or creating duplicate records.
+Staff can review scope, materials and site/access, record blockers, and then
+explicitly start/complete work. Unreviewed/stale preparation blocks starting;
+booking, assignment, payment and messages remain separate actions. Rescheduling
+or explicitly copying a lead location to its linked job requires preparation
+review again. Job completion does not send mail/SMS or create payout.
+Shared SMS history is a read-only preview of the existing phone conversation,
+not proof of agreement or a new message. This extension requires authorized
+migration 036 and matching backend/frontend. All dashboard date/time inputs use
+the shared styled popup; single-choice dropdowns use the existing styled control.
+Deployment and schema verification, not this authorization, establish live status.
+
+**Prior production baseline (before the connected release):** The phone-only Commercial page,
 Queue/presentation improvements, manual quote/payment records and private
 attachments are deployed at https://shop.home2smart.com/commercial and
 https://portal.home2smart.com/dash.
@@ -56,6 +70,24 @@ Automatic internal follow-up remains disabled; staff still sets due times.
 
 ## The eight steps
 
+### Local scheduling/workload proposal (not yet released)
+
+The next increment adds one shared installation agenda with direct-from-lead
+holds, explicit confirmation, reschedule and cancel. Tentative time blocks the
+calendar until the expiry staff enters; confirmed time stays reserved. Expired
+and cancelled entries no longer block time. No business hours or travel time
+are assumed, and recording a reservation sends no message.
+
+Set next action and Hold until save an owner, due time and reason. Close saves
+an outcome and removes the lead from active attention without deleting it;
+All/Closed search and Reopen retain its history. A due hold returns to attention.
+Closing the sales lead does not complete installation or payment, and reserved
+installation time remains on the agenda.
+
+Holding/closing pauses sales chasing, not booked appointments. Unresolved
+consultations are flagged for staff review. Reopening or a hold expiring does
+not restart reminders automatically; explicit review/resume is required.
+
 ### 1. The customer sends an inquiry
 
 - **Who acts:** the customer opens the Commercial page, describes the work and
@@ -86,6 +118,7 @@ upload/reopening has not been live-tested for this release.
 - **Manual:** check the customer's preference, request status and recorded
   communication results. The routing summary identifies configured recipients;
   do not assume both owners or every technician receives each alert.
+  Optional email addresses appear simply as contact details in the Queue.
 
 An alert accepted by the message provider is not proof it was delivered, read,
 or acknowledged. Failed, unavailable or uncertain results need review.

@@ -91,7 +91,7 @@ function matchesPostgrestFilter(row, expression) {
 }
 
 function createFixture(environment = {}, integration = {}) {
-  const tables = { commercial_leads: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
+  const tables = { commercial_leads: [], commercial_lead_operations: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
   const sms = [];
   const providerAttempts = [];
   const appointments = [];
@@ -222,7 +222,8 @@ function createFixture(environment = {}, integration = {}) {
             const count = rows.length;
             rows = rows.slice(0, operation.limit);
             if (operation.select?.includes('commercial_consultation_requests(')) rows = rows.map(row => ({
-              ...row, commercial_consultation_requests: sort(tables.commercial_consultation_requests.filter(request => request.lead_id === row.lead_id), operation.embeddedOrders).slice(0, operation.embeddedLimit),
+              ...row, commercial_lead_operations: tables.commercial_lead_operations.find(item => item.lead_id === row.lead_id) || null,
+              commercial_consultation_requests: sort(tables.commercial_consultation_requests.filter(request => request.lead_id === row.lead_id), operation.embeddedOrders).slice(0, operation.embeddedLimit),
             }));
             return { data: operation.head ? null : copy(operation.single ? rows[0] || null : rows), count: operation.count ? count : null, error: null };
           }).then(resolve, reject);

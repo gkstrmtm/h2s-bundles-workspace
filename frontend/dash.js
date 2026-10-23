@@ -20233,24 +20233,75 @@ function deliverablesBrowserRender(mode) {
         }
 
         function h2sBuildDateInputOptions(inputEl) {
-            const isTimeOnly = String(inputEl && inputEl.type || '').toLowerCase() === 'time';
+            const kind = inputEl.dataset.h2sDateType || inputEl.type;
+            const isTimeOnly = kind === 'time';
+            const isDateTime = kind === 'datetime-local';
             const shared = {
                 allowInput: true,
-                clickOpens: true,
+                clickOpens: !inputEl.readOnly,
                 disableMobile: true,
+                monthSelectorType: 'static',
+                minuteIncrement: 1,
+                position: function(instance, anchor) {
+                    const field = (anchor || instance.altInput).getBoundingClientRect();
+                    const popup = instance.calendarContainer;
+                    const viewport = window.visualViewport;
+                    const leftEdge = viewport ? viewport.offsetLeft : 0;
+                    const topEdge = viewport ? viewport.offsetTop : 0;
+                    const width = viewport ? viewport.width : window.innerWidth;
+                    const height = viewport ? viewport.height : window.innerHeight;
+                    const above = field.bottom + popup.offsetHeight + 8 > topEdge + height
+                        && field.top - popup.offsetHeight - 8 >= topEdge;
+                    const left = Math.max(leftEdge + 8, Math.min(field.left, leftEdge + width - popup.offsetWidth - 8));
+                    const desiredTop = above ? field.top - popup.offsetHeight - 8 : field.bottom + 8;
+                    const top = Math.max(topEdge + 8, Math.min(desiredTop, topEdge + height - popup.offsetHeight - 8));
+                    popup.style.left = `${window.scrollX + left}px`;
+                    popup.style.right = 'auto';
+                    popup.style.top = `${window.scrollY + top}px`;
+                    popup.classList.toggle('arrowTop', !above);
+                    popup.classList.toggle('arrowBottom', above);
+                },
                 altInput: true,
                 altInputClass: 'form-input h2s-flatpickr-alt-input',
                 onReady: function(_, __, instance) {
-                    try {
-                        const placeholder = String(inputEl.getAttribute('placeholder') || '').trim();
-                        if (instance && instance.altInput && placeholder) instance.altInput.setAttribute('placeholder', placeholder);
-                    } catch (_) {}
+                    const alt = instance.altInput;
+                    alt.id = inputEl.id ? `${inputEl.id}DateDisplay` : '';
+                    alt.placeholder = inputEl.getAttribute('placeholder') || (isTimeOnly ? 'Pick a time' : isDateTime ? 'Pick date and time' : 'Pick a date');
+                    const labels = Array.from(inputEl.labels || [], node => {
+                        const copy = node.cloneNode(true);
+                        copy.querySelectorAll('input,button,select,textarea').forEach(child => child.remove());
+                        return copy.textContent.trim();
+                    }).filter(Boolean).join(' ');
+                    alt.setAttribute('aria-label', inputEl.getAttribute('aria-label') || labels || alt.placeholder);
+                    alt.setAttribute('aria-haspopup', 'dialog');
+                    const popup = instance.calendarContainer;
+                    if (popup) {
+                        popup.id = `${alt.id || `h2sDatePopup${document.querySelectorAll('.flatpickr-calendar').length}`}Popup`;
+                        popup.setAttribute('role', 'dialog');
+                        popup.setAttribute('aria-label', alt.getAttribute('aria-label'));
+                        alt.setAttribute('aria-controls', popup.id);
+                        const clear = document.createElement('button');
+                        clear.type = 'button';
+                        clear.className = 'h2s-date-clear';
+                        clear.textContent = 'Clear';
+                        clear.addEventListener('click', () => { instance.clear(); instance.close(); alt.focus(); });
+                        popup.appendChild(clear);
+                    }
+                    alt.addEventListener('keydown', event => {
+                        if (event.key === 'ArrowDown' && !inputEl.readOnly && !inputEl.disabled) {
+                            event.preventDefault();
+                            instance.open();
+                        }
+                        if (event.key === 'Escape') { instance.close(); alt.focus(); }
+                    });
+                    alt.addEventListener('focus', () => h2sSyncDateInput(inputEl));
                 },
-                onChange: function() {
-                    h2sDispatchDateInputEvents(inputEl);
+                onOpen: function(_, __, instance) {
+                    h2sSyncDateInput(inputEl);
+                    instance.altInput.setAttribute('aria-expanded', 'true');
                 },
-                onClose: function() {
-                    h2sDispatchDateInputEvents(inputEl);
+                onClose: function(_, __, instance) {
+                    instance.altInput.setAttribute('aria-expanded', 'false');
                 }
             };
 
@@ -20265,30 +20316,58 @@ function deliverablesBrowserRender(mode) {
             }
 
             return Object.assign({}, shared, {
-                dateFormat: 'Y-m-d',
-                altFormat: 'M j, Y'
+                enableTime: isDateTime,
+                dateFormat: isDateTime ? 'Y-m-d\\TH:i' : 'Y-m-d',
+                altFormat: isDateTime ? 'M j, Y h:i K' : 'M j, Y'
             });
+        }
+
+        function h2sSyncDateInput(inputEl) {
+            const instance = inputEl._flatpickr;
+            if (!instance || !instance.altInput) return;
+            const alt = instance.altInput;
+            if (alt.disabled !== inputEl.disabled) alt.disabled = inputEl.disabled;
+            if (alt.required !== inputEl.required) alt.required = inputEl.required;
+            if (alt.readOnly !== inputEl.readOnly) alt.readOnly = inputEl.readOnly;
+            if (instance.isOpen && (inputEl.readOnly || inputEl.disabled)) instance.close();
+            const describedBy = inputEl.getAttribute('aria-describedby');
+            if (describedBy) {
+                if (alt.getAttribute('aria-describedby') !== describedBy) alt.setAttribute('aria-describedby', describedBy);
+            } else if (alt.hasAttribute('aria-describedby')) alt.removeAttribute('aria-describedby');
+            const constraints = JSON.stringify([inputEl.min, inputEl.max, inputEl.readOnly]);
+            if (constraints !== inputEl.__h2sDateConstraints) {
+                const timeOnly = inputEl.dataset.h2sDateType === 'time';
+                instance.set(timeOnly ? 'minTime' : 'minDate', inputEl.getAttribute('min') || null);
+                instance.set(timeOnly ? 'maxTime' : 'maxDate', inputEl.getAttribute('max') || null);
+                instance.set('clickOpens', !inputEl.readOnly);
+                inputEl.__h2sDateConstraints = constraints;
+            }
+            const selected = instance.selectedDates[0];
+            const saved = selected ? instance.formatDate(selected, instance.config.dateFormat) : '';
+            if (inputEl.value !== saved) instance.setDate(inputEl.value, false, instance.config.dateFormat);
         }
 
         function h2sInitDateInputs(rootEl) {
             if (typeof window.flatpickr !== 'function') return false;
 
             const root = rootEl && typeof rootEl.querySelectorAll === 'function' ? rootEl : document;
-            const inputs = root.querySelectorAll('input.form-input[type="date"], input.form-input[type="time"]');
+            const selector = 'input[type="date"], input[type="time"], input[type="datetime-local"], input[data-h2s-date-bound="1"]';
+            const inputs = Array.from(root.querySelectorAll(selector));
+            if (root.matches && root.matches(selector)) inputs.unshift(root);
 
             inputs.forEach((inputEl) => {
                 if (!inputEl) return;
                 if (inputEl._flatpickr) {
                     inputEl.dataset.h2sDateBound = '1';
+                    h2sSyncDateInput(inputEl);
                     return;
                 }
 
-                const currentValue = String(inputEl.value || '').trim();
-                const instance = window.flatpickr(inputEl, h2sBuildDateInputOptions(inputEl));
+                inputEl.dataset.h2sDateType = inputEl.type;
+                window.flatpickr(inputEl, h2sBuildDateInputOptions(inputEl));
                 inputEl.dataset.h2sDateBound = '1';
-                if (currentValue && instance) {
-                    try { instance.setDate(currentValue, false); } catch (_) {}
-                }
+                h2sSyncDateInput(inputEl);
+                inputEl.addEventListener('change', () => h2sSyncDateInput(inputEl));
             });
 
             return true;
@@ -21254,6 +21333,7 @@ function deliverablesBrowserRender(mode) {
             const run = () => {
                 __dashboardCustomSelectSyncQueued = false;
                 dashboardSyncAllCustomSelects(document);
+                h2sInitDateInputs(document);
             };
             try {
                 window.requestAnimationFrame(run);
@@ -21368,6 +21448,12 @@ function deliverablesBrowserRender(mode) {
                 if (target) event.preventDefault();
                 const label = event.target && event.target.closest ? event.target.closest('label') : null;
                 const control = label && label.control;
+                if (!target && control && control._flatpickr
+                    && !event.target.closest('button,a,input,select,textarea')) {
+                    event.preventDefault();
+                    control._flatpickr.altInput.focus();
+                    if (!control.readOnly && !control.disabled) control._flatpickr.open();
+                }
                 if (!target && control && control.matches('select.dashboard-custom-select-native')
                     && !event.target.closest('button,a,input,select,textarea')) {
                     event.preventDefault();
@@ -21396,14 +21482,21 @@ function deliverablesBrowserRender(mode) {
             }, { passive: true });
 
             if (window.MutationObserver && document.body && !__dashboardCustomSelectObserver) {
-                __dashboardCustomSelectObserver = new MutationObserver(() => {
+                __dashboardCustomSelectObserver = new MutationObserver(records => {
+                    records.forEach(record => record.removedNodes.forEach(node => {
+                        if (node.isConnected || !node.querySelectorAll) return;
+                        const removed = Array.from(node.querySelectorAll('input[data-h2s-date-bound]'));
+                        if (node.matches && node.matches('input[data-h2s-date-bound]')) removed.push(node);
+                        removed.forEach(input => { if (input._flatpickr) input._flatpickr.destroy(); });
+                    }));
                     dashboardQueueCustomSelectSync();
                 });
                 __dashboardCustomSelectObserver.observe(document.body, {
                     subtree: true,
                     childList: true,
                     attributes: true,
-                    attributeFilter: ['class', 'style', 'disabled', 'hidden']
+                    attributeFilter: ['class', 'style', 'disabled', 'hidden', 'min', 'max', 'readonly', 'required',
+                        'value', 'selected', 'label', 'size', 'multiple', 'aria-label', 'aria-describedby']
                 });
             }
         }
@@ -21609,6 +21702,7 @@ function deliverablesBrowserRender(mode) {
             __dashboardCustomSelectBooted = true;
             ensureDashboardCustomSelectBindings();
             dashboardSyncAllCustomSelects(document);
+            h2sInitDateInputs(document);
         }
 
         function taskCreatorGetCustomSelects(container = null) {
@@ -48942,6 +49036,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const pane = document.getElementById('commercialqueue-pane');
                 if (!pane) return;
                 this.bindFreshness();
+                window.H2SCommercialCalendar?.mountDashboard(document.getElementById('commercialCalendar'), {
+                    apiBase: API_BASE, getToken: getDashboardSessionToken, onOpenLead: id => this.openAgendaLead(id),
+                });
                 const context = {
                     query: this.state.query, filter: this.state.filter, pageIndex: this.state.pageIndex,
                     cursor: this.state.cursors[this.state.pageIndex] || '',
@@ -48975,6 +49072,13 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         if (next.pagination && (typeof next.pagination.hasMore !== 'boolean' ||
                             (next.pagination.hasMore && typeof next.pagination.nextCursor !== 'string') ||
                             next.pagination.summaryScope !== 'page')) throw new Error('The queue returned invalid pagination.');
+                        let agendaSelection = null;
+                        if (this.state.agendaSelection) {
+                            const id = this.state.agendaSelection.leadId;
+                            agendaSelection = next.queue.find(item => item.leadId === id) || await this.fetchAgendaLead(id, controller.signal);
+                            if (requestId !== this.requestId) return;
+                        }
+                        this.state.agendaSelection = agendaSelection;
                         this.state.items = next.queue.slice();
                         this.state.summary = next.summary || {};
                         this.state.generatedAt = next.generatedAt;
@@ -49027,6 +49131,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             },
 
             resetSearch() {
+                this.agendaRequestId = (this.agendaRequestId || 0) + 1;
+                this.state.agendaSelection = null;
+                this.agendaOrigin = null;
                 clearTimeout(this.searchTimer);
                 this.searchTimer = null;
                 if (this.inFlight) this.inFlight.controller.abort();
@@ -49042,6 +49149,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             goToPage(index) {
                 if (this.state.loading || this.state.legacy || !Number.isInteger(index) || index < 0 || index >= this.state.cursors.length) return;
+                this.agendaRequestId = (this.agendaRequestId || 0) + 1;
+                this.state.agendaSelection = null;
+                this.agendaOrigin = null;
                 this.state.pageIndex = index;
                 this.state.selectedLeadId = '';
                 this.state.detailOpen = false;
@@ -49050,7 +49160,44 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 return this.refresh();
             },
 
+            async fetchAgendaLead(id, signal) {
+                const params = new URLSearchParams({action:'commercialQueue',leadId:id,filter:'all',limit:'1',_ts:String(Date.now())});
+                const response = await fetch(`${API_URL}?${params}`,{cache:'no-store',signal});
+                const result = await response.json();
+                if (!response.ok || !result.ok) throw new Error(result.error || 'Could not open the agenda lead.');
+                const lead = result.commercialQueue?.queue?.find(item => item.leadId===id);
+                if (!lead) throw new Error('The agenda lead is unavailable. Refresh the agenda and review the relationship.');
+                return lead;
+            },
+
+            async openAgendaLead(id) {
+                const requestId = this.agendaRequestId = (this.agendaRequestId || 0) + 1;
+                const token = getDashboardSessionToken(), controller = new AbortController();
+                const timer = setTimeout(()=>controller.abort(),20000);
+                try {
+                    const lead = await this.fetchAgendaLead(id,controller.signal);
+                    if (requestId!==this.agendaRequestId || token!==getDashboardSessionToken()) return;
+                    if (!this.agendaOrigin) this.agendaOrigin = {selectedLeadId:this.state.selectedLeadId,top:window.scrollY,left:window.scrollX};
+                    this.state.agendaSelection = lead;
+                    this.selectLead(id);
+                } finally { clearTimeout(timer); }
+            },
+
+            backToAgenda() {
+                const id=this.state.agendaSelection?.leadId,origin=this.agendaOrigin;
+                if (!origin) return;
+                this.state.agendaSelection=null;this.agendaOrigin=null;
+                this.state.selectedLeadId=origin.selectedLeadId;this.state.detailOpen=false;
+                this.renderList();this.renderDetail();this.syncMobileView();
+                document.querySelector(`#commercialCalendar [data-calendar-open="${id}"]`)?.focus({preventScroll:true});
+                window.scrollTo({left:origin.left,top:origin.top,behavior:'instant'});
+            },
+
             selectLead(leadId) {
+                this.agendaRequestId = (this.agendaRequestId || 0) + 1;
+                if (this.state.agendaSelection && this.state.agendaSelection.leadId!==leadId) {
+                    this.state.agendaSelection=null;this.agendaOrigin=null;
+                }
                 if (this.isMobile() && !this.state.detailOpen) {
                     const list = document.getElementById('commercialQueueList');
                     const parents = [];
@@ -49072,6 +49219,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             },
 
             backToQueue() {
+                if (this.agendaOrigin) { this.backToAgenda(); return; }
                 this.state.detailOpen = false;
                 this.syncMobileView();
                 const row = Array.from(document.querySelectorAll('#commercialQueueList [data-lead-id]'))
@@ -49173,6 +49321,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             getSelectedItem(filteredItems) {
                 const items = Array.isArray(filteredItems) ? filteredItems : this.getFilteredItems();
                 const selectedLeadId = String(this.state.selectedLeadId || '').trim();
+                if (this.state.agendaSelection?.leadId === selectedLeadId) return this.state.agendaSelection;
                 const selected = items.find((item) => String(item && item.leadId || '') === selectedLeadId);
                 if (selected) return selected;
                 if (selectedLeadId) return null;
@@ -49387,7 +49536,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const detailEl = document.getElementById('commercialQueueDetail');
                 if (!detailEl) return;
                 const item = this.getSelectedItem(filteredItems);
-                const signature = JSON.stringify([item, this.recoveryPending]);
+                const signature = JSON.stringify([item, this.recoveryPending, !!this.agendaOrigin]);
                 if (this.detailSignature === signature) return;
                 const sameLead = this.detailLeadId === (item && item.leadId);
                 const retainedOperations = sameLead && detailEl.querySelector('[data-commercial-operations]');
@@ -49417,6 +49566,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     : '';
 
                 detailEl.innerHTML = `
+                    ${this.agendaOrigin ? '<button type="button" class="commercial-workload-btn" onclick="window.commercialQueueUI.backToAgenda()">Back to agenda</button>' : ''}
                     <div class="commercial-queue-detail__header">
                         <div>
                             <h3 class="commercial-queue-detail__title">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</h3>
@@ -49481,7 +49631,10 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (retainedOperations && operationsHost) operationsHost.replaceWith(retainedOperations);
                 if (window.H2SCommercialOperations) window.H2SCommercialOperations.mount(
                     retainedOperations || operationsHost, item.leadId,
-                    { apiBase: API_BASE, getToken: getDashboardSessionToken }
+                    { apiBase: API_BASE, getToken: getDashboardSessionToken, onActivity: () => {
+                        window.H2SCommercialCalendar?.refreshDashboard();
+                        return this.refresh();
+                    } }
                 );
                 if (diagnosticsOpen) detailEl.querySelector('.commercial-queue-detail__stack > details').open = true;
                 if (active && sameLead) {
@@ -49500,7 +49653,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     ? `<a class="commercial-queue-contact" href="tel:${escapeHtml(dial)}">Call ${escapeHtml(phone)}</a>`
                     : `<span>${escapeHtml(phone || 'Phone not provided')}${phone ? ' (needs review)' : ''}</span>`;
                 const emailLink = /^[^\s@<>\u0000-\u001f\u007f]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)
-                    ? `<span>Email (saved only): ${escapeHtml(email)}</span>`
+                    ? `<span>Email: ${escapeHtml(email)}</span>`
                     : `<span>${escapeHtml(email || 'Email not provided')}${email ? ' (needs review)' : ''}</span>`;
                 const links = item.followUp && item.followUp.requestedContactMethod === 'email' ? [emailLink, phoneLink] : [phoneLink, emailLink];
                 return `<div class="commercial-queue-contacts">${links.join('')}</div>`;
@@ -49520,6 +49673,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             },
 
             statusForItem(item) {
+                if (item.workload?.state === 'closed') return 'Closed lead';
+                if (item.workload?.state === 'held') return 'On hold';
                 const consultation = item.consultation;
                 if (!consultation) return 'Saved draft - not submitted';
                 const status = consultation.status;

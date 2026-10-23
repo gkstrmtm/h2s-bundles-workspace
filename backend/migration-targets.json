@@ -2,10 +2,15 @@
   "production": {
     "projectRef": "nkccbnrduojnzjfrpwva",
     "environment": "production",
+    "calendar036": {
+      "reviewOnly": false,
+      "authorization": "On 2026-10-23 at 14:38 US Eastern the workspace owner explicitly approved finishing global styled dashboard calendar/dropdown controls, committing and pushing the connected Commercial Queue/Agenda/job-readiness release, then deploying it via Vercel for use. This covers its reviewed additive migration 036 prerequisite on established production nkccbnrduojnzjfrpwva, exact SHA-256 below, through guarded reconciliation/application/verification before backend and matching frontend deployment. No destructive reconciliation, real customer messages, operational acceptance mutations, automatic follow-up activation or Commercial email activation is authorized.",
+      "sqlSha256": "34a46bba7bd55f05591ad504a4a3beb38c5a0bf5c9968b1b334756e11a85b665"
+    },
     "connectionEnv": "DATABASE_URL_DIRECT",
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql"],
     "baselineSha256": "c8d848d14bf42cebc9b1a5f59a41b15cfea878c9140dd7cb29d78a4b7da3d3e3",
     "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409",
     "commercial032": {

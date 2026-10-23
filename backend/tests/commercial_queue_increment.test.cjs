@@ -63,7 +63,7 @@ test('persisted internal tasks: scheduler/save/reload idempotence, callback prio
   assert.equal(await f.followUp.applyAutomaticFollowUp(id(1)),'manual_override','Explicitly cleared manual date stays cleared');
   assert.equal((await f.request('POST',action({followUpMode:'automatic',
     contact:{channel:'call',outcome:'no_response',note:'Callback attempt made; no answer'}},4))).status,200);
-  await f.db.exec(`update commercial_lead_operations set order_id='${id(100)}',installation_job_id='${id(101)}';update h2s_dispatch_jobs set status='completed' where job_id='${id(101)}'`);
+  await f.db.exec(`update h2s_dispatch_jobs set status='completed' where job_id='${id(101)}';update commercial_lead_operations set order_id='${id(100)}',installation_job_id='${id(101)}'`);
   assert.equal(await f.followUp.applyAutomaticFollowUp(id(1)),'updated','Completed installation clears only the automatic internal task');
   assert.equal(await f.followUp.applyAutomaticFollowUp(id(1)),'unchanged');
   snapshot=await(await f.request('GET')).json();
@@ -87,10 +87,13 @@ test('follow-up guard rejects concurrent revisions and terminal task generation;
   await f.db.exec(`update commercial_lead_operations set completed_at=now()`);
   assert.equal((await write(1)).error.code,'40001');
   await f.db.exec(`update commercial_lead_operations set completed_at=null,order_id='${id(100)}',installation_job_id='${id(101)}'`);
+  // Seed historical terminal states; authorized execution is covered by the connected workflow tests.
+  await f.db.query("select set_config('h2s.commercial_completion',$1,false)",[id(1)]);
   for(const status of ['completed','done','cancelled']) {
     await f.db.query('update h2s_dispatch_jobs set status=$1 where job_id=$2',[status,id(101)]);
     assert.equal((await write(1)).error.code,'40001');
   }
+  await f.db.query("select set_config('h2s.commercial_completion','',false)");
   await f.db.query("update h2s_dispatch_jobs set status='queued' where job_id=$1",[id(101)]);
   f.faults.beforeFollowUp=async()=>{
     assert.equal((await f.request('POST',action({followUpMode:'manual',nextFollowUpAt:'2099-02-02T12:00:00Z'},1))).status,200);
@@ -199,7 +202,7 @@ test('commercial sends add only explicit validated status callbacks; invalid con
   assert.equal(invalid.providerAttempts.length,0);
 });
 
-test('native date fields preserve exact instants and reject edited DST gaps/folds without duplicate picker initialization', async t => {
+test('local date fields preserve exact instants and reject edited DST gaps/folds without competing picker initialization', async t => {
   const oldZone=process.env.TZ;
   process.env.TZ='America/New_York';
   const f=await createOperationsFixture(), snapshot=await(await f.request('GET')).json();
@@ -222,14 +225,14 @@ test('native date fields preserve exact instants and reject edited DST gaps/fold
     host.querySelector('[data-action=follow_up]').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
     for(let i=0;i<20;i++)await tick();
   };
-  let input=host.querySelector('[name=nextFollowUpAt]');
+  let input=host.querySelector('[data-action=follow_up] [name=nextFollowUpAt]');
   assert.equal(input.type,'datetime-local');
   assert.equal(input.value,'2026-11-01T01:30');
-  assert.equal(input.hasAttribute('data-native-date'),true);
+  assert.equal(input.hasAttribute('data-native-date'),false);
   assert.match(input.closest('label').textContent,/America\/New_York/);
   await submit();
   assert.equal(sent[0].payload.nextFollowUpAt,snapshot.state.next_follow_up_at,'Unchanged ambiguous saved wall time retains offset and microseconds');
-  input=host.querySelector('[name=nextFollowUpAt]');
+  input=host.querySelector('[data-action=follow_up] [name=nextFollowUpAt]');
   input.value='2026-03-08T02:30';
   await submit();
   assert.equal(sent.length,1);

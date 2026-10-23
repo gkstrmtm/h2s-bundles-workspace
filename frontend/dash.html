@@ -3225,6 +3225,7 @@
                             <div id="commercialQueueStatus" class="commercial-queue-status" role="status" aria-live="polite" hidden></div>
                         </div>
 
+                        <section id="commercialCalendar" class="commercial-queue-panel commercial-calendar" aria-label="Shared Commercial installation agenda"></section>
                         <div class="commercial-queue-summary" id="commercialQueueSummary">
                             <div class="commercial-queue-metric commercial-queue-metric--placeholder">
                                 <div class="spinner"></div>
@@ -3251,11 +3252,13 @@
                                         <select
                                             id="commercialQueueFilter"
                                             class="form-select commercial-queue-filter"
-                                            data-custom-select="off"
                                             aria-label="Filter commercial intakes"
                                             onchange="window.commercialQueueUI && window.commercialQueueUI.onFilterChange()"
                                         >
                                             <option value="attention">Needs attention</option>
+                                            <option value="active">Active leads</option>
+                                            <option value="held">On hold</option>
+                                            <option value="closed">Closed leads</option>
                                             <option value="all">All commercial intakes</option>
                                             <option value="pending">Pending consults</option>
                                             <option value="approved">Approved / confirmed</option>
@@ -5399,7 +5402,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
-                for (const filename of ['commercial-labels.js', 'commercial-business.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
+                for (const filename of ['commercial-labels.js', 'commercial-business.js', 'commercial-calendar.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
                     await loadScript(filename);
                 }
                 window.__h2sDashboardScriptsLoaded = true;

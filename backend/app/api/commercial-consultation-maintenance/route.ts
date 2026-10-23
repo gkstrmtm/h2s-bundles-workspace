@@ -67,6 +67,14 @@ async function processMaintenance(request: Request) {
     const lead = await getLeadById(consultation.lead_id);
     if (!lead) continue;
     if (isManualCommercialFollowUp(consultation, lead)) continue;
+    const { data: workload, error: workloadError } = await sb.from('commercial_lead_operations')
+      .select('disposition,hold_until,sales_chasing_paused').eq('lead_id', consultation.lead_id).maybeSingle();
+    if (workloadError) throw new Error(commercialDatabaseErrorMessage(workloadError));
+    if (workload?.sales_chasing_paused || workload?.disposition === 'closed' || Date.parse(workload?.hold_until || '') > Date.now()) {
+      processed.push({ requestId: consultation.request_id, action: 'sales_chasing_paused',
+        consultationReviewRequired: !consultation.related_order_id, appointmentsUnchanged: true });
+      continue;
+    }
 
     const maxReminders = getMaxReminderCount();
     const windowExpired = consultation.selected_slot_start && new Date(consultation.selected_slot_start).getTime() <= Date.now();

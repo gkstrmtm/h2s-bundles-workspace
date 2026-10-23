@@ -2,6 +2,97 @@
 
 ## Staff-controlled business tools (released)
 
+### Scheduling and workload increment
+
+Migration `036_commercial_calendar_workload.sql` is additive. The owner authorized
+its guarded production release on 2026-10-23 at 14:38 US Eastern; applied status
+must be verified with the migration runner, not inferred from this document.
+There is one shared Home2Smart installation calendar, not a crew-management
+system. Its singleton row/name is configuration; no extra resources, business
+hours, travel buffers or availability are inferred.
+
+- Reserve directly from a lead without creating an order/job. A tentative hold
+  blocks capacity until its required staff-selected expiry. Expiry releases
+  capacity by database time without a cron run; the expired record and its
+  selected expiry remain visible. Confirmed bookings require explicit customer
+  agreement and remain reserved until explicitly rescheduled or cancelled.
+- Half-open windows allow one booking to end exactly when another starts.
+  Database serialization protects all reservations across leads, including
+  concurrent requests and legacy linked-installation scheduling. Reschedule
+  requires agreement again for confirmed windows; cancellation releases the
+  window, not the job or appointment. There is no invented duration limit.
+- Confirmed agenda changes update an explicitly linked installation's existing
+  order/job window. Legacy window changes feed the same agenda. Adoption fails
+  on incomplete or overlapping existing linked windows; reconcile those
+  explicitly rather than guessing durations or discarding reservations.
+  Already finished/cancelled jobs are not imported as new reservations. A later
+  explicit job completion/cancellation is reflected in reservation history and
+  releases calendar capacity; calendar actions never complete/cancel the job.
+- Set next action/Hold until require a responsible staff member, future due time
+  and reason. Close records an outcome/reason, clears internal due time and
+  removes the lead from active/attention filters. All/Closed/search retain it.
+  A held lead stays out of attention until due; due holds return without a
+  scheduler. Closing a lead never hides its reserved installation from agenda.
+- Hold/Close pause consultation sales chasing. Reopen/expiry do not silently
+  resume it. Pending requests are flagged for review, not cancelled. Staff can
+  explicitly resume reminders only after reviewing a pending future window.
+  Booked consultations and their appointment reminders remain unchanged.
+- Every action records authenticated staff identity, reason and history.
+  Revisions and operation keys protect retries and stale saves. Booking actions
+  do not send messages, collect money, assign installers or start installation.
+
+The Queue email-label cleanup remains included: optional email appears
+as `Email: ...`. The released customer Continue scroll behavior is untouched.
+
+### Connected job preparation
+
+Migration 036 includes shared `h2s_job_preparation` and immutable
+preparation activity, keyed to the existing dispatch job ID. No new customer,
+order, job or calendar is created. Existing Commercial lead-to-order/job links
+remain the adapter; a future residential intake can call the same preparation
+RPC without adopting Commercial intake or pricing rules.
+
+- Agenda customer buttons open the same linked lead/job, including closed leads
+  outside the current Queue page/filter. Back to agenda preserves its date and
+  Queue search/cursors. Queue remains a responsibility/follow-up view.
+- Job detail reuses existing order scope, work location, schedule, directory
+  assignments, proof, completion and payment evidence. Scope/materials/site
+  review and explicit blockers are internal facts, not booking or dispatch.
+- Owner decision: preparation review is required and unresolved blockers prevent
+  start. Scope, location, equipment or schedule changes invalidate the review.
+  Edits serialize with start under the job lock, with revisions, context tokens,
+  stable retry keys and authenticated before/after history.
+- Lead location remains distinct from a job's agreed work site. The explicit
+  "Also apply" choice copies it into the linked job/order in the same transaction,
+  without retyping; preparation then needs review. After work starts this copy
+  and reservation editing are unavailable.
+- The database enforces preparation on Commercial starts and shared jobs that
+  opt into preparation; unrelated existing jobs do not gain an invented gate.
+  Linked Commercial completion uses the existing staff operation through a
+  narrow RPC wrapper. Legacy completion paths that trigger payouts/mail cannot
+  complete or replay completion of those jobs. No new automatic sends, payouts,
+  payments or technician acceptance are authorized.
+- Communications retains signed delivery evidence and distinguishes internal
+  actions, provider acceptance, delivery and acknowledgement. The optional shared
+  SMS preview reuses authenticated `smsMessages` reads; it does not mark read,
+  create a thread, or send. Phone history may include other projects. New sends
+  remain in Messages under its existing consent/retry protections.
+
+No named staff, fixed seats, new crew system, inventory purchasing, residential
+funnel, quote-to-order conversion, payment collection or technician-portal
+execution redesign is included. Priced order/job creation and any reconciliation
+of existing equipment metadata remain existing/manual workflows. Saving preparation
+does not change the legacy equipment-delivery gate or claim payment received.
+
+Earlier scheduling validation: 177 focused/compatibility tests passed, plus a native PostgreSQL
+test using genuinely independent transactions (overlap rejection, adjacent windows,
+stale-writer rejection). Production backend build and TypeScript passed. Full-shell
+fixtures passed at 1440, 393 and 320 pixels in three timezones; the final mobile
+agenda correction was rechecked with populated columns, not only root overflow.
+Five customer Continue-scroll scenarios passed. All mutations were fixture-only;
+physical iOS Safari and production scheduling adoption have not been tested.
+Automatic follow-up and Commercial email remain disabled.
+
 This phone-only increment and the Queue/presentation changes were directly
 deployed through Vercel on 2026-10-23 from
 `7bc101e8b54102a9ea86cde4823f3c66f7eb26d4`, using
@@ -551,3 +642,13 @@ Business approval is still required for:
 
 Deposit/balance collection is deferred. No percentages, amounts, tax rules or
 collection timing have been invented.
+# Shared dashboard date and dropdown controls
+
+All dashboard date, time and local date/time inputs use the existing styled
+Flatpickr popup, including dynamically rendered Commercial forms and Agenda.
+The underlying named fields retain their machine-readable values and the
+existing timezone/DST checks. Native file inputs remain unchanged.
+The Queue filter now uses the same styled single-select as the other dashboard
+dropdowns. Open date pickers and unsaved drafts defer background detail refresh.
+Date popups support keyboard opening/dismissal, clearing, required fields,
+disabled/read-only state and reduced-motion preferences.

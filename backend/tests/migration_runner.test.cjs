@@ -18,6 +18,7 @@ const target = () => {
     stripe033: { ...config.stripe033, reviewOnly: true, authorization: undefined, sqlSha256: null },
     queue034: { ...config.queue034, reviewOnly: true, authorization: undefined, sqlSha256: null },
     business035: { ...config.business035, reviewOnly: true, authorization: undefined, sqlSha256: null },
+    calendar036: { ...config.calendar036, reviewOnly: true, authorization: undefined, sqlSha256: null },
   };
 };
 
@@ -39,7 +40,15 @@ test('registered production authorization includes exactly the owner-approved re
   assert.equal(config.business035.reviewOnly,false);
   assert.match(config.business035.authorization,/2026-10-23/);
   assert.equal(config.business035.sqlSha256,'432fc68a95337ba0372a6583cf5c405616ad1cfaa6146ad33affefd574433c45');
+  assert.equal(config.calendar036.reviewOnly,false);
+  assert.match(config.calendar036.authorization,/2026-10-23 at 14:38/);
+  assert.equal(config.calendar036.sqlSha256,'34a46bba7bd55f05591ad504a4a3beb38c5a0bf5c9968b1b334756e11a85b665');
   assert.doesNotThrow(() => runner.authorizeApply(config, ref));
+  for (const calendar036 of [
+    {...config.calendar036,reviewOnly:true},
+    {...config.calendar036,authorization:null},
+    {...config.calendar036,sqlSha256:'changed'},
+  ]) assert.throws(() => runner.authorizeApply({...config,calendar036},ref),/036 remains review-only/);
 });
 
 test('target is explicit, no MGMT or generic URL fallback, and exact project/session port is checked', () => {
@@ -84,8 +93,11 @@ test('unknown/unapproved targets, missing baseline, missing confirmation, and ex
     sqlSha256:runner.migrations().find(file=>file.version.startsWith('034_')).sha256}};
   assert.throws(()=>runner.authorizeApply(reviewed034,ref),/035 remains review-only/);
   assert.throws(()=>runner.authorizeApply({...reviewed034,business035:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:'changed'}},ref),/035 remains review-only/);
-  assert.doesNotThrow(() => runner.authorizeApply({...reviewed034,business035:{reviewOnly:false,authorization:'Local fixture only',
-    sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256}},ref));
+  const reviewed035={...reviewed034,business035:{reviewOnly:false,authorization:'Local fixture only',
+    sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256}};
+  assert.throws(() => runner.authorizeApply(reviewed035,ref),/036 remains review-only/);
+  assert.doesNotThrow(() => runner.authorizeApply({...reviewed035,calendar036:{reviewOnly:false,authorization:'Local fixture only',
+    sqlSha256:runner.migrations().find(file=>file.version.startsWith('036_')).sha256}},ref));
 });
 
 test('TLS requires a CA, keeps certificate/hostname verification, and rejects insecure global overrides', () => {
@@ -109,8 +121,8 @@ test('TLS requires a CA, keeps certificate/hostname verification, and rejects in
 
 test('only reviewed migrations are selected and history detects changed or out-of-order SQL', () => {
   const files = runner.migrations();
-  assert.equal(files.length, 7);
-  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql','035_commercial_business_tools.sql']);
+  assert.equal(files.length, 8);
+  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql','035_commercial_business_tools.sql','036_commercial_calendar_workload.sql']);
   const config = target();
   const rows = files.map((file) => ({
     version: file.version, sha256: file.sha256, project_ref: ref, environment: 'production',
@@ -134,7 +146,8 @@ test('apply rolls back on unreviewed schema drift before running any migration o
     commercial032: { reviewOnly: false, authorization: 'Local test only; no remote authority', sqlSha256: runner.migrations().find(file => file.version.startsWith('032_')).sha256 },
     stripe033: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('033_')).sha256 },
     queue034: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('034_')).sha256 },
-    business035: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256 } };
+    business035: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256 },
+    calendar036: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('036_')).sha256 } };
   await assert.rejects(runner.apply(client, future, ref), /differs from.*baseline/);
   assert.equal(queries.at(-1), 'ROLLBACK');
   assert.ok(!queries.some((sql) => /create table|insert into|alter table/i.test(sql)));

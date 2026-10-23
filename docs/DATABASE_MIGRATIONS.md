@@ -12,6 +12,40 @@ The owner separately authorized exact-checksum 032 followed by 033 on
 verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
+The owner authorized the connected Commercial release on 2026-10-23 at
+14:38 US Eastern, including its reviewed additive prerequisite
+`036_commercial_calendar_workload.sql` on production `nkccbnrduojnzjfrpwva`.
+The production configuration records this authorization and exact checksum.
+Apply still requires guarded baseline/history verification and explicit project
+confirmation; no destructive reconciliation or live operational tests are
+authorized. Read-only verification, not this record, establishes applied status.
+
+036 adds the single-calendar reservations/history and workload fields. It
+retains the 032/034 RPC bodies and existing lifecycle/payment contracts. Guarded
+application reconciles existing linked installation windows; an incomplete
+start/end pair or overlap aborts the whole transaction. Inspect and explicitly
+reconcile such records before approval; never invent end times, silently cancel
+bookings or mark this migration applied to bypass the guard. Credentials/TLS
+remain the existing external `DATABASE_URL_DIRECT` and `MIGRATION_CA_CERT_PATH`.
+No scheduler, production callback change or new email configuration is needed.
+
+Reviewed normalized-LF SHA-256 for migration 036:
+`34a46bba7bd55f05591ad504a4a3beb38c5a0bf5c9968b1b334756e11a85b665`.
+The exact checksum is covered by the release authorization above. Local tests exercise
+rollback for both incomplete and overlapping legacy windows, default-deny grants,
+trigger/function bindings and real independent-session capacity serialization.
+
+The same unapplied 036 proposal now also contains job-keyed shared preparation,
+authenticated immutable preparation history, service-only review/save RPCs, and
+a job-status trigger enforcing preparation and the Commercial completion boundary.
+The previous proposal checksum is superseded and must not be used for approval.
+032/034 function bodies remain unchanged. An explicit location-copy wrapper
+reuses existing location history and atomically updates the linked work site.
+Review the five new table relationships, all RPC grants, start/completion trigger,
+and existing job/order/assignment consumers before approving this new checksum.
+No existing schema is dropped or renamed; newly required preparation applies on
+future starts, not retroactively to already in-progress/completed work.
+
 The owner authorized the phone-only Commercial production release on
 2026-10-23, including guarded `034_commercial_followup_delivery.sql` followed
 by `035_commercial_business_tools.sql` on the established target. Their

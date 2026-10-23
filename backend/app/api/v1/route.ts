@@ -2268,7 +2268,10 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
   const queryText = (params?.get('q') || '').trim();
   if (queryText.length > 120 || /[*\u0000-\u001f\u007f]/.test(queryText)) invalidInput('Search must be at most 120 characters, without asterisks or control characters.');
   const filter = params?.get('filter') || 'all';
-  if (!['all', 'attention', 'pending', 'approved', 'escalated', 'no_consultation'].includes(filter)) invalidInput('Unknown commercial queue filter.');
+  if (!['all', 'active', 'held', 'closed', 'attention', 'pending', 'approved', 'escalated', 'no_consultation'].includes(filter)) invalidInput('Unknown commercial queue filter.');
+  const lookupLeadId = params?.get('leadId') || '';
+  if (lookupLeadId && (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(lookupLeadId)
+    || filter !== 'all' || queryText || params?.get('cursor'))) invalidInput('Exact lead lookup requires a valid lead ID without search, filter or cursor restrictions.');
   type Cursor = { submitted: string; created: string; id: string };
   const encodeCursor = (row: any) => Buffer.from(JSON.stringify({
     submitted: row.last_submitted_at, created: row.created_at, id: row.lead_id,
@@ -2346,6 +2349,9 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
 
   const shapeLead = (lead: any) => {
     const leadId = safeTrim(lead?.lead_id);
+    const operation = (Array.isArray(lead?.commercial_lead_operations) ? lead.commercial_lead_operations[0] : lead?.commercial_lead_operations) || {};
+    const closed = operation.disposition === 'closed';
+    const held = !closed && Date.parse(operation.hold_until || '') > Date.now();
     const latestConsultation = readJsonArraySafe(lead?.commercial_consultation_requests)[0] || null;
     const services = readJsonArraySafe(lead?.service_needs).map((value: any) => safeTrim(value)).filter(Boolean);
     const photoUrls = readJsonArraySafe(lead?.project_photo_urls).map((value: any) => safeTrim(value)).filter(Boolean);
@@ -2395,6 +2401,19 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
     if (providerReview) followUp.nextAction += ' Reconcile the pending or uncertain provider attempt before retrying. Do not resend automatically; delivery and customer acknowledgement are not verified.';
     else if (effectStates.includes('failed')) followUp.nextAction += ' A provider rejected or could not accept a notification. Correct configuration or contact details, then retry processing. Previously accepted notifications will not be resent.';
     else if (persistenceWarning) followUp.nextAction += ' The SMS provider accepted a notification but message-history persistence failed. Review the audit trail; do not resend an accepted notification.';
+    const chasingPaused = closed || held || operation.sales_chasing_paused === true;
+    const consultationReviewRequired = chasingPaused && !!latestConsultation && !latestConsultation.related_order_id
+      && ['pending','escalated','reschedule_requested','approved'].includes(consultationStatus);
+    if (closed || held) {
+      followUp.needsAttention = false;
+      followUp.recoveryAllowed = false;
+      followUp.nextAction = closed ? `Lead closed: ${operation.disposition_reason || 'Review recorded outcome'}.`
+        : `On hold until ${operation.hold_until}: ${operation.disposition_reason || 'Staff follow-up'}.`;
+      followUp.nextAction += ' Sales chasing is paused. Existing appointments and their reminders are unchanged.';
+      if (consultationReviewRequired) followUp.nextAction += ' An unresolved consultation request still requires staff review; it has not been cancelled.';
+    }
+    if (!closed && !held && operation.next_follow_up_at) followUp.nextAction = `Staff action due ${operation.next_follow_up_at}: ${operation.disposition_reason || 'Follow up'}. Owner: ${operation.responsible_name || 'Not assigned'}. ${followUp.nextAction}`;
+    if (!closed && !held && chasingPaused) followUp.nextAction += ' Consultation sales chasing remains paused until explicitly reviewed and resumed; existing appointment reminders are unchanged.';
     const consultation = latestConsultation ? {
       requestId: safeTrim(latestConsultation.request_id),
       referenceCode: safeTrim(latestConsultation.reference_code),
@@ -2452,16 +2471,25 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
       lastActivityAt,
       consultation,
       followUp,
+      workload: { state: closed ? 'closed' : held ? 'held' : 'open', owner: operation.responsible_name || '',
+        dueAt: operation.next_follow_up_at || null, holdUntil: operation.hold_until || null,
+        outcome: operation.closure_outcome || '', reason: operation.disposition_reason || '', consultationReviewRequired, chasingPaused },
     };
   };
 
   const matchesFilter = (item: ReturnType<typeof shapeLead>) => {
+    if (filter === 'all') return true;
+    if (filter === 'closed') return item.workload.state === 'closed';
+    if (item.workload.state === 'closed') return false;
+    if (filter === 'held') return item.workload.state === 'held';
+    if (filter === 'active') return true;
+    if (filter === 'attention' && item.workload.state === 'held') return false;
     const status = item.consultation?.status || '';
     if (filter === 'pending') return ['pending', 'reschedule_requested'].includes(status);
     if (filter === 'approved') return ['approved', 'customer_confirmed'].includes(status);
     if (filter === 'escalated') return status === 'escalated';
     if (filter === 'no_consultation') return !status;
-    if (filter === 'attention') return item.followUp.needsAttention || !status ||
+    if (filter === 'attention') return item.workload.consultationReviewRequired || Date.parse(item.workload.dueAt || '') <= Date.now() || item.followUp.needsAttention || !status ||
       ['pending', 'reschedule_requested', 'escalated'].includes(status) || ['high', 'urgent'].includes(item.priorityTier);
     return true;
   };
@@ -2473,6 +2501,7 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
   if (/^\d{7,15}$/.test(phoneDigits) && phoneDigits !== queryText) searchTerms.push(`phone.ilike."%${phoneDigits}%"`);
   const applySearch = <T extends { or: (value: string) => T }>(request: T, boundary: Cursor | null): T => {
     const clauses: string[] = [];
+    if (lookupLeadId) clauses.push(`lead_id.eq.${lookupLeadId}`);
     if (searchTerms.length) clauses.push(`or(${searchTerms.join(',')})`);
     if (boundary) clauses.push(`or(last_submitted_at.lt.${boundary.submitted},and(last_submitted_at.eq.${boundary.submitted},created_at.lt.${boundary.created}),and(last_submitted_at.eq.${boundary.submitted},created_at.eq.${boundary.created},lead_id.lt.${boundary.id}))`);
     return clauses.length ? request.or(`and(${clauses.join(',')})`) : request;
@@ -2490,7 +2519,7 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
   const batchSize = 100;
   while (scanned < 1000 && !exhausted && !extraMatch) {
     const { data: rows, error } = await applySearch(db.from('commercial_leads')
-      .select(`${leadColumns}, commercial_consultation_requests(${consultationColumns})`)
+      .select(`${leadColumns}, commercial_lead_operations(*), commercial_consultation_requests(${consultationColumns})`)
       .order('last_submitted_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false, nullsFirst: false })
       .order('lead_id', { ascending: false })

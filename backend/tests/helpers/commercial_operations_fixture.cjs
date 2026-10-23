@@ -23,7 +23,7 @@ async function createOperationsFixture(env = {}) {
     create table "Dashboard_Users"("User_ID" uuid primary key,"Display_Name" text,"Username" text,"Role" text,"Is_Disabled" boolean);
     create table commercial_leads(lead_id uuid primary key,email text,phone text,project_address text,project_city text,
       project_state text,project_postal_code text,updated_at timestamptz default now(),revision bigint not null default 0,
-      contact_preference text default 'email');
+      contact_preference text default 'email',full_name text,company_name text);
     create table commercial_consultation_requests(request_id uuid primary key,lead_id uuid,status text,selected_slot_start timestamptz,response_at timestamptz,
       next_reminder_at timestamptz,reminder_count integer,related_order_id text,metadata jsonb,created_at timestamptz default now());
     create table commercial_effects(request_id uuid,kind text,state text,details jsonb,updated_at timestamptz default now());
@@ -70,6 +70,7 @@ async function createOperationsFixture(env = {}) {
   await db.exec(fs.readFileSync(path.join(root,'migrations','032_commercial_operations.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'migrations','033_atomic_stripe_order_metadata.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'migrations','034_commercial_followup_delivery.sql'),'utf8'));
+  if (!env.LEGACY_SCHEMA_FIXTURE) await db.exec(fs.readFileSync(path.join(root,'migrations','036_commercial_calendar_workload.sql'),'utf8'));
   const quote = raw => { const name = raw.trim(); assert.match(name,/^[A-Za-z_][A-Za-z0-9_]*$/); return `"${name}"`; };
   function from(table) {
     const conditions = [], args = [];
@@ -118,15 +119,18 @@ async function createOperationsFixture(env = {}) {
         return { data:result.rows[0].result,error:null };
       } catch (error) { return { data:null,error:{code:error.code,message:error.message} }; }
     }
-    assert.ok(['commercial_record_operation','commercial_record_follow_up','sms_record_delivery'].includes(name));
+    assert.ok(['commercial_record_operation','commercial_record_follow_up','sms_record_delivery',
+      'commercial_record_workload','commercial_record_reservation','commercial_calendar_snapshot',
+      'h2s_job_readiness','h2s_record_job_preparation','commercial_record_work_location','commercial_record_job_operation'].includes(name));
     if (name === 'commercial_record_follow_up' && faults.beforeFollowUp) {
       const before = faults.beforeFollowUp;
       delete faults.beforeFollowUp;
       await before();
     }
     const values = Object.values(args).map(value => value && typeof value === 'object' ? JSON.stringify(value) : value);
-    const casts = name === 'sms_record_delivery' ? ['text','jsonb']
-      : name === 'commercial_record_follow_up' ? ['uuid','integer','uuid','jsonb','jsonb'] : ['uuid','integer','uuid','jsonb','text','jsonb'];
+    const casts = name === 'h2s_job_readiness' ? ['uuid'] : name === 'commercial_calendar_snapshot' ? ['timestamptz','timestamptz','uuid']
+      : name === 'sms_record_delivery' ? ['text','jsonb']
+      : ['commercial_record_follow_up','commercial_record_workload','h2s_record_job_preparation','commercial_record_work_location'].includes(name) ? ['uuid','integer','uuid','jsonb','jsonb'] : ['uuid','integer','uuid','jsonb','text','jsonb'];
     try {
       const result = await db.query(`select ${name}(${values.map((_,i) => `$${i+1}::${casts[i]}`).join(',')}) result`,values);
       if (name.startsWith('commercial_record_') && faults.afterSave) faults.table = 'Dashboard_Users';
@@ -156,6 +160,7 @@ async function createOperationsFixture(env = {}) {
     '@/lib/dashboardAuth': { getDashboardDb: () => client, getDashboardAuthUserFromSession: async request => {
       const token = request.headers.get('authorization');
       return token === 'Bearer fixture-admin' ? { userId:id(9),displayName:'Fixture Admin',username:'ADMIN_FIXTURE',role:'ADMIN' }
+        : token === 'Bearer fixture-admin-two' ? {userId:id(12),displayName:'Second Fixture Admin',username:'SECOND_ADMIN',role:'ADMIN'}
         : token === 'Bearer fixture-va' ? { userId:id(10),displayName:'Fixture Staff',username:'STAFF_FIXTURE',role:'VA' } : null;
     } },
     '@/lib/adminAuth': { corsHeaders: () => ({}) },

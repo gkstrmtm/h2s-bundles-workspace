@@ -10448,6 +10448,30 @@
             gap: 8px 12px;
             margin: 12px 0;
         }
+        .commercial-operations-form[hidden], .commercial-operations-form [hidden] { display: none; }
+        .commercial-workload-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        .commercial-workload-btn { justify-self: start; align-self: end; width: auto; }
+        .commercial-calendar { padding: 16px; margin-bottom: 16px; }
+        .commercial-calendar-table { overflow-x: auto; }
+        .commercial-calendar table { width: 100%; min-width: 0 !important; table-layout: fixed; border-collapse: collapse; font-size: 13px; overflow-wrap: anywhere; }
+        .commercial-calendar caption { text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px 0; font-weight: 600; color: var(--cobalt); }
+        .commercial-calendar th, .commercial-calendar td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+        .commercial-calendar-open {
+            min-height: 44px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--azure);
+            font: inherit;
+            text-align: left;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+        .commercial-calendar-open:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+        .commercial-calendar-open:disabled { color: var(--muted); cursor: progress; }
+        @media (max-width: 540px) {
+            .commercial-calendar table, .commercial-calendar .commercial-operations-note { font-size: 12px; }
+        }
         .commercial-operations { font-size: 14px; line-height: 1.5; }
         .commercial-operations-form label { display: grid; gap: 4px; min-width: 0; font-size: 13px; color: var(--cobalt); }
         .commercial-operations-form input,
@@ -10603,7 +10627,7 @@
             display: none;
         }
 
-        .commercial-queue-page-btn {
+        .commercial-queue-page-btn, .commercial-workload-btn {
             min-height: 32px;
             padding: 4px 10px;
             font: 500 13px/1.4 'Inter', sans-serif;
@@ -10613,9 +10637,9 @@
             border-radius: 4px;
             cursor: pointer;
         }
-        .commercial-queue-page-btn:hover:not(:disabled) { background: var(--gray-50); border-color: var(--gray-400); }
-        .commercial-queue-page-btn:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
-        .commercial-queue-page-btn:disabled { color: var(--muted); opacity: 0.55; cursor: not-allowed; }
+        .commercial-queue-page-btn:hover:not(:disabled), .commercial-workload-btn:hover:not(:disabled) { background: var(--gray-50); border-color: var(--gray-400); }
+        .commercial-queue-page-btn:focus-visible, .commercial-workload-btn:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+        .commercial-queue-page-btn:disabled, .commercial-workload-btn:disabled { color: var(--muted); opacity: 0.55; cursor: not-allowed; }
 
         .commercial-queue-next {
             display: grid;
@@ -10705,6 +10729,7 @@
             }
 
             .commercial-queue-page-btn,
+            .commercial-workload-btn,
             .commercial-queue-toolbar input,
             .commercial-queue-toolbar select {
                 min-height: 44px;
@@ -17578,18 +17603,40 @@ select:focus, .form-select:focus, select.user-gate-select:focus, .deliverables-s
 
 /* --- Calendar wrapper -------------------------------------------- */
 .flatpickr-calendar {
-    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     background: #ffffff;
     border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 16px;
     box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.05);
     padding: 6px 4px 10px;
     width: 308px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px);
+    overflow-y: auto;
     z-index: 99999 !important;
 }
 
 .flatpickr-calendar.open {
     animation: fpFadeIn 0.14s ease;
+}
+
+.h2s-date-clear {
+    margin: 4px 8px 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface, white);
+    color: var(--azure);
+    font: inherit;
+    cursor: pointer;
+}
+.h2s-date-clear:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+.flatpickr-innerContainer { max-width: 100%; }
+.flatpickr-rContainer, .flatpickr-days { width: 100%; }
+.flatpickr-calendar .dayContainer { width: 100%; min-width: 0; max-width: 100%; }
+@media (prefers-reduced-motion: reduce) {
+    .flatpickr-calendar.open { animation: none; }
 }
 
 @keyframes fpFadeIn {

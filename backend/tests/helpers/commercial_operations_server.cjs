@@ -3,7 +3,9 @@ const { createOperationsFixture, id } = require('./commercial_operations_fixture
 const { createFixture } = require('./commercial_contact_fixture.cjs');
 
 async function startOperationsServer(port = 3014, root = path.resolve(__dirname, '..', '..', '..'), options = {}) {
-  const operations = options.business ? await require('./commercial_business_fixture.cjs').createBusinessFixture() : await createOperationsFixture();
+  const operations = options.calendar ? await require('./commercial_calendar_fixture.cjs').createCalendarFixture(
+    options.business ? await require('./commercial_business_fixture.cjs').createBusinessFixture() : undefined)
+    : options.business ? await require('./commercial_business_fixture.cjs').createBusinessFixture() : await createOperationsFixture();
   const queue = createFixture();
   async function syncBusinessRecords() {
     for (const lead of queue.tables.commercial_leads) {
@@ -39,11 +41,12 @@ async function startOperationsServer(port = 3014, root = path.resolve(__dirname,
         if (result.ok && method==='POST' && ['commercial-intake','commercial-consultation'].includes(businessName)) await syncBusinessRecords();
         response.writeHead(result.status,Object.fromEntries(result.headers));return response.end(Buffer.from(await result.arrayBuffer()));
       }
-      if (url.pathname==='/api/commercial-operations') {
+      if (url.pathname==='/api/commercial-operations' || options.calendar && url.pathname==='/api/commercial-calendar') {
         const chunks=[];for await(const chunk of request)chunks.push(chunk);
         const method=request.method;
         if (!['GET','POST','OPTIONS'].includes(method)) return json(response,{ok:false},405);
-        const result=await operations.route[method](new Request(url,{method,headers:request.headers,
+        const route=url.pathname==='/api/commercial-calendar' ? operations.calendarRoute : operations.route;
+        const result=await route[method](new Request(url,{method,headers:request.headers,
           ...(method==='POST'?{body:Buffer.concat(chunks)}:{})}));
         response.writeHead(result.status,Object.fromEntries(result.headers));return response.end(Buffer.from(await result.arrayBuffer()));
       }
@@ -57,7 +60,14 @@ async function startOperationsServer(port = 3014, root = path.resolve(__dirname,
         const action=url.searchParams.get('action');
         if(action==='dashboardMe')return json(response,{ok:true,me:{userId:id(9),username:'ADMIN_FIXTURE',displayName:'Fixture Admin',role:'ADMIN'}});
         if(action==='ping')return json(response,{ok:true,ping:{ok:true}});
-        if(action==='commercialQueue')return json(response,{ok:true,commercialQueue:await queue.queue(url.searchParams)});
+        if(action==='smsMessages')return json(response,{ok:true,thread:{contact_phone:url.searchParams.get('contact_phone')},
+          messages:[{direction:'OUTBOUND',body:'Fixture staff manual follow-up',status:'sent',created_at:new Date().toISOString()},
+            {direction:'INBOUND',body:'Fixture customer requested a callback',status:'received',created_at:new Date().toISOString()}],
+          page:{has_more:false}});
+        if(action==='commercialQueue'){
+          if(options.calendar) queue.tables.commercial_lead_operations=(await operations.db.query('select * from commercial_lead_operations')).rows;
+          return json(response,{ok:true,commercialQueue:await queue.queue(url.searchParams)});
+        }
         const empty={candidates:[],tasks:[],taskResources:[],viewerTaskReminderSeen:[],messagesConversations:[],messagesUsers:[],smsThreads:[],smsNumbers:[],notifications:[]};
         return json(response,{ok:true,[action]:[],...empty});
       }

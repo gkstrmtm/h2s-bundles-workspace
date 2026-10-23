@@ -28,7 +28,7 @@
         return instant.toISOString();
     }
     const dateInput = (name, title, value, extra = '') => input(name, title, localInput(value), 'datetime-local',
-        `data-native-date data-instant="${escape(value || '')}" data-local-value="${escape(localInput(value))}" ${extra}`);
+        `data-instant="${escape(value || '')}" data-local-value="${escape(localInput(value))}" ${extra}`);
     const money = order => /^[A-Za-z]{3}$/.test(order.currency || '') && Number.isFinite(Number(order.total))
         ? new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency.toUpperCase() }).format(Number(order.total))
         : 'Price/currency needs review';
@@ -81,7 +81,9 @@
                 model.recoveryTimer = null;
                 model.latest = next;
                 const active = document.activeElement;
-                if (model.dirty || model.businessDirty || (model.root.contains(active) && (active.matches('input,textarea,select') || active.closest('.dashboard-custom-select-shell.is-open')))) {
+                if (model.dirty || model.businessDirty || model.calendarDirty
+                    || Array.from(model.root.querySelectorAll('input[data-h2s-date-bound]')).some(input => input._flatpickr?.isOpen)
+                    || (model.root.contains(active) && (active.matches('input,textarea,select') || active.closest('.dashboard-custom-select-shell.is-open')))) {
                     if (model.data && changed(model.data, next)) message(model, 'Updated record available. Your edits are retained; review latest before saving.');
                     else message(model, 'Current record checked. Unsaved edits are retained.');
                     return;
@@ -111,6 +113,20 @@
     }
     const input = (name, title, value, type = 'text', extra = '') => `<label>${escape(title)}<input name="${name}" type="${type}" value="${escape(value)}" ${extra}></label>`;
     const row = (title, value) => `<div><dt>${escape(title)}</dt><dd>${value}</dd></div>`;
+    function orderScope(order) {
+        let items=order.items;
+        if (typeof items==='string' && items.trim().startsWith('[')) {
+            try {items=JSON.parse(items);}
+            catch (error) {console.error('Recorded job scope format needs review',error);return 'Recorded order items could not be read; review the existing order before acknowledging scope.';}
+        }
+        if (Array.isArray(items)) return items.map(item=>{
+            if (!item || typeof item!=='object') return 'Order item needs review';
+            const name=[item.service_name,item.name,item.description].find(value=>typeof value==='string'&&value.trim()) || 'Order item needs review';
+            const raw=item.quantity ?? item.qty,quantity=typeof raw==='number'||typeof raw==='string'&&raw.trim()?Number(raw):NaN;
+            return `${name}${raw==null?'':Number.isFinite(quantity)&&quantity>0?` (quantity ${quantity})`:' (quantity needs review)'}`;
+        }).join('; ');
+        return typeof items==='string'?items:items?'Recorded order items need review.':'';
+    }
     function communications(data) {
         const summary = data.communications;
         if (!summary?.available) return '<p class="commercial-operations-note">Communication records unavailable. No delivery or customer acknowledgement is assumed.</p>';
@@ -124,6 +140,10 @@
                 <time>${escape(event.timeLabel)}: ${escape(date(event.at))}</time><span>${escape(event.receipt)}</span>${event.processingIssue ? `<span>${escape(event.processingIssue)}</span>` : ''}
                 ${event.errorCode || event.errorMessage ? `<span>${escape([event.errorCode,event.errorMessage].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`;
         return `<p class="commercial-operations-note">Notification recipients are not assigned installers. Transport status does not establish technician approval or customer acknowledgement.</p>
+            <details data-section="sms-history"><summary>Shared customer SMS history</summary>
+                <p class="commercial-operations-note">Existing phone conversation; it may include other projects. Opening it sends nothing. Queued/sent is not delivered; delivery is not reading, agreement or job confirmation. New sends remain in Messages under existing consent and duplicate-send protections.</p>
+                <button type="button" class="commercial-workload-btn" data-load-sms>Load latest SMS history</button>
+                <div data-sms-history role="status" aria-live="polite"></div></details>
             <details data-section="routing"><summary>Current notification routing</summary>
                 <p class="commercial-operations-note">Technician requests: ${escape(summary.technicianRouting?.available ? summary.technicianRouting.recipients.join(', ') || 'No recipients configured' : 'Configuration unavailable; staff review required')}.
                 Staff escalation: ${escape(summary.escalationRecipients?.join(', ') || 'No recipients configured')}. These settings do not prove a send or an installation assignment.</p></details>
@@ -131,6 +151,32 @@
             <ul class="commercial-operations-communications">${primary.map(render).join('') || '<li>No recorded communication attempts.</li>'}</ul>
             ${rest.length ? `<details data-section="communications"><summary>More recorded communications (${rest.length})</summary><ul class="commercial-operations-communications">${rest.map(render).join('')}</ul></details>` : ''}
             ${summary.limited ? '<p class="commercial-operations-note">Latest available records shown; older attempts may exist.</p>' : ''}`;
+    }
+    async function loadSharedSms(model, button) {
+        const host=model.root.querySelector('[data-sms-history]'),phone=model.data.lead.phone,token=model.options.getToken();
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+        button.disabled=true;host.textContent='Loading existing SMS history...';
+        try {
+            const query=new URLSearchParams({action:'smsMessages',contact_phone:phone,limit:'20'});
+            const response=await global.fetch(`${model.options.apiBase}/api/v1?${query}`,{
+                cache:'no-store',signal:controller.signal,headers:{Authorization:`Bearer ${token}`},
+            });
+            if (token!==model.options.getToken() || host!==model.root.querySelector('[data-sms-history]')) return;
+            if (response.status===404) {host.textContent='No existing SMS thread found for this phone. No message was sent.';return;}
+            const result=await response.json();
+            if (token!==model.options.getToken() || host!==model.root.querySelector('[data-sms-history]')) return;
+            if (!response.ok || !result.ok || !Array.isArray(result.messages)
+                || String(result.thread?.contact_phone || '').replace(/\D/g,'')!==String(phone || '').replace(/\D/g,'')) {
+                throw new Error('Shared SMS history could not be verified. Use Messages to review the conversation.');
+            }
+            host.innerHTML=`<ul class="commercial-operations-history">${result.messages.map(item=>`<li>
+                <strong>${String(item.direction).toUpperCase()==='INBOUND'?'Received SMS':String(item.direction).toUpperCase()==='OUTBOUND'?'Outbound SMS':'SMS (direction unavailable)'} · ${escape(label(item.status || 'status unavailable'))}</strong>
+                <time>${escape(date(item.created_at))}</time><span>${escape(item.body)}</span></li>`).join('') || '<li>No messages returned for this existing thread.</li>'}</ul>
+                ${result.page?.has_more?'<p class="commercial-operations-note">Showing the latest 20. Older history remains in Messages.</p>':''}`;
+        } catch (error) {
+            console.error('Commercial shared SMS read unavailable',error);
+            host.textContent=`${error.message} No message was sent.`;
+        } finally {clearTimeout(timer);button.disabled=false;}
     }
     function render(model) {
         const { state, lead, staff, history, installation, routing } = model.data;
@@ -141,7 +187,11 @@
         const viewport = { x: global.scrollX, y: global.scrollY };
         const expanded = new Set(Array.from(model.root.querySelectorAll('details[open]'), node => node.dataset.section));
         const job = installation?.job, order = installation?.order;
+        const preparation = installation?.preparation, prepared = preparation?.record;
+        const scope = order ? orderScope(order) : '';
         const followUp = model.data.followUp, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const held = state.disposition !== 'closed' && Date.parse(state.hold_until || '') > Date.now();
+        const paused = state.disposition === 'closed' || held || state.sales_chasing_paused;
         const latestContact = history.find(event => event.payload.contact);
         const overdue = state.disposition !== 'closed' && state.next_follow_up_at && Date.parse(state.next_follow_up_at) < Date.now();
         const assignments = installation?.assignments || [];
@@ -150,8 +200,10 @@
         const upcoming = [];
         if (state.disposition !== 'closed' && state.next_follow_up_at && !(followUp?.mode === 'automatic' && followUp.completed)) upcoming.push(`<li><strong>${overdue ? 'Overdue customer follow-up' : 'Customer follow-up'}</strong><time>${escape(date(state.next_follow_up_at))}</time><span>${escape(followUp?.reason || 'Staff-set internal follow-up; no message is scheduled.')}</span></li>`);
         if (['queued','assigned'].includes(job?.status) && job.due_at) upcoming.push(`<li><strong>Installation window</strong><time>${escape(date(job.due_at))} · ${escape(order.delivery_time || '')}</time></li>`);
-        if (routing.nextReminderAt) upcoming.push(`<li><strong>Consultation reminder on record</strong><time>${escape(date(routing.nextReminderAt))}</time><span>Existing consultation rules determine whether it runs.</span></li>`);
-        const historyItem = event => `<li><strong>${escape(event.action === 'follow_up' && event.payload.contact ? 'Contact attempt recorded' : label(event.action))}</strong>
+        if (routing.nextReminderAt && !paused) upcoming.push(`<li><strong>Consultation reminder on record</strong><time>${escape(date(routing.nextReminderAt))}</time><span>Existing consultation rules determine whether it runs.</span></li>`);
+        const historyItem = event => `<li><strong>${escape(event.payload.workload
+            ? ({ next_action: 'Next action set', hold: 'Lead held', close: 'Lead closed', reopen: 'Lead reopened' }[event.payload.workload.intent] || 'Lead action')
+            : event.action === 'follow_up' && event.payload.contact ? 'Contact attempt recorded' : label(event.action))}</strong>
             <time>${escape(date(event.created_at))} · ${escape(event.actor_name)}</time>
             <span>${escape(event.payload.contact?.note || event.payload.note || (event.action === 'follow_up' ? event.payload.reason || 'Follow-up responsibility and disposition saved.'
                 : event.action === 'schedule' ? 'Installation window saved.' : event.action === 'assign' ? `Installer: ${event.payload.proName || 'Existing directory record'}.`
@@ -159,16 +211,39 @@
             ${event.payload.followUp?.reason ? `<span>${escape(event.payload.followUp.reason)}</span>` : ''}</li>`;
         model.root.innerHTML = `
             <h4 class="commercial-queue-detail__section-title">Operations</h4><p data-operations-status role="status" aria-live="polite"></p>
+            <div class="commercial-workload-actions" role="group" aria-label="Lead workload">
+                ${state.disposition === 'closed' ? '<button type="button" class="commercial-workload-btn" data-workload-intent="reopen">Reopen lead</button>'
+                    : '<button type="button" class="commercial-workload-btn" data-workload-intent="next_action">Set next action</button><button type="button" class="commercial-workload-btn" data-workload-intent="hold">Hold until</button><button type="button" class="commercial-workload-btn" data-workload-intent="close">Close lead</button>'}
+            </div>
+            <form data-action="workload" class="commercial-operations-form" hidden>
+                <input type="hidden" name="intent">
+                <label>Responsible staff<select name="responsibleId" class="form-select"><option value="">Choose owner</option>
+                    ${staff.map(person => `<option value="${escape(person.User_ID)}"${person.User_ID === state.responsible_id ? ' selected' : ''}>${escape(person.Display_Name || person.Username)}</option>`).join('')}
+                </select></label>
+                ${dateInput('nextFollowUpAt', `Due / hold until (${timeZone})`, state.next_follow_up_at)}
+                <label>Closure outcome<select name="outcome" class="form-select">${[['won','Won / handed to installation'],['declined','Customer declined'],['no_response','No response'],['duplicate','Duplicate'],['not_a_fit','Not a fit'],['other','Other']].map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select></label>
+                <label class="commercial-operations-wide">Next action / reason<input name="reason" maxlength="1000" required></label>
+                ${state.sales_chasing_paused && lead.contact_preference === 'sms' && !routing.consultationOrderId
+                    && ['pending','escalated','reschedule_requested'].includes(routing.consultationStatus) && Date.parse(routing.selectedSlotStart || '') > Date.now()
+                    ? '<label class="commercial-operations-wide commercial-operations-check"><input type="checkbox" name="resumeConsultationChasing"> I reviewed the pending consultation; resume its reminders when reopening / setting next action</label>' : ''}
+                <button type="submit" class="commercial-workload-btn" data-workload-save>Save lead action</button>
+                <button type="button" class="commercial-workload-btn" data-workload-cancel>Cancel</button>
+            </form>
+            ${paused ? `<p class="commercial-operations-note">Sales chasing paused${held ? ` until ${escape(date(state.hold_until))}` : ''}. Booked appointments and their appointment reminders are unchanged.
+                ${!routing.consultationOrderId && ['pending','escalated','reschedule_requested','approved'].includes(routing.consultationStatus) ? 'Unresolved consultation request: staff review required; it has not been cancelled.' : ''}</p>` : ''}
             <dl class="commercial-operations-facts">
-                ${row('Lead', escape(label(state.disposition)))}
+                ${row('Lead', escape(held ? `Held until ${date(state.hold_until)}` : label(state.disposition)))}
+                ${state.closure_outcome ? row('Closure outcome', escape(label(state.closure_outcome))) : ''}
                 ${row('Responsible', escape(state.responsible_name || 'Not assigned'))}
                 ${row('Latest contact', escape(latestContact ? latestContact.payload.contact.outcome === 'email_submitted'
                     ? 'Staff email submitted; delivery evidence below' : label(latestContact.payload.contact.outcome) : 'No attempt recorded'))}
                 ${row('Next action', escape(state.disposition === 'closed' ? 'Lead closed; installation and payment remain separate'
-                    : !installation ? 'Review quote/payment records below and link the intended installation' : 'Follow up or update the installation below'))}
+                    : state.next_follow_up_at ? `${state.disposition_reason || 'Staff follow-up'} · ${date(state.next_follow_up_at)}`
+                        : !installation ? 'Review quote/payment records below and link the intended installation' : 'Follow up or update the installation below'))}
                 ${row('Installation', escape(job ? `${label(job.status)}${installerIds.length > 1 ? ' · conflicting assignments — reconcile' : installer ? ` · ${installer.name}` : ' · installer name unavailable'}` : 'No installation linked'))}
                 ${row('Payment', installation ? `<strong>${escape(label(installation.payment.status))}</strong> · ${escape(installation.payment.detail)}` : 'Manual collection records below. No linked order is available for Stripe verification.')}
                 ${order ? row('Existing order', `${escape(order.order_id)} · ${escape(money(order))}`) + row('Work location', escape([order.address,order.city,order.state,order.zip].filter(Boolean).join(', ') || 'Missing — reconcile the existing order address before starting')) : ''}
+                ${job ? row('Linked job ID', escape(job.job_id)) : ''}
                 ${state.completed_at ? row('Completion recorded', `${escape(date(state.completed_at))} · ${escape(state.completed_by?.name)}. No payout or communication was triggered.`) : ''}
             </dl>
             <details data-section="followup"><summary>Update follow-up</summary>
@@ -193,7 +268,7 @@
                         `<option value="${value}"${value === (lead.contact_preference || 'call') ? ' selected' : ''}>${name}</option>`).join('')}</select></label>
                     <label>Outcome<select name="outcome" class="form-select">${['no_response','reached','left_message','requested_callback','other'].map(value => `<option value="${value}">${escape(label(value))}</option>`).join('')}</select></label>
                     <label class="commercial-operations-wide">Contact notes<textarea name="note" maxlength="4000" rows="2"></textarea></label>
-                    <p class="commercial-operations-note commercial-operations-wide">Lead closure does not complete installation or customer confirmation, or stop consultation reminders. Responsibility grants no access.</p>
+                    <p class="commercial-operations-note commercial-operations-wide">Closing pauses sales chasing, not existing appointments or appointment reminders. Installation and payment remain separate. Responsibility grants no access.</p>
                     <button class="btn btn-secondary" type="submit">Save follow-up</button>
                 </form>
             </details>
@@ -202,27 +277,39 @@
                 ${input('city', 'City', lead.project_city || '', 'text', 'maxlength="100"')}
                 ${input('state', 'State', lead.project_state || '', 'text', 'maxlength="100"')}
                 ${input('postalCode', 'Postal code', lead.project_postal_code || '', 'text', 'maxlength="100"')}
-                <p class="commercial-operations-note commercial-operations-wide">Updates this lead only; an existing order retains its address.</p><button class="btn btn-secondary" type="submit">Save lead location</button>
+                ${job && ['queued','assigned'].includes(job.status) ? '<label class="commercial-operations-wide commercial-operations-check"><input type="checkbox" name="applyToJob"> Also apply this work location to the linked job/order; preparation will need review</label>' : ''}
+                <p class="commercial-operations-note commercial-operations-wide">The linked job retains its work location unless explicitly selected above.</p><button class="btn btn-secondary" type="submit">Save location</button>
             </form></details>
+            <section class="commercial-operations-section" data-installation-reservation></section>
             <section aria-label="Installation and payment" class="commercial-operations-section">
-                <h5>Installation actions</h5>
+                <h5>Linked job · preparation and execution</h5>
                 ${!installation ? `<p class="commercial-operations-note">No installation is linked. Quote and manual collection records are below; linking and scheduling remain explicit staff actions.</p>
                     <details data-section="link"><summary>Link an existing priced installation</summary>
                     <form data-lookup class="commercial-operations-form">${input('orderRef', 'Existing order reference', '', 'text', 'required maxlength="150"')}<button class="btn btn-secondary" type="submit">Find existing order</button></form><div data-candidate></div></details>` : `
+                    <p class="commercial-operations-note">Existing scope: ${escape(order.service_name || 'Review the linked order and quote below')}${order.special_instructions ? ` · ${escape(order.special_instructions)}` : ''}</p>
+                    ${scope ? `<p class="commercial-operations-note" data-job-scope>${escape(scope)}</p>` : ''}
+                    <p data-preparation-summary><strong>${preparation.ready ? 'Preparation reviewed' : 'Preparation blocked'}</strong>${preparation.blockers.length ? ` · ${escape(preparation.blockers.join('; '))}` : ' · Booking, assignment and payment remain separate.'}</p>
+                    <details data-section="preparation"><summary>Review job preparation</summary>
+                    ${['queued','assigned'].includes(job.status) ? `<form data-action="preparation" class="commercial-operations-form">
+                        <label class="commercial-operations-wide commercial-operations-check"><input type="checkbox" name="scopeReviewed"${prepared?.scope_reviewed ? ' checked' : ''}> I reviewed the existing job scope and quote</label>
+                        <label>Materials<select name="materials" class="form-select">${[['unreviewed','Not reviewed'],['blocked','Blocked / waiting'],['ready','Ready'],['not_required','No materials required']].map(([value,text])=>`<option value="${value}"${prepared?.materials===value?' selected':''}>${text}</option>`).join('')}</select></label>
+                        <label>Site / access<select name="access" class="form-select">${[['unreviewed','Not reviewed'],['blocked','Blocked / waiting'],['ready','Reviewed / ready']].map(([value,text])=>`<option value="${value}"${prepared?.access===value?' selected':''}>${text}</option>`).join('')}</select></label>
+                        <label class="commercial-operations-wide">Unresolved blockers<textarea name="blockers" maxlength="4000" rows="2">${escape(prepared?.blockers || '')}</textarea></label>
+                        <label class="commercial-operations-wide">Preparation / scope and access notes<textarea name="note" required maxlength="4000" rows="2">${escape(prepared?.note || '')}</textarea></label>
+                        <p class="commercial-operations-note commercial-operations-wide">Internal review only. Does not order materials, book, assign, start work, mark payment or send messages. Scope, location, equipment or schedule changes require review again.</p>
+                        <button type="submit" class="commercial-workload-btn">Save preparation review</button>
+                    </form>` : `<p>${escape(prepared?.note || 'No preparation review recorded.')}</p>`}
+                    <ul class="commercial-operations-history">${installation.preparationHistory.map(event=>`<li><strong>Preparation reviewed</strong><time>${escape(date(event.created_at))} · ${escape(event.actor_name)}</time><span>${escape(event.payload.note)}</span></li>`).join('') || '<li>No preparation activity recorded.</li>'}</ul>
+                    ${installation.hasOlderPreparationHistory ? '<p class="commercial-operations-note">Showing the latest 50 preparation changes.</p>' : ''}</details>
                     ${['queued','assigned'].includes(job.status) ? `<details data-section="assign"><summary>Assign existing installer</summary><form data-action="assign" class="commercial-operations-form">
                         <label>Existing active installer<select name="proId" class="form-select" required><option value="">Choose installer</option>${model.data.installers.filter(person => person.name !== 'Name unavailable').map(person => `<option value="${escape(person.id)}">${escape(person.name)}</option>`).join('')}</select></label>
                         <label>Assignment notes<textarea name="note" required maxlength="4000" rows="2"></textarea></label><button class="btn btn-tonal" type="submit">Record assignment</button>
                         <p class="commercial-operations-note commercial-operations-wide">Explicit ADMIN assignment; no technician acceptance, notification or portal action is implied. Conflicting assignments require reconciliation.</p>
                     </form></details>` : ''}
-                    <details data-section="schedule"><summary>Set installation window</summary><form data-action="schedule" class="commercial-operations-form">
-                        ${dateInput('start', `Start (${timeZone})`, job.due_at, 'required')}
-                        ${dateInput('end', `End (${timeZone})`, order.metadata_json?.scheduled_end, 'required')}
-                        <p class="commercial-operations-note commercial-operations-wide">${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}. No availability check or customer confirmation.</p>
-                        <button class="btn btn-tonal" type="submit"${!['queued','assigned'].includes(job.status) ? ' disabled' : ''}>Save installation window</button>
-                    </form></details>
+                    <p class="commercial-operations-note">Use Installation reservation above to hold, confirm, reschedule or cancel the shared window. Confirmed changes update this linked installation too.</p>
                     ${job.status === 'assigned' ? `<details data-section="start"><summary>Record installation started</summary><form data-action="start" class="commercial-operations-form">
                         <label class="commercial-operations-wide">Start notes<textarea name="note" required maxlength="4000" rows="2"></textarea></label>
-                        <p class="commercial-operations-note commercial-operations-wide">Requires a recorded installer, schedule, work address and delivered equipment where ordering is required.</p><button class="btn btn-tonal" type="submit">Record installation started</button>
+                        <p class="commercial-operations-note commercial-operations-wide">Requires reviewed preparation with no unresolved blockers, a confirmed reservation, recorded installer, work address and delivered equipment where ordering is required.</p><button class="btn btn-tonal" type="submit"${preparation.ready ? '' : ' disabled'}>Record installation started</button>
                     </form></details>` : ''}
                     <details data-section="completion"><summary>Record installation completion</summary><form data-action="complete" class="commercial-operations-form">
                         <label class="commercial-operations-wide">Completion notes<textarea name="note" required maxlength="4000" rows="2"></textarea></label>
@@ -243,6 +330,8 @@
                 ${history.length > 3 ? `<details data-section="history"><summary>Earlier activity (${history.length - 3}${model.data.hasOlderActivity ? '+' : ''})</summary><ol class="commercial-operations-timeline">${history.slice(3).map(historyItem).join('')}</ol></details>` : ''}
             </section>
             <button type="button" class="commercial-operations-review" data-reload>Review latest / discard draft</button>`;
+        const smsButton=model.root.querySelector('[data-load-sms]');
+        if (smsButton) smsButton.onclick=()=>loadSharedSms(model,smsButton);
         model.root.querySelectorAll('details').forEach(node => { node.open = expanded.has(node.dataset.section); });
         model.root.querySelectorAll('form').forEach(form => {
             const syncTiming = () => {
@@ -260,20 +349,54 @@
             form.onsubmit = event => { event.preventDefault(); if (form.hasAttribute('data-lookup')) lookup(model, form); else save(model, form); };
             syncTiming();
         });
+        const workloadForm = model.root.querySelector('[data-action="workload"]');
+        model.root.querySelectorAll('[data-workload-intent]').forEach(button => {
+            button.onclick = () => {
+                if (model.saving) return;
+                if (model.dirty || model.businessDirty || model.calendarDirty) {
+                    message(model, 'Save or discard the current draft before choosing another lead action.');
+                    return;
+                }
+                workloadForm.hidden = false;
+                const intent = button.dataset.workloadIntent, timed = ['hold','next_action'].includes(intent);
+                workloadForm.elements.intent.value = intent;
+                workloadForm.elements.nextFollowUpAt.disabled = !timed;
+                workloadForm.elements.nextFollowUpAt.required = timed;
+                workloadForm.elements.nextFollowUpAt.closest('label').hidden = !timed;
+                workloadForm.elements.responsibleId.required = timed;
+                workloadForm.elements.outcome.disabled = intent !== 'close';
+                workloadForm.elements.outcome.closest('label').hidden = intent !== 'close';
+                workloadForm.querySelector('[data-workload-save]').textContent = button.textContent;
+                workloadForm.elements.reason.focus({ preventScroll: true });
+            };
+        });
+        workloadForm.querySelector('[data-workload-cancel]').onclick = () => {
+            if (model.saving) return;
+            workloadForm.reset(); workloadForm.hidden = true;
+            model.dirty = false;
+        };
         model.root.querySelector('[data-reload]').onclick = () => {
-            if (model.saving || ((model.dirty || model.businessDirty) && !global.confirm('Discard unsaved changes and review the latest record?'))) return;
+            if (model.saving || ((model.dirty || model.businessDirty || model.calendarDirty) && !global.confirm('Discard unsaved changes and review the latest record?'))) return;
             model.dirty = false;
             model.businessDirty = false;
+            model.calendarDirty = false;
             global.H2SCommercialBusiness?.discard(model.id);
             model.retry = null;
             if (model.latest) {
                 model.data = model.latest;
                 model.signature = signature(model.data);
                 render(model);
-            } else refresh(model);
+            }
+            refresh(model);
         };
         global.H2SCommercialBusiness?.mount(model.root.querySelector('[data-business-tools]'), model.id, {
             ...model.options, dateInput, instantValue, onDirty: value => { model.businessDirty = value; }, onActivity: () => refresh(model),
+        });
+        global.H2SCommercialCalendar?.mountLead(model.root.querySelector('[data-installation-reservation]'), model.id, {
+            ...model.options, dateInput, instantValue,
+            readOnly: !!job && !['queued','assigned'].includes(job.status),
+            onDirty: value => { model.calendarDirty = value; },
+            onActivity: () => { refresh(model); model.options.onActivity?.(); },
         });
         if (active) {
             const target = active.tagName === 'SUMMARY' && activeSection ? model.root.querySelector(`details[data-section="${activeSection}"] > summary`)
@@ -306,10 +429,16 @@
     }
     async function save(model, form) {
         if (model.saving || !form.reportValidity()) return;
+        if (model.calendarDirty) { message(model, 'Save or discard your calendar draft before changing the lead.'); return; }
         const fields = Object.fromEntries(new FormData(form)), action = form.dataset.action;
         let payload;
         try {
-            if (action === 'follow_up') {
+            if (action === 'workload') {
+                payload = { intent: fields.intent, responsibleId: fields.responsibleId,
+                    nextFollowUpAt: ['hold','next_action'].includes(fields.intent) ? instantValue(form, 'nextFollowUpAt') : '',
+                    outcome: fields.outcome || '', reason: fields.reason };
+                payload.resumeConsultationChasing = fields.resumeConsultationChasing === 'on';
+            } else if (action === 'follow_up') {
                 const callback = fields.recordContact && fields.outcome === 'requested_callback';
                 payload = { responsibleId: fields.responsibleId,
                     nextFollowUpAt: fields.disposition === 'closed' || (fields.followUpMode === 'automatic' && !callback) ? '' : instantValue(form, 'nextFollowUpAt'),
@@ -318,7 +447,12 @@
                 if (fields.recordContact) payload.contact = { channel: fields.channel, outcome: fields.outcome, note: fields.note };
                 if (fields.recordContact && !fields.note.trim()) throw new Error('Contact notes are required.');
                 if (fields.disposition === 'closed' && !fields.reason.trim()) throw new Error('A nonblank closure reason is required.');
-            } else if (action === 'location') payload = { ...fields, expectedUpdatedAt: model.data.lead.updated_at };
+            } else if (action === 'location') payload = { ...fields, expectedUpdatedAt: model.data.lead.updated_at,
+                ...(fields.applyToJob ? {applyToJob:true,expectedJobUpdatedAt:model.data.installation.job.updated_at,expectedOrderUpdatedAt:model.data.installation.order.updated_at} : {}) };
+            else if (action === 'preparation') payload = {scopeReviewed:fields.scopeReviewed==='on',materials:fields.materials,access:fields.access,
+                blockers:fields.blockers,note:fields.note,preparationRevision:model.data.installation.preparation.record?.revision || 0,
+                context:model.data.installation.preparation.context,expectedJobUpdatedAt:model.data.installation.job.updated_at,
+                expectedOrderUpdatedAt:model.data.installation.order.updated_at};
             else if (action === 'link') payload = { orderId: model.candidate.id, jobId: fields.jobId };
             else payload = {
                 ...(action === 'schedule' ? { start: instantValue(form, 'start'), end: instantValue(form, 'end'), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : { note: fields.note, ...(action === 'assign' ? { proId: fields.proId } : {}) }),
@@ -341,6 +475,7 @@
             model.retry = null;
             render(model);
             message(model, 'Saved. Installation, payment and follow-up remain separate facts.');
+            model.options.onActivity?.();
         } catch (error) {
             controls.forEach((node, index) => { node.disabled = disabled[index]; });
             message(model, `${error.message} Draft retained. Only an explicit unchanged save reuses the operation key.`);

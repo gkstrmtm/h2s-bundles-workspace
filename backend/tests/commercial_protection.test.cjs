@@ -68,6 +68,7 @@ function fixture({ env = {}, requests = [], missingTable = null } = {}) {
       contact_preference: 'sms', attribution: { communicationConsent: { smsOptIn: true } },
     }],
     commercial_consultation_requests: requests.map(row => ({ ...row })),
+    commercial_lead_operations: [],
     sms_threads: [], sms_messages: [],
   };
   const database = {
