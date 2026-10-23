@@ -121,3 +121,27 @@ test('popup positioning stays within the viewport without reading cross-origin s
     assert.ok(top >= 8 && top + 380 <= f.window.innerHeight - 8);
   } finally { f.close(); }
 });
+
+test('dynamic popups keep unique accessible IDs when another picker is removed', () => {
+  const f = fixture('<input type=date><input type=date>');
+  try {
+    const ready = call => {
+      const instance = call.input._flatpickr;
+      instance.calendarContainer = f.window.document.createElement('div');
+      instance.calendarContainer.className = 'flatpickr-calendar';
+      f.window.document.body.append(instance.calendarContainer);
+      call.options.onReady([], '', instance);
+      return instance.calendarContainer;
+    };
+    f.window.h2sInitDateInputs();
+    const first = ready(f.calls[0]), second = ready(f.calls[1]);
+    first.remove();
+    const input = f.window.document.createElement('input');
+    input.type = 'date';
+    f.window.document.body.append(input);
+    f.window.h2sInitDateInputs(input);
+    const third = ready(f.calls[2]);
+    assert.notEqual(second.id, third.id);
+    assert.equal(input._flatpickr.altInput.getAttribute('aria-controls'), third.id);
+  } finally { f.close(); }
+});

@@ -20232,6 +20232,8 @@ function deliverablesBrowserRender(mode) {
             try { inputEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
         }
 
+        let h2sDatePopupCounter = 0;
+
         function h2sBuildDateInputOptions(inputEl) {
             const kind = inputEl.dataset.h2sDateType || inputEl.type;
             const isTimeOnly = kind === 'time';
@@ -20276,7 +20278,7 @@ function deliverablesBrowserRender(mode) {
                     alt.setAttribute('aria-haspopup', 'dialog');
                     const popup = instance.calendarContainer;
                     if (popup) {
-                        popup.id = `${alt.id || `h2sDatePopup${document.querySelectorAll('.flatpickr-calendar').length}`}Popup`;
+                        popup.id = `${alt.id || `h2sDatePopup${++h2sDatePopupCounter}`}Popup`;
                         popup.setAttribute('role', 'dialog');
                         popup.setAttribute('aria-label', alt.getAttribute('aria-label'));
                         alt.setAttribute('aria-controls', popup.id);
