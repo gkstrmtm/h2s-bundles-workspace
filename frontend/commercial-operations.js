@@ -81,7 +81,7 @@
                 model.recoveryTimer = null;
                 model.latest = next;
                 const active = document.activeElement;
-                if (model.dirty || (model.root.contains(active) && (active.matches('input,textarea,select') || active.closest('.dashboard-custom-select-shell.is-open')))) {
+                if (model.dirty || model.businessDirty || (model.root.contains(active) && (active.matches('input,textarea,select') || active.closest('.dashboard-custom-select-shell.is-open')))) {
                     if (model.data && changed(model.data, next)) message(model, 'Updated record available. Your edits are retained; review latest before saving.');
                     else message(model, 'Current record checked. Unsaved edits are retained.');
                     return;
@@ -162,11 +162,12 @@
             <dl class="commercial-operations-facts">
                 ${row('Lead', escape(label(state.disposition)))}
                 ${row('Responsible', escape(state.responsible_name || 'Not assigned'))}
-                ${row('Latest contact', escape(latestContact ? label(latestContact.payload.contact.outcome) : 'No attempt recorded'))}
+                ${row('Latest contact', escape(latestContact ? latestContact.payload.contact.outcome === 'email_submitted'
+                    ? 'Staff email submitted; delivery evidence below' : label(latestContact.payload.contact.outcome) : 'No attempt recorded'))}
                 ${row('Next action', escape(state.disposition === 'closed' ? 'Lead closed; installation and payment remain separate'
-                    : !installation ? 'Follow up; prepare approved quote/payment setup' : 'Follow up or update the installation below'))}
+                    : !installation ? 'Review quote/payment records below and link the intended installation' : 'Follow up or update the installation below'))}
                 ${row('Installation', escape(job ? `${label(job.status)}${installerIds.length > 1 ? ' · conflicting assignments — reconcile' : installer ? ` · ${installer.name}` : ' · installer name unavailable'}` : 'No installation linked'))}
-                ${row('Payment', installation ? `<strong>${escape(label(installation.payment.status))}</strong> · ${escape(installation.payment.detail)}` : 'Quote/payment setup required. Payment collection is not connected for this lead.')}
+                ${row('Payment', installation ? `<strong>${escape(label(installation.payment.status))}</strong> · ${escape(installation.payment.detail)}` : 'Manual collection records below. No linked order is available for Stripe verification.')}
                 ${order ? row('Existing order', `${escape(order.order_id)} · ${escape(money(order))}`) + row('Work location', escape([order.address,order.city,order.state,order.zip].filter(Boolean).join(', ') || 'Missing — reconcile the existing order address before starting')) : ''}
                 ${state.completed_at ? row('Completion recorded', `${escape(date(state.completed_at))} · ${escape(state.completed_by?.name)}. No payout or communication was triggered.`) : ''}
             </dl>
@@ -205,7 +206,7 @@
             </form></details>
             <section aria-label="Installation and payment" class="commercial-operations-section">
                 <h5>Installation actions</h5>
-                ${!installation ? `<p class="commercial-operations-note"><strong>Quote/payment setup required.</strong> No order, job or checkout is created here.</p>
+                ${!installation ? `<p class="commercial-operations-note">No installation is linked. Quote and manual collection records are below; linking and scheduling remain explicit staff actions.</p>
                     <details data-section="link"><summary>Link an existing priced installation</summary>
                     <form data-lookup class="commercial-operations-form">${input('orderRef', 'Existing order reference', '', 'text', 'required maxlength="150"')}<button class="btn btn-secondary" type="submit">Find existing order</button></form><div data-candidate></div></details>` : `
                     ${['queued','assigned'].includes(job.status) ? `<details data-section="assign"><summary>Assign existing installer</summary><form data-action="assign" class="commercial-operations-form">
@@ -232,9 +233,10 @@
                         let safe = false;
                         try { safe = new URL(asset.url).protocol === 'https:'; } catch (_) { /* Stored invalid URLs are not made interactive. */ }
                         return `<li>${safe ? `<a href="${escape(asset.url)}" target="_blank" rel="noopener noreferrer">${escape(asset.caption || label(asset.artifact_type))}</a>` : 'Evidence link unavailable'}</li>`;
-                    }).join('') || '<li>No evidence attachments recorded. Completion notes are required; this surface does not upload proof.</li>'}</ul></details>`}
+                    }).join('') || '<li>No legacy job evidence recorded. Private installation proof can be uploaded below; completion remains a separate action.</li>'}</ul></details>`}
             </section>
             <section class="commercial-operations-section" aria-label="Recorded commercial communications"><h5>Communications</h5>${communications(model.data)}</section>
+            <section class="commercial-operations-section" aria-label="Commercial business tools" data-business-tools><p class="hint">Business tools are unavailable. Reload the dashboard.</p></section>
             <section class="commercial-operations-section" aria-label="Activity and upcoming actions"><h5>Upcoming actions</h5>
                 <ul class="commercial-operations-timeline commercial-operations-upcoming">${upcoming.join('') || '<li>No dated action recorded.</li>'}</ul>
                 <h5>Recorded activity</h5><ol class="commercial-operations-timeline">${history.slice(0, 3).map(historyItem).join('') || '<li>No operational activity recorded.</li>'}</ol>
@@ -259,8 +261,10 @@
             syncTiming();
         });
         model.root.querySelector('[data-reload]').onclick = () => {
-            if (model.saving || (model.dirty && !global.confirm('Discard unsaved changes and review the latest record?'))) return;
+            if (model.saving || ((model.dirty || model.businessDirty) && !global.confirm('Discard unsaved changes and review the latest record?'))) return;
             model.dirty = false;
+            model.businessDirty = false;
+            global.H2SCommercialBusiness?.discard(model.id);
             model.retry = null;
             if (model.latest) {
                 model.data = model.latest;
@@ -268,6 +272,9 @@
                 render(model);
             } else refresh(model);
         };
+        global.H2SCommercialBusiness?.mount(model.root.querySelector('[data-business-tools]'), model.id, {
+            ...model.options, dateInput, instantValue, onDirty: value => { model.businessDirty = value; }, onActivity: () => refresh(model),
+        });
         if (active) {
             const target = active.tagName === 'SUMMARY' && activeSection ? model.root.querySelector(`details[data-section="${activeSection}"] > summary`)
                 : activeForm ? model.root.querySelector(`form[data-action="${activeForm}"] ${active.name ? `[name="${active.name}"]` : 'button[type="submit"]'}`) : null;

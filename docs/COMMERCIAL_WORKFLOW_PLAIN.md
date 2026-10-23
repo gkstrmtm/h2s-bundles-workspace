@@ -2,29 +2,37 @@
 
 ## Read this first
 
-**Release status: deployed.** Checked October 22, 2026, at approximately
-11:43 p.m. US Eastern (October 23, 03:43 UTC).
+**Current business-tools update: local, not deployed.** The earlier commercial
+release remains in production. The Queue/presentation proposal was committed
+separately; the phone-only intake, manual quote/payment and private attachment additions
+below are the next local increment.
 
-The approved database updates were applied and verified. The matching backend
-and customer/dashboard pages were deployed directly to Vercel, backend first.
-Git-triggered deployments remain disabled. Reload an already open dashboard
-once to get the new controls. A message saying the database update is required
-still means stop and report it, not work around it.
+Database updates 029–033 were previously applied and verified. Updates 034 and
+035 are prepared but not applied. Direct Vercel deployment remains the intended
+route, backend first and then matching customer/dashboard pages; Git-triggered
+deployments remain disabled. Commercial email is paused and not needed for this
+release. Leave its enable setting absent or false. No email subscription or
+provider setup is required for these phone-only changes.
+A setup error means report and resolve setup, not assume a message was sent.
 
 Evidence means three different things:
 
-- **Fixture-tested:** intake/contact preferences, technician decisions and
+- **Fixture-tested:** Call/Text contact rules, optional email without marketing
+  enrollment, unchanged historical Email-first records, saved manual quotes,
+  deposit/balance and payment facts, and private attachment/proof rules.
+  Tests use local records and fake email/payment services. Earlier fixture
+  coverage includes intake/contact preferences, technician decisions and
   no-response handling, follow-up, installation rules, communication evidence,
-  payment verification, Home2Smart branding, media framing and video failures
-  were exercised using made-up data and fake message/payment services. The
+  payment verification, Home2Smart branding, media framing and video failures. The
   reviewed release also passed its production build and focused tests.
-- **Production-read-verified:** deployed files match the release. Unauthorized
+- **Production-read-verified (earlier release):** deployed files match that release. Unauthorized
   requests are rejected; an authorized administrator-key read loads the queue.
   The database updates, permissions and operations storage reads passed. All
   three Commercial media areas rendered, and the actual public Camera installs
   video played using native controls on desktop and mobile Chromium, including
   pause, resume and seeking. No real media settings were saved.
-- **Not yet live-tested:** both owners' sign-in/roles, signed-in installation
+- **Not yet live-tested:** private uploads, manual quote/payment records,
+  both owners' sign-in/roles, signed-in installation
   details, real intake/uploads, technician replies, reminder delivery, customer
   messages, installation changes and real payment outcomes. Signed-in operations
   reads were deliberately left to acceptance testing: authentication updates
@@ -41,13 +49,15 @@ scheduled processes remain configured; their message delivery was not tested.
 ### 1. The customer sends an inquiry
 
 - **Who acts:** the customer opens the Commercial page, describes the work and
-  chooses email, call or text.
+  chooses Call first or Text first. Both require a phone number.
 - **Automatic:** valid contact details can save a draft before final submission.
   The final request saves the inquiry and requested consultation window. A
   request is not an installation booking or a price agreement.
 - **Manual:** the customer submits the request. Texting requires the customer's
-  texting choice/consent. Email and call preferences need staff follow-up;
-  there is no automatic commercial customer email or phone call.
+  texting choice/consent. Call preference requires a staff call; no phone call
+  is automated. Email is optional, saved for possible future use, and does not
+  subscribe the customer to marketing. Email-only follow-up and automatic
+  customer emails are not offered in this release.
 
 Optional customer photos/plans are implemented: JPEG, PNG, WebP or PDF, up to
 3 MB each and eight files total. This is not an unlimited attachment inbox,
@@ -61,7 +71,7 @@ upload/reopening has not been live-tested for this release.
   the same stage.
 - **Automatic:** a consultation submission attempts a staff text to the
   configured consultation/dispatch recipients. A text-preferring customer with
-  consent also receives a pending acknowledgement. Email/call requests send
+  consent also receives a pending acknowledgement. Call requests send
   staff a manual-follow-up alert instead of an approval request.
 - **Manual:** check the customer's preference, request status and recorded
   communication results. The routing summary identifies configured recipients;
@@ -81,7 +91,9 @@ or acknowledged. Failed, unavailable or uncertain results need review.
   follow up. It does not book a replacement time.
 - **Manual:** staff reviews appointment creation and communication results.
   YES alone does not prove an appointment or customer confirmation succeeded.
-  Email/call requests are manual follow-up, not technician approval requests.
+  Call requests are manual follow-up, not technician approval requests.
+  Historical Email-first records remain unchanged and need staff review; do
+  not silently switch their preference or send texts without permission.
 
 With no response, the scheduled maintenance process can remind the technician
 and then escalate to configured management recipients. Defaults are a
@@ -98,8 +110,12 @@ not approve the old window.
 - **Automatic:** saving records responsibility, next follow-up, open/closed
   status and an activity history. Selecting **Log a contact attempt** records
   the chosen channel, outcome and notes. It does not send the contact.
-- **Manual:** actually make the call, send the email/text through the approved
-  business channel, then record what happened and the next action. Set a
+- **Manual:** call the customer, or use the established text conversation only
+  when texting is allowed. Record the actual outcome and next action in the
+  Queue. The contact log itself does not make the call or send a message.
+  Saved email is informational; no Queue email action or automatic email is
+  available. Historical email evidence, if present, remains read-only.
+- **Manual:** set a
   responsible person and due time; assigning responsibility does not grant
   dashboard access.
 
@@ -141,10 +157,12 @@ Completion does **not** pay the technician, send a receipt/review request, or
 message the customer. Staff must handle any required downstream business work
 separately.
 
-**Proof limit:** existing recorded work-evidence links can be viewed. Commercial
-Queue does not upload new installation proof or attach files to a contact note.
-An empty evidence list is not proof photos exist elsewhere. No mandatory
-photo-count rule has been added.
+**Proof and attachments:** open **Private attachments and work proof** to upload
+JPEG, PNG, WebP or PDF, up to 3 MB. Choose contact note, quote document, payment
+evidence or installation proof. A contact attachment can reference its recorded
+contact attempt. Installation proof requires the correct already linked job.
+Uploads do not complete work. Viewing links expire after five minutes; refresh
+business records to renew them. No mandatory photo-count rule has been added.
 
 ### 7. Check payment without assuming money was collected
 
@@ -157,11 +175,26 @@ photo-count rule has been added.
   results in the approved payment process. A technician YES, an opened checkout,
   or a stored "paid" label alone is not payment proof.
 
-**Unfinished:** custom commercial quotes, quote approval, custom payment
-collection, pricing/tax rules, deposits and balances are not connected here.
-Without an existing priced installation, expect **Quote/payment setup required**.
-Do not improvise a price, create a fake order, or treat the customer's budget as
-an approved quote.
+**Staff-controlled quoting and collection:** open **Quote and payment terms**.
+Enter the actual written all-in quote, scope and reference. Choose full payment
+or a deposit amount with the remaining balance. If recording customer approval,
+state who approved, when and how. Attach the written quote for staff reference.
+Arrange its delivery with the customer outside this email-disabled tool.
+This is not an automatic quote calculator or online
+customer approval page; the customer's budget is never an approved price.
+
+Collect money using the established business process. Under **Manual payment
+records**, record the amount, method, time, reference and how receipt was
+checked. “Reported” does not reduce the displayed balance; staff-confirmed
+receipt does. These are manual facts, never Stripe verification. Correcting a
+record keeps its history and does not refund money. Quote pricing/terms cannot
+be silently changed while active payment records exist.
+
+Scheduling and payment collection stay separate and under staff control.
+These records do not generate an installation job/order or a Stripe checkout,
+charge a customer, calculate taxes or decide that payment is required before
+scheduling. Link the actual existing priced installation before using its
+assignment/start/completion controls.
 
 ### 8. Change Website Media deliberately
 
@@ -206,6 +239,9 @@ button while doing these checks.
   users cannot access protected dashboard data.
 - [ ] Open an owner-approved existing inquiry. Compare its contact preference,
   consultation state, follow-up and communication evidence without saving.
+- [ ] Confirm the new form offers only Call/Text and requires a phone. Optional
+  email stays saved-only; there is no email composer or marketing enrollment.
+  Any historical email evidence remains read-only.
 - [ ] Confirm operations loads rather than showing a database
   update required. Read existing order/job/payment details without linking or
   changing them. Opening details can make read-only Stripe checks.
@@ -228,7 +264,11 @@ recipients, timing and expected effects. Prefer fixtures first.
 
 - [ ] Typing valid production contact details, submitting an inquiry, or uploading
   customer files creates/changes real records. Submission may send staff/customer
-  texts and schedule reminders.
+  texts and schedule existing technician reminders for consented Text-first.
+  Call-first remains a manual staff call. No new customer email is sent.
+- [ ] Quote/payment saves, payment-record corrections and private attachments
+  change real records. A payment-record correction is not a refund; uploading
+  proof is not installation completion.
 - [ ] YES/NO, approval links, rescheduling, maintenance/recovery/retry controls
   may change requests, create consultation appointments or send real messages.
   They are not viewing checks.

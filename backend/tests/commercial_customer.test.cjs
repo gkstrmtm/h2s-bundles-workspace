@@ -156,8 +156,8 @@ test('receipt uses saved preference, not an unsaved custom-dropdown choice', t =
   w.document.getElementById('contactPreference').value = 'sms';
   w.testState.lead = { contactPreference: 'email' };
   w.renderSubmission(record);
-  assert.match(w.document.getElementById('successCopy').textContent, /We'll follow up by email/);
-  assert.match(w.commercialSubmissionCopy(record, null, now).copy, /We'll follow up by email/);
+  assert.match(w.document.getElementById('successCopy').textContent, /Email follow-up is currently unavailable/);
+  assert.match(w.commercialSubmissionCopy(record, null, now).copy, /Email follow-up is currently unavailable/);
   assert.match(w.commercialSubmissionCopy(record, { contactPreference: 'call' }, now).copy, /staff member will call/);
   const text = w.commercialSubmissionCopy(request(), { contactPreference: 'sms' }, now);
   assert.match(text.copy, /Check your texts/);
@@ -215,7 +215,7 @@ test('Commercial footer owns an opaque matching bottom background and safe-area 
 test('token-authorized reload preserves resolved receipts without changing the active submission guard', async () => {
   const fixture = createFixture();
   const saved = await fixture.post('commercial-intake', { fullName: 'Receipt Fixture', companyName: 'Fixture Store',
-    email: 'receipt@example.invalid', contactPreference: 'email', serviceNeeds: ['Security Cameras'] });
+    email: 'receipt@example.invalid', phone: '+15550000005', contactPreference: 'call', serviceNeeds: ['Security Cameras'] });
   assert.equal(saved.status, 201);
   const lead = (await saved.json()).lead;
   const submitted = await fixture.post('commercial-consultation', { publicToken: lead.publicToken });

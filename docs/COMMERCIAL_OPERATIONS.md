@@ -1,5 +1,78 @@
 # Commercial operations: existing-order workflow
 
+## Staff-controlled business tools (local; not released)
+
+This next increment builds on the committed Queue/presentation proposal. It
+requires migration 035 after 034 and a matching backend/frontend release.
+Neither migration has been applied. Automatic internal follow-up remains
+disabled, and no new outbound chase sequence or payment/scheduling gate exists.
+
+- **Current release is phone-only:** new requests offer Text first or Call first
+  and require a valid phone number. Text first still requires explicit texting
+  consent. Optional email is saved but does not opt anyone into marketing.
+- Email-first is rejected by both public APIs, including stale clients with a
+  valid email and phone. Old Email-first records remain readable and unchanged;
+  their preference and consent are never silently converted to Text or Call.
+  Editing an old email-only draft requires choosing an available phone channel.
+- No automatic customer email is connected to submission. The new Queue email
+  composer/retry actions are hidden while `COMMERCIAL_EMAIL_ENABLED` is absent
+  or false; saved email is plain text, not an action promising a send. Existing
+  email evidence remains read-only. The dormant transport and signed-event code
+  are retained for a separately reviewed future reactivation, not enabled now.
+- Quotes record a staff-entered all-in USD amount, scope/reference, full-payment
+  or deposit/balance terms, and explicit evidence for staff-recorded approval.
+  There is no price/tax calculator, customer approval portal, automatic checkout
+  or charge. Collect money using the existing business process.
+- Manual payment facts distinguish reported from staff-checked receipt.
+  Remaining balance uses staff-confirmed entries only, not reported amounts.
+  These entries are never called Stripe verification. Corrections retain the
+  original audit record and do not issue refunds. A quote with active payment
+  records cannot be silently repriced.
+- Admin-only contact-note attachments, quote/payment documents and installation
+  proof use a private Storage bucket with five-minute signed viewing links.
+  A contact attachment can reference the actual recorded contact attempt.
+  Installation proof records its already linked job; uploading does not complete
+  work. Original files and existing public media placements are not modified.
+  JPEG, PNG, WebP and PDF are supported, up to 3 MB per file; an email can attach
+  up to three files and 3 MB combined.
+
+Deferred email configuration, outside Git (not required for this release):
+
+| Name | Purpose |
+| --- | --- |
+| `SENDGRID_API_KEY` | Existing SendGrid sender credential; never committed. |
+| `SENDGRID_FROM_EMAIL` | Existing verified Home2Smart sender. |
+| `COMMERCIAL_EMAIL_REPLY_TO` | Monitored business mailbox for actual customer replies; `SENDGRID_REPLY_TO_EMAIL` is an alternative. |
+| `COMMERCIAL_EMAIL_ENABLED` | Leave absent or `false`. Future staff sending requires separate approval; it does not restore public Email-first or automatic receipts. |
+| `SENDGRID_EVENT_WEBHOOK_VERIFICATION_KEY` | SendGrid's ECDSA public verification key, not the API key or Twilio SMS token. |
+
+If email is reactivated in a future release, signed SendGrid events target
+`https://h2s-backend.vercel.app/api/commercial-email-events`. Preserve any existing
+provider webhook integration when adding this consumer; do not blindly replace
+another active webhook. Configure processed, delivered, deferred, bounce,
+dropped, spam-report and unsubscribe events. Open/click events are not reading
+or acknowledgement evidence; new Commercial messages disable tracking pixels
+and click rewriting. Signed recipient/provider correlation and event IDs prevent
+wrong-message updates and duplicate/out-of-order delivery regression. Opt-out
+and bounce suppression blocks new sends pending address/consent review.
+
+Production read-only preflight found existing SendGrid API/from configuration,
+but no Commercial enable/reply-to or signed-webhook key. The actual sender key
+has `mail.send` only; sender-verification and webhook administration reads return
+403. A separate temporary `SENDGRID_WEBHOOK_ADMIN_API_KEY`, configured outside
+Git in the ignored `backend/.env.migrations.local` or the setup process
+environment, is needed to inspect/configure the signed webhook. It is a setup
+credential, not a new application runtime secret; keep the production sender
+key restricted. This setup is deferred, not a phone-only release prerequisite.
+Supabase Storage has RLS
+and no browser-role object policies. Migration 035 checks that default-deny
+boundary before adding its private bucket; it does not grant browser storage
+access or require taking ownership of Supabase-managed Storage tables.
+
+All new behavior is fixture-validated, not live-message/payment acceptance.
+Physical iOS Safari is not available in this environment. The prior selective
+commit is still the committed baseline; this business increment is not deployed.
+
 ## Queue follow-up and delivery proposal (local; not released)
 
 This focused increment preserves the existing queue layout, Upcoming actions,
@@ -35,12 +108,12 @@ email link/manual action. Contact-log channel defaults to the lead's preference
 but remains editable to record what actually happened; logging is not sending.
 Follow-up saves do not replace the customer's preference.
 
-**Automated customer email is a separate unfinished capability:** this path has
-no customer email sender, email-provider configuration integration or email
-delivery receipts. A manual contact log is not proof that email was sent or
-delivered. Verification uses synthetic submissions and fake staff SMS plus
-fixture follow-up saves; live submission/staff delivery/customer follow-up
-remain acceptance checks, not production-verified behavior.
+The original manual-only proposal did not send customer email. The later email
+implementation is retained but deferred from this phone-only release. No
+initial receipt or Queue email send is active. A manual contact log still is
+not proof an email was sent or delivered.
+Live submission/staff delivery/customer follow-up remain authorized acceptance
+checks, not production-verified behavior.
 
 The same proposal includes narrow Commercial customer-page corrections:
 all seven custom dropdowns cancel wrapping-label activation before option
@@ -206,10 +279,11 @@ including decline, reschedule, safe recovery and error replies. The approval
 page retains that visible brand on its loading and error states. Historical
 message bodies, domains, references, consent records and provider/effect keys
 are not rewritten; accepted/uncertain effects are not replayed for branding.
-Email-first is manual follow-up, not an automated email workflow. Consultation
+The business-tools increment retains dormant email implementation, but this
+phone-only release does not offer Email-first or Queue email sending. Consultation
 approval creates its appointment through the guarded RPC, not the legacy
 schedule/checkout mail path. The shared mail sender already uses Home2Smart
-Portal; no new email or downstream completion communication is enabled.
+Portal; no automatic ongoing email cadence or completion communication is enabled.
 Branding fixtures do not verify real SMS/email delivery or provider configuration.
 
 ### Customer video playback

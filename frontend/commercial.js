@@ -187,12 +187,11 @@
     const phone = String(payload.phone || '').trim();
     const email = String(payload.email || '').trim();
     const digits = normalizePhoneDigits(phone);
-    if (['sms', 'call', 'email'].indexOf(method) < 0) return { field: 'contactPreference', message: 'Choose Text first, Call first, or Email first.' };
+    if (['sms', 'call'].indexOf(method) < 0) return { field: 'contactPreference', message: 'Choose Text first or Call first. Email-only follow-up is not currently offered.' };
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { field: 'email', message: 'Enter a valid email address.' };
     if (phone && (!/^[+\d\s().-]+$/.test(phone) || digits.length < 10 || digits.length > 15)) return { field: 'phone', message: 'Enter a valid phone number, including the area code.' };
-    if (method === 'email' && !email) return { field: 'email', message: 'Email first requires a valid email address. A phone number is optional.' };
-    if (method !== 'email' && !phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
-    if (requiresMessagingConsent(payload) && !hasMessagingConsent(payload)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first or Email first.' };
+    if (!phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
+    if (requiresMessagingConsent(payload) && !hasMessagingConsent(payload)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first.' };
     return null;
   }
 
@@ -217,9 +216,9 @@
 
   function getFollowUpCopy() {
     const preference = String(byId('contactPreference') ? byId('contactPreference').value : 'sms').toLowerCase();
-    const manual = preference === 'email' || preference === 'call';
-    const channel = preference === 'email' ? 'email' : 'phone';
-    const manualCopy = `${preference === 'email' ? "We'll follow up by email. " : ''}Your request is submitted for manual follow-up by ${channel}. No automated customer texts or emails are sent for this request. Any preferred window is pending review; no appointment is confirmed.`;
+    const manual = preference === 'call';
+    const channel = 'phone';
+    const manualCopy = 'Your request is submitted for staff follow-up by phone. No automated customer texts are sent for this request. Any preferred window is pending review; no appointment is confirmed.';
     return {
       preference,
       cta: manual ? 'Request manual follow-up' : 'Submit estimate request',
@@ -246,11 +245,12 @@
     const texting = copy.preference === 'sms';
     if (byId('smsConsentField')) byId('smsConsentField').classList.toggle('hidden', !texting);
     if (byId('smsConsent')) byId('smsConsent').disabled = !texting;
-    setText('contactMethodHint', texting
-      ? 'Text first requires a valid phone number and your explicit agreement below. You can choose manual call or email follow-up instead.'
-      : 'Call and email follow-up are manual. We do not send automated customer texts for these choices.');
-    setText('phoneLabel', copy.preference === 'email' ? 'Phone (optional)' : 'Phone (required)');
-    setText('emailLabel', copy.preference === 'email' ? 'Email (required)' : 'Email (optional)');
+    setText('contactMethodHint', !copy.preference
+      ? 'Email-only follow-up is no longer offered. Choose Text first or Call first; your saved preference has not been changed automatically.'
+      : texting ? 'Text first requires a valid phone number and your explicit agreement below. You can choose a staff call instead.'
+      : 'A staff member will call the number you provide. No automated customer texts are sent for Call first.');
+    setText('phoneLabel', 'Phone (required)');
+    setText('emailLabel', 'Email (optional)');
     if (byId('clearDraftBtn')) byId('clearDraftBtn').textContent = state.submission ? 'Start a separate project' : 'Clear draft';
     return copy;
   }
@@ -259,11 +259,11 @@
     const metadata = consultation.metadata || {};
     const preference = String((lead && lead.contactPreference) || metadata.contact_preference || '').toLowerCase();
     const manual = metadata.request_kind === 'manual_follow_up' || preference === 'email' || preference === 'call';
-    const nextStep = preference === 'email' ? "We'll follow up by email."
+    const nextStep = preference === 'email' ? 'This request was saved with Email first. Email follow-up is currently unavailable; please call Home2Smart to arrange phone follow-up.'
       : preference === 'call' ? 'A Home2Smart staff member will call you.'
       : preference === 'sms' ? 'Check your texts for updates from Home2Smart.'
       : 'A Home2Smart staff member needs to review how to follow up with you.';
-    const manualNote = manual ? ' A staff member handles follow-up. No automated customer texts or emails are sent for this request.' : '';
+    const manualNote = manual ? ' A staff member handles follow-up. No automated customer texts are sent for this request.' : '';
     const approved = ['approved', 'customer_confirmed'].indexOf(consultation.status) >= 0;
     const end = Date.parse(consultation.selectedSlotEnd || '');
     const start = Date.parse(consultation.selectedSlotStart || '');
@@ -996,7 +996,7 @@
       const field = byId(key);
       if (!field) return;
       if (typeof value === 'string' || typeof value === 'number') {
-        field.value = String(value);
+        field.value = key === 'contactPreference' && value === 'email' ? '' : String(value);
       }
     });
   }

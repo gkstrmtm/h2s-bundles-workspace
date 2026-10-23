@@ -140,12 +140,11 @@ function validateCommercialContact(source) {
   const method = source?.contactPreference ?? source?.contact_preference ?? 'sms';
   const email = String(source?.email || '').trim();
   const phone = String(source?.phone || '').trim();
-  if (!CONTACT_PREFERENCES.has(method)) return { field: 'contactPreference', message: 'Choose Text first, Call first, or Email first.' };
+  if (!CONTACT_PREFERENCES.has(method) || method === 'email') return { field: 'contactPreference', message: 'Choose Text first or Call first. Email-only follow-up is not currently offered.' };
   if (email && !normalizeEmail(email)) return { field: 'email', message: 'Enter a valid email address.' };
   if (phone && (!/^[+\d\s().-]+$/.test(phone) || !normalizePhone(phone))) return { field: 'phone', message: 'Enter a valid phone number, including the area code.' };
-  if (method === 'email' && !email) return { field: 'email', message: 'Email first requires a valid email address. A phone number is optional.' };
-  if (method !== 'email' && !phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
-  if (method === 'sms' && !hasCommercialSmsConsent(source)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first or Email first.' };
+  if (!phone) return { field: 'phone', message: `${method === 'call' ? 'Call' : 'Text'} first requires a valid phone number.` };
+  if (method === 'sms' && !hasCommercialSmsConsent(source)) return { field: 'smsConsent', message: 'To choose Text first, explicitly agree to project texts, or choose Call first.' };
   return null;
 }
 

@@ -13,14 +13,25 @@ verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
 The local Commercial Queue proposal registers
-`034_commercial_followup_delivery.sql` as the next **review-only, unauthorized**
-migration. Existing 029-033 SQL/checksums and production authorization are
-unchanged. Status/verify will report 034 pending while retaining verification
+`034_commercial_followup_delivery.sql`, followed by
+`035_commercial_business_tools.sql`, as **review-only, unauthorized**
+migrations. Existing 029-033 SQL/checksums and production authorization are
+unchanged. Status/verify reports both pending while retaining verification
 of applied history; `apply` is blocked before connecting until separate explicit
-authorization and the exact reviewed 034 checksum are recorded. No application
+authorization and each exact reviewed checksum are recorded. No application
 or policy/provider activation is authorized by this registration. See
 [Commercial operations](COMMERCIAL_OPERATIONS.md#queue-follow-up-and-delivery-proposal-local-not-released)
 for configuration and the separate internal-only maintenance contract.
+
+Migration 035 adds service-read/RPC-write email, quote/payment and attachment
+ledgers, plus the private `commercial-private-files` Storage bucket. The runner
+checks exact function bodies/signatures, grants/RLS, table shapes, bucket
+privacy/limits and Storage's default-deny browser-policy prerequisites. It
+rejects untracked object/bucket collisions. Existing permissive browser policies
+must be reconciled rather than assumed safe. The registered migration role
+has bucket INSERT access but does not own Supabase's Storage tables; no
+ownership change or browser storage grant is required. No existing order,
+dispatch, payout, public media or historical message records are backfilled.
 
 ## Credentials and trusted TLS
 
@@ -114,7 +125,7 @@ The explicit managed list currently contains:
 
 The two media scripts deliberately fail if untracked objects already exist; do not
 replace that protection with `IF NOT EXISTS` or mark changes applied manually.
-Only these five intended SQL paths are unignored. Although 031 uses conditional
+Only the intended versioned SQL paths are admitted. Although 031 uses conditional
 DDL, the runner requires an exact commercial baseline with no colliding objects
 before executing it. Never run that file directly to bypass this guard.
 

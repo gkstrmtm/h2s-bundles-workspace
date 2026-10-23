@@ -2,8 +2,22 @@ const fs = require('node:fs'), path = require('node:path'), http = require('node
 const { createOperationsFixture, id } = require('./commercial_operations_fixture.cjs');
 const { createFixture } = require('./commercial_contact_fixture.cjs');
 
-async function startOperationsServer(port = 3014, root = path.resolve(__dirname, '..', '..', '..')) {
-  const operations = await createOperationsFixture(), queue = createFixture();
+async function startOperationsServer(port = 3014, root = path.resolve(__dirname, '..', '..', '..'), options = {}) {
+  const operations = options.business ? await require('./commercial_business_fixture.cjs').createBusinessFixture() : await createOperationsFixture();
+  const queue = createFixture();
+  async function syncBusinessRecords() {
+    for (const lead of queue.tables.commercial_leads) {
+      await operations.db.query(`insert into commercial_leads(lead_id,email,phone,contact_preference)
+        values($1,$2,$3,$4) on conflict(lead_id) do update
+        set email=excluded.email,phone=excluded.phone,contact_preference=excluded.contact_preference`,
+      [lead.lead_id,lead.email,lead.phone,lead.contact_preference]);
+    }
+    for (const consultation of queue.tables.commercial_consultation_requests) {
+      await operations.db.query(`insert into commercial_consultation_requests(request_id,lead_id,status,metadata)
+        values($1,$2,$3,$4) on conflict(request_id) do update set metadata=excluded.metadata`,
+      [consultation.request_id,consultation.lead_id,consultation.status,JSON.stringify(consultation.metadata)]);
+    }
+  }
   for (const number of [1,2]) {
     const timestamp = new Date(Date.now()-number*60000).toISOString();
     queue.tables.commercial_leads.push({lead_id:id(number),full_name:'Fixture Customer',company_name:number===1?'Northline Office Park':'Fixture second lead',
@@ -15,6 +29,16 @@ async function startOperationsServer(port = 3014, root = path.resolve(__dirname,
   const server = http.createServer(async (request,response) => {
     try {
       const url = new URL(request.url,`http://127.0.0.1:${port}`);
+      const businessName=url.pathname.slice('/api/'.length);
+      if (options.business && (operations.routes[businessName] || ['commercial-intake','commercial-intake/photo','commercial-consultation'].includes(businessName))) {
+        const chunks=[];for await(const chunk of request)chunks.push(chunk);
+        const method=request.method,route=operations.routes[businessName] || queue.route(businessName);
+        if(typeof route[method]!=='function')return json(response,{ok:false},405);
+        const result=await route[method](new Request(url,{method,headers:request.headers,
+          ...(['GET','HEAD'].includes(method)?{}:{body:Buffer.concat(chunks)})}));
+        if (result.ok && method==='POST' && ['commercial-intake','commercial-consultation'].includes(businessName)) await syncBusinessRecords();
+        response.writeHead(result.status,Object.fromEntries(result.headers));return response.end(Buffer.from(await result.arrayBuffer()));
+      }
       if (url.pathname==='/api/commercial-operations') {
         const chunks=[];for await(const chunk of request)chunks.push(chunk);
         const method=request.method;

@@ -10625,6 +10625,10 @@
 
         .commercial-queue-contact {
             display: inline-flex;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
             align-items: center;
             min-height: 44px;
             padding: 8px;

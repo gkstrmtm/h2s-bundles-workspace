@@ -259,19 +259,19 @@
                   <input id="companyName" name="companyName" type="text" autocomplete="organization" placeholder="Business, church, campus, or property name">
                 </label>
                 <label class="field">
-                  <span id="phoneLabel">Phone (required for Text first)</span>
+                  <span id="phoneLabel">Phone (required)</span>
                   <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="Best number for your estimate">
                 </label>
                 <label class="field">
                   <span id="emailLabel">Email (optional)</span>
-                  <input id="email" name="email" type="email" autocomplete="email" placeholder="Project email if available">
+                  <input id="email" name="email" type="email" autocomplete="email" placeholder="Optional; no email follow-up" aria-describedby="emailUseHint">
                 </label>
                 <label class="field field--select">
                   <span>Best way to reach you</span>
                   <select id="contactPreference" name="contactPreference">
-                    <option value="sms">Text first</option>
+                    <option value="" disabled hidden>Choose Text or Call</option>
+                    <option value="sms" selected>Text first</option>
                     <option value="call">Call first</option>
-                    <option value="email">Email first</option>
                   </select>
                 </label>
                 <div class="field field--consent" id="smsConsentField">
@@ -281,7 +281,8 @@
                     <span class="consent-check__copy">I agree to receive text messages from Home2Smart about my estimate and project updates, including automated reminders. Consent is not a condition of purchase. Reply STOP to opt out.</span>
                   </label>
                 </div>
-                <p class="submit-copy" id="contactMethodHint">Text first requires a valid phone number and an explicit texting choice. Call and email follow-up are manual.</p>
+                <p class="submit-copy" id="contactMethodHint">A phone number is required. Choose Text first with texting consent, or Call first for a staff call.</p>
+                <p class="submit-copy" id="emailUseHint">Providing an optional email does not subscribe you to marketing. Email follow-up is not currently offered.</p>
               </div>
               <div class="form-grid form-grid--two">
                 <label class="field">

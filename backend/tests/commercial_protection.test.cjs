@@ -327,7 +327,7 @@ test('missing or invalid canonical configuration fails before intake, consultati
         ? await route.GET(maintenanceRequest('GET', { Authorization: 'Bearer fake-cron-secret-for-unit-tests' }))
         : await route.POST(name === 'commercial-intake'
           ? new Request('https://attacker.example.invalid/api/commercial-intake', {
-            method: 'POST', body: JSON.stringify({ email: 'fixture@example.invalid', contactPreference: 'email' }),
+            method: 'POST', body: JSON.stringify({ email: 'fixture@example.invalid', phone: '+15550000005', contactPreference: 'call' }),
           }) : consultationRequest());
       assert.equal(response.status, 503, `${name}: ${base}`);
       assert.match((await response.json()).error, /COMMERCIAL_PUBLIC_BASE_URL/);

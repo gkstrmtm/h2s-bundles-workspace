@@ -5,7 +5,7 @@
     "connectionEnv": "DATABASE_URL_DIRECT",
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql"],
     "baselineSha256": "c8d848d14bf42cebc9b1a5f59a41b15cfea878c9140dd7cb29d78a4b7da3d3e3",
     "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409",
     "commercial032": {
@@ -19,9 +19,14 @@
       "sqlSha256": "29ade041dc667e96c786103d7b944b74aa2122c20c950b62668a5f9cd1d86620"
     },
     "queue034": {
-      "reviewOnly": true,
-      "authorization": null,
-      "sqlSha256": null
+      "reviewOnly": false,
+      "authorization": "On 2026-10-23 at 11:11 US Eastern the workspace owner approved committing, pushing and directly deploying the validated phone-only Commercial package (tested tree 2dd5bcedef68f3b802ee7789b544d0e2bfc3eae3), including its reviewed additive database prerequisites to established production nkccbnrduojnzjfrpwva. Apply guarded 034 then 035 with exact checksum verification, then backend and matching frontend. Keep automatic follow-up and Commercial email disabled. No real-message, customer/job/payment mutation, recovery or media-save acceptance actions are authorized.",
+      "sqlSha256": "5e3111b9a44cf0e88c0b7653f934733ba022b8ea5a47f70cfcb152167172a695"
+    },
+    "business035": {
+      "reviewOnly": false,
+      "authorization": "Owner deployment approval on 2026-10-23 at 11:11 US Eastern covers the reviewed phone-only Commercial package (tested tree 2dd5bcedef68f3b802ee7789b544d0e2bfc3eae3), requiring additive 035 after guarded 034 on production nkccbnrduojnzjfrpwva. Exact reviewed SQL only; verify private Storage default-deny and service-only permissions. Email support remains dormant with no SendGrid setup or subscription required. No real uploads, messages, charges, customer/job changes or operational recovery actions are authorized.",
+      "sqlSha256": "23412bd765be6f8c82e15937bbc5d4629fbe1ee34647abb5e3f5d0feaef2610e"
     },
     "commercial031": {
       "reviewOnly": false,

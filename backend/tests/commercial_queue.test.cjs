@@ -290,7 +290,9 @@ test('queue hierarchy exposes usable contact links, separate scope/notes, page c
     assert.match(detail.textContent, /Scope 1/);
     assert.match(detail.textContent, /Additional note 1/);
     assert.equal(detail.querySelector('a[href^="tel:"]').getAttribute('href'), 'tel:+15550000005');
-    assert.equal(detail.querySelector('a[href^="mailto:"]').getAttribute('href'), 'mailto:fixture1@example.invalid');
+    assert.match(detail.textContent,/Email \(saved only\): fixture1@example.invalid/);
+    assert.equal(detail.querySelector('[data-compose-commercial-email]'),null);
+    assert.equal(detail.querySelector('a[href^="mailto:"]'),null);
     assert.doesNotMatch(detail.textContent, /Lead token|bearer-must-not-leak|Appointment link/);
     assert.match(document.getElementById('commercialQueueSummary').textContent, /On this page\s+25/);
     assert.match(document.getElementById('commercialQueueListMeta').textContent, /25 on this page of 30 matches/);
@@ -450,7 +452,8 @@ test('detail hierarchy is action then Requested work then supporting rows, with 
     assert.ok(next.compareDocumentPosition(detail.querySelector('[aria-label="Requested work"]')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
     assert.match(next.textContent, /Prefers email/);
     assert.doesNotMatch(next.textContent, /first \(manual\)|not tracked here/);
-    assert.equal(next.querySelector('a').getAttribute('href'), 'mailto:fixture1@example.invalid');
+    assert.match(next.textContent,/Email \(saved only\): fixture1@example.invalid/);
+    assert.equal(next.querySelector('[data-compose-commercial-email]'),null);
     assert.match(detail.querySelector('[aria-label="Requested work"]').textContent, /Scope 1.*Additional notes.*Additional note 1/s);
     assert.equal(detail.querySelectorAll('.commercial-queue-detail__card,.commercial-queue-detail__grid').length, 0);
     assert.ok(detail.querySelector('dl .commercial-queue-detail__field dt'));
@@ -473,7 +476,7 @@ test('actionable status labels do not mistake provider acceptance or technician 
   try {
     const item = (status, patch = {}) => ({ consultation: { status, workflow: {}, ...patch }, contactPreference: 'sms' });
     assert.equal(ui.statusForItem({}), 'Saved draft - not submitted');
-    assert.equal(ui.statusForItem({ ...item('pending'), followUp: { kind: 'manual_follow_up', requestedContactMethod: 'email' } }), 'Needs email follow-up');
+    assert.equal(ui.statusForItem({ ...item('pending'), followUp: { kind: 'manual_follow_up', requestedContactMethod: 'email' } }), 'Legacy email-only request - staff review');
     assert.equal(ui.statusForItem({ ...item('escalated'), followUp: { kind: 'manual_follow_up', requestedContactMethod: 'call' } }), 'Needs call follow-up');
     assert.equal(ui.statusForItem(item('pending')), 'Awaiting technician response');
     assert.equal(ui.statusForItem(item('escalated')), 'Management review needed');

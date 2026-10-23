@@ -90,7 +90,7 @@ function matchesPostgrestFilter(row, expression) {
   return new RegExp(`^${pattern}$`, 'is').test(String(value));
 }
 
-function createFixture(environment = {}) {
+function createFixture(environment = {}, integration = {}) {
   const tables = { commercial_leads: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
   const sms = [];
   const providerAttempts = [];
@@ -253,6 +253,8 @@ function createFixture(environment = {}) {
     },
   };
   const imports = {
+    '@/lib/commercial_email': { sendInitialCommercialEmail: integration.sendInitialCommercialEmail || (async (_consultation, lead) =>
+      ({ state: lead.contact_preference === 'email' ? 'unavailable' : 'not_applicable' })) },
     '@/lib/supabase': { getSupabase: () => database },
     '@/lib/commercial_consultation.js': utils,
     'node:crypto': crypto,

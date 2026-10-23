@@ -63,8 +63,10 @@ test('initial sends, no-response reminders and escalation stay branded without r
   assert.match(f.sms.at(-1).body, /Home2Smart.*needs review/);
   assert.deepEqual(f.tables.sms_messages.find(message => message.message_id === historical.message_id), historical);
 });
-test('manual email/call follow-up notifications identify Home2Smart without adding customer sends or appointments', async () => {
-  for (const method of ['email', 'call']) {
+test('legacy email message generation and current call follow-up retain Home2Smart branding without customer sends', async () => {
+  branded(utils.buildManualFollowUpMessage({ reference_code: 'COM-LEGACY' },
+    { contact_preference: 'email', email: 'legacy@example.invalid', company_name: 'Legacy fixture' }, 'none requested'));
+  for (const method of ['call']) {
     const f = createFixture();
     await submit(f, method);
     assert.deepEqual(f.sms.map(message => message.to), ['+15550000001']);

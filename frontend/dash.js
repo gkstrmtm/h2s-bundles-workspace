@@ -49500,7 +49500,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     ? `<a class="commercial-queue-contact" href="tel:${escapeHtml(dial)}">Call ${escapeHtml(phone)}</a>`
                     : `<span>${escapeHtml(phone || 'Phone not provided')}${phone ? ' (needs review)' : ''}</span>`;
                 const emailLink = /^[^\s@<>\u0000-\u001f\u007f]+@[^\s@<>]+\.[^\s@<>]+$/.test(email)
-                    ? `<a class="commercial-queue-contact" href="mailto:${escapeHtml(encodeURIComponent(email).replace(/%40/g, '@'))}">Email ${escapeHtml(email)}</a>`
+                    ? `<span>Email (saved only): ${escapeHtml(email)}</span>`
                     : `<span>${escapeHtml(email || 'Email not provided')}${email ? ' (needs review)' : ''}</span>`;
                 const links = item.followUp && item.followUp.requestedContactMethod === 'email' ? [emailLink, phoneLink] : [phoneLink, emailLink];
                 return `<div class="commercial-queue-contacts">${links.join('')}</div>`;
@@ -49526,7 +49526,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const method = item.followUp && item.followUp.requestedContactMethod || item.contactPreference;
                 if (item.followUp && item.followUp.kind === 'manual_follow_up' &&
                     ['pending', 'escalated', 'reschedule_requested'].includes(status)) {
-                    return method === 'email' ? 'Needs email follow-up' : 'Needs call follow-up';
+                    return method === 'email' ? 'Legacy email-only request - staff review' : 'Needs call follow-up';
                 }
                 if (status === 'declined') return 'Technician declined - arrange a new time';
                 if (['approved', 'customer_confirmed'].includes(status)) {

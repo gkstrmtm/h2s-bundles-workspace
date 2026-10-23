@@ -16,12 +16,14 @@ const target = () => {
     commercial031: { ...config.commercial031, reviewOnly: true, authorization: undefined },
     commercial032: { ...config.commercial032, reviewOnly: true, authorization: undefined, sqlSha256: null },
     stripe033: { ...config.stripe033, reviewOnly: true, authorization: undefined, sqlSha256: null },
+    queue034: { ...config.queue034, reviewOnly: true, authorization: undefined, sqlSha256: null },
+    business035: { ...config.business035, reviewOnly: true, authorization: undefined, sqlSha256: null },
   };
 };
 
 test('registered production authorization includes exactly the owner-approved reviewed migration scope', () => {
   const config = registeredTarget();
-  assert.deepEqual(config.authorizedMigrations, runner.migrations().filter(file => !file.version.startsWith('034_')).map(file => file.version));
+  assert.deepEqual(config.authorizedMigrations, runner.migrations().map(file => file.version));
   assert.equal(config.commercial031.reviewOnly, false);
   assert.match(config.commercial031.authorization, /2026-10-20/);
   assert.equal(config.commercial031.sqlSha256, 'c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071');
@@ -31,9 +33,13 @@ test('registered production authorization includes exactly the owner-approved re
   assert.equal(config.stripe033.reviewOnly, false);
   assert.match(config.stripe033.authorization, /2026-10-23/);
   assert.equal(config.stripe033.sqlSha256, '29ade041dc667e96c786103d7b944b74aa2122c20c950b62668a5f9cd1d86620');
-  assert.equal(config.queue034.reviewOnly,true);
-  assert.equal(config.queue034.authorization,null);
-  assert.throws(() => runner.authorizeApply(config, ref), /outside.*scope/);
+  assert.equal(config.queue034.reviewOnly,false);
+  assert.match(config.queue034.authorization,/2026-10-23/);
+  assert.equal(config.queue034.sqlSha256,'5e3111b9a44cf0e88c0b7653f934733ba022b8ea5a47f70cfcb152167172a695');
+  assert.equal(config.business035.reviewOnly,false);
+  assert.match(config.business035.authorization,/2026-10-23/);
+  assert.equal(config.business035.sqlSha256,'23412bd765be6f8c82e15937bbc5d4629fbe1ee34647abb5e3f5d0feaef2610e');
+  assert.doesNotThrow(() => runner.authorizeApply(config, ref));
 });
 
 test('target is explicit, no MGMT or generic URL fallback, and exact project/session port is checked', () => {
@@ -74,7 +80,12 @@ test('unknown/unapproved targets, missing baseline, missing confirmation, and ex
     stripe033:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('033_')).sha256} };
   assert.throws(() => runner.authorizeApply(reviewed033,ref),/034 remains review-only/);
   assert.throws(() => runner.authorizeApply({...reviewed033,queue034:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:'changed'}},ref),/034 remains review-only/);
-  assert.doesNotThrow(() => runner.authorizeApply({...reviewed033,queue034:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().at(-1).sha256}},ref));
+  const reviewed034={...reviewed033,queue034:{reviewOnly:false,authorization:'Local fixture only',
+    sqlSha256:runner.migrations().find(file=>file.version.startsWith('034_')).sha256}};
+  assert.throws(()=>runner.authorizeApply(reviewed034,ref),/035 remains review-only/);
+  assert.throws(()=>runner.authorizeApply({...reviewed034,business035:{reviewOnly:false,authorization:'Local fixture only',sqlSha256:'changed'}},ref),/035 remains review-only/);
+  assert.doesNotThrow(() => runner.authorizeApply({...reviewed034,business035:{reviewOnly:false,authorization:'Local fixture only',
+    sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256}},ref));
 });
 
 test('TLS requires a CA, keeps certificate/hostname verification, and rejects insecure global overrides', () => {
@@ -98,8 +109,8 @@ test('TLS requires a CA, keeps certificate/hostname verification, and rejects in
 
 test('only reviewed migrations are selected and history detects changed or out-of-order SQL', () => {
   const files = runner.migrations();
-  assert.equal(files.length, 6);
-  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql']);
+  assert.equal(files.length, 7);
+  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql','035_commercial_business_tools.sql']);
   const config = target();
   const rows = files.map((file) => ({
     version: file.version, sha256: file.sha256, project_ref: ref, environment: 'production',
@@ -122,7 +133,8 @@ test('apply rolls back on unreviewed schema drift before running any migration o
     commercial031: { ...config.commercial031, reviewOnly: false, authorization: 'Local test only; no remote authority' },
     commercial032: { reviewOnly: false, authorization: 'Local test only; no remote authority', sqlSha256: runner.migrations().find(file => file.version.startsWith('032_')).sha256 },
     stripe033: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('033_')).sha256 },
-    queue034: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().at(-1).sha256 } };
+    queue034: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('034_')).sha256 },
+    business035: { reviewOnly:false,authorization:'Local fixture only',sqlSha256:runner.migrations().find(file=>file.version.startsWith('035_')).sha256 } };
   await assert.rejects(runner.apply(client, future, ref), /differs from.*baseline/);
   assert.equal(queries.at(-1), 'ROLLBACK');
   assert.ok(!queries.some((sql) => /create table|insert into|alter table/i.test(sql)));

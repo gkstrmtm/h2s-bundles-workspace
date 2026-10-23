@@ -253,8 +253,9 @@ test('full detail module preserves drafts, focus, failures and stale-read protec
   w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
   const host = w.document.querySelector('section'), options = {apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'};
   await w.H2SCommercialOperations.mount(host,id(1),options);
-  assert.match(host.textContent,/Quote\/payment setup required/);
-  assert.match(host.textContent,/Payment collection is not connected/);
+  assert.match(host.textContent,/Review quote\/payment records below/);
+  assert.match(host.textContent,/Manual collection records below/);
+  assert.match(host.textContent,/Business tools are unavailable\. Reload the dashboard/);
   const note = host.querySelector('[name=note]');
   note.value = 'Draft that must survive';
   note.focus();

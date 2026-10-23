@@ -2378,7 +2378,9 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
           ? 'Manual follow-up pending review' : `Submitted request: ${consultationStatus}`,
       nextAction: !latestConsultation ? 'Draft only. No customer follow-up request has been submitted.'
         : manualFollowUp
-          ? `Manually ${requestedContactMethod === 'email' ? 'email' : 'call'} ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. No automated customer texts or emails are sent.`
+          ? requestedContactMethod === 'email'
+            ? 'Legacy email-only request: email follow-up is currently unavailable. Staff must review the saved contact details; do not change the preference or send texts without consent.'
+            : `Manually call ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. Staff handles project follow-up; no customer text is automated for this preference.`
           : 'Review the technician response and requested window. Customer texts require Text first and explicit texting permission.',
     };
     if (!manualFollowUp && latestConsultation) {
