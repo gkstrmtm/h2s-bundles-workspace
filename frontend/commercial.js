@@ -1616,22 +1616,33 @@
       status.hidden = isVideo;
       tile.appendChild(status);
       let waitingTimer;
+      let failureTimer;
       const clearWaiting = function () {
         window.clearTimeout(waitingTimer);
+        window.clearTimeout(failureTimer);
+        failureTimer = undefined;
         tile.classList.remove('is-pending');
         tile.setAttribute('aria-busy', 'false');
         status.hidden = !tile.classList.contains('is-error');
       };
       const markReady = function () {
-        if (mediaEl.error) return;
+        if (mediaEl.error || tile.classList.contains('is-error')) return;
         tile.classList.remove('is-error');
         clearWaiting();
         tile.classList.add('is-ready');
       };
       const onError = function () {
+        if (tile.classList.contains('is-error')) return;
         clearWaiting();
         tile.classList.add('is-error');
-        status.textContent = 'Installation media unavailable.';
+        if (isVideo) {
+          mediaEl.pause();
+          mediaEl.removeAttribute('src');
+          mediaEl.load();
+        }
+        status.textContent = isVideo
+          ? 'Video unavailable. Reload this page to retry.'
+          : 'Installation media unavailable.';
         status.setAttribute('role', 'alert');
         status.hidden = false;
       };
@@ -1639,6 +1650,17 @@
       if (isVideo) {
         tile.classList.remove('is-pending');
         const onWaiting = function () {
+          if (tile.classList.contains('is-error') || (mediaEl.paused && mediaEl.networkState !== 2)) return;
+          if (!failureTimer) {
+            failureTimer = window.setTimeout(function () {
+              if (!tile.isConnected) {
+                clearWaiting();
+                return;
+              }
+              if (mediaEl.readyState >= 3) markReady();
+              else onError();
+            }, 30000);
+          }
           window.clearTimeout(waitingTimer);
           waitingTimer = window.setTimeout(function () {
             if (!tile.isConnected || tile.classList.contains('is-error') || mediaEl.error || mediaEl.readyState >= 3

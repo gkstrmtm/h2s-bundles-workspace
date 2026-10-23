@@ -114,7 +114,7 @@ function video(t) {
   w.escapeAttr = value => String(value);
   w.H2SMediaPlacements = { style: () => '' };
   const timers = new Map(); let timer = 0;
-  w.setTimeout = callback => { timers.set(++timer, callback); return timer; };
+  w.setTimeout = (callback, delay) => { timers.set(++timer, { callback, delay }); return timer; };
   w.clearTimeout = key => timers.delete(key);
   w.eval(media);
   const rail = w.document.getElementById('rail');
@@ -122,8 +122,14 @@ function video(t) {
   const node = rail.querySelector('video'), tile = node.parentElement;
   const state = { readyState: 0, networkState: 1, paused: true, error: null };
   Object.keys(state).forEach(key => Object.defineProperty(node, key, { get: () => state[key] }));
-  return { w, rail, node, tile, state, event: type => node.dispatchEvent(new w.Event(type)), flush: () => {
-    const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback());
+  const event = type => node.dispatchEvent(new w.Event(type));
+  let stopped = 0;
+  node.pause = () => { state.paused = true; event('pause'); };
+  node.load = () => { stopped++; state.networkState = 0; event('emptied'); };
+  return { w, rail, node, tile, state, event, stopped: () => stopped, flush: (delay = 750) => {
+    const pending = [...timers.entries()].filter(([, timer]) => timer.delay === delay);
+    pending.forEach(([key]) => timers.delete(key));
+    pending.forEach(([, timer]) => timer.callback());
   } };
 }
 test('idle preload-none video has no app overlay and retains native controls, poster and inline playback', t => {
@@ -166,9 +172,43 @@ test('paused/error/disconnected media cancels loading feedback without removing 
   state.error = null; event('waiting'); rail.remove(); flush();
   assert.equal(tile.classList.contains('is-pending'), false);
 });
+test('a permanent video stall is bounded, stops delivery and retains an honest poster fallback', t => {
+  const { node, tile, state, event, flush, stopped } = video(t);
+  state.paused = false; state.networkState = 2;
+  event('waiting'); flush();
+  assert.equal(tile.getAttribute('aria-busy'), 'true');
+  for (let i = 0; i < 4; i++) event('stalled');
+  flush(30000);
+  assert.equal(tile.getAttribute('aria-busy'), 'false');
+  assert.equal(tile.classList.contains('is-pending'), false);
+  assert.equal(tile.classList.contains('is-error'), true);
+  assert.equal(node.hasAttribute('src'), false);
+  assert.equal(node.getAttribute('poster'), '/poster.svg');
+  assert.equal(node.controls, true);
+  assert.equal(node.hasAttribute('playsinline'), true);
+  assert.equal(stopped(), 1);
+  assert.match(tile.querySelector('[role=alert]').textContent, /Video unavailable.*Reload/);
+  state.readyState = 4; event('canplay'); event('playing'); flush(30000);
+  assert.equal(tile.classList.contains('is-error'), true);
+  assert.equal(tile.querySelector('[role=alert]').hidden, false);
+});
+test('playback readiness and user pause cancel the failure deadline without changing the source', t => {
+  const { node, tile, state, event, flush, stopped } = video(t);
+  for (const settled of ['canplay', 'pause']) {
+    state.paused = false; state.networkState = 2; state.readyState = 1;
+    event('waiting'); flush();
+    state.readyState = settled === 'canplay' ? 3 : 1;
+    event(settled); flush(30000);
+    assert.equal(stopped(), 0);
+    assert.equal(node.getAttribute('src'), '/synthetic.webm');
+    assert.equal(tile.classList.contains('is-error'), false);
+  }
+});
 test('loading feedback has no animation under either motion preference and native backing controls cannot override hiding', () => {
   const css = fs.readFileSync(path.join(root, 'frontend', 'commercial.css'), 'utf8');
   assert.doesNotMatch(css, /media-skeleton-shift/);
+  assert.doesNotMatch(css, /\.proof-tile\.is-pending::after/);
+  assert.match(css.match(/\.proof-media-status\s*\{[^}]+\}/)[0], /pointer-events:\s*none/);
   assert.doesNotMatch(css.match(/\.proof-media-status\s*\{[^}]+\}/)[0], /animation|transition|gradient/);
   const dashboardCss = fs.readFileSync(path.join(root, 'frontend', 'dash.css'), 'utf8');
   assert.match(dashboardCss, /select\.dashboard-custom-select-native\s*\{\s*display:\s*none !important/);

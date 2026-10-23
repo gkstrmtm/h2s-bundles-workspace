@@ -27,6 +27,18 @@ schedule/checkout mail path. The shared mail sender already uses Home2Smart
 Portal; no new email or downstream completion communication is enabled.
 Branding fixtures do not verify real SMS/email delivery or provider configuration.
 
+### Customer video playback
+
+Proof-rail loading feedback must never intercept native video controls. An idle
+`preload="none"` video must remain playable; a thumbnail is not playback evidence.
+A loading/buffering episode that cannot reach playable data within 30 seconds
+stops its media request and retains the poster with an explicit unavailable
+message. Readiness and user pause cancel that deadline. Unsupported codecs use
+the same error fallback; this does not transcode or overwrite original media.
+The selected Camera installs MOV contains HEVC Main video and AAC-LC audio.
+Its public proxy serves QuickTime MIME and valid byte ranges. HEVC playback
+depends on the browser/OS; Chromium viewport emulation is not iOS Safari proof.
+
 ## Compatibility evidence and relationships
 
 The registered production catalog was inspected in a verified-TLS, read-only
