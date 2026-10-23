@@ -1,10 +1,12 @@
 # Commercial operations: existing-order workflow
 
-## Staff-controlled business tools (local; not released)
+## Staff-controlled business tools (released)
 
-This next increment builds on the committed Queue/presentation proposal. It
-requires migration 035 after 034 and a matching backend/frontend release.
-Neither migration has been applied. Automatic internal follow-up remains
+This phone-only increment and the Queue/presentation changes were directly
+deployed through Vercel on 2026-10-23 from
+`a5a67c565af30f098f237349613538d621a306d3`, using
+`PORTAL_BUILD_20261023_152052_a5a67c5`. Guarded migrations 034 then 035 are
+applied and independently verified. Automatic internal follow-up remains
 disabled, and no new outbound chase sequence or payment/scheduling gate exists.
 
 - **Current release is phone-only:** new requests offer Text first or Call first
@@ -33,8 +35,8 @@ disabled, and no new outbound chase sequence or payment/scheduling gate exists.
   A contact attachment can reference the actual recorded contact attempt.
   Installation proof records its already linked job; uploading does not complete
   work. Original files and existing public media placements are not modified.
-  JPEG, PNG, WebP and PDF are supported, up to 3 MB per file; an email can attach
-  up to three files and 3 MB combined.
+  JPEG, PNG, WebP and PDF are supported, up to 3 MB per file. Deferred email
+  code supports three files and 3 MB combined; sending remains unavailable.
 
 Deferred email configuration, outside Git (not required for this release):
 
@@ -69,11 +71,14 @@ and no browser-role object policies. Migration 035 checks that default-deny
 boundary before adding its private bucket; it does not grant browser storage
 access or require taking ownership of Supabase-managed Storage tables.
 
-All new behavior is fixture-validated, not live-message/payment acceptance.
-Physical iOS Safari is not available in this environment. The prior selective
-commit is still the committed baseline; this business increment is not deployed.
+Behavior is fixture-validated, not live-message/payment acceptance. Production
+read-only checks verified source/build identity, 11 page/assets, guarded access,
+an authorized queue read, operations storage and private Storage protections.
+Commercial images and native video playback/pause/seek passed desktop/touch
+Chromium checks. Physical iOS Safari is not available in this environment.
+No customer records, messages, payments or media settings were changed by smokes.
 
-## Queue follow-up and delivery proposal (local; not released)
+## Queue follow-up and delivery (released)
 
 This focused increment preserves the existing queue layout, Upcoming actions,
 Recorded activity, mobile navigation, staff dropdown and independent consultation,
@@ -182,14 +187,15 @@ Use an approved fixture request rather than submitting production test data.
 ### Configuration and release prerequisites
 
 Migration [034](../backend/migrations/034_commercial_followup_delivery.sql) is
-additive and **review-only / unauthorized**. It adds service-read/RPC-write SMS
+additive and **applied / verified**. It adds service-read/RPC-write SMS
 receipts and an idempotent status-event ledger, plus a guarded follow-up RPC.
 It does not alter 032/033, provider settings, cron schedules, stored historical
-messages, media assets or operational records. The guarded runner now lists
-034 as pending and refuses apply under the existing 029-033 authorization.
-Do not deploy the new follow-up writer before separately authorizing,
-applying and verifying 034; a missing RPC fails explicitly rather than
-pretending a save succeeded.
+messages, media assets or operational records. Migration 035 is also applied
+and verified; the runner reports no pending migrations. The first transaction
+rolled back safely; 035 was corrected to revoke Supabase's inherited service-role
+write grants, with a reproducing fixture and unchanged strict permission guards.
+Exact checksums and authorization are in [database migrations](DATABASE_MIGRATIONS.md).
+No new follow-up scheduler or customer-contact cadence is enabled.
 
 Runtime settings belong in backend deployment environment variables, not Git:
 
@@ -199,6 +205,8 @@ TWILIO_STATUS_CALLBACK_URL=https://h2s-backend.vercel.app/api/twilio/message-sta
 ```
 
 Policy configuration is optional; absence uses the disabled proposal.
+Production leaves it disabled. `TWILIO_STATUS_CALLBACK_URL` is configured to the
+canonical URL above; no provider account settings or real sends were changed.
 An enabled policy requires the entire validated configuration. Activation
 requires timing approval, then an authorized scheduler that POSTs to
 `/api/commercial-follow-up-maintenance` using `Authorization: Bearer CRON_SECRET`.

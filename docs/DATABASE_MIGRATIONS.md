@@ -15,7 +15,9 @@ This does not authorize arbitrary future migrations.
 The owner authorized the phone-only Commercial production release on
 2026-10-23, including guarded `034_commercial_followup_delivery.sql` followed
 by `035_commercial_business_tools.sql` on the established target. Their
-authorization and exact checksums are registered; this does not authorize
+authorization and exact checksums are registered. Both migrations were applied
+in order and independently verified on 2026-10-23; none remain pending.
+This does not authorize
 other SQL or activate automatic follow-up or Commercial email.
 
 The first guarded attempt rolled back both migrations because Supabase's
@@ -27,9 +29,10 @@ The corrected 035 SHA-256 is
 `432fc68a95337ba0372a6583cf5c405616ad1cfaa6146ad33affefd574433c45`.
 The unchanged 034 SHA-256 is
 `5e3111b9a44cf0e88c0b7653f934733ba022b8ea5a47f70cfcb152167172a695`.
+Production verification also checked the service-only grants and private bucket.
 Pending/applied status is established by read-only runner verification, not
 by this authorization record. See
-[Commercial operations](COMMERCIAL_OPERATIONS.md#queue-follow-up-and-delivery-proposal-local-not-released)
+[Commercial operations](COMMERCIAL_OPERATIONS.md#queue-follow-up-and-delivery-released)
 for configuration and the separate internal-only maintenance contract.
 
 Migration 035 adds service-read/RPC-write email, quote/payment and attachment

@@ -2,14 +2,15 @@
 
 ## Read this first
 
-**Current business-tools update: local, not deployed.** The earlier commercial
-release remains in production. The Queue/presentation proposal was committed
-separately; the phone-only intake, manual quote/payment and private attachment additions
-below are the next local increment.
+**Release status: deployed on 2026-10-23.** The phone-only Commercial page,
+Queue/presentation improvements, manual quote/payment records and private
+attachments are deployed at https://shop.home2smart.com/commercial and
+https://portal.home2smart.com/dash.
+Application source: `a5a67c565af30f098f237349613538d621a306d3`.
+Dashboard/customer cache ID: `PORTAL_BUILD_20261023_152052_a5a67c5`.
 
-Database updates 029–033 were previously applied and verified. Updates 034 and
-035 are prepared but not applied. Direct Vercel deployment remains the intended
-route, backend first and then matching customer/dashboard pages; Git-triggered
+Database updates 029–035 are applied and independently verified. Backend and
+matching frontend were deployed directly through Vercel; Git-triggered
 deployments remain disabled. Commercial email is paused and not needed for this
 release. Leave its enable setting absent or false. No email subscription or
 provider setup is required for these phone-only changes.
@@ -25,11 +26,14 @@ Evidence means three different things:
   no-response handling, follow-up, installation rules, communication evidence,
   payment verification, Home2Smart branding, media framing and video failures. The
   reviewed release also passed its production build and focused tests.
-- **Production-read-verified (earlier release):** deployed files match that release. Unauthorized
+- **Production-read-verified (this release):** both deployments identify the
+  application source above; 11 checked page/assets match the committed or
+  build-stamped bytes. Customer, dashboard and media routes load. Unauthorized
   requests are rejected; an authorized administrator-key read loads the queue.
-  The database updates, permissions and operations storage reads passed. All
+  The database updates, service-only permissions, private Storage protections
+  and read-only operations storage checks passed. All
   three Commercial media areas rendered, and the actual public Camera installs
-  video played using native controls on desktop and mobile Chromium, including
+  video played using native controls on desktop and touch Chromium, including
   pause, resume and seeking. No real media settings were saved.
 - **Not yet live-tested:** private uploads, manual quote/payment records,
   both owners' sign-in/roles, signed-in installation
@@ -43,6 +47,9 @@ Evidence means three different things:
 The release checks did not submit an inquiry, send a message, create a job,
 charge anyone, invoke maintenance/recovery, or change media settings. Existing
 scheduled processes remain configured; their message delivery was not tested.
+The SMS status-callback URL is configured for future Commercial sends.
+Historical provider acceptance is not upgraded to delivered without evidence.
+Automatic internal follow-up remains disabled; staff still sets due times.
 
 ## The eight steps
 
