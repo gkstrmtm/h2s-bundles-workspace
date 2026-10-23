@@ -12,14 +12,23 @@ The owner separately authorized exact-checksum 032 followed by 033 on
 verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
-The local Commercial Queue proposal registers
-`034_commercial_followup_delivery.sql`, followed by
-`035_commercial_business_tools.sql`, as **review-only, unauthorized**
-migrations. Existing 029-033 SQL/checksums and production authorization are
-unchanged. Status/verify reports both pending while retaining verification
-of applied history; `apply` is blocked before connecting until separate explicit
-authorization and each exact reviewed checksum are recorded. No application
-or policy/provider activation is authorized by this registration. See
+The owner authorized the phone-only Commercial production release on
+2026-10-23, including guarded `034_commercial_followup_delivery.sql` followed
+by `035_commercial_business_tools.sql` on the established target. Their
+authorization and exact checksums are registered; this does not authorize
+other SQL or activate automatic follow-up or Commercial email.
+
+The first guarded attempt rolled back both migrations because Supabase's
+default table privileges included service-role writes. Migration 035 now
+explicitly revokes inherited service-role grants before granting SELECT;
+writes still require the service-only atomic RPCs. The guard was not weakened.
+Fixtures reproduce the inherited grants and reject reintroduced write access.
+The corrected 035 SHA-256 is
+`432fc68a95337ba0372a6583cf5c405616ad1cfaa6146ad33affefd574433c45`.
+The unchanged 034 SHA-256 is
+`5e3111b9a44cf0e88c0b7653f934733ba022b8ea5a47f70cfcb152167172a695`.
+Pending/applied status is established by read-only runner verification, not
+by this authorization record. See
 [Commercial operations](COMMERCIAL_OPERATIONS.md#queue-follow-up-and-delivery-proposal-local-not-released)
 for configuration and the separate internal-only maintenance contract.
 

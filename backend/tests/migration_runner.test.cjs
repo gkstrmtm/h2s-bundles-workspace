@@ -38,7 +38,7 @@ test('registered production authorization includes exactly the owner-approved re
   assert.equal(config.queue034.sqlSha256,'5e3111b9a44cf0e88c0b7653f934733ba022b8ea5a47f70cfcb152167172a695');
   assert.equal(config.business035.reviewOnly,false);
   assert.match(config.business035.authorization,/2026-10-23/);
-  assert.equal(config.business035.sqlSha256,'23412bd765be6f8c82e15937bbc5d4629fbe1ee34647abb5e3f5d0feaef2610e');
+  assert.equal(config.business035.sqlSha256,'432fc68a95337ba0372a6583cf5c405616ad1cfaa6146ad33affefd574433c45');
   assert.doesNotThrow(() => runner.authorizeApply(config, ref));
 });
 

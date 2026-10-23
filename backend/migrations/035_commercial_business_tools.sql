@@ -350,7 +350,7 @@ alter table public.commercial_email_events enable row level security;
 alter table public.commercial_email_suppressions enable row level security;
 alter table public.commercial_business_files enable row level security;
 revoke all on public.commercial_business_records,public.commercial_business_activity,public.commercial_emails,
-  public.commercial_email_events,public.commercial_email_suppressions,public.commercial_business_files from public,anon,authenticated;
+  public.commercial_email_events,public.commercial_email_suppressions,public.commercial_business_files from public,anon,authenticated,service_role;
 grant select on public.commercial_business_records,public.commercial_business_activity,public.commercial_emails,
   public.commercial_email_events,public.commercial_email_suppressions,public.commercial_business_files to service_role;
 revoke all on function public.commercial_business_record(uuid,integer,uuid,jsonb,text,jsonb),

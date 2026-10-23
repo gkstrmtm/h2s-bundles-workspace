@@ -7,7 +7,8 @@ async function createBusinessFixture(overrides = {}) {
     COMMERCIAL_EMAIL_REPLY_TO:'staff@example.invalid', ...overrides };
   await base.db.exec(`create schema storage; create table storage.buckets(id text primary key,name text,public boolean,
     file_size_limit bigint,allowed_mime_types text[]);
-    create table storage.objects(bucket_id text); alter table storage.objects enable row level security;`);
+    create table storage.objects(bucket_id text); alter table storage.objects enable row level security;
+    alter default privileges in schema public grant all on tables to service_role;`);
   await base.db.exec(fs.readFileSync(path.join(__dirname,'..','..','migrations','035_commercial_business_tools.sql'),'utf8'));
   const originalRpc = base.client.rpc.bind(base.client), objects = new Map(), attempts = [], faults = {};
   const casts = {

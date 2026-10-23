@@ -4,6 +4,15 @@ const leadId=id(1), op=()=>crypto.randomUUID();
 async function post(f,body) {return f.businessRequest('commercial-business','POST',{leadId,operationId:op(),...body});}
 async function snapshot(f) {const r=await f.businessRequest('commercial-business');assert.equal(r.status,200);return r.json();}
 
+test('035 removes inherited service-role writes and the schema guard rejects a subsequent write grant',async t=>{
+  const f=await createBusinessFixture();
+  t.after(()=>f.db.close());
+  const review=require('../lib/commercial_business_review.cjs');
+  assert.equal((await review.inspect(f.db,true)).serviceOnlyVerified,true);
+  await f.db.exec('grant update on public.commercial_business_records to service_role');
+  await assert.rejects(()=>review.inspect(f.db,true),/read-only service table grants changed/);
+});
+
 test('phone-only business records work without email setup and refuse a paused send',async t=>{
   const f=await createBusinessFixture();
   t.after(()=>f.db.close());

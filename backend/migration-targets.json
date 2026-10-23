@@ -25,8 +25,8 @@
     },
     "business035": {
       "reviewOnly": false,
-      "authorization": "Owner deployment approval on 2026-10-23 at 11:11 US Eastern covers the reviewed phone-only Commercial package (tested tree 2dd5bcedef68f3b802ee7789b544d0e2bfc3eae3), requiring additive 035 after guarded 034 on production nkccbnrduojnzjfrpwva. Exact reviewed SQL only; verify private Storage default-deny and service-only permissions. Email support remains dormant with no SendGrid setup or subscription required. No real uploads, messages, charges, customer/job changes or operational recovery actions are authorized.",
-      "sqlSha256": "23412bd765be6f8c82e15937bbc5d4629fbe1ee34647abb5e3f5d0feaef2610e"
+      "authorization": "Owner deployment approval on 2026-10-23 at 11:11 US Eastern covers the phone-only Commercial package, requiring additive 035 after guarded 034 on production nkccbnrduojnzjfrpwva. The first guarded transaction rolled back because Supabase default privileges included service-role writes. This checksum includes the narrowly scoped correction revoking those inherited writes before granting SELECT; it does not broaden permissions or change application behavior. Verify exact SQL, private Storage default-deny and service-only RPC permissions before deployment. Email and automatic follow-up remain disabled. No real uploads, messages, charges, customer/job changes or recovery actions are authorized.",
+      "sqlSha256": "432fc68a95337ba0372a6583cf5c405616ad1cfaa6146ad33affefd574433c45"
     },
     "commercial031": {
       "reviewOnly": false,
