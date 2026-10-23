@@ -1,5 +1,187 @@
 # Commercial operations: existing-order workflow
 
+## Queue follow-up and delivery proposal (local; not released)
+
+This focused increment preserves the existing queue layout, Upcoming actions,
+Recorded activity, mobile navigation, staff dropdown and independent consultation,
+installation and payment facts. It adds no customer-contact cadence, quoting,
+payment collection, new recipients or permissions.
+
+The same selective proposal includes a presentation-only sign-in refinement:
+a compact border-first surface, smaller existing logo, persistent field labels,
+solid primary Sign in button and secondary expandable admin account creation.
+Authentication requests, account-creation permissions, PIN handling and bootstrap
+behavior are unchanged. No separate deployment boundary is introduced.
+
+Queue pagination is hidden only on the first page when the server supplies no
+continuation. Previous history and sparse filtered-search continuation remain
+available, even for an empty result segment. Controls are neutral/compact, with
+explicit loading and disabled states; displayed page numbers describe cursor
+history, never an invented total. Stable footer controls preserve keyboard
+focus across updates without changing existing filters, cursor traversal,
+selection or list-scroll rules. Header Sign out uses a transparent 44px icon
+control with keyboard focus and a native desktop tooltip; logout requests,
+session clearing and reload behavior are unchanged. The approved sign-in is
+preserved, within the same unreleased selective proposal.
+
+Email-first requires a valid email on both intake and submission, persists the
+preference on the lead and submitted manual-follow-up request, and restores
+both after reload. Its receipt says "We'll follow up by email." Staff alerts
+use the existing configured consultation/dispatch phone routing and identify
+manual email follow-up, not technician approval. Customer SMS, technician
+approval and technician reminders are skipped for these requests, including
+when an optional phone and earlier texting consent exist. Queue exposes the
+email link/manual action. Contact-log channel defaults to the lead's preference
+but remains editable to record what actually happened; logging is not sending.
+Follow-up saves do not replace the customer's preference.
+
+**Automated customer email is a separate unfinished capability:** this path has
+no customer email sender, email-provider configuration integration or email
+delivery receipts. A manual contact log is not proof that email was sent or
+delivered. Verification uses synthetic submissions and fake staff SMS plus
+fixture follow-up saves; live submission/staff delivery/customer follow-up
+remain acceptance checks, not production-verified behavior.
+
+The same proposal includes narrow Commercial customer-page corrections:
+all seven custom dropdowns cancel wrapping-label activation before option
+synchronization, hide their backing selects, and redirect validation/label
+focus to the accessible custom trigger. Native file controls and explicitly
+native selects remain native. Property-type labels are clearer; stored values
+are unchanged.
+
+The green receipt uses the saved lead contact preference (request metadata is
+the legacy fallback), never an unsaved form selection. Email promises manual
+email follow-up, Call manual calling, and Text asks customers to check texts
+without claiming delivery. Technician approval without an appointment link is
+not a booking. An expired unresolved window explicitly needs staff follow-up;
+approaching a window does not imply approval or successful contact. Provider
+acceptance is not delivery or acknowledgement. Receipt facts refresh on load,
+submission and saved edits; there is no new status-polling or outbound sender.
+Same-request editing and explicit separate-project clearing are preserved.
+Intake reloads return the latest request for the token-authorized lead, including
+declined/expired requests, so a resolved receipt does not silently become a draft
+with a fresh submit button. The active-request lookup used for submission replay
+and duplicate prevention is unchanged. No broader read permission is added.
+To avoid trapping a device on an old receipt, the proposal also carries forward
+the existing local clear/new-project control and reset handler, without the
+unrelated wizard scrolling or marketing edits. After submission it is labeled
+"Start a separate project" and requires confirmation. It clears only this
+device's form/token, never the server request; cancelling keeps the same project.
+
+The customer page has an opaque root/body base matching the footer endpoint
+and adds bottom safe-area padding inside the footer, without toolbar overlays
+or sticky-header changes. Physical iOS Safari, its expanded/collapsed browser
+controls and bottom overscroll remain unverified. Chromium fixtures are not
+an iOS pass. After an authorized preview/release, on an iPhone record its model,
+iOS version and tested build, then check all seven dropdowns (one picker per
+selection), restored selections, native photo upload, each preference's receipt,
+and the footer with Safari controls expanded/collapsed and during bottom bounce.
+Use an approved fixture request rather than submitting production test data.
+
+- Follow-up and installation start/end remain native `datetime-local` inputs,
+  using the browser/OS picker rather than Flatpickr. Labels name the browser's
+  timezone. Unchanged values retain their exact saved instant, including
+  subsecond precision and the original occurrence of an ambiguous DST time.
+  Edited nonexistent or twice-occurring clock-change times are rejected with
+  an explanation rather than silently shifted; select an unambiguous time.
+- Staff can choose a manual override (including no next date), an exact
+  customer-requested callback, or the internal automatic policy when enabled.
+  Callback outcomes require an exact time and take precedence. Existing dates
+  and legacy follow-up activity are treated as manual, not silently enrolled.
+- Proposed defaults, **inactive pending review**: submitted inquiry and
+  `no_response` -> next business day at 09:00; `left_message` -> two business
+  days at 09:00. Business days exclude weekends, not holidays. Policy timezone
+  proposal: `America/New_York`; confirm this matches operations before enabling.
+  `reached`/`other` create no automatic date. Closed/lost or completed/cancelled
+  installations generate no automatic task. Explicit staff overrides are not
+  replaced by the maintenance worker.
+- Dates derive from persisted event time, not scheduler run time: overdue
+  tasks do not roll forward on refresh. One existing next-action field is reused;
+  CAS, deterministic operation keys and audited history prevent duplicate tasks
+  from retries, saves or repeated worker runs. Automatic terminal cleanup
+  affects only an automatic internal task, not consultation reminders,
+  installation status or payment.
+- Shared bright button streak pseudo-elements are removed at their source.
+  Keyboard focus, neutral hover, disabled/saving states remain. Existing-order
+  lookup alone receives narrower compact sizing; mobile keeps its prior
+  minimum touch height.
+
+### Configuration and release prerequisites
+
+Migration [034](../backend/migrations/034_commercial_followup_delivery.sql) is
+additive and **review-only / unauthorized**. It adds service-read/RPC-write SMS
+receipts and an idempotent status-event ledger, plus a guarded follow-up RPC.
+It does not alter 032/033, provider settings, cron schedules, stored historical
+messages, media assets or operational records. The guarded runner now lists
+034 as pending and refuses apply under the existing 029-033 authorization.
+Do not deploy the new follow-up writer before separately authorizing,
+applying and verifying 034; a missing RPC fails explicitly rather than
+pretending a save succeeded.
+
+Runtime settings belong in backend deployment environment variables, not Git:
+
+```text
+INTERNAL_FOLLOW_UP_POLICY_JSON={"enabled":false,"timeZone":"America/New_York","localHour":9,"businessDays":{"new_request":1,"no_response":1,"left_message":2}}
+TWILIO_STATUS_CALLBACK_URL=https://h2s-backend.vercel.app/api/twilio/message-status
+```
+
+Policy configuration is optional; absence uses the disabled proposal.
+An enabled policy requires the entire validated configuration. Activation
+requires timing approval, then an authorized scheduler that POSTs to
+`/api/commercial-follow-up-maintenance` using `Authorization: Bearer CRON_SECRET`.
+It must drain `nextCursor` pages using `?after=<cursor>` until null, starting
+from the beginning on the next cycle. No cron entry is installed by this change.
+An invalid configuration/storage error is reported; no send/recovery endpoint
+is called. Missing/invalid authorization is rejected.
+
+### Why acceptance did not become delivery evidence
+
+The commercial sender previously persisted Twilio's initial status/SID but
+specified no per-message status callback; no local delivery-callback ingester
+was implemented. This explains the local evidence gap. External Twilio
+account/number/messaging-service callback settings remain uninspected:
+missing receipts do **not** establish failed delivery.
+
+When explicitly configured, new commercial SMS sends pass the canonical HTTPS
+callback URL above to Twilio. The new POST endpoint requires valid signatures
+against that configured URL, the expected `TWILIO_ACCOUNT_SID`, valid message
+SID/status and exact recipient/sender identity. It uses `TWILIO_AUTH_TOKEN`
+for validation and never honors the inbound-handler debug bypass.
+Duplicate fields, invalid identity/signature and unsupported bodies are rejected.
+Storage failures return a retryable error rather than acknowledging lost evidence.
+Existing sends are unchanged if the callback URL is absent; an invalid configured
+URL prevents a send and reports configuration failure.
+
+Receipts can arrive before message/effect persistence and correlate later by
+exact SID; a recipient mismatch is marked for review. Duplicate events are
+idempotent. Late queued/sent updates cannot regress delivered/failure evidence.
+Contradictory terminal evidence is retained and shown as **Status unavailable /
+needs review**, with available error code/message, not guessed certainty.
+The compact queue labels are Pending, Accepted by Twilio — delivery not confirmed,
+Delivered, Delivery failed, and Status unavailable / needs review.
+Timestamps distinguish application attempts from when a signed provider update
+was received; no actual delivery instant is invented. Delivered does not mean
+read, technician YES, consultation approval or customer acknowledgement.
+Current recipient routing is shown separately and is not proof of a send.
+
+This increment does not backfill historical statuses, poll Twilio, send test
+messages or change production provider configuration. After a separately
+authorized migration/backend/frontend release, configure the canonical callback
+URL in the backend and verify webhook reachability with approved provider
+testing. Older sends acquire evidence only if Twilio actually supplies a
+callback to this endpoint; historical acceptance remains unconfirmed otherwise.
+
+### Validation boundary
+
+Fixtures cover business-day/DST calculation, overrides and terminal states,
+repeat-safe saves/worker runs, real Twilio signature validation, SID correlation,
+pre-persistence callbacks, retries/out-of-order/conflicting statuses, exact date
+round-trips and the full dashboard on desktop/mobile viewports. These are not
+production operational tests. Windows Edge native-picker invocation and keyboard
+date entry are fixture-tested. Physical iOS Safari remains unverified; viewport
+emulation is not an iOS pass. No live messages, jobs, payments, media saves,
+provider changes, migration applications or deployments are part of validation.
+
 ## Scope and release boundary
 
 This increment extends the existing canonical [dashboard](../frontend/dash.html).

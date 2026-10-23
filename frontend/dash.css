@@ -1725,15 +1725,47 @@
             justify-content: center;
         }
 
-        #logoutBtn {
-            color: #ffffff;
-            background: rgba(15, 23, 42, 0.92);
-            border-color: rgba(15, 23, 42, 0.92);
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+        #h2s-app #logoutBtn {
+            position: relative;
+            width: 44px;
+            min-width: 44px;
+            height: 44px;
+            min-height: 44px;
+            padding: 0;
+            color: var(--muted);
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            box-shadow: none;
+            transform: none;
+            cursor: pointer;
+            transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
         }
 
-        #logoutBtn .topbar-icon-btn__icon {
-            filter: brightness(0) invert(1);
+        #h2s-app #logoutBtn svg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            transform: translate(-50%, -50%);
+            stroke-width: 1.75;
+            pointer-events: none;
+        }
+
+        #h2s-app #logoutBtn:hover {
+            color: var(--text);
+            background: var(--gray-100);
+            border-color: var(--border);
+        }
+
+        #h2s-app #logoutBtn:active {
+            background: var(--gray-200);
+        }
+
+        #h2s-app #logoutBtn:focus-visible {
+            outline: 2px solid var(--azure);
+            outline-offset: 2px;
         }
 
         #logHoursQuickBtn .topbar-utility-btn__icon {
@@ -1765,12 +1797,6 @@
         .topbar-icon-btn:hover {
             color: #e11d48;
             border-color: rgba(225, 29, 72, 0.2);
-        }
-
-        #logoutBtn:hover {
-            color: #ffffff;
-            background: #be123c;
-            border-color: #be123c;
         }
 
         /* ===== MAIN ===== */
@@ -3315,41 +3341,12 @@
             border-radius: 12px;
         }
 
-        .btn::before,
-        .btn::after {
-            content: '';
-            position: absolute;
-            left: 10px;
-            right: 10px;
-            height: 1.5px;
-            border-radius: 999px;
-            opacity: 0;
-            transform: scaleX(0.35);
-            transition: opacity 0.18s var(--ease), transform 0.22s var(--ease);
-            pointer-events: none;
-        }
-
-        .btn::before {
-            top: 5px;
-            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.92), rgba(255,255,255,0));
-        }
-
-        .btn::after {
-            bottom: 5px;
-            background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.55), rgba(255,255,255,0));
-        }
-
         .btn:hover {
             background: var(--gray-50);
             border-color: var(--gray-300);
             color: var(--gray-900);
         }
 
-        .btn:hover::before,
-        .btn:hover::after {
-            opacity: 1;
-            transform: scaleX(1);
-        }
         
         .btn:focus {
             outline: 2px solid var(--azure);
@@ -8830,18 +8827,19 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: linear-gradient(180deg, #ffffff 0%, var(--gray-50) 100%);
+            background: var(--gray-50);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 10000;
-            animation: fadeIn 0.5s ease;
-            backdrop-filter: blur(6px);
             padding: 24px;
+            box-sizing: border-box;
+            font-family: 'Inter', sans-serif;
         }
 
         #userGate.hidden {
-            animation: fadeOut 0.3s ease forwards;
+            opacity: 0;
+            pointer-events: none;
         }
 
         @keyframes fadeOut {
@@ -8852,29 +8850,29 @@
         }
 
         .user-gate-card {
-            background: rgba(255, 255, 255, 0.96);
-            border-radius: 24px;
-            padding: 56px 48px;
-            box-shadow: 
-                0 30px 90px rgba(0,0,0,0.18),
-                0 0 1px rgba(255,255,255,0.5) inset;
-            max-width: 460px;
-            width: 90%;
-            text-align: center;
-            transform: scale(0.9);
-            animation: cardEnter 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            max-width: 360px;
+            width: 100%;
+            box-sizing: border-box;
+            text-align: left;
+            color: var(--text);
             position: relative;
             max-height: calc(100vh - 48px);
+            max-height: calc(100dvh - 48px);
             overflow-y: auto;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
         }
 
-        /* Short screens (laptops, small windows): keep the gate usable without clipping */
-        @media (max-height: 760px) {
+        @media (max-width: 600px) {
+            #userGate { padding: 16px; }
             .user-gate-card {
-                padding: 28px 22px;
-                border-radius: 20px;
+                padding: 20px;
+                max-height: calc(100vh - 32px);
+                max-height: calc(100dvh - 32px);
             }
         }
 
@@ -8910,28 +8908,29 @@
 
         .user-gate-mini {
             font-size: 12px;
-            color: var(--gray-600);
-            line-height: 1.4;
-            margin: 10px 0 0;
+            color: var(--muted);
+            line-height: 1.5;
+            margin: 0;
         }
 
-        @keyframes cardEnter {
-            to {
-                transform: scale(1);
-            }
+        .user-gate-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
         }
-
-        .user-gate-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            animation: shimmer 2s infinite;
+        .user-gate-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
-
+        .user-gate-field { display: grid; gap: 4px; min-width: 0; font-size: 13px; font-weight: 500; }
+        .user-gate-help { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .user-gate-account { display: grid; gap: 12px; margin-top: 12px; }
+        .user-gate-create { padding-top: 12px; border-top: 1px solid var(--border); }
+        .user-gate-create > .user-gate-mini { margin-bottom: 12px; }
+        .user-gate-section-title { font: 600 14px/1.5 'Inter', sans-serif; margin: 0 0 4px; }
+        .user-gate-status { min-height: 18px; overflow-wrap: anywhere; }
         @keyframes shimmer {
             to { left: 100%; }
         }
@@ -8947,35 +8946,23 @@
         }
 
         .user-gate-logo {
-            width: 96px;
-            height: 96px;
-            margin: 0 auto 24px;
-            border-radius: 50%;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-            animation: logoPulse 2s ease-in-out infinite;
-        }
-
-        @keyframes logoPulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+            width: 40px;
+            height: 40px;
+            flex: 0 0 40px;
+            object-fit: contain;
         }
 
         .user-gate-title {
-            font-size: 28px;
-            font-weight: 900;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin: 0 0 8px 0;
-            letter-spacing: -0.5px;
+            font: 600 22px/1.25 'Space Grotesk', sans-serif;
+            color: var(--text);
+            margin: 0 0 4px;
         }
 
         .user-gate-subtitle {
-            font-size: 15px;
-            color: var(--gray-600);
-            margin: 0 0 40px 0;
-            font-weight: 500;
+            font-size: 14px;
+            color: var(--muted);
+            margin: 0;
+            font-weight: 400;
         }
 
         .user-gate-select-wrapper {
@@ -8999,37 +8986,30 @@
             transform: translateY(-50%) rotate(180deg);
         }
 
-        .user-gate-select {
+        #userGate .user-gate-select {
             width: 100%;
-            padding: 18px 48px 18px 20px;
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--primary);
-            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
-            border: 2px solid #e3e8ef;
-            border-radius: 16px;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
+            min-height: 44px;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            font: 400 16px/1.4 'Inter', sans-serif;
+            color: var(--text);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-shadow: none;
         }
 
-        .user-gate-select:hover {
-            border-color: var(--primary);
-            background: white;
-            box-shadow: 0 4px 12px rgba(10, 42, 90, 0.1);
-            transform: translateY(-2px);
+        #userGate .user-gate-select:hover {
+            border-color: var(--gray-400);
         }
 
-        .user-gate-select:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: white;
-            box-shadow: 
-                0 0 0 4px rgba(10, 42, 90, 0.1),
-                0 8px 20px rgba(10, 42, 90, 0.15);
-            transform: translateY(-2px);
+        #userGate .user-gate-select:focus,
+        #userGate .user-gate-btn:focus-visible,
+        #userGate .dashboard-custom-select-trigger:focus-visible {
+            outline: 2px solid var(--azure);
+            outline-offset: 2px;
+            border-color: var(--azure);
+            box-shadow: none;
         }
 
         .user-gate-select option {
@@ -9037,62 +9017,45 @@
             font-weight: 600;
         }
 
-        .user-gate-btn {
+        #userGate .user-gate-btn {
             width: 100%;
-            padding: 18px 24px;
-            font-size: 16px;
-            font-weight: 700;
-            color: white;
-            background: linear-gradient(135deg, var(--primary) 0%, #1a4a8a 100%);
-            border: none;
-            border-radius: 16px;
+            min-height: 44px;
+            padding: 10px 12px;
+            font: 600 14px/1.4 'Inter', sans-serif;
+            color: var(--white);
+            background: var(--primary);
+            border: 1px solid var(--primary);
+            border-radius: 6px;
             cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-            letter-spacing: 0.5px;
-        }
-
-        .user-gate-btn::before {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-radius: 50%;
-            background: rgba(255,255,255,0.2);
-            transform: translate(-50%, -50%);
-            transition: width 0.5s, height 0.5s;
-        }
-
-        .user-gate-btn:hover::before {
-            width: 300px;
-            height: 300px;
-        }
-
-        .user-gate-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 
-                0 12px 28px rgba(10, 42, 90, 0.35),
-                0 0 0 1px rgba(255,255,255,0.1) inset;
-        }
-
-        .user-gate-btn:active {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 16px rgba(10, 42, 90, 0.3);
-        }
-
-        .user-gate-btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            transform: none;
             box-shadow: none;
         }
 
-        .user-gate-btn:disabled:hover::before {
-            width: 0;
-            height: 0;
+        #userGate .user-gate-btn:hover:not(:disabled) {
+            background: var(--primary-hover);
+            border-color: var(--primary-hover);
+        }
+
+        #userGate .user-gate-btn.user-gate-secondary {
+            background: var(--surface);
+            border-color: var(--border);
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        #userGate .user-gate-secondary:hover:not(:disabled) {
+            background: var(--gray-50);
+            border-color: var(--gray-400);
+        }
+
+        #userGate .dashboard-custom-select-trigger {
+            min-height: 44px;
+            border-radius: 6px;
+            box-shadow: none;
+        }
+
+        #userGate .user-gate-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
         }
 
         @keyframes fadeIn {
@@ -10503,6 +10466,7 @@
         .commercial-operations-form .commercial-operations-check { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
         .commercial-operations-form input[type="checkbox"] { width: auto; justify-self: start; margin-top: 4px; }
         .commercial-operations .btn { width: auto; justify-self: start; min-height: 36px; padding: 8px 12px; font-size: 13px; box-shadow: none; }
+        .commercial-operations [data-lookup] .btn { align-self: end; min-height: 32px; padding: 6px 10px; font-size: 12px; }
         .commercial-operations [data-operations-status] { font-size: 13px; }
         .commercial-operations-wide { grid-column: 1 / -1; }
         .commercial-operations summary { cursor: pointer; }
@@ -10541,6 +10505,7 @@
         .commercial-queue-row { border-radius: 0; }
         @media (max-width: 600px) {
             .commercial-operations-form { grid-template-columns: minmax(0, 1fr); }
+            .commercial-operations [data-lookup] .btn { min-height: 36px; }
             .commercial-operations-facts > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
             .commercial-operations li.commercial-operations-communication { grid-template-columns: minmax(0, 1fr); gap: 8px; }
         }
@@ -10633,9 +10598,24 @@
             font-size: 12px;
         }
 
-        .commercial-queue-pagination:empty {
+        .commercial-queue-pagination:empty,
+        .commercial-queue-pagination[hidden] {
             display: none;
         }
+
+        .commercial-queue-page-btn {
+            min-height: 32px;
+            padding: 4px 10px;
+            font: 500 13px/1.4 'Inter', sans-serif;
+            color: var(--text);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .commercial-queue-page-btn:hover:not(:disabled) { background: var(--gray-50); border-color: var(--gray-400); }
+        .commercial-queue-page-btn:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+        .commercial-queue-page-btn:disabled { color: var(--muted); opacity: 0.55; cursor: not-allowed; }
 
         .commercial-queue-next {
             display: grid;
@@ -10720,7 +10700,7 @@
                 margin: 4px 16px 0;
             }
 
-            .commercial-queue-pagination .btn,
+            .commercial-queue-page-btn,
             .commercial-queue-toolbar input,
             .commercial-queue-toolbar select {
                 min-height: 44px;

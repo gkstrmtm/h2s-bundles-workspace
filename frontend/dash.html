@@ -2085,19 +2085,27 @@
     <!-- USER SELECTION GATE -->
     <div id="userGate">
         <div class="user-gate-card">
-            <img class="user-gate-logo" 
-                 src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" 
-                 alt="Home2Smart">
-            <h2 class="user-gate-title">Welcome to Home2Smart</h2>
-            <p class="user-gate-subtitle">Sign in with your assigned username/email + PIN</p>
+            <div class="user-gate-brand">
+                <img class="user-gate-logo"
+                     src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png"
+                     alt="Home2Smart" width="40" height="40">
+                <div>
+                    <h2 class="user-gate-title">Home2Smart</h2>
+                    <p class="user-gate-subtitle">Dashboard sign in</p>
+                </div>
+            </div>
 
-            <div style="margin-top: 14px; display:flex; flex-direction:column; gap:10px;">
-                <input id="dashLoginUser" class="user-gate-select" placeholder="Username or email (e.g., ROSEL)" autocomplete="username" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
-                <input id="dashLoginPin" class="user-gate-select" type="password" placeholder="PIN" autocomplete="current-password" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
+            <div class="user-gate-fields">
+                <label class="user-gate-field" for="dashLoginUser">Username or email
+                    <input id="dashLoginUser" class="user-gate-select" autocomplete="username" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
+                </label>
+                <label class="user-gate-field" for="dashLoginPin">PIN
+                    <input id="dashLoginPin" class="user-gate-select" type="password" autocomplete="current-password" oninput="window.syncDashboardLoginEnabled && window.syncDashboardLoginEnabled()" />
+                </label>
                 <button id="dashLoginBtn" class="user-gate-btn" disabled onclick="dashboardAccountLogin()">
                     <span>Sign in</span>
                 </button>
-                <div class="user-gate-mini" id="dashLoginStatus" style="min-height: 16px;"></div>
+                <div class="user-gate-mini user-gate-status" id="dashLoginStatus" role="status" aria-live="polite"></div>
             </div>
 
             <script>
@@ -2134,31 +2142,43 @@
                 })();
             </script>
 
-            <div class="user-gate-mini" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148,163,184,0.25);">
+            <div class="user-gate-mini user-gate-help">
                 No account yet? Ask Admin to create one and send you a temporary PIN.
             </div>
 
-            <div style="margin-top: 12px; display:flex; flex-direction:column; gap:10px;">
-                <button type="button" class="user-gate-btn" style="width:100%; background:#0f172a;" onclick="toggleAdminCreateAccount()">
-                    <span>Create Account (Admin Key)</span>
+            <div class="user-gate-account">
+                <button type="button" class="user-gate-btn user-gate-secondary" aria-controls="dashAdminCreateWrap" aria-expanded="false" onclick="toggleAdminCreateAccount(); this.setAttribute('aria-expanded', document.getElementById('dashAdminCreateWrap').style.display !== 'none')">
+                    <span>Create account (admin key)</span>
                 </button>
-                <div id="dashAdminCreateWrap" style="display:none; text-align:left; padding: 12px; border:1px dashed rgba(148,163,184,0.35); border-radius: 12px; background: rgba(255,255,255,0.75);">
-                    <div style="font-weight:900; font-size:12px; color:#0f172a; margin-bottom:8px;">Admin-only account creation</div>
-                    <div class="user-gate-mini" style="margin-bottom:10px;">Requires the shared admin key. Not stored.</div>
-                    <div style="display:flex; flex-direction:column; gap:10px;">
-                        <input id="dashAdminCreateKey" class="user-gate-select" type="password" placeholder="Admin key" autocomplete="off" />
-                        <select id="dashAdminCreateRole" class="user-gate-select">
-                            <option value="VA" selected>VA</option>
-                            <option value="ADMIN">ADMIN</option>
-                        </select>
-                        <input id="dashAdminCreateName" class="user-gate-select" placeholder="Display name (e.g., Rose)" autocomplete="name" />
-                        <input id="dashAdminCreateUser" class="user-gate-select" placeholder="Username (e.g., ROSE)" autocomplete="username" />
-                        <input id="dashAdminCreateEmail" class="user-gate-select" placeholder="Email (optional)" autocomplete="email" />
-                        <input id="dashAdminCreatePin" class="user-gate-select" placeholder="PIN (leave blank to auto-generate)" autocomplete="new-password" />
-                        <button type="button" class="user-gate-btn" style="width:100%;" onclick="adminKeyCreateAccount()">
+                <div id="dashAdminCreateWrap" class="user-gate-create" style="display:none;">
+                    <h3 class="user-gate-section-title">Admin-only account creation</h3>
+                    <p class="user-gate-mini">Requires the shared admin key. Not stored.</p>
+                    <div class="user-gate-fields">
+                        <label class="user-gate-field" for="dashAdminCreateKey">Admin key
+                            <input id="dashAdminCreateKey" class="user-gate-select" type="password" autocomplete="off" />
+                        </label>
+                        <label class="user-gate-field" for="dashAdminCreateRole">Role
+                            <select id="dashAdminCreateRole" class="user-gate-select">
+                                <option value="VA" selected>VA</option>
+                                <option value="ADMIN">ADMIN</option>
+                            </select>
+                        </label>
+                        <label class="user-gate-field" for="dashAdminCreateName">Display name
+                            <input id="dashAdminCreateName" class="user-gate-select" autocomplete="name" />
+                        </label>
+                        <label class="user-gate-field" for="dashAdminCreateUser">Username
+                            <input id="dashAdminCreateUser" class="user-gate-select" autocomplete="username" />
+                        </label>
+                        <label class="user-gate-field" for="dashAdminCreateEmail">Email (optional)
+                            <input id="dashAdminCreateEmail" class="user-gate-select" autocomplete="email" />
+                        </label>
+                        <label class="user-gate-field" for="dashAdminCreatePin">PIN (optional)
+                            <input id="dashAdminCreatePin" class="user-gate-select" placeholder="Leave blank to auto-generate" autocomplete="new-password" />
+                        </label>
+                        <button type="button" class="user-gate-btn user-gate-secondary" onclick="adminKeyCreateAccount()">
                             <span>Create</span>
                         </button>
-                        <div class="user-gate-mini" id="dashAdminCreateStatus" style="min-height: 16px;"></div>
+                        <div class="user-gate-mini user-gate-status" id="dashAdminCreateStatus" role="status" aria-live="polite"></div>
                     </div>
                 </div>
             </div>
@@ -2217,8 +2237,8 @@
                     <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
                     Change PIN
                 </button>
-                <button class="icon-only-btn" onclick="logoutUser()" style="display: none;" id="logoutBtn" title="Logout" aria-label="Logout">
-                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <button type="button" class="icon-only-btn" onclick="logoutUser()" style="display: none;" id="logoutBtn" title="Sign out" aria-label="Sign out">
+                    <svg aria-hidden="true" focusable="false" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                 </button>
             </div>
         </div>

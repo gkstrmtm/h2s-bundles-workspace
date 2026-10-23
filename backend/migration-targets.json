@@ -18,6 +18,11 @@
       "authorization": "Workspace owner explicitly authorized applying reviewed migration 033 after 032 to production nkccbnrduojnzjfrpwva on 2026-10-23 UTC (2026-10-22 US Eastern). Verify the authorized SQL checksum, database target, prerequisites and service-only permissions before deploying the reviewed checkout webhook. Exact application release: 6d6e6ef86f38d18489345d138733d5639031d250. No live operational smoke actions are authorized.",
       "sqlSha256": "29ade041dc667e96c786103d7b944b74aa2122c20c950b62668a5f9cd1d86620"
     },
+    "queue034": {
+      "reviewOnly": true,
+      "authorization": null,
+      "sqlSha256": null
+    },
     "commercial031": {
       "reviewOnly": false,
       "authorization": "Workspace owner authorized applying the reviewed migration 031 on 2026-10-20 after verifying the security/build release. Security deployment dpl_6ngVyygN8t8FeEXP3V4pkemwxJrK was verified live; the owner also approved retirement of the six superseded runtime-DDL deployments. Apply only after their 300-second function drain.",

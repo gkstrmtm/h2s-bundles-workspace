@@ -9,8 +9,26 @@
     const localInput = value => {
         if (!value) return '';
         const instant = new Date(value);
+        if (!Number.isFinite(instant.getTime())) throw new Error('Saved date is invalid; review the record before editing.');
         return new Date(instant.getTime() - instant.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     };
+    function instantValue(form, name) {
+        const node = form.elements.namedItem(name), value = node.value;
+        if (!value) return '';
+        if (value === node.dataset.localValue && node.dataset.instant) return node.dataset.instant;
+        const instant = new Date(value);
+        if (!Number.isFinite(instant.getTime()) || localInput(instant) !== value) {
+            throw new Error(`This local time does not exist in ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Choose a valid time.`);
+        }
+        for (let delta = -180; delta <= 180; delta += 15) {
+            if (delta && localInput(new Date(instant.getTime() + delta * 60000)) === value) {
+                throw new Error('This time occurs twice during a timezone clock change. Choose an unambiguous time; unchanged saved times retain their original instant.');
+            }
+        }
+        return instant.toISOString();
+    }
+    const dateInput = (name, title, value, extra = '') => input(name, title, localInput(value), 'datetime-local',
+        `data-native-date data-instant="${escape(value || '')}" data-local-value="${escape(localInput(value))}" ${extra}`);
     const money = order => /^[A-Za-z]{3}$/.test(order.currency || '') && Number.isFinite(Number(order.total))
         ? new Intl.NumberFormat('en-US', { style: 'currency', currency: order.currency.toUpperCase() }).format(Number(order.total))
         : 'Price/currency needs review';
@@ -102,8 +120,9 @@
         const rest = events.filter(event => !primary.includes(event));
         const render = event => `<li class="commercial-operations-communication">
             <div><strong>${escape(event.purpose)}</strong><span>${escape(event.role)}${event.recipient ? ` · ${escape(event.recipient)}` : ''}</span></div>
-            <div><span class="commercial-operations-badge" data-result="${escape(event.result)}">${escape(label(event.result))}</span>
-                <time>${escape(event.timeLabel)}: ${escape(date(event.at))}</time><span>${escape(event.receipt)}</span>${event.processingIssue ? `<span>${escape(event.processingIssue)}</span>` : ''}</div></li>`;
+            <div><span class="commercial-operations-badge" data-result="${escape(event.result)}">${escape(event.statusLabel || label(event.result))}</span>
+                <time>${escape(event.timeLabel)}: ${escape(date(event.at))}</time><span>${escape(event.receipt)}</span>${event.processingIssue ? `<span>${escape(event.processingIssue)}</span>` : ''}
+                ${event.errorCode || event.errorMessage ? `<span>${escape([event.errorCode,event.errorMessage].filter(Boolean).join(' · '))}</span>` : ''}</div></li>`;
         return `<p class="commercial-operations-note">Notification recipients are not assigned installers. Transport status does not establish technician approval or customer acknowledgement.</p>
             <details data-section="routing"><summary>Current notification routing</summary>
                 <p class="commercial-operations-note">Technician requests: ${escape(summary.technicianRouting?.available ? summary.technicianRouting.recipients.join(', ') || 'No recipients configured' : 'Configuration unavailable; staff review required')}.
@@ -122,20 +141,22 @@
         const viewport = { x: global.scrollX, y: global.scrollY };
         const expanded = new Set(Array.from(model.root.querySelectorAll('details[open]'), node => node.dataset.section));
         const job = installation?.job, order = installation?.order;
+        const followUp = model.data.followUp, timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
         const latestContact = history.find(event => event.payload.contact);
         const overdue = state.disposition !== 'closed' && state.next_follow_up_at && Date.parse(state.next_follow_up_at) < Date.now();
         const assignments = installation?.assignments || [];
         const installerIds = [...new Set(assignments.map(item => item.pro_id))];
         const installer = model.data.installers?.find(person => person.id === installerIds[0]);
         const upcoming = [];
-        if (state.disposition !== 'closed' && state.next_follow_up_at) upcoming.push(`<li><strong>${overdue ? 'Overdue customer follow-up' : 'Customer follow-up'}</strong><time>${escape(date(state.next_follow_up_at))}</time></li>`);
+        if (state.disposition !== 'closed' && state.next_follow_up_at && !(followUp?.mode === 'automatic' && followUp.completed)) upcoming.push(`<li><strong>${overdue ? 'Overdue customer follow-up' : 'Customer follow-up'}</strong><time>${escape(date(state.next_follow_up_at))}</time><span>${escape(followUp?.reason || 'Staff-set internal follow-up; no message is scheduled.')}</span></li>`);
         if (['queued','assigned'].includes(job?.status) && job.due_at) upcoming.push(`<li><strong>Installation window</strong><time>${escape(date(job.due_at))} · ${escape(order.delivery_time || '')}</time></li>`);
         if (routing.nextReminderAt) upcoming.push(`<li><strong>Consultation reminder on record</strong><time>${escape(date(routing.nextReminderAt))}</time><span>Existing consultation rules determine whether it runs.</span></li>`);
         const historyItem = event => `<li><strong>${escape(event.action === 'follow_up' && event.payload.contact ? 'Contact attempt recorded' : label(event.action))}</strong>
             <time>${escape(date(event.created_at))} · ${escape(event.actor_name)}</time>
             <span>${escape(event.payload.contact?.note || event.payload.note || (event.action === 'follow_up' ? event.payload.reason || 'Follow-up responsibility and disposition saved.'
                 : event.action === 'schedule' ? 'Installation window saved.' : event.action === 'assign' ? `Installer: ${event.payload.proName || 'Existing directory record'}.`
-                    : event.action === 'location' ? 'Lead location updated; order address unchanged.' : 'Existing order and installation linked.'))}</span></li>`;
+                    : event.action === 'location' ? 'Lead location updated; order address unchanged.' : 'Existing order and installation linked.'))}</span>
+            ${event.payload.followUp?.reason ? `<span>${escape(event.payload.followUp.reason)}</span>` : ''}</li>`;
         model.root.innerHTML = `
             <h4 class="commercial-queue-detail__section-title">Operations</h4><p data-operations-status role="status" aria-live="polite"></p>
             <dl class="commercial-operations-facts">
@@ -155,11 +176,20 @@
                         ${state.responsible_id && !staff.some(person => person.User_ID === state.responsible_id) ? `<option value="${escape(state.responsible_id)}" selected>${escape(state.responsible_name)} (inactive)</option>` : ''}
                         ${staff.map(person => `<option value="${escape(person.User_ID)}"${person.User_ID === state.responsible_id ? ' selected' : ''}>${escape(person.Display_Name || person.Username)}</option>`).join('')}
                     </select></label>
-                    ${input('nextFollowUpAt', 'Next customer follow-up (your local time)', localInput(state.next_follow_up_at), 'datetime-local')}
+                    ${dateInput('nextFollowUpAt', `Next internal follow-up (${timeZone})`, state.next_follow_up_at)}
+                    <label>Follow-up timing<select name="followUpMode" class="form-select">
+                        <option value="manual"${!followUp || followUp.mode === 'manual' ? ' selected' : ''}>Staff override / no automatic date</option>
+                        <option value="customer_callback"${followUp?.mode === 'customer_callback' ? ' selected' : ''}>Customer-requested callback</option>
+                        <option value="automatic"${followUp?.mode === 'automatic' && followUp.enabled ? ' selected' : ''}${followUp?.enabled ? '' : ' disabled'}>Automatic internal policy${followUp?.enabled ? '' : ' (awaiting timing approval)'}</option>
+                    </select></label>
+                    <p class="commercial-operations-note commercial-operations-wide">Times use ${escape(timeZone)}. Unchanged dates preserve the original instant. Customer callbacks require an exact time and override automation. No message is scheduled.
+                        Automatic timing disables the date field; choose a staff override to set or clear it.
+                        ${followUp?.proposedAt && !state.next_follow_up_at ? `${followUp.enabled ? 'Calculated' : 'Proposed only; inactive'}: ${escape(date(followUp.proposedAt))}. ${escape(followUp.proposedReason)}` : ''}</p>
                     <label>Lead disposition<select name="disposition" class="form-select"><option value="open">Open</option><option value="closed"${state.disposition === 'closed' ? ' selected' : ''}>Closed</option></select></label>
                     ${input('reason', 'Reason (required when closed)', state.disposition_reason || '', 'text', 'maxlength="1000"')}
                     <label class="commercial-operations-wide commercial-operations-check"><input type="checkbox" name="recordContact"> Log a contact attempt — does not send a message</label>
-                    <label>Contact channel<select name="channel" class="form-select"><option value="call">Call</option><option value="email">Email</option><option value="sms">Text</option><option value="other">Other</option></select></label>
+                    <label>Contact channel<select name="channel" class="form-select">${[['call','Call'],['email','Email'],['sms','Text'],['other','Other']].map(([value, name]) =>
+                        `<option value="${value}"${value === (lead.contact_preference || 'call') ? ' selected' : ''}>${name}</option>`).join('')}</select></label>
                     <label>Outcome<select name="outcome" class="form-select">${['no_response','reached','left_message','requested_callback','other'].map(value => `<option value="${value}">${escape(label(value))}</option>`).join('')}</select></label>
                     <label class="commercial-operations-wide">Contact notes<textarea name="note" maxlength="4000" rows="2"></textarea></label>
                     <p class="commercial-operations-note commercial-operations-wide">Lead closure does not complete installation or customer confirmation, or stop consultation reminders. Responsibility grants no access.</p>
@@ -171,21 +201,21 @@
                 ${input('city', 'City', lead.project_city || '', 'text', 'maxlength="100"')}
                 ${input('state', 'State', lead.project_state || '', 'text', 'maxlength="100"')}
                 ${input('postalCode', 'Postal code', lead.project_postal_code || '', 'text', 'maxlength="100"')}
-                <p class="commercial-operations-note commercial-operations-wide">Updates this lead only; an existing order retains its address.</p><button class="btn btn-tonal" type="submit">Save lead location</button>
+                <p class="commercial-operations-note commercial-operations-wide">Updates this lead only; an existing order retains its address.</p><button class="btn btn-secondary" type="submit">Save lead location</button>
             </form></details>
             <section aria-label="Installation and payment" class="commercial-operations-section">
                 <h5>Installation actions</h5>
                 ${!installation ? `<p class="commercial-operations-note"><strong>Quote/payment setup required.</strong> No order, job or checkout is created here.</p>
                     <details data-section="link"><summary>Link an existing priced installation</summary>
-                    <form data-lookup class="commercial-operations-form">${input('orderRef', 'Existing order reference', '', 'text', 'required maxlength="150"')}<button class="btn btn-tonal" type="submit">Find existing order</button></form><div data-candidate></div></details>` : `
+                    <form data-lookup class="commercial-operations-form">${input('orderRef', 'Existing order reference', '', 'text', 'required maxlength="150"')}<button class="btn btn-secondary" type="submit">Find existing order</button></form><div data-candidate></div></details>` : `
                     ${['queued','assigned'].includes(job.status) ? `<details data-section="assign"><summary>Assign existing installer</summary><form data-action="assign" class="commercial-operations-form">
                         <label>Existing active installer<select name="proId" class="form-select" required><option value="">Choose installer</option>${model.data.installers.filter(person => person.name !== 'Name unavailable').map(person => `<option value="${escape(person.id)}">${escape(person.name)}</option>`).join('')}</select></label>
                         <label>Assignment notes<textarea name="note" required maxlength="4000" rows="2"></textarea></label><button class="btn btn-tonal" type="submit">Record assignment</button>
                         <p class="commercial-operations-note commercial-operations-wide">Explicit ADMIN assignment; no technician acceptance, notification or portal action is implied. Conflicting assignments require reconciliation.</p>
                     </form></details>` : ''}
                     <details data-section="schedule"><summary>Set installation window</summary><form data-action="schedule" class="commercial-operations-form">
-                        ${input('start', 'Start (your local time)', localInput(job.due_at), 'datetime-local', 'required')}
-                        ${input('end', 'End (your local time)', localInput(order.metadata_json?.scheduled_end), 'datetime-local', 'required')}
+                        ${dateInput('start', `Start (${timeZone})`, job.due_at, 'required')}
+                        ${dateInput('end', `End (${timeZone})`, order.metadata_json?.scheduled_end, 'required')}
                         <p class="commercial-operations-note commercial-operations-wide">${escape(Intl.DateTimeFormat().resolvedOptions().timeZone)}. No availability check or customer confirmation.</p>
                         <button class="btn btn-tonal" type="submit"${!['queued','assigned'].includes(job.status) ? ' disabled' : ''}>Save installation window</button>
                     </form></details>
@@ -213,8 +243,20 @@
             <button type="button" class="commercial-operations-review" data-reload>Review latest / discard draft</button>`;
         model.root.querySelectorAll('details').forEach(node => { node.open = expanded.has(node.dataset.section); });
         model.root.querySelectorAll('form').forEach(form => {
-            form.oninput = form.onchange = () => { model.dirty = true; };
+            const syncTiming = () => {
+                if (form.dataset.action !== 'follow_up') return;
+                const fields = form.elements;
+                const callback = fields.recordContact.checked && fields.outcome.value === 'requested_callback';
+                if (callback && fields.followUpMode.value !== 'customer_callback') {
+                    fields.followUpMode.value = 'customer_callback';
+                    fields.followUpMode.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                fields.nextFollowUpAt.disabled = fields.disposition.value === 'closed' || (fields.followUpMode.value === 'automatic' && !callback);
+                fields.nextFollowUpAt.required = fields.disposition.value !== 'closed' && fields.followUpMode.value === 'customer_callback';
+            };
+            form.oninput = form.onchange = () => { model.dirty = true; syncTiming(); };
             form.onsubmit = event => { event.preventDefault(); if (form.hasAttribute('data-lookup')) lookup(model, form); else save(model, form); };
+            syncTiming();
         });
         model.root.querySelector('[data-reload]').onclick = () => {
             if (model.saving || (model.dirty && !global.confirm('Discard unsaved changes and review the latest record?'))) return;
@@ -226,7 +268,6 @@
                 render(model);
             } else refresh(model);
         };
-        if (typeof global.h2sInitDateInputs === 'function') global.h2sInitDateInputs();
         if (active) {
             const target = active.tagName === 'SUMMARY' && activeSection ? model.root.querySelector(`details[data-section="${activeSection}"] > summary`)
                 : activeForm ? model.root.querySelector(`form[data-action="${activeForm}"] ${active.name ? `[name="${active.name}"]` : 'button[type="submit"]'}`) : null;
@@ -262,14 +303,18 @@
         let payload;
         try {
             if (action === 'follow_up') {
-                payload = { responsibleId: fields.responsibleId, nextFollowUpAt: fields.nextFollowUpAt ? new Date(fields.nextFollowUpAt).toISOString() : '', disposition: fields.disposition, reason: fields.reason };
+                const callback = fields.recordContact && fields.outcome === 'requested_callback';
+                payload = { responsibleId: fields.responsibleId,
+                    nextFollowUpAt: fields.disposition === 'closed' || (fields.followUpMode === 'automatic' && !callback) ? '' : instantValue(form, 'nextFollowUpAt'),
+                    followUpMode: callback ? 'customer_callback' : fields.followUpMode, disposition: fields.disposition, reason: fields.reason };
+                if (payload.followUpMode === 'customer_callback' && fields.disposition !== 'closed' && !payload.nextFollowUpAt) throw new Error('Enter the exact customer-requested callback time.');
                 if (fields.recordContact) payload.contact = { channel: fields.channel, outcome: fields.outcome, note: fields.note };
                 if (fields.recordContact && !fields.note.trim()) throw new Error('Contact notes are required.');
                 if (fields.disposition === 'closed' && !fields.reason.trim()) throw new Error('A nonblank closure reason is required.');
             } else if (action === 'location') payload = { ...fields, expectedUpdatedAt: model.data.lead.updated_at };
             else if (action === 'link') payload = { orderId: model.candidate.id, jobId: fields.jobId };
             else payload = {
-                ...(action === 'schedule' ? { start: new Date(fields.start).toISOString(), end: new Date(fields.end).toISOString(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : { note: fields.note, ...(action === 'assign' ? { proId: fields.proId } : {}) }),
+                ...(action === 'schedule' ? { start: instantValue(form, 'start'), end: instantValue(form, 'end'), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : { note: fields.note, ...(action === 'assign' ? { proId: fields.proId } : {}) }),
                 expectedJobUpdatedAt: model.data.installation.job.updated_at, expectedOrderUpdatedAt: model.data.installation.order.updated_at,
             };
         } catch (error) { message(model, error.message); return; }

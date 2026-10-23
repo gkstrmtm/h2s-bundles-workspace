@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ts = require('typescript');
+const vm = require('node:vm');
 const { JSDOM } = require('jsdom');
 const root = path.resolve(__dirname, '..', '..');
 function extract(file, accept) {
@@ -31,6 +32,121 @@ function dropdown(t, html = '<form><label id="fieldLabel">Responsible staff<sele
   w.dashboardSyncCustomSelect(select);
   return { w, select, shell: select.nextElementSibling, trigger: select.nextElementSibling.querySelector('button') };
 }
+function login(t) {
+  const w = setup(t, fs.readFileSync(path.join(root, 'frontend', 'dash.html'), 'utf8'));
+  const script = Array.from(w.document.scripts).find(node => node.textContent.includes('function bindDashboardLoginGate'));
+  assert.ok(script);
+  w.eval(script.textContent);
+  w.eval(extract('dash.js', name => ['dashboardAccountLogin','toggleAdminCreateAccount','adminKeyCreateAccount'].includes(name)));
+  w.API_URL = 'https://fixture.invalid/api/v1';
+  w.STORAGE_KEY = 'fixture-login';
+  w.showToast = () => {};
+  return w;
+}
+test('header Sign out has one accessible name and retains the existing session-clearing behavior', async t => {
+  const w = setup(t, fs.readFileSync(path.join(root, 'frontend', 'dash.html'), 'utf8'));
+  const button = w.document.getElementById('logoutBtn');
+  assert.equal(button.type, 'button');
+  assert.equal(button.getAttribute('aria-label'), 'Sign out');
+  assert.equal(button.title, 'Sign out');
+  assert.equal(button.getAttribute('onclick'), 'logoutUser()');
+  assert.equal(button.querySelector('svg').getAttribute('aria-hidden'), 'true');
+  assert.equal(button.querySelector('svg').getAttribute('focusable'), 'false');
+  for (const networkFailure of [false, true]) {
+    const requests = [], removed = [], tokens = [];
+    let reloads = 0;
+    const context = vm.createContext({
+      API_URL: 'https://fixture.invalid/api/v1', STORAGE_KEY: 'fixture-login',
+      fetch: async (url, options) => {
+        requests.push({ url, options });
+        if (networkFailure) throw new Error('Fixture network failure');
+        return { ok: true };
+      },
+      setDashboardSessionToken: value => tokens.push(value),
+      localStorage: { removeItem: key => removed.push(key) },
+      location: { reload: () => reloads++ },
+    });
+    vm.runInContext(extract('dash.js', name => name === 'logoutUser'), context);
+    await context.logoutUser();
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'https://fixture.invalid/api/v1?action=dashboardLogout');
+    assert.equal(requests[0].options.method, 'POST');
+    assert.equal(requests[0].options.headers['Content-Type'], 'application/json');
+    assert.equal(requests[0].options.body, '{}');
+    assert.deepEqual(tokens, ['']);
+    assert.deepEqual(removed, ['fixture-login', 'h2s_active_tab']);
+    assert.equal(reloads, 1);
+  }
+});
+test('compact sign-in retains persistent labels, PIN/autocomplete semantics and script-ready validation', t => {
+  const w = login(t), doc = w.document, user = doc.getElementById('dashLoginUser'), pin = doc.getElementById('dashLoginPin');
+  const button = doc.getElementById('dashLoginBtn');
+  assert.equal(doc.querySelector('.user-gate-title').textContent, 'Home2Smart');
+  assert.equal(doc.querySelector('.user-gate-subtitle').textContent, 'Dashboard sign in');
+  assert.equal(user.labels[0].textContent.trim(), 'Username or email');
+  assert.equal(pin.labels[0].textContent.trim(), 'PIN');
+  assert.equal(user.autocomplete, 'username');
+  assert.equal(pin.type, 'password');
+  assert.equal(pin.autocomplete, 'current-password');
+  user.value = 'fixture@example.invalid'; pin.value = '1234';
+  user.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(button.disabled, true);
+  w.__h2sDashboardScriptsLoaded = true;
+  pin.dispatchEvent(new w.Event('change', { bubbles: true }));
+  assert.equal(button.disabled, false);
+  pin.value = ' ';
+  pin.dispatchEvent(new w.Event('input', { bubbles: true }));
+  assert.equal(button.disabled, true);
+  assert.equal(doc.getElementById('dashLoginStatus').getAttribute('aria-live'), 'polite');
+});
+test('sign-in pending/error states and expandable admin creation retain their existing requests and validation', async t => {
+  const w = login(t), doc = w.document, button = doc.getElementById('dashLoginBtn');
+  doc.getElementById('dashLoginUser').value = 'fixture@example.invalid';
+  doc.getElementById('dashLoginPin').value = '1234';
+  let resolve, request;
+  w.fetch = (url, options) => { request = { url, options }; return new Promise(done => { resolve = done; }); };
+  const pending = w.dashboardAccountLogin();
+  assert.equal(button.disabled, true);
+  assert.equal(doc.getElementById('dashLoginStatus').textContent, 'Signing in...');
+  assert.match(request.url, /action=dashboardLogin/);
+  assert.equal(JSON.parse(request.options.body).username, 'fixture@example.invalid');
+  assert.equal(JSON.parse(request.options.body).pin, '1234');
+  resolve(Response.json({ ok: false, error: 'Fixture invalid PIN' }, { status: 401 }));
+  await pending;
+  assert.equal(button.disabled, false);
+  assert.equal(doc.getElementById('dashLoginStatus').textContent, 'Fixture invalid PIN');
+  assert.equal(doc.getElementById('dashLoginUser').value, 'fixture@example.invalid');
+  const toggle = doc.querySelector('[aria-controls="dashAdminCreateWrap"]');
+  const activate = () => w.Function(toggle.getAttribute('onclick')).call(toggle);
+  assert.equal(doc.getElementById('dashAdminCreateWrap').style.display, 'none');
+  activate();
+  assert.equal(doc.getElementById('dashAdminCreateWrap').style.display, 'block');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  let creates = 0;
+  w.fetch = async (url, options) => {
+    creates++;
+    assert.match(url, /action=createDashboardUser/);
+    assert.equal(options.headers['x-h2s-admin-key'], 'fixture-admin-key');
+    const payload = JSON.parse(options.body);
+    assert.equal(payload.role, 'VA');
+    assert.equal(payload.pin, '');
+    assert.equal(payload.email, null);
+    return Response.json({ ok: true, createDashboardUser: { user: { Username: 'FIXTURE' }, pin: '5678', pinWasGenerated: true } });
+  };
+  await w.adminKeyCreateAccount();
+  assert.equal(creates, 0);
+  assert.equal(doc.getElementById('dashAdminCreateStatus').textContent, 'Admin key required.');
+  doc.getElementById('dashAdminCreateKey').value = 'fixture-admin-key';
+  doc.getElementById('dashAdminCreateName').value = 'Fixture Staff';
+  doc.getElementById('dashAdminCreateUser').value = 'FIXTURE';
+  await w.adminKeyCreateAccount();
+  assert.equal(creates, 1);
+  assert.equal(doc.getElementById('dashAdminCreateStatus').textContent, 'Created.');
+  assert.equal(doc.getElementById('dashAdminCreateName').value, '');
+  activate();
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(doc.getElementById('dashAdminCreateWrap').style.display, 'none');
+});
 test('custom dropdown cancels label activation, synchronizes selection once and keeps its accessible field name', t => {
   const { w, select, shell, trigger } = dropdown(t);
   let nativeClicks = 0, nativeFocus = 0, changes = 0, inputs = 0;

@@ -34,29 +34,75 @@ test('email-only and call-first save one lead and submit actionable manual reque
     assert.equal(response.status, 201);
     const result = await response.json();
     assert.equal(result.consultation.metadata.request_kind, 'manual_follow_up');
+    assert.equal(result.consultation.metadata.contact_preference, method);
+    assert.ok(Number.isFinite(Date.parse(result.consultation.metadata.submitted_at)));
     assert.equal(result.consultation.nextReminderAt, null);
     assert.equal(result.notifications.customer.skipped, true);
     assert.equal(result.notifications.manualReviewRequired, true);
     assert.equal(f.tables.commercial_leads.length, 1);
     assert.equal(f.tables.commercial_leads[0].notes, 'Retain this project detail');
+    assert.equal(f.tables.commercial_leads[0].contact_preference, method);
+    assert.equal(f.tables.commercial_leads[0].email, method === 'email' ? 'fixture@example.invalid' : null);
     assert.deepEqual(f.sms.map(message => message.to), ['+15550000001']);
     assert.ok(!f.sms[0].body.includes('commercial-approval'));
     assert.equal(f.appointments.length, 0);
     const queued = (await f.queue()).queue[0];
     assert.equal(queued.followUp.submitted, true);
     assert.equal(queued.followUp.requestedContactMethod, method);
+    assert.equal(queued.contactPreference, method);
+    assert.equal(queued.email, method === 'email' ? 'fixture@example.invalid' : '');
     assert.equal(queued.consultation.selectedSlotStart, slot.selectedSlotStart);
     assert.match(queued.followUp.nextAction, method === 'email' ? /Manually email fixture@example.invalid/ : /Manually call \+15550000005/);
     assert.match(queued.followUp.nextAction, /not a confirmed appointment/);
     const reload = await f.route('commercial-intake').GET(new Request(`http://localhost/api/commercial-intake?token=${lead.publicToken}`));
     const reloaded = await reload.json();
     assert.equal(reloaded.lead.publicToken, lead.publicToken);
+    assert.equal(reloaded.lead.contactPreference, method);
+    assert.equal(reloaded.lead.email, method === 'email' ? 'fixture@example.invalid' : null);
     assert.equal(reloaded.submission.requestId, result.consultation.requestId);
     const duplicate = await f.post('commercial-consultation', { publicToken: lead.publicToken, ...slot });
     assert.equal(duplicate.status, 200);
     assert.equal((await duplicate.json()).consultation.requestId, result.consultation.requestId);
     assert.equal(f.tables.commercial_consultation_requests.length, 1);
+    assert.equal(f.sms.length, 1, 'Reload and replay must not send another staff alert');
   });
+});
+
+test('Email-first routes only manual staff alerts, preserves normalized email and refuses technician automation', async () => {
+  const f = createFixture({ COMMERCIAL_CONSULTATION_TECH_PHONES: '+15550000001,+15550000003' });
+  const lead = await save(f, contact('email', { email:' Email.Fixture@Example.invalid ',phone:'+15550000005',smsOptIn:true }));
+  assert.equal(lead.email, 'email.fixture@example.invalid');
+  assert.equal(lead.contactPreference, 'email');
+  const response = await f.post('commercial-consultation', { publicToken:lead.publicToken,assignedTechnicianPhone:'+15550000005' });
+  assert.equal(response.status, 201);
+  const data = await response.json(), request = f.tables.commercial_consultation_requests[0];
+  assert.equal(data.notifications.customer.skipped, true);
+  assert.equal(data.notifications.manualReviewRequired, true);
+  assert.equal(request.next_reminder_at, null);
+  assert.deepEqual(f.sms.map(message => message.to), ['+15550000001','+15550000003']);
+  for (const message of f.sms) {
+    assert.match(message.body, /manual follow-up.*Contact by email: email\.fixture@example\.invalid/);
+    assert.doesNotMatch(message.body, /commercial-approval|reply YES|reply NO/i);
+  }
+  request.next_reminder_at = '2000-01-01T00:00:00.000Z';
+  for (let run = 0; run < 2; run++) {
+    const maintenance = await f.route('commercial-consultation-maintenance').GET(new Request('http://localhost/api/commercial-consultation-maintenance', {
+      headers:{ Authorization:'Bearer fixture-only-cron-secret' },
+    }));
+    assert.equal(maintenance.status, 200);
+    assert.deepEqual((await maintenance.json()).processed, []);
+  }
+  const storedLead = f.tables.commercial_leads[0];
+  for (const decision of ['approve','decline']) {
+    const result = await f.runtime.applyConsultationDecision({ request:new Request('http://localhost/approval'),consultation:request,
+      lead:storedLead,action:decision,channel:'web' });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /manual customer follow-up/);
+  }
+  assert.equal(storedLead.contact_preference, 'email');
+  assert.equal(storedLead.email, lead.email);
+  assert.equal(f.sms.length, 2);
+  assert.equal(f.appointments.length, 0);
 });
 
 test('manual follow-up can be submitted without a preferred window', async () => {
@@ -333,7 +379,12 @@ test('full commercial frontend restores distinct draft, manual and text request 
         assert.equal(document.querySelector('#requestConsultationBtn').disabled, submitted);
         if (submitted) {
           assert.match(document.querySelector('#successStatus').textContent,
-            method === 'sms' ? /Request submitted; check the request status/ : /Manual follow-up pending review/);
+            method === 'sms' ? /Request submitted; awaiting technician review/ : /Manual follow-up pending review/);
+          if (method === 'email') {
+            assert.match(document.querySelector('#successCopy').textContent, /We'll follow up by email\./);
+            assert.match(document.querySelector('#successCopy').textContent, /No automated customer texts or emails/);
+            assert.equal(document.querySelector('#email').value,'fixture@example.invalid');
+          }
         }
         assert.equal(f.sms.length, before.sms);
         assert.equal(f.appointments.length, before.appointments);

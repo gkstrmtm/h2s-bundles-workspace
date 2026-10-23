@@ -149,6 +149,7 @@ function fixture({ env = {}, requests = [], missingTable = null } = {}) {
       throw new Error('Unexpected network or appointment call');
     },
   };
+  imports['@/lib/sms_delivery'] = loadTs('lib\\sms_delivery.ts', {}, globals);
   const runtime = loadTs('lib\\commercial_consultation_runtime.ts', imports, globals);
   imports['@/lib/commercial_consultation_runtime'] = runtime;
   return {

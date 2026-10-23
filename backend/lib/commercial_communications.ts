@@ -1,34 +1,44 @@
-type Effect = { kind: string; state: string; details?: { sid?: string; status?: string; to?: string }; updated_at?: string | null };
+import { communicationLabels } from '@/lib/sms_delivery';
+type Effect = { kind: string; state: string; details?: { sid?: string; status?: string; to?: string; persistenceError?: string }; updated_at?: string | null };
 type Receipt = { twilio_sid: string; status?: string | null; created_at?: string | null };
+type Delivery = { message_sid: string; to_phone: string; status: string; received_at: string;
+  last_error_code?: string | null; last_error_message?: string | null; conflicting_terminal?: boolean };
 const purposes: Record<string, string> = {
   dispatch: 'Technician request', reminder: 'Technician reminder', escalation: 'Staff escalation',
   customer_confirmation: 'Customer confirmation', customer_acknowledgement: 'Customer acknowledgement notice',
 };
-
-export function commercialCommunicationSummary(effects: Effect[], receipts: Receipt[]) {
-  const evidence = new Map(receipts.slice().sort((a, b) =>
-    (Date.parse(a.created_at || '') || 0) - (Date.parse(b.created_at || '') || 0)
-      || String(a.status).localeCompare(String(b.status))).map(row => [row.twilio_sid, row]));
+export function commercialCommunicationSummary(effects: Effect[], receipts: Receipt[], deliveries: Delivery[] = []) {
+  const messages = new Map(receipts.map(row => [row.twilio_sid, row]));
+  const updates = new Map(deliveries.map(row => [row.message_sid, row]));
   return effects.filter(row => purposes[row.kind.split(':')[0]]).map(row => {
-    const purpose = row.kind.split(':')[0];
-    const receipt = row.details?.sid ? evidence.get(row.details.sid) : undefined;
-    const providerStatus = String(receipt?.status || row.details?.status || '').toLowerCase();
-    const result = ['delivered','read'].includes(providerStatus) ? 'delivered'
-      : ['failed','undelivered','canceled','cancelled'].includes(providerStatus) || row.state === 'failed' ? 'failed'
-        : row.state === 'uncertain' ? 'uncertain'
-          : row.state === 'accepted' || ['queued','accepted','sending','sent'].includes(providerStatus) ? 'provider_accepted' : 'pending';
+    const purpose = row.kind.split(':')[0], sid = row.details?.sid;
     const recipient = row.details?.to || (['dispatch','reminder','escalation'].includes(purpose) ? row.kind.split(':').pop() : '');
+    const candidate = sid ? updates.get(sid) : undefined;
+    const mismatch = !!candidate && !!recipient && candidate.to_phone !== recipient;
+    const delivery = mismatch ? undefined : candidate;
+    const message = sid ? messages.get(sid) : undefined;
+    const providerStatus = String(delivery?.status || message?.status || row.details?.status || '').toLowerCase();
+    const result = mismatch || delivery?.conflicting_terminal ? 'uncertain'
+      : ['delivered','read'].includes(providerStatus) ? 'delivered'
+        : ['failed','undelivered','canceled','cancelled'].includes(providerStatus) || row.state === 'failed' ? 'failed'
+          : row.state === 'uncertain' && !delivery ? 'uncertain'
+            : row.state === 'accepted' || ['queued','accepted','sending','sent','scheduled'].includes(providerStatus) ? 'provider_accepted' : 'pending';
     return {
       purpose: purposes[purpose], role: purpose === 'escalation' ? 'Staff notification'
         : purpose.startsWith('customer_') ? 'Customer' : 'Technician notification',
-      recipient: /^\+?\d{7,15}$/.test(recipient || '') ? recipient : null,
-      result, at: receipt?.created_at || row.updated_at || null,
-      processingIssue: result === 'delivered' && ['failed','uncertain'].includes(row.state)
-        ? 'Application processing still needs review; delivery evidence does not resolve that issue.' : null,
-      timeLabel: receipt?.created_at ? 'Attempt recorded' : 'Processing record updated',
-      receipt: result === 'delivered' ? 'Delivery recorded; receipt timestamp unavailable.'
-        : result === 'failed' ? 'Recorded failure; delivery is not confirmed.'
-          : 'Delivery receipt unavailable.',
+      recipient: /^\+?\d{7,15}$/.test(recipient || delivery?.to_phone || '') ? recipient || delivery?.to_phone : null,
+      result, statusLabel: communicationLabels[result],
+      at: delivery?.received_at || row.updated_at || message?.created_at || null,
+      timeLabel: delivery ? 'Delivery update received' : row.updated_at ? 'Application attempt updated' : 'Attempt recorded',
+      processingIssue: mismatch ? 'Receipt recipient does not match the recorded send; correlation needs review.'
+        : delivery?.conflicting_terminal ? 'Conflicting terminal receipts retained; review provider evidence.'
+          : row.details?.persistenceError ? 'Accepted send has a message-history persistence issue; do not resend automatically.'
+            : ['delivered','provider_accepted'].includes(result) && ['failed','uncertain'].includes(row.state)
+              ? 'Application processing still needs review; delivery evidence does not resolve that issue.' : null,
+      errorCode: delivery?.last_error_code || null, errorMessage: delivery?.last_error_message || null,
+      receipt: delivery ? 'Signed provider update received. Not proof of reading, approval or customer acknowledgement.'
+        : result === 'delivered' ? 'Delivery recorded; receipt timestamp unavailable.'
+          : result === 'failed' ? 'Recorded failure; delivery is not confirmed.' : 'No delivery receipt recorded; this does not establish failure.',
     };
   }).sort((a, b) => Number(!!b.processingIssue || ['failed','uncertain'].includes(b.result)) - Number(!!a.processingIssue || ['failed','uncertain'].includes(a.result))
     || (Date.parse(b.at || '') || 0) - (Date.parse(a.at || '') || 0));

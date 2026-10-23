@@ -16,7 +16,7 @@ function evaluate(relative, imports, globals = {}) {
     require(name) { assert.ok(Object.hasOwn(imports,name), `Unmocked dependency blocked: ${name}`); return imports[name]; }, ...globals }, { filename });
   return module.exports;
 }
-async function createOperationsFixture() {
+async function createOperationsFixture(env = {}) {
   const db = new PGlite(), calls = { stripe: [], mail: [], resolver: 0 }, faults = {};
   await db.exec(`
     create role anon; create role authenticated; create role service_role bypassrls;
@@ -69,6 +69,7 @@ async function createOperationsFixture() {
   `);
   await db.exec(fs.readFileSync(path.join(root,'migrations','032_commercial_operations.sql'),'utf8'));
   await db.exec(fs.readFileSync(path.join(root,'migrations','033_atomic_stripe_order_metadata.sql'),'utf8'));
+  await db.exec(fs.readFileSync(path.join(root,'migrations','034_commercial_followup_delivery.sql'),'utf8'));
   const quote = raw => { const name = raw.trim(); assert.match(name,/^[A-Za-z_][A-Za-z0-9_]*$/); return `"${name}"`; };
   function from(table) {
     const conditions = [], args = [];
@@ -77,6 +78,8 @@ async function createOperationsFixture() {
     const builder = {
       select(value = '*') { columns = value; return builder; },
       eq(name, value) { conditions.push(`${quote(name)}=${add(value)}`); return builder; },
+      gt(name, value) { conditions.push(`${quote(name)}>${add(value)}`); return builder; },
+      contains(name, value) { conditions.push(`${quote(name)} @> ${add(value)}::jsonb`); return builder; },
       in(name, values) { conditions.push(values.length ? `${quote(name)} in (${values.map(add).join(',')})` : 'false'); return builder; },
       order(name, options = {}) { ordering = ` order by ${quote(name)} ${options.ascending === false ? 'desc' : 'asc'}`; return builder; },
       limit(value) { limit = value; return builder; },
@@ -115,12 +118,18 @@ async function createOperationsFixture() {
         return { data:result.rows[0].result,error:null };
       } catch (error) { return { data:null,error:{code:error.code,message:error.message} }; }
     }
-    assert.equal(name,'commercial_record_operation');
+    assert.ok(['commercial_record_operation','commercial_record_follow_up','sms_record_delivery'].includes(name));
+    if (name === 'commercial_record_follow_up' && faults.beforeFollowUp) {
+      const before = faults.beforeFollowUp;
+      delete faults.beforeFollowUp;
+      await before();
+    }
     const values = Object.values(args).map(value => value && typeof value === 'object' ? JSON.stringify(value) : value);
-    const casts = ['uuid','integer','uuid','jsonb','text','jsonb'];
+    const casts = name === 'sms_record_delivery' ? ['text','jsonb']
+      : name === 'commercial_record_follow_up' ? ['uuid','integer','uuid','jsonb','jsonb'] : ['uuid','integer','uuid','jsonb','text','jsonb'];
     try {
       const result = await db.query(`select ${name}(${values.map((_,i) => `$${i+1}::${casts[i]}`).join(',')}) result`,values);
-      if (name === 'commercial_record_operation' && faults.afterSave) faults.table = 'Dashboard_Users';
+      if (name.startsWith('commercial_record_') && faults.afterSave) faults.table = 'Dashboard_Users';
       return { data: result.rows[0].result, error: null };
     } catch (error) { return { data: null, error: { code: error.code, message: error.message } }; }
   } };
@@ -131,7 +140,13 @@ async function createOperationsFixture() {
       amount_received: faults.unpaid ? 0 : 120000, status: faults.unpaid ? 'processing' : 'succeeded',
       latest_charge: { amount_refunded: faults.refund || 0, disputed: !!faults.dispute } }; } },
   };
-  const communications = evaluate('lib\\commercial_communications.ts', {});
+  const globals = { process: { env: { STRIPE_SECRET_KEY:'sk_test_fixture_only',STRIPE_WEBHOOK_SECRET:'fixture_webhook_only',...env } } };
+  const delivery = evaluate('lib\\sms_delivery.ts', {}, globals);
+  const policy = evaluate('lib\\internal_follow_up.ts', { 'node:crypto': require('node:crypto') }, globals);
+  const followUp = evaluate('lib\\commercial_follow_up.ts', {
+    '@/lib/supabase': { getSupabase: () => client }, '@/lib/internal_follow_up': policy,
+  }, globals);
+  const communications = evaluate('lib\\commercial_communications.ts', { '@/lib/sms_delivery': delivery });
   const payment = evaluate('lib\\commercial_payment.ts', { stripe: class Stripe {} });
   class CommercialConfigurationError extends Error {}
   const route = evaluate('app\\api\\commercial-operations\\route.ts', {
@@ -145,6 +160,7 @@ async function createOperationsFixture() {
     } },
     '@/lib/adminAuth': { corsHeaders: () => ({}) },
     '@/lib/commercial_communications': communications,
+    '@/lib/commercial_follow_up': followUp,
     '@/lib/commercial_consultation_runtime': {
       CommercialConfigurationError,
       getTechnicianPhones: () => { if (faults.routing) throw new CommercialConfigurationError('Fixture routing unavailable'); return ['+15550000005']; },
@@ -152,7 +168,7 @@ async function createOperationsFixture() {
     },
     '@/lib/jobHelpers': functions('lib\\jobHelpers.js', ['canTransitionTo']),
     '@/lib/commercial_payment': payment,
-  });
+  }, globals);
   async function request(method, data, token = 'fixture-admin', query = {}) {
     const url = new URL('http://fixture.invalid/api/commercial-operations');
     if (method === 'GET') Object.entries({ leadId:id(1),...query }).forEach(([key,value]) => url.searchParams.set(key,value));
@@ -160,7 +176,7 @@ async function createOperationsFixture() {
       ...(method === 'POST' ? { body:JSON.stringify(data) } : {}) });
     return route[method](req);
   }
-  return { db, client, faults, calls, route, request, id, stripe };
+  return { db, client, faults, calls, route, request, id, stripe, followUp, policy, env:globals.process.env };
 }
 function functions(relative, names, globals = {}) {
   const filename = path.join(root,relative),source = fs.readFileSync(filename,'utf8');

@@ -4,6 +4,7 @@ import { getSupabase } from '@/lib/supabase';
 import { getDashboardAuthUserFromSession, getDashboardDb } from '@/lib/dashboardAuth';
 import { corsHeaders } from '@/lib/adminAuth';
 import { commercialCommunicationSummary } from '@/lib/commercial_communications';
+import { followUpView, prepareFollowUp, FollowUpInputError } from '@/lib/commercial_follow_up';
 import { canTransitionTo } from '@/lib/jobHelpers';
 import { verifyCommercialPayment } from '@/lib/commercial_payment';
 import { getTechnicianPhones, getEscalationPhones, CommercialConfigurationError } from '@/lib/commercial_consultation_runtime';
@@ -89,8 +90,10 @@ async function snapshot(leadId: string) {
   const sids = Array.from(new Set((effects.data || []).map(row => row.details?.sid).filter((sid): sid is string => typeof sid === 'string')));
   const receipts = sids.length ? await db.from('sms_messages').select('twilio_sid,status,created_at').in('twilio_sid', sids).limit(100)
     : { data: [], error: null };
-  if (effects.error || receipts.error) console.error('Commercial communication evidence unavailable', {
-    code: effects.error?.code || receipts.error?.code || 'MISSING_EVIDENCE',
+  const delivery = sids.length ? await db.from('sms_delivery_receipts').select('*').in('message_sid', sids).limit(100)
+    : { data: [], error: null };
+  if (effects.error || receipts.error || delivery.error) console.error('Commercial communication evidence unavailable', {
+    code: effects.error?.code || receipts.error?.code || delivery.error?.code || 'MISSING_EVIDENCE',
   });
   let technicianRouting: { available: boolean; recipients: string[] } = { available: true, recipients: [] };
   try { technicianRouting.recipients = getTechnicianPhones(); }
@@ -99,8 +102,8 @@ async function snapshot(leadId: string) {
     console.error('Commercial technician notification routing unavailable: configuration needs review');
     technicianRouting = { available: false, recipients: [] };
   }
-  const communications = { available: !effects.error, receiptLookupAvailable: !receipts.error,
-    events: commercialCommunicationSummary(effects.data || [], receipts.data || []),
+  const communications = { available: !effects.error, receiptLookupAvailable: !receipts.error && !delivery.error,
+    events: commercialCommunicationSummary(effects.data || [], receipts.data || [], delivery.data || []),
     limited: (requests || []).length === 10 || (effects.data || []).length === 100,
     technicianRouting, escalationRecipients: getEscalationPhones() };
   let installation = null;
@@ -129,7 +132,7 @@ async function snapshot(leadId: string) {
     installation = { order, job, artifacts, payment, assignments };
   }
   return { lead, state, staff: await staff(), history: history.slice(0, 50), hasOlderActivity: history.length > 50,
-    installation, installers: installation ? await installers() : [], communications, routing: {
+    installation, installers: installation ? await installers() : [], communications, followUp: await followUpView(leadId), routing: {
       nextReminderAt: consultation?.next_reminder_at || null, reminderCount: consultation?.reminder_count || 0,
       consultationStatus: consultation?.status || null, responseAt: consultation?.response_at || null,
       consultationOrderId: consultation?.related_order_id || null } };
@@ -188,6 +191,11 @@ async function handle(request: Request, write: boolean) {
         }
         payload.contact = { channel: input.contact.channel, outcome: input.contact.outcome, note: text(input.contact.note, 4000, true) };
       }
+      try { await prepareFollowUp(leadId, body.operationId, payload, input.followUpMode); }
+      catch (error) {
+        if (!(error instanceof FollowUpInputError)) throw error;
+        throw new OperationError(error.message);
+      }
     } else if (body.action === 'location') {
       for (const key of ['address','city','state','postalCode']) payload[key] = text(input[key], key === 'address' ? 300 : 100);
       payload.expectedUpdatedAt = timestamp(input.expectedUpdatedAt);
@@ -244,9 +252,10 @@ async function handle(request: Request, write: boolean) {
           'error' in transition && typeof transition.error === 'string' ? transition.error : 'Installation transition is not allowed.');
       }
     } else throw new OperationError('Unknown commercial operation.');
-    checked(await db.rpc('commercial_record_operation', {
+    checked(await db.rpc(body.action === 'follow_up' ? 'commercial_record_follow_up' : 'commercial_record_operation', {
       p_lead_id: leadId, p_revision: body.revision, p_operation_id: body.operationId,
-      p_actor: { id: actor.userId, name: actor.displayName || actor.username }, p_action: body.action, p_payload: payload,
+      p_actor: { id: actor.userId, name: actor.displayName || actor.username },
+      ...(body.action === 'follow_up' ? {} : { p_action: body.action }), p_payload: payload,
     }), 'Unable to save commercial operation');
     return NextResponse.json({ ok: true, ...await snapshot(leadId) }, { headers });
   } catch (error) {

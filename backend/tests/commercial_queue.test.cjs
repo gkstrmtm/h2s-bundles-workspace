@@ -301,6 +301,110 @@ test('queue hierarchy exposes usable contact links, separate scope/notes, page c
   } finally { dom.window.close(); }
 });
 
+test('pagination hides a single first page and an exhausted empty search without changing selection', async () => {
+  const fixture = createFixture();
+  seed(fixture, 3);
+  const { dom, ui } = await mount(fixture);
+  try {
+    const footer = dom.window.document.getElementById('commercialQueuePagination');
+    assert.equal(footer.hidden, true);
+    assert.equal(footer.textContent, '');
+    ui.selectLead(id(2));
+    const selected = ui.state.selectedLeadId;
+    ui.renderPagination();
+    assert.equal(ui.state.selectedLeadId, selected);
+    ui.state.query = 'no matching company';
+    ui.resetSearch();
+    await ui.refresh();
+    assert.equal(ui.state.items.length, 0);
+    assert.equal(footer.hidden, true);
+    assert.equal(footer.textContent, '');
+    assert.equal(footer.getAttribute('aria-busy'), 'false');
+  } finally { dom.window.close(); }
+});
+
+test('pagination keeps stable compact controls, disables loading and restores focus without moving a refreshed list', async () => {
+  const fixture = createFixture();
+  seed(fixture, 30);
+  const { dom, ui } = await mount(fixture);
+  try {
+    const w = dom.window, doc = w.document, footer = doc.getElementById('commercialQueuePagination');
+    const previous = footer.querySelector('[data-page-direction="previous"]');
+    const next = footer.querySelector('[data-page-direction="next"]');
+    assert.equal(footer.hidden, false);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, false);
+    const gate = deferred(), fetch = w.fetch;
+    w.fetch = async (...args) => { await gate.promise; return fetch(...args); };
+    next.focus();
+    const pending = ui.goToPage(1);
+    assert.equal(footer.getAttribute('aria-busy'), 'true');
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, true);
+    assert.equal(footer.querySelector('[data-page-status]').textContent, 'Loading...');
+    assert.equal(footer.querySelector('[data-page-direction="next"]'), next);
+    gate.resolve();
+    await pending;
+    assert.equal(ui.state.items[0].leadId, id(26));
+    assert.equal(footer.hidden, false);
+    assert.equal(footer.getAttribute('aria-busy'), 'false');
+    assert.equal(previous.disabled, false);
+    assert.equal(next.disabled, true);
+    assert.equal(doc.activeElement, previous);
+    assert.equal(footer.querySelector('[data-page-status]').textContent, 'Page 2');
+    ui.selectLead(id(29));
+    doc.getElementById('commercialQueueList').scrollTop = 55;
+    previous.focus();
+    const cursors = Array.from(ui.state.cursors);
+    await ui.refresh({ silent: true });
+    assert.equal(doc.activeElement, previous);
+    assert.equal(doc.getElementById('commercialQueueList').scrollTop, 55);
+    assert.equal(ui.state.selectedLeadId, id(29));
+    assert.deepEqual(Array.from(ui.state.cursors), cursors);
+    assert.equal(ui.state.filter, 'all');
+    assert.equal(ui.state.query, '');
+    await ui.goToPage(0);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, false);
+    assert.equal(doc.activeElement, next);
+    assert.equal(footer.querySelector('[data-page-direction="previous"]'), previous);
+  } finally { dom.window.close(); }
+});
+
+test('pagination preserves sparse filtered-search continuation across an empty first segment and previous history', async () => {
+  const fixture = createFixture();
+  seed(fixture, 1010);
+  request(fixture, 1005, 'pending');
+  const { dom, ui } = await mount(fixture);
+  try {
+    ui.state.filter = 'pending';
+    ui.state.query = 'Fixture';
+    ui.resetSearch();
+    await ui.refresh();
+    const footer = dom.window.document.getElementById('commercialQueuePagination');
+    const previous = footer.querySelector('[data-page-direction="previous"]');
+    const next = footer.querySelector('[data-page-direction="next"]');
+    assert.equal(ui.state.items.length, 0);
+    assert.equal(ui.state.pagination.scanLimitReached, true);
+    assert.equal(footer.hidden, false);
+    assert.equal(previous.disabled, true);
+    assert.equal(next.disabled, false);
+    assert.equal(next.textContent, 'Continue search');
+    await ui.goToPage(1);
+    assert.deepEqual(Array.from(ui.state.items, item => item.leadId), [id(1005)]);
+    assert.equal(footer.hidden, false);
+    assert.equal(previous.disabled, false);
+    assert.equal(next.disabled, true);
+    assert.equal(ui.state.filter, 'pending');
+    assert.equal(ui.state.query, 'Fixture');
+    await ui.goToPage(0);
+    assert.equal(ui.state.items.length, 0);
+    assert.equal(next.disabled, false);
+    assert.equal(next.textContent, 'Continue search');
+    assert.equal(ui.state.pagination.totalMatches, null);
+  } finally { dom.window.close(); }
+});
+
 test('mobile Back to queue preserves query, filter, page, focus and scroll across refresh', async () => {
   const fixture = createFixture();
   seed(fixture, 30);

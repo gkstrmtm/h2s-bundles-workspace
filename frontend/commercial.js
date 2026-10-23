@@ -197,16 +197,20 @@
   }
 
   function showContactError(error, focus) {
-    const step = error.field === 'slotGrid' ? 5 : error.field === 'serviceNeeds' ? 1 : 2;
+    const field = byId(error.field) || (error.field === 'serviceNeeds' ? document.querySelector('input[name="serviceNeeds"]') : null);
+    const card = field && field.closest('.wizard-card[data-step]');
+    const step = card ? Number(card.dataset.step) : error.field === 'slotGrid' ? 5 : error.field === 'serviceNeeds' ? 1 : 2;
     if (focus && state.currentStep !== step) showStep(step);
     setStatus(error.message, 'error');
-    const field = byId(error.field) || (error.field === 'serviceNeeds' ? document.querySelector('input[name="serviceNeeds"]') : null);
     if (field) {
       field.setAttribute('aria-invalid', 'true');
       field.setAttribute('aria-describedby', 'formStatus');
+      if (commercialShouldUseCustomSelect(field)) commercialSyncCustomSelect(field);
       if (focus) {
         if (!field.matches('input,select,textarea,button')) field.setAttribute('tabindex', '-1');
-        field.focus();
+        const shell = commercialGetCustomSelectShell(field);
+        const target = shell ? shell.querySelector('.commercial-custom-select-trigger') : field;
+        target.focus();
       }
     }
   }
@@ -215,7 +219,7 @@
     const preference = String(byId('contactPreference') ? byId('contactPreference').value : 'sms').toLowerCase();
     const manual = preference === 'email' || preference === 'call';
     const channel = preference === 'email' ? 'email' : 'phone';
-    const manualCopy = `Your request is submitted for manual follow-up by ${channel}. No automated customer texts or emails are sent for this request. Any preferred window is pending review; no appointment is confirmed.`;
+    const manualCopy = `${preference === 'email' ? "We'll follow up by email. " : ''}Your request is submitted for manual follow-up by ${channel}. No automated customer texts or emails are sent for this request. Any preferred window is pending review; no appointment is confirmed.`;
     return {
       preference,
       cta: manual ? 'Request manual follow-up' : 'Submit estimate request',
@@ -247,28 +251,71 @@
       : 'Call and email follow-up are manual. We do not send automated customer texts for these choices.');
     setText('phoneLabel', copy.preference === 'email' ? 'Phone (optional)' : 'Phone (required)');
     setText('emailLabel', copy.preference === 'email' ? 'Email (required)' : 'Email (optional)');
+    if (byId('clearDraftBtn')) byId('clearDraftBtn').textContent = state.submission ? 'Start a separate project' : 'Clear draft';
     return copy;
   }
 
-  function renderSubmission(consultation, manualReviewRequired) {
+  function commercialSubmissionCopy(consultation, lead, now) {
+    const metadata = consultation.metadata || {};
+    const preference = String((lead && lead.contactPreference) || metadata.contact_preference || '').toLowerCase();
+    const manual = metadata.request_kind === 'manual_follow_up' || preference === 'email' || preference === 'call';
+    const nextStep = preference === 'email' ? "We'll follow up by email."
+      : preference === 'call' ? 'A Home2Smart staff member will call you.'
+      : preference === 'sms' ? 'Check your texts for updates from Home2Smart.'
+      : 'A Home2Smart staff member needs to review how to follow up with you.';
+    const manualNote = manual ? ' A staff member handles follow-up. No automated customer texts or emails are sent for this request.' : '';
+    const approved = ['approved', 'customer_confirmed'].indexOf(consultation.status) >= 0;
+    const end = Date.parse(consultation.selectedSlotEnd || '');
+    const start = Date.parse(consultation.selectedSlotStart || '');
+    const windowEnd = Number.isFinite(end) ? end : start;
+    const expired = Number.isFinite(windowEnd) && windowEnd <= now;
+    let status = manual ? 'Manual follow-up pending review. No appointment is confirmed.'
+      : 'Request submitted; awaiting technician review. No appointment is confirmed.';
+    let detail = 'Any preferred window is pending review, not a confirmed appointment.';
+
+    if (approved && consultation.relatedOrderId) {
+      status = 'Appointment created. Contact the team if you need to change this window.';
+      detail = 'Your consultation appointment is recorded.';
+      if (!manual) {
+        const confirmation = metadata.workflow && metadata.workflow.customer_confirmation;
+        if (consultation.customerConfirmationSentAt || (confirmation && confirmation.state === 'accepted')) {
+          detail += ' The text provider accepted the confirmation; delivery and customer acknowledgement are not confirmed.';
+        } else if (confirmation && confirmation.state === 'failed') {
+          detail += ' The confirmation text could not be sent. Staff follow-up is needed.';
+        } else {
+          detail += ' Confirmation contact needs staff review; text delivery and customer acknowledgement are not confirmed.';
+        }
+      }
+    } else if (consultation.status === 'declined') {
+      status = 'Requested window declined. Staff follow-up is needed; no appointment is confirmed.';
+      detail = 'Staff need to discuss another window with you.';
+    } else if (consultation.status === 'expired' || expired) {
+      status = 'Requested window has passed without a confirmed appointment. Staff follow-up is needed.';
+      detail = approved ? 'Technician approval is recorded, but appointment creation still needs staff review.'
+        : 'An expired requested window does not mean the request was accepted or anyone successfully contacted you.';
+    } else if (approved) {
+      status = 'Technician approved; booking still needs review. No appointment is confirmed.';
+      detail = 'The team needs to resolve appointment creation before sending a booking confirmation.';
+    } else if (consultation.status === 'escalated') {
+      status = 'Your request needs staff follow-up. No appointment is confirmed.';
+    } else if (consultation.status === 'reschedule_requested') {
+      status = 'A different window needs review. No appointment is confirmed.';
+    }
+    return { status, copy: `${nextStep}${manualNote} ${detail}` };
+  }
+
+  function renderSubmission(consultation) {
     if (!consultation) return;
     state.submission = consultation;
-    const copy = syncFollowUpCopy();
-    const manual = consultation.metadata && consultation.metadata.request_kind === 'manual_follow_up';
+    syncFollowUpCopy();
+    const receipt = commercialSubmissionCopy(consultation, state.lead, Date.now());
     const successPanel = byId('consultationSuccessPanel');
     if (successPanel) successPanel.classList.remove('hidden');
     setText('successReference', consultation.referenceCode || '--');
     setText('successTitle', 'Follow-up request submitted.');
-    setText('successStatus', manual ? 'Manual follow-up pending review. No appointment is confirmed.' : 'Request submitted; check the request status with our team before making appointment plans.');
+    setText('successStatus', receipt.status);
     setText('successSlot', consultation.selectedSlotStart ? consultation.slotLabel : 'No preferred window requested');
-    setText('successCopy', manualReviewRequired ? copy.manualReviewCopy : copy.successCopy);
-    if (!manual && ['approved', 'customer_confirmed'].indexOf(consultation.status) >= 0) {
-      const booked = !!consultation.relatedOrderId;
-      setText('successStatus', booked ? 'Appointment created. Contact the team if you need to change this window.' : 'Technician approved; booking still needs review. No appointment is confirmed.');
-      setText('successCopy', booked
-        ? 'Your appointment is recorded. SMS provider acceptance, message delivery and customer acknowledgement are separate; contact the team if you have not received the details.'
-        : 'The team needs to resolve appointment creation before sending a booking confirmation.');
-    }
+    setText('successCopy', receipt.copy);
   }
 
   function mediaAssetOrigin() {
@@ -607,10 +654,21 @@
     commercialCustomSelectBound = true;
 
     document.addEventListener('click', function (event) {
-      const target = event && event.target && event.target.closest
-        ? event.target.closest('.commercial-custom-select-shell')
-        : null;
-      if (!target) commercialCloseCustomSelects();
+      const target = event.target && event.target.closest ? event.target : null;
+      const shell = target && target.closest('.commercial-custom-select-shell');
+      // Cancel label activation before a selected option can be removed by synchronization.
+      if (shell) {
+        event.preventDefault();
+        return;
+      }
+      const label = target && target.closest('label');
+      const select = label && label.control;
+      if (select && commercialShouldUseCustomSelect(select) && !target.closest('button,input,a,textarea,select')) {
+        event.preventDefault();
+        commercialSyncCustomSelect(select);
+        commercialGetCustomSelectShell(select).querySelector('.commercial-custom-select-trigger').focus();
+      }
+      commercialCloseCustomSelects();
     }, true);
 
     document.addEventListener('keydown', function (event) {
@@ -649,6 +707,11 @@
       selectEl.dataset.customSelectBound = 'true';
       selectEl.addEventListener('change', function () { commercialSyncCustomSelect(selectEl); });
       selectEl.addEventListener('input', function () { commercialSyncCustomSelect(selectEl); });
+      selectEl.addEventListener('invalid', function (event) {
+        if (!commercialShouldUseCustomSelect(selectEl)) return;
+        event.preventDefault();
+        showContactError({ field: selectId, message: selectEl.validationMessage }, true);
+      });
     }
 
     selectEl.classList.add('commercial-custom-select-native');
@@ -747,6 +810,18 @@
     const menu = shell.querySelector('.commercial-custom-select-menu');
     if (!trigger || !textEl || !menu) return;
 
+    const signature = JSON.stringify([
+      selectEl.value, selectEl.selectedIndex, selectEl.disabled, selectEl.required,
+      commercialGetSelectLabel(selectEl), selectEl.getAttribute('aria-label'),
+      selectEl.getAttribute('aria-labelledby'), selectEl.getAttribute('aria-describedby'),
+      selectEl.getAttribute('aria-invalid'),
+      Array.from(selectEl.options || []).map(function (option) {
+        return [option.value, option.text, option.disabled, option.selected];
+      })
+    ]);
+    if (shell.dataset.signature === signature) return;
+    shell.dataset.signature = signature;
+
     const selectedOption = selectEl.options && selectEl.selectedIndex >= 0
       ? selectEl.options[selectEl.selectedIndex]
       : (selectEl.options && selectEl.options.length ? selectEl.options[0] : null);
@@ -758,7 +833,13 @@
     textEl.classList.toggle('is-placeholder', isPlaceholder);
     trigger.disabled = !!selectEl.disabled;
     trigger.title = selectedLabel || 'Select';
-    trigger.setAttribute('aria-label', commercialGetSelectLabel(selectEl));
+    trigger.setAttribute('aria-label', selectEl.getAttribute('aria-label') || commercialGetSelectLabel(selectEl));
+    trigger.setAttribute('aria-required', selectEl.required ? 'true' : 'false');
+    ['aria-labelledby', 'aria-describedby', 'aria-invalid'].forEach(function (attribute) {
+      const value = selectEl.getAttribute(attribute);
+      if (value) trigger.setAttribute(attribute, value);
+      else trigger.removeAttribute(attribute);
+    });
     shell.classList.toggle('is-disabled', !!selectEl.disabled);
 
     menu.innerHTML = '';
@@ -947,6 +1028,41 @@
     return true;
   }
 
+  function clearDeviceDraft() {
+    storage.removeItem(DRAFT_KEY);
+    storage.removeItem(STORAGE_KEY);
+    state.lead = null;
+    state.leadToken = '';
+    state.selectedSlotStart = '';
+    state.uploadedPhotos = [];
+    state.firstLeadTracked = false;
+    state.submission = null;
+    state.revision = 0;
+    state.dirty = false;
+    state.pendingSave = null;
+    state.submissionKey = '';
+    state.conflict = false;
+    if (byId('consultationSuccessPanel')) byId('consultationSuccessPanel').classList.add('hidden');
+    state.maxStepVisited = 1;
+
+    const form = byId('commercialIntakeForm');
+    if (form) form.reset();
+    updateLeadUrl('');
+    if (state.slots.length) renderSlots(state.slots);
+    renderUploadedPhotos();
+    renderConditionalCards();
+    renderSelectedServices();
+    syncChoicePills();
+    renderAssessmentSnapshot();
+    syncFollowUpCopy();
+    commercialSyncAllCustomSelects(document);
+    showStep(1);
+    updateInternalMetrics({ completenessBucket: 'empty', completenessScore: 0, priorityTier: 'normal' });
+    setSaveState('Draft cleared', '', 'Start again whenever you are ready.');
+    setStatus('Draft cleared.', 'success');
+    setLocalDraftState('Draft cleared.');
+  }
+
   function humanizeToken(value, fallback) {
     const normalized = String(value || '').trim();
     if (!normalized) return fallback;
@@ -966,11 +1082,17 @@
     return `${list.slice(0, 2).join(' + ')} +${list.length - 2} more`;
   }
 
+  function businessTypeLabel(value, fallback) {
+    const select = byId('businessType');
+    const option = select && Array.from(select.options).find(function (item) { return item.value === value; });
+    return option && option.value ? option.text.trim() : humanizeToken(value, fallback);
+  }
+
   function buildCommercialSmsMessage() {
     const payload = collectLeadPayload();
     const lines = ['Hi, I need help with a commercial Home2Smart project.'];
     const services = summarizeServicesForMessage(payload.serviceNeeds);
-    const siteType = payload.businessType ? humanizeToken(payload.businessType, '') : '';
+    const siteType = businessTypeLabel(payload.businessType, '');
     const timeline = window.H2SCommercialLabels.timeline(payload.timeline, '');
     const nameOrCompany = [payload.fullName, payload.companyName].filter(Boolean).join(' / ');
     const locationBits = [payload.projectCity, payload.projectState].filter(Boolean);
@@ -1033,7 +1155,7 @@
     const locationText = locationBits.length ? locationBits.join(', ') : (payload.projectAddress || 'Add site details');
     const scopeText = payload.scopeSummary || (payload.serviceNeeds.length ? payload.serviceNeeds.join(', ') : 'Add a short scope summary');
 
-    setText('assessmentBusinessType', humanizeToken(payload.businessType, 'Not selected'));
+    setText('assessmentBusinessType', businessTypeLabel(payload.businessType, 'Not selected'));
     setText('assessmentTimeline', window.H2SCommercialLabels.timeline(payload.timeline, 'Not selected'));
     setText('assessmentContact', contact);
     setText('assessmentPhotos', state.uploadedPhotos.length ? `${state.uploadedPhotos.length} file${state.uploadedPhotos.length === 1 ? '' : 's'}` : 'No files yet');
@@ -1269,7 +1391,7 @@
         : state.dirty ? 'Local edits are not yet saved to the server. No follow-up request has been submitted.'
         : 'Project details saved. No follow-up request has been submitted yet.');
     }
-    renderSubmission(payload.submission, !!(payload.submission && payload.submission.metadata && payload.submission.metadata.request_kind === 'manual_follow_up'));
+    renderSubmission(payload.submission);
   }
 
   async function saveLead(source) {
@@ -1330,6 +1452,7 @@
     renderUploadedPhotos();
     updateInternalMetrics(result.lead);
     renderAssessmentSnapshot();
+    if (state.submission) renderSubmission(state.submission);
     setLocalDraftState(DEFAULT_LOCAL_DRAFT_MESSAGE);
     setSaveState(state.submission ? 'Project changes saved' : 'Draft saved', 'success', state.submission ? 'Your existing request remains submitted.' : 'Project details saved. No follow-up request has been submitted yet.');
     setStatus(state.submission ? 'Project changes saved. Your existing request remains submitted.' : 'Draft saved. Submit your follow-up request when you are ready.', 'success');
@@ -1489,7 +1612,7 @@
       return;
     }
 
-    renderSubmission(result.consultation, result.notifications.manualReviewRequired);
+    renderSubmission(result.consultation);
 
     setStatus(followUpCopy.status, 'success');
     track('form_submit', {
@@ -1904,6 +2027,7 @@
     qsa('input, select, textarea').forEach(function (field) {
       field.addEventListener('input', function () {
         field.removeAttribute('aria-invalid');
+        if (commercialShouldUseCustomSelect(field)) commercialSyncCustomSelect(field);
         syncFieldState();
       });
       field.addEventListener('change', function () {
@@ -1928,6 +2052,17 @@
     if (saveProgressBtn) {
       saveProgressBtn.addEventListener('click', function () {
         saveLead('manual_save').catch(function () {});
+      });
+    }
+
+    const clearDraftBtn = byId('clearDraftBtn');
+    if (clearDraftBtn) {
+      clearDraftBtn.addEventListener('click', function () {
+        const shouldClear = !window.confirm || window.confirm(state.submission
+          ? 'Start a separate project? This clears the form on this device. Your submitted request is kept.'
+          : 'Clear the saved draft on this device? Saved server records are kept.');
+        if (!shouldClear) return;
+        clearDeviceDraft();
       });
     }
 

@@ -6,13 +6,14 @@ const { Client } = require('pg');
 const commercialReview = require('./lib/commercial_migration_review.cjs');
 const operationsReview = require('./lib/commercial_operations_review.cjs');
 const stripeMetadataReview = require('./lib/stripe_order_metadata_review.cjs');
+const queueReview = require('./lib/commercial_queue_review.cjs');
 
 const root = __dirname;
 const prerequisiteTables = ['owner_media_uploads', 'proof_assets'];
 const managedTables = [...prerequisiteTables, 'media_placements'];
 const ledger = 'public.h2s_schema_migrations';
 const stripeMetadataVersion = stripeMetadataReview.version;
-const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version, operationsReview.version, stripeMetadataVersion];
+const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version, operationsReview.version, stripeMetadataVersion, queueReview.version];
 const migrationOrder = versions;
 
 function digest(value) {
@@ -74,6 +75,10 @@ function authorizeApply(target, confirmProject) {
   if (target.stripe033?.reviewOnly !== false || !target.stripe033?.authorization
     || target.stripe033?.sqlSha256 !== migrations().find(file => file.version === stripeMetadataVersion).sha256) {
     throw new Error('033 remains review-only; separate explicit authorization and reviewed checksum are required');
+  }
+  if (target.queue034?.reviewOnly !== false || !target.queue034?.authorization
+    || target.queue034?.sqlSha256 !== migrations().find(file => file.version === queueReview.version).sha256) {
+    throw new Error('034 remains review-only; separate explicit authorization and reviewed checksum are required');
   }
 }
 
@@ -194,6 +199,7 @@ async function verify(client, target) {
   const commercial031 = await commercialReview.inspect(client, target, rows.some(row => row.version === commercialReview.version));
   const commercial032 = await operationsReview.inspect(client, rows.some(row => row.version === operationsReview.version));
   const stripe033 = await stripeMetadataReview.inspect(client, rows.some(row => row.version === stripeMetadataVersion));
+  const queue034 = await queueReview.inspect(client, rows.some(row => row.version === queueReview.version));
   const access = (await client.query(`
     select has_table_privilege('anon','public.media_placements','SELECT') as anon_select,
       has_table_privilege('authenticated','public.media_placements','INSERT') as authenticated_insert,
@@ -201,7 +207,7 @@ async function verify(client, target) {
         from unnest(array['SELECT','INSERT','UPDATE','DELETE']) p) as service_access`)).rows[0];
   if (access.anon_select || access.authenticated_insert || !access.service_access) throw new Error('Unexpected placement table access grants');
   const pending = files.slice(rows.length).map(file => file.version);
-  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031, commercial032, stripe033,
+  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031, commercial032, stripe033, queue034,
     columns: schema.columns.filter((row) => row.table_name === 'media_placements').map((row) => row.name), access, migrations: rows };
 }
 
@@ -225,6 +231,7 @@ async function apply(client, target, confirmProject) {
     await commercialReview.inspect(client, target, rows.some(row => row.version === commercialReview.version));
     await operationsReview.inspect(client, rows.some(row => row.version === operationsReview.version));
     await stripeMetadataReview.inspect(client, rows.some(row => row.version === stripeMetadataVersion));
+    await queueReview.inspect(client, rows.some(row => row.version === queueReview.version));
     await client.query(`create table if not exists ${ledger} (
       version text primary key,sha256 text not null,project_ref text not null,environment text not null,
       after_schema_sha256 text not null,applied_at timestamptz not null default clock_timestamp(),
@@ -237,6 +244,7 @@ async function apply(client, target, confirmProject) {
       if (file.version === commercialReview.version) await commercialReview.inspect(client, target, true);
       if (file.version === operationsReview.version) await operationsReview.inspect(client, true);
       if (file.version === stripeMetadataVersion) await stripeMetadataReview.inspect(client, true);
+      if (file.version === queueReview.version) await queueReview.inspect(client, true);
       const after = await snapshot(client);
       if (securityDigest(after) !== target.securitySha256) throw new Error('Migration changed existing access controls');
       await client.query(`insert into ${ledger} (version,sha256,project_ref,environment,after_schema_sha256) values ($1,$2,$3,$4,$5)`,

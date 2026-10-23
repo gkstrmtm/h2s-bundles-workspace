@@ -9,6 +9,7 @@
   --surface-alt: #f6f8fb;
   --surface-soft: #eef3f8;
   --surface-strong: #0f2238;
+  --commercial-footer-bottom: #d6e0eb;
   --border: rgba(20, 45, 74, 0.12);
   --border-strong: rgba(20, 45, 74, 0.2);
   --shadow-sm: 0 10px 26px rgba(9, 26, 43, 0.05);
@@ -37,6 +38,17 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+html.commercial-page {
+  min-height: 100%;
+  background-color: var(--commercial-footer-bottom);
+}
+
+.commercial-page body.commercial-body {
+  min-height: 100vh;
+  min-height: 100svh;
+  background-color: var(--commercial-footer-bottom);
 }
 
 body.commercial-body {
@@ -962,14 +974,7 @@ textarea {
 }
 
 .field select.commercial-custom-select-native {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  opacity: 0;
-  pointer-events: none;
+  display: none !important;
 }
 
 .commercial-custom-select-shell {
@@ -1359,13 +1364,17 @@ textarea {
   margin-top: var(--space-8);
   border-top: 1px solid rgba(15, 34, 56, 0.14);
   background:
-    linear-gradient(180deg, rgba(227, 234, 242, 0.92) 0%, rgba(214, 224, 235, 0.96) 100%);
+    linear-gradient(180deg, rgba(227, 234, 242, 0.92) 0%, var(--commercial-footer-bottom) 100%);
 }
 
 .page-footer__inner {
   align-items: flex-end;
   padding-top: 22px;
   padding-bottom: 28px;
+}
+
+.commercial-page .page-footer__inner {
+  padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
 }
 
 .page-footer__brandblock {

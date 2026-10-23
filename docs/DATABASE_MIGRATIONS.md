@@ -12,6 +12,16 @@ The owner separately authorized exact-checksum 032 followed by 033 on
 verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
+The local Commercial Queue proposal registers
+`034_commercial_followup_delivery.sql` as the next **review-only, unauthorized**
+migration. Existing 029-033 SQL/checksums and production authorization are
+unchanged. Status/verify will report 034 pending while retaining verification
+of applied history; `apply` is blocked before connecting until separate explicit
+authorization and the exact reviewed 034 checksum are recorded. No application
+or policy/provider activation is authorized by this registration. See
+[Commercial operations](COMMERCIAL_OPERATIONS.md#queue-follow-up-and-delivery-proposal-local-not-released)
+for configuration and the separate internal-only maintenance contract.
+
 ## Credentials and trusted TLS
 
 Configure `DATABASE_URL_DIRECT` in the ignored `backend/.env.local` or the

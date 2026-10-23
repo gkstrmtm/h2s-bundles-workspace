@@ -193,6 +193,45 @@ test('commercial API: authorized persistence, explicit installation linkage, Str
   });
 });
 
+test('Email-first contact logging defaults to email and preserves preference across saves, overrides and reload', async t => {
+  const f = await createOperationsFixture();
+  const dom = new JSDOM('<section data-commercial-operations></section>',{url:'http://fixture.invalid/dash.html',runScripts:'outside-only',pretendToBeVisual:true});
+  t.after(async()=>{dom.window.close();await f.db.close();});
+  const w = dom.window, host = w.document.querySelector('section'), posts = [];
+  w.fetch = async (url, options) => {
+    const response = await f.route[options.method](new Request(url, options));
+    if (options.method === 'POST') posts.push(await response.clone().json());
+    return response;
+  };
+  w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
+  await w.H2SCommercialOperations.mount(host,id(1),{apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'});
+  assert.equal(host.querySelector('[name=channel]').value,'email');
+  for (const [index, channel] of ['email','call'].entries()) {
+    const form = host.querySelector('[data-action=follow_up]');
+    assert.equal(form.querySelector('[name=channel]').value,'email');
+    form.querySelector('[name=recordContact]').checked=true;
+    form.querySelector('[name=channel]').value=channel;
+    form.querySelector('[name=outcome]').value='no_response';
+    form.querySelector('[name=note]').value=`Synthetic ${channel} attempt; no provider send.`;
+    form.dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+    for(let attempt=0;attempt<1000 && !host.querySelector('[data-operations-status]').textContent.startsWith('Saved.');attempt++) await tick();
+    assert.match(host.querySelector('[data-operations-status]').textContent,/^Saved\./);
+    assert.equal(posts.length,index+1);
+    assert.equal(posts[index].lead.contact_preference,'email');
+    assert.equal(posts[index].lead.email,'fixture@example.invalid');
+    assert.equal(posts[index].history[0].payload.contact.channel,channel);
+    assert.equal(posts[index].followUp.enabled,false);
+    assert.equal(host.querySelector('[name=channel]').value,'email');
+  }
+  const restored = await (await f.request('GET')).json();
+  assert.equal(restored.lead.contact_preference,'email');
+  assert.equal(restored.history.length,2);
+  assert.equal((await f.db.query('select contact_preference from commercial_leads where lead_id=$1',[id(1)])).rows[0].contact_preference,'email');
+  assert.deepEqual(f.calls.mail,[]);
+  assert.deepEqual(f.calls.stripe,[]);
+  assert.equal(f.calls.resolver,0);
+});
+
 test('full detail module preserves drafts, focus, failures and stale-read protection', async t => {
   const f = await createOperationsFixture();
   const dom = new JSDOM('<section data-commercial-operations></section>',{url:'http://fixture.invalid/dash.html',runScripts:'outside-only',pretendToBeVisual:true});
@@ -291,7 +330,9 @@ test('lost responses replay once; completion survives unavailable response reads
 });
 
 test('communication projection uses recorded results without leaking provider identifiers or errors', () => {
-  const {commercialCommunicationSummary: summarize}=evaluate('lib\\commercial_communications.ts',{});
+  const {commercialCommunicationSummary: summarize}=evaluate('lib\\commercial_communications.ts',{
+    '@/lib/sms_delivery':evaluate('lib\\sms_delivery.ts',{}),
+  });
   const effects=[
     {kind:'dispatch:window:initial:+15550000005',state:'accepted',details:{sid:'SMprivate',status:'queued',error:'internal secret'},updated_at:'2026-01-01T10:00:00Z'},
     {kind:'reminder:window:initial:+15550000005',state:'accepted',details:{sid:'SMreceipt'},updated_at:'2026-01-01T11:00:00Z'},

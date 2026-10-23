@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { getSupabase } from '@/lib/supabase';
+import { smsStatusCallbackUrl } from '@/lib/sms_delivery';
 
 const commercialUtils = require('@/lib/commercial_consultation.js') as any;
 
@@ -306,6 +307,18 @@ export async function getLeadById(leadId: string) {
   return data || null;
 }
 
+export async function findLatestConsultationForLead(leadId: string) {
+  const { data, error } = await getSupabase()
+    .from('commercial_consultation_requests')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(commercialDatabaseErrorMessage(error));
+  return data || null;
+}
+
 export async function findActiveConsultationForLead(leadId: string) {
   const sb = getSupabase();
   const { data, error } = await sb
@@ -368,12 +381,19 @@ export async function sendSmsAndPersist(to: string, body: string, contactName?: 
     return { ok: false, to, error: 'Twilio is not configured', retrySafe: true };
   }
 
+  let callback: string | null;
+  try { callback = smsStatusCallbackUrl(); }
+  catch (error) {
+    console.error('Commercial SMS callback configuration invalid:', error instanceof Error ? error.message : 'Invalid configuration');
+    return { ok: false, to, error: 'SMS delivery callback configuration invalid; no send attempted', retrySafe: true };
+  }
   let message;
   try {
     message = await twilioConfig.client.messages.create({
       from: twilioConfig.fromPhone,
       to,
       body,
+      ...(callback ? { statusCallback: callback } : {}),
     });
   } catch (error: any) {
     await persistSmsMessage({

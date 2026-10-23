@@ -49004,7 +49004,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             this.state.loading = false;
                             this.inFlight = null;
                             this.renderStatus();
-                            this.renderPagination();
                         }
                     }
                 };
@@ -49230,7 +49229,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.renderDetail(filteredItems);
                 this.renderUpdatedAt();
                 this.renderStatus();
-                this.renderPagination();
                 this.syncMobileView();
             },
 
@@ -49251,6 +49249,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     if (control) control.disabled = this.state.legacy;
                 });
                 this.renderUpdatedAt();
+                this.renderPagination();
             },
 
             renderPagination() {
@@ -49258,11 +49257,46 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (!container) return;
                 const page = this.state.appliedPageIndex;
                 const pagination = this.state.pagination;
+                const active = document.activeElement;
+                if (container.contains(active) && active.dataset.pageDirection) this.paginationFocus = active.dataset.pageDirection;
+                const restoreFocus = this.paginationFocus && (active === document.body || container.contains(active));
+                container.setAttribute('aria-busy', String(this.state.loading));
+                if (!pagination || (page === 0 && !pagination.hasMore)) {
+                    container.hidden = true;
+                    container.innerHTML = '';
+                    this.paginationFocus = null;
+                    if (restoreFocus) {
+                        const list = document.getElementById('commercialQueueList');
+                        if (list) { list.tabIndex = -1; list.focus({ preventScroll: true }); }
+                    }
+                    return;
+                }
+                container.hidden = false;
+                if (!container.querySelector('[data-page-direction]')) {
+                    container.innerHTML = `<button type="button" class="commercial-queue-page-btn" data-page-direction="previous">Previous</button>
+                        <span data-page-status aria-live="polite"></span>
+                        <button type="button" class="commercial-queue-page-btn" data-page-direction="next">Next</button>`;
+                }
                 const contextCurrent = this.state.appliedQuery === this.state.query && this.state.appliedFilter === this.state.filter;
-                container.innerHTML = pagination ? `
-                    <button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.goToPage(${page - 1})"${page === 0 || this.state.loading || !contextCurrent || page - 1 >= this.state.cursors.length ? ' disabled' : ''}>Previous</button>
-                    <span>Page ${page + 1}</span>
-                    <button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.goToPage(${page + 1})"${!pagination.hasMore || this.state.loading || !contextCurrent ? ' disabled' : ''}>${pagination.scanLimitReached ? 'Continue search' : 'Next'}</button>` : '';
+                const previous = container.querySelector('[data-page-direction="previous"]');
+                const next = container.querySelector('[data-page-direction="next"]');
+                previous.onclick = () => this.goToPage(page - 1);
+                next.onclick = () => this.goToPage(page + 1);
+                previous.disabled = page === 0 || this.state.loading || !contextCurrent || page - 1 >= this.state.cursors.length;
+                next.disabled = !pagination.hasMore || this.state.loading || !contextCurrent;
+                const nextLabel = pagination.scanLimitReached ? 'Continue search' : 'Next';
+                if (next.textContent !== nextLabel) next.textContent = nextLabel;
+                const status = container.querySelector('[data-page-status]');
+                const caption = this.state.loading ? 'Loading...' : `Page ${page + 1}`;
+                if (status.textContent !== caption) status.textContent = caption;
+                if (!this.state.loading) {
+                    if (restoreFocus) {
+                        const target = this.paginationFocus === 'previous' ? previous : next;
+                        const fallback = target.disabled ? [previous, next].find(button => !button.disabled) : target;
+                        if (fallback) fallback.focus({ preventScroll: true });
+                    }
+                    this.paginationFocus = null;
+                }
             },
 
             renderSummary(filteredItems) {

@@ -90,7 +90,7 @@ function matchesPostgrestFilter(row, expression) {
   return new RegExp(`^${pattern}$`, 'is').test(String(value));
 }
 
-function createFixture() {
+function createFixture(environment = {}) {
   const tables = { commercial_leads: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
   const sms = [];
   const providerAttempts = [];
@@ -104,6 +104,7 @@ function createFixture() {
     COMMERCIAL_CONSULTATION_TECH_PHONE: '+15550000001', COMMERCIAL_ESCALATION_PHONES: '+15550000002',
     TWILIO_ACCOUNT_SID: 'fixture-only', TWILIO_AUTH_TOKEN: 'fixture-only', TWILIO_FROM_NUMBER: '+15550000004',
     CRON_SECRET: 'fixture-only-cron-secret',
+    ...environment,
   };
   const database = {
     rpc(name, args) {
@@ -273,6 +274,7 @@ function createFixture() {
     }
     return modules.get(relative);
   }
+  imports['@/lib/sms_delivery'] = load('lib\\sms_delivery.ts');
   const runtime = load('lib\\commercial_consultation_runtime.ts');
   imports['@/lib/commercial_consultation_runtime'] = runtime;
   const queue = evaluate('commercial-queue-projection.ts', queueFunctions(), {}, {

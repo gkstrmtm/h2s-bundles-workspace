@@ -3,7 +3,7 @@ import {
   CommercialConfigurationError,
   commercialRpc,
   corsHeaders,
-  findActiveConsultationForLead,
+  findLatestConsultationForLead,
   getLeadByToken,
   getPublicBaseUrl,
   serializeLead,
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     const token = normalizeText(url.searchParams.get('token') || '', 120);
     const config = publicConfig();
     const lead = token ? await getLeadByToken(token) : null;
-    const submission = lead ? await findActiveConsultationForLead(lead.lead_id) : null;
+    const submission = lead ? await findLatestConsultationForLead(lead.lead_id) : null;
 
     return NextResponse.json(
       {
