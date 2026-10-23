@@ -4,8 +4,8 @@
 
 This phone-only increment and the Queue/presentation changes were directly
 deployed through Vercel on 2026-10-23 from
-`a5a67c565af30f098f237349613538d621a306d3`, using
-`PORTAL_BUILD_20261023_152052_a5a67c5`. Guarded migrations 034 then 035 are
+`7bc101e8b54102a9ea86cde4823f3c66f7eb26d4`, using
+`PORTAL_BUILD_20261023_160427_7bc101e`. Guarded migrations 034 then 035 are
 applied and independently verified. Automatic internal follow-up remains
 disabled, and no new outbound chase sequence or payment/scheduling gate exists.
 
@@ -279,7 +279,7 @@ The selected payment scope is **existing priced orders only**. Leads without an
 explicit linked installation display **Quote/payment setup required**. Payment
 collection is not connected for those leads.
 
-### Brand and customer copy (local; not deployed)
+### Brand and customer copy (released)
 
 System-authored Commercial page text, SMS prefills, technician/customer texts
 and reply templates use **Home2Smart**, with the number 2. Regression coverage
@@ -287,17 +287,21 @@ rejects spoken-brand misspellings without rewriting customer-entered content
 or historical messages. Call/Text instructions use plain next steps; a request
 is not a confirmed appointment, and a consultation is not an installation.
 Consent wording, recipients, approval links and send behavior are unchanged.
+The reviewed page cleanup also clarifies service labels without changing stored
+values and replaces the redundant manual Save progress action with an autosave
+note. The isolated release passed 87 focused tests, five navigation scenarios,
+nine customer/dashboard fixture workflows, TypeScript and a production build.
 
 ### Customer form navigation and returning visitors
 
-The local navigation correction measures the sticky header after the new card
+The released navigation correction measures the sticky header after the new card
 layout. Continue aligns the next step number and heading with a 16px header gap,
 instead of adding the card's top padding to that gap. Back and step selection
 keep their card-edge target; the submitted receipt keeps its existing target.
 Focus behavior and reduced-motion support are unchanged. Short desktop steps
 still respect the browser's page-bottom scroll limit rather than adding empty
-space below the page. This correction is not included in the deployed release
-recorded above until separately released.
+space below the page. Production files match the release recorded above; actual
+form submissions were tested with fixtures, not with live customer records.
 
 The browser remembers a lead token and draft under `h2s_commercial_lead` and
 `h2s_commercial_draft`; these are origin/browser-profile storage, not a device

@@ -6,8 +6,10 @@
 Queue/presentation improvements, manual quote/payment records and private
 attachments are deployed at https://shop.home2smart.com/commercial and
 https://portal.home2smart.com/dash.
-Application source: `a5a67c565af30f098f237349613538d621a306d3`.
-Dashboard/customer cache ID: `PORTAL_BUILD_20261023_152052_a5a67c5`.
+Application source: `7bc101e8b54102a9ea86cde4823f3c66f7eb26d4`.
+Dashboard/customer cache ID: `PORTAL_BUILD_20261023_160427_7bc101e`.
+The latest update includes the reviewed Commercial copy/autosave cleanup,
+Continue-only measured-header alignment and consistent Home2Smart SMS wording.
 
 Database updates 029–035 are applied and independently verified. Backend and
 matching frontend were deployed directly through Vercel; Git-triggered
@@ -25,7 +27,8 @@ Evidence means three different things:
   coverage includes intake/contact preferences, technician decisions and
   no-response handling, follow-up, installation rules, communication evidence,
   payment verification, Home2Smart branding, media framing and video failures. The
-  reviewed release also passed its production build and focused tests.
+  latest isolated release passed 87 focused tests, five navigation scenarios,
+  nine customer/dashboard fixture workflows, TypeScript and a production build.
 - **Production-read-verified (this release):** both deployments identify the
   application source above; 11 checked page/assets match the committed or
   build-stamped bytes. Customer, dashboard and media routes load. Unauthorized
