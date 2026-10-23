@@ -7,6 +7,9 @@ and authorized the two additive media migrations on 2026-10-16.
 The owner separately authorized the ordered security-first production rollout
 and reviewed migration 031 on 2026-10-20. Migration 031 was applied and verified
 through this runner after the security deployment and legacy invocation drain.
+The owner separately authorized exact-checksum 032 followed by 033 on
+2026-10-23 UTC (2026-10-22 US Eastern); both were applied and independently
+verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
 ## Credentials and trusted TLS
@@ -85,20 +88,23 @@ The explicit managed list currently contains:
    weight columns and their indexes, with the existing application's defaults.
 3. `031_commercial_reliability.sql`: explicitly authorized, applied and verified
    in production on 2026-10-20 after the security-first rollout.
-4. `032_commercial_operations.sql`: **pending, review-only and not authorized
-   for production apply**. Adds accountable follow-up/activity and explicit links
+4. `032_commercial_operations.sql`: **authorized, applied and verified in
+   production on 2026-10-23 UTC**. Adds accountable follow-up/activity and explicit links
    to existing installation/order records. Its single service-only record RPC
    supports ADMIN assignment/start and facts-only completion; no payout or
    communication processing RPC exists. Closed disposition requires a non-null,
    nonblank reason at table, RPC and API boundaries. New foreign keys intentionally
    block deletion of linked accountability records rather than cascading history.
    See [compatibility and scope](COMMERCIAL_OPERATIONS.md).
-   Its separate authorization/checksum are unset; the runner blocks apply before
-   connecting until the new scope is explicitly reviewed and authorized.
+   Its separate authorization records the exact approved target and SQL checksum.
+5. `033_atomic_stripe_order_metadata.sql`: **authorized, applied and verified
+   after 032 in production on 2026-10-23 UTC**. Locks the current order and merges webhook metadata
+   atomically, preserving operational scheduling keys. Execution is service-role
+   only; it requires 032 first and has its own explicit authorization/checksum.
 
 The two media scripts deliberately fail if untracked objects already exist; do not
 replace that protection with `IF NOT EXISTS` or mark changes applied manually.
-Only these four intended SQL paths are unignored. Although 031 uses conditional
+Only these five intended SQL paths are unignored. Although 031 uses conditional
 DDL, the runner requires an exact commercial baseline with no colliding objects
 before executing it. Never run that file directly to bypass this guard.
 
@@ -118,16 +124,69 @@ changes, and tests together after validation.
 
 ## Access-control boundary
 
-### Commercial release preflight (2026-10-22, read-only)
+### Historical commercial release preflight (2026-10-22, read-only)
 
-Production has applied 029-031 only. Applied migration 031 correctly defines
+At that checkpoint, production had applied 029-031 only. Applied migration 031 correctly defines
 `commercial_leads.revision` as `bigint`; the 032 prerequisite checker and local
 SQL fixtures now require that actual type, rather than `integer`. Regression
 coverage rejects an integer or missing revision column. This checker-only
 correction does not alter production schema, migration SQL, baseline hashes,
-or authorization. Commercial rollout remains blocked on explicit authorization
+or authorization. Commercial rollout at that point remained blocked on explicit authorization
 and application of 032/033. Do not change the production column to satisfy a
 checker or modify applied 031.
+
+The runner hashes normalized LF SQL, matching the committed blobs:
+
+- 032: `f703d2a575d32593a1945d4b147d215da8ebaafb93e7aaca99511d24c44b197d`
+- 033: `29ade041dc667e96c786103d7b944b74aa2122c20c950b62668a5f9cd1d86620`
+
+The required order after the checker correction was: obtain explicit target/checksum authorization,
+apply guarded 032 then 033, verify schema/ACL/ledger and PostgREST cache, then
+deploy the backend containing both commercial commits, followed by the compatible
+frontend. Do not deploy the new webhook before its RPC exists: it deliberately
+returns failure for Stripe retry when the checkout RPC is unavailable.
+Environment-variable name presence and service-role catalog permissions are not
+proof of deployed Stripe/Twilio credential validity or webhook configuration.
+
+### Authorized commercial release (2026-10-23 UTC)
+
+The target-confirmed guarded runner applied 032 then 033 in one transaction at
+approximately 03:32 UTC. Each migration was verified before its ledger entry;
+an independent read-only verify then reported no pending migrations and matching
+schema/history/security checks. The SQL hashes above did not change, and the
+existing production `commercial_leads.revision` column remains `bigint`.
+
+The deployed production service credential successfully performed zero-row
+REST reads of operations/activity, orders and media placements. Both
+`commercial_record_operation` and `stripe_patch_order` appeared in the
+service-role PostgREST schema cache. No mutation RPC was invoked as a smoke check.
+
+Direct deployment order and provenance:
+
+- Application source: `6d6e6ef86f38d18489345d138733d5639031d250`,
+  tree `1ef548b8e1a3f5a2c7f327d7835c493080b61d49`.
+- Release source: `1bdc1c2f25d8834fdadbe4562b90232128b2f582`; only migration
+  authorization and its related tests differ from that application source.
+- Backend: `dpl_4zYyiVuDwjV8HDHfcVCYkxRKPW1v`, alias `h2s-backend.vercel.app`.
+- Matching frontend: `dpl_B8c1BiSSd2qcxJzUNVyGoMPFV4Mr`, aliases
+  `portal.home2smart.com` and `shop.home2smart.com`.
+- Dashboard build/cache stamp: `PORTAL_BUILD_20261023_033532_1bdc1c2`.
+
+Git-triggered deployments remain disabled; both releases were submitted using
+the authenticated Vercel CLI from a clean committed export. Canonical deployed
+assets matched that export, with only the documented portal build stamping.
+Temporary production credential exports used for read-only checks were deleted;
+no credentials or environment-file values are committed.
+
+The queue accepted an authorized administrator-key GET and rejected missing/
+invalid authorization. Service-role operations storage reads passed in a
+read-only database transaction. Positive signed-in operations requests were not
+made: their authentication updates session activity. Actual customer submissions,
+technician decisions, reminder delivery, installation changes, Stripe payment
+outcomes and physical iOS Safari remain live-acceptance work, not a passed funnel.
+The legacy optional Hub gate has no non-empty PIN/JWT configuration and reports
+`gate: false`; it is separate from Commercial dashboard authentication and was
+not changed by this release.
 
 Existing owner/proof policies and grants are fingerprinted and preserved.
 Inspection found that `owner_media_uploads` already has RLS disabled and broad

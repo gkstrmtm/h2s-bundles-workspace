@@ -1,11 +1,14 @@
-# Commercial operations: compatible local increment
+# Commercial operations: existing-order workflow
 
 ## Scope and release boundary
 
 This increment extends the existing canonical [dashboard](../frontend/dash.html).
-Migration [032](../backend/migrations/032_commercial_operations.sql) is **unapplied,
-review-only and outside production authorization**. No production backfill, job
-creation, charge, notification, permission expansion or deployment is part of this work.
+The owner explicitly authorized migrations [032](../backend/migrations/032_commercial_operations.sql)
+and [033](../backend/migrations/033_atomic_stripe_order_metadata.sql) for production
+`nkccbnrduojnzjfrpwva`. They were applied in that order and verified on
+2026-10-23 UTC, before the reviewed backend and matching frontend were deployed.
+No production backfill, job creation, charge, notification or operational
+recovery was triggered by the release checks; existing access controls were preserved.
 Without 032, the new detail section reports that the migration is required; the
 existing consultation queue remains usable. Never run legacy SQL to bypass this guard.
 
@@ -85,10 +88,10 @@ Explicit relationships:
 
 ### Atomic webhook release correction (033)
 
-[033](../backend/migrations/033_atomic_stripe_order_metadata.sql) is additive,
-review-only, separately checksum-guarded, and not authorized for production.
-Committed migration 032 remains unchanged. The guarded runner registers 033
-after 032; both require explicit authorization before release. Apply/verify the
+[033](../backend/migrations/033_atomic_stripe_order_metadata.sql) is additive and
+separately checksum-guarded. Under explicit owner authorization, the guarded runner
+applied and verified it after 032 in production on 2026-10-23 UTC. Both reviewed
+migration SQL files and their checksums remain unchanged. Apply/verify the
 approved migrations before deploying the corrected webhook: a missing/failed
 checkout RPC returns HTTP 500 for Stripe retry, not a successful acknowledgement
 or dispatch/notification continuation.
@@ -194,11 +197,21 @@ valid. No cascade, data deletion or cleanup script is run by this increment.
 
 ## Migration/configuration and remaining limits
 
-Use the [guarded database workflow](DATABASE_MIGRATIONS.md). 032 is registered as
-pending but excluded from `authorizedMigrations`; its separate review flag and
-checksum authorization are unset. The runner checks prerequisites, default-deny
+Use the [guarded database workflow](DATABASE_MIGRATIONS.md). 032 and 033 are now
+included in the exact production authorization, with separate owner-approval
+records and normalized-LF SQL checksums. This authorizes no future migration.
+The runner checks prerequisites, default-deny
 RLS/table permissions and service-only RPC execution. Existing table access is not
-changed. Review and explicit target/checksum authorization are required before apply.
+changed. Review and explicit target/checksum authorization remain required before apply.
+
+Production release checks verified exact deployed files, unauthorized dashboard
+rejection, an administrator-key queue read, service-role operations storage reads,
+RPC schema-cache availability, all three Commercial media areas and native video
+playback in desktop/mobile Chromium. Signed-in operations details were not
+requested because session authentication updates `Last_Seen_At`; no session was
+created or touched by these read-only checks. Real provider delivery, actual
+installation/payment transitions and physical iOS Safari remain unverified.
+See the [business walkthrough and two-person acceptance checklist](COMMERCIAL_WORKFLOW_PLAIN.md).
 
 Credentials remain outside Git:
 
