@@ -21365,6 +21365,14 @@ function deliverablesBrowserRender(mode) {
                 const target = event && event.target && event.target.closest
                     ? event.target.closest('.dashboard-custom-select-shell')
                     : null;
+                if (target) event.preventDefault();
+                const label = event.target && event.target.closest ? event.target.closest('label') : null;
+                const control = label && label.control;
+                if (!target && control && control.matches('select.dashboard-custom-select-native')
+                    && !event.target.closest('button,a,input,select,textarea')) {
+                    event.preventDefault();
+                    dashboardFocusCustomSelectField(control.id);
+                }
                 if (!target) dashboardCloseCustomSelects();
             }, true);
 
@@ -21402,14 +21410,6 @@ function deliverablesBrowserRender(mode) {
 
         function dashboardSyncCustomSelect(selectEl) {
             if (!selectEl) return;
-            const commercialSignature = selectEl.closest('.commercial-operations') ? JSON.stringify([
-                selectEl.value, selectEl.disabled, window.innerWidth, Math.round(selectEl.getBoundingClientRect().width),
-                Array.from(selectEl.options || [], option => [option.value, option.text, option.disabled])
-            ]) : null;
-            // Preserve option nodes/focus during the global observer's unrelated updates.
-            if (commercialSignature && selectEl.__commercialSelectSignature === commercialSignature
-                && dashboardGetCustomSelectShell(selectEl)) return;
-
             ensureDashboardCustomSelectBindings();
 
             if (!dashboardShouldUseCustomSelect(selectEl)) {
@@ -21418,10 +21418,31 @@ function deliverablesBrowserRender(mode) {
             }
 
             const selectId = dashboardEnsureCustomSelectId(selectEl);
+            const labelText = Array.from(selectEl.labels || [], label => {
+                const copy = label.cloneNode(true);
+                copy.querySelectorAll('select,input,textarea,button,.dashboard-custom-select-shell').forEach(node => node.remove());
+                return copy.textContent.trim();
+            }).filter(Boolean).join(' ');
+            const selectSignature = JSON.stringify([
+                selectEl.value, selectEl.selectedIndex, selectEl.disabled, selectEl.required, window.innerWidth,
+                selectEl.style.cssText, labelText, selectEl.dataset.customSelectInvalid,
+                selectEl.getAttribute('aria-label'), selectEl.getAttribute('aria-labelledby'),
+                selectEl.getAttribute('aria-describedby'), selectEl.getAttribute('aria-invalid'), selectEl.title,
+                Array.from(selectEl.options || [], option => [option.value, option.text, option.disabled])
+            ]);
+            // Unrelated DOM updates must not rebuild an open menu or steal its focus.
+            if (selectEl.__dashboardSelectSignature === selectSignature && dashboardGetCustomSelectShell(selectEl)) return;
             if (!selectEl.dataset.customSelectBound) {
                 selectEl.dataset.customSelectBound = 'true';
                 selectEl.addEventListener('change', () => dashboardSyncCustomSelect(selectEl));
                 selectEl.addEventListener('input', () => dashboardSyncCustomSelect(selectEl));
+                selectEl.addEventListener('invalid', event => {
+                    if (!dashboardGetCustomSelectShell(selectEl)) return;
+                    event.preventDefault();
+                    selectEl.dataset.customSelectInvalid = 'true';
+                    dashboardSyncCustomSelect(selectEl);
+                    dashboardFocusCustomSelectField(selectId);
+                });
             }
 
             selectEl.classList.add('dashboard-custom-select-native');
@@ -21447,6 +21468,11 @@ function deliverablesBrowserRender(mode) {
                 menu.id = `${selectId}CustomMenu`;
                 menu.setAttribute('role', 'listbox');
                 menu.hidden = true;
+                const error = document.createElement('span');
+                error.className = 'dashboard-custom-select-error';
+                error.id = `${selectId}CustomError`;
+                error.setAttribute('role', 'alert');
+                error.hidden = true;
 
                 trigger.addEventListener('click', () => {
                     dashboardSetCustomSelectOpen(selectEl, !shell.classList.contains('is-open'));
@@ -21502,6 +21528,7 @@ function deliverablesBrowserRender(mode) {
 
                 shell.appendChild(trigger);
                 shell.appendChild(menu);
+                shell.appendChild(error);
                 selectEl.insertAdjacentElement('afterend', shell);
             }
 
@@ -21523,6 +21550,19 @@ function deliverablesBrowserRender(mode) {
             textEl.classList.toggle('is-placeholder', isPlaceholder);
             trigger.disabled = !!selectEl.disabled;
             trigger.title = selectedLabel || 'Select';
+            trigger.setAttribute('aria-label', selectEl.getAttribute('aria-label') || labelText || selectEl.title || selectedLabel || 'Select');
+            const labelledBy = selectEl.getAttribute('aria-labelledby');
+            if (labelledBy) trigger.setAttribute('aria-labelledby', labelledBy);
+            else trigger.removeAttribute('aria-labelledby');
+            trigger.setAttribute('aria-required', String(selectEl.required));
+            const error = shell.querySelector('.dashboard-custom-select-error');
+            const invalid = selectEl.dataset.customSelectInvalid === 'true' && !selectEl.validity.valid;
+            error.hidden = !invalid;
+            error.textContent = invalid ? selectEl.validationMessage : '';
+            trigger.setAttribute('aria-invalid', invalid ? 'true' : (selectEl.getAttribute('aria-invalid') || 'false'));
+            const describedBy = [selectEl.getAttribute('aria-describedby'), invalid ? error.id : ''].filter(Boolean).join(' ');
+            if (describedBy) trigger.setAttribute('aria-describedby', describedBy);
+            else trigger.removeAttribute('aria-describedby');
             shell.classList.toggle('is-disabled', !!selectEl.disabled);
 
             menu.innerHTML = '';
@@ -21554,7 +21594,7 @@ function deliverablesBrowserRender(mode) {
             });
 
             if (selectEl.disabled) dashboardSetCustomSelectOpen(selectEl, false);
-            if (commercialSignature) selectEl.__commercialSelectSignature = commercialSignature;
+            selectEl.__dashboardSelectSignature = selectSignature;
         }
 
         function dashboardSyncAllCustomSelects(container = null) {

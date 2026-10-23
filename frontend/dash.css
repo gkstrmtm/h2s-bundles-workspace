@@ -6935,6 +6935,17 @@
         }
 
         select.dashboard-custom-select-native {
+            display: none !important;
+        }
+
+        .dashboard-custom-select-error {
+            display: block;
+            margin-top: 4px;
+            color: var(--danger);
+            font-size: 12px;
+        }
+
+        .dashboard-custom-select-error[hidden] {
             display: none;
         }
 

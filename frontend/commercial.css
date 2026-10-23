@@ -644,16 +644,22 @@ textarea {
   object-fit: cover;
 }
 
-.proof-tile.is-pending::after {
-  content: '';
+.proof-media-status {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.34) 50%, rgba(255, 255, 255, 0.12) 100%);
-  background-size: 220% 100%;
-  animation: media-skeleton-shift 1.2s linear infinite;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  width: fit-content;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12px;
+  pointer-events: none;
 }
 
-.proof-tile.is-ready::after {
+.proof-media-status[hidden] {
   display: none;
 }
 
@@ -669,16 +675,6 @@ textarea {
   background: rgba(255, 255, 255, 0.72);
   color: var(--ink-soft);
   text-align: center;
-}
-
-@keyframes media-skeleton-shift {
-  0% {
-    background-position: 100% 0;
-  }
-
-  100% {
-    background-position: -100% 0;
-  }
 }
 
 .assessment-shell {

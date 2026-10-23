@@ -50,6 +50,20 @@ and independently scrollable. During device switches, the destination document
 stays hidden until its layout and media have loaded and the selected area's crop
 and scale have been applied; the uncropped customer page is never a loading preview.
 
+Commercial proof-rail videos keep native controls, posters and inline playback.
+An idle `preload="none"` video is not loading. Actual loading/buffering shows
+static feedback only after 750ms; readiness or pause clears it, and media errors
+remain visible. No decorative tile loading animation is used, including under
+reduced motion. Native playback controls may still show their own buffering UI.
+
+Enhanced dashboard selects retain the native element for values, form data and
+validation, but only the custom control is interactive. Label activation is routed
+to that control; unrelated DOM updates preserve open options/focus. Required
+errors appear beside the custom control. The Commercial Queue's explicit
+`data-custom-select="off"` filter remains native-only; the hidden `ppShotType`
+model stays hidden. Multiple/listbox exceptions and date/file inputs are unchanged.
+Desktop/mobile viewport fixtures do not establish physical iOS Safari behavior.
+
 This commit covers per-page framing and the migration foundation. The broader Owner Uploads metadata and upload-engine overhaul remains separate local work.
 
 ### Page-specific media placement (Bundles and Commercial)

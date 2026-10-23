@@ -1606,22 +1606,65 @@
     if (!target) return;
     qsa('img, video', target).forEach(function (mediaEl) {
       const tile = mediaEl.closest('.proof-tile');
-      if (!tile) return;
-      const markReady = function () {
+      if (!tile || mediaEl.dataset.proofStateBound) return;
+      mediaEl.dataset.proofStateBound = 'true';
+      const isVideo = mediaEl.tagName === 'VIDEO';
+      const status = document.createElement('span');
+      status.className = 'proof-media-status';
+      status.setAttribute('role', 'status');
+      status.textContent = isVideo ? 'Loading video...' : 'Loading photo...';
+      status.hidden = isVideo;
+      tile.appendChild(status);
+      let waitingTimer;
+      const clearWaiting = function () {
+        window.clearTimeout(waitingTimer);
         tile.classList.remove('is-pending');
+        tile.setAttribute('aria-busy', 'false');
+        status.hidden = !tile.classList.contains('is-error');
+      };
+      const markReady = function () {
+        if (mediaEl.error) return;
+        tile.classList.remove('is-error');
+        clearWaiting();
         tile.classList.add('is-ready');
       };
-
-      if (mediaEl.tagName === 'IMG' && mediaEl.complete && mediaEl.naturalWidth > 0) {
+      const onError = function () {
+        clearWaiting();
+        tile.classList.add('is-error');
+        status.textContent = 'Installation media unavailable.';
+        status.setAttribute('role', 'alert');
+        status.hidden = false;
+      };
+      mediaEl.addEventListener('error', onError, { once: true });
+      if (isVideo) {
+        tile.classList.remove('is-pending');
+        const onWaiting = function () {
+          window.clearTimeout(waitingTimer);
+          waitingTimer = window.setTimeout(function () {
+            if (!tile.isConnected || tile.classList.contains('is-error') || mediaEl.error || mediaEl.readyState >= 3
+              || (mediaEl.paused && mediaEl.networkState !== 2)) return;
+            tile.classList.add('is-pending');
+            tile.setAttribute('aria-busy', 'true');
+            status.textContent = 'Loading video...';
+            status.setAttribute('role', 'status');
+            status.hidden = false;
+          }, 750);
+        };
+        ['loadstart', 'waiting', 'stalled'].forEach(event => mediaEl.addEventListener(event, onWaiting));
+        ['loadeddata', 'canplay', 'playing'].forEach(event => mediaEl.addEventListener(event, markReady));
+        mediaEl.addEventListener('pause', clearWaiting);
+        if (mediaEl.error) onError();
+        else if (mediaEl.readyState >= 2) markReady();
+        else if (mediaEl.networkState === 2) onWaiting();
+        return;
+      }
+      tile.setAttribute('aria-busy', 'true');
+      if (mediaEl.complete && mediaEl.naturalWidth > 0) {
         markReady();
         return;
       }
-
       mediaEl.addEventListener('load', markReady, { once: true });
-      mediaEl.addEventListener('loadeddata', markReady, { once: true });
-      mediaEl.addEventListener('error', function () {
-        tile.classList.remove('is-pending');
-      }, { once: true });
+      if (mediaEl.complete && !mediaEl.naturalWidth) onError();
     });
   }
 
@@ -1637,7 +1680,7 @@
       const placementStyle = item.media_placement
         ? ` style="${escapeAttr(window.H2SMediaPlacements.style(item.media_placement))}"` : '';
       if (String(item.media_kind || 'photo') === 'video') {
-        return `<div class="proof-tile is-pending"><video controls muted playsinline preload="none" ${poster ? `poster="${escapeAttr(poster)}" ` : ''}aria-label="Approved commercial installation video"${placementStyle} src="${escapeAttr(mediaUrl)}"></video></div>`;
+        return `<div class="proof-tile"><video controls muted playsinline preload="none" ${poster ? `poster="${escapeAttr(poster)}" ` : ''}aria-label="Approved commercial installation video"${placementStyle} src="${escapeAttr(mediaUrl)}"></video></div>`;
       }
       const loading = index < 2 ? 'eager' : 'lazy';
       const fetchPriority = index < 2 ? 'auto' : 'low';
