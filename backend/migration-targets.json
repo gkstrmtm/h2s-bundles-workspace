@@ -5,18 +5,18 @@
     "connectionEnv": "DATABASE_URL_DIRECT",
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql"],
     "baselineSha256": "c8d848d14bf42cebc9b1a5f59a41b15cfea878c9140dd7cb29d78a4b7da3d3e3",
     "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409",
     "commercial032": {
-      "reviewOnly": true,
-      "authorization": null,
-      "sqlSha256": null
+      "reviewOnly": false,
+      "authorization": "Workspace owner explicitly authorized applying reviewed migration 032 to production nkccbnrduojnzjfrpwva on 2026-10-23 UTC (2026-10-22 US Eastern), followed by 033, guarded verification, backend and matching frontend deployment. Exact application release: 6d6e6ef86f38d18489345d138733d5639031d250. No fabricated records, messages, jobs, charges or recovery actions are authorized.",
+      "sqlSha256": "f703d2a575d32593a1945d4b147d215da8ebaafb93e7aaca99511d24c44b197d"
     },
     "stripe033": {
-      "reviewOnly": true,
-      "authorization": null,
-      "sqlSha256": null
+      "reviewOnly": false,
+      "authorization": "Workspace owner explicitly authorized applying reviewed migration 033 after 032 to production nkccbnrduojnzjfrpwva on 2026-10-23 UTC (2026-10-22 US Eastern). Verify the authorized SQL checksum, database target, prerequisites and service-only permissions before deploying the reviewed checkout webhook. Exact application release: 6d6e6ef86f38d18489345d138733d5639031d250. No live operational smoke actions are authorized.",
+      "sqlSha256": "29ade041dc667e96c786103d7b944b74aa2122c20c950b62668a5f9cd1d86620"
     },
     "commercial031": {
       "reviewOnly": false,
