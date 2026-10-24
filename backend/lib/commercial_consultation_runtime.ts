@@ -656,8 +656,18 @@ export async function sendConsultationCallReminder(consultation: any, lead: any,
   const name = normalizeText(lead.full_name || lead.company_name, 60) || 'the customer';
   const body = `Home2Smart | ${consultation.reference_code}: ${stage === 'before' ? 'Upcoming call' : 'Call now'}: ${name} (${lead.phone}). ${getSlotLabel(consultation.selected_slot_start, consultation.selected_slot_end)}. Project details: Commercial Queue.`;
   const notification = await sendRecordedSms(consultation, `owner_call:${stage}:${consultation.selected_slot_start}:${owner}`, owner, body);
-  return { action: notification.ok ? 'call_reminder_accepted' : 'call_reminder_review_required', notification,
-    nextReminderAt: notification.ok ? stage === 'before' ? new Date(start).toISOString() : null : consultation.next_reminder_at };
+  const customerEligible = stage === 'before' && current.consultation.customer_confirmation_sent_at
+    && (current.lead.contact_preference || 'sms') === 'sms' && hasCommercialSmsConsent(current.lead);
+  const customerNotification = customerEligible
+    ? await sendCommercialCustomerSms(current.lead,
+      `Home2Smart reminder: expect our call ${getSlotLabel(consultation.selected_slot_start, consultation.selected_slot_end)} to discuss your project. This is a phone consultation, not an installation visit. Ref: ${consultation.reference_code}.`,
+      consultation, `customer_call:before:${consultation.selected_slot_start}:${normalizePhone(current.lead.phone)}`)
+    : null;
+  const accepted = notification.ok && (!customerNotification || customerNotification.ok);
+  return { action: accepted ? 'call_reminder_accepted' : 'call_reminder_review_required', notification, customerNotification,
+    customerReminderSkipped: customerEligible ? null : stage === 'start' ? 'No second customer reminder at window start.'
+      : 'Customer reminder requires an accepted confirmation and active SMS consent.',
+    nextReminderAt: accepted ? stage === 'before' ? new Date(start).toISOString() : null : consultation.next_reminder_at };
 }
 
 export async function sendTechnicianConsultationRequest(consultation: any, lead: any, purpose = 'dispatch') {

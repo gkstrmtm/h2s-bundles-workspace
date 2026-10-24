@@ -6,6 +6,7 @@ type Delivery = { message_sid: string; to_phone: string; status: string; receive
 const purposes: Record<string, string> = {
   dispatch: 'Technician request', reminder: 'Technician reminder', escalation: 'Staff escalation',
   customer_confirmation: 'Customer confirmation', customer_acknowledgement: 'Customer acknowledgement notice',
+  customer_call: 'Customer consultation call reminder',
   owner_reply: 'Owner response confirmation', owner_call: 'Owner consultation call reminder',
 };
 export function commercialCommunicationSummary(effects: Effect[], receipts: Receipt[], deliveries: Delivery[] = []) {

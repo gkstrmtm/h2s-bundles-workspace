@@ -185,7 +185,7 @@ test('link approval exposes customer send rejection and safely retries without r
   assert.equal(f.appointments.length, 1);
 });
 
-test('accepted consultations remind only their assigned owner 15 minutes before and at the start, once across simultaneous cron runs', async () => {
+test('accepted consultations remind owner and customer before the window, then only the owner at start, once across simultaneous cron runs', async () => {
   let clock = Date.now();
   const f = createFixture(env, { now: () => clock }), row = await submit(f);
   await f.post('commercial-consultation-response', { token: row.response_token, action: 'approve' });
@@ -195,17 +195,21 @@ test('accepted consultations remind only their assigned owner 15 minutes before 
   assert.equal((await maintenance(f)).status, 200); assert.equal(f.sms.length, before);
   clock = start - 15 * 60000;
   for (const response of await Promise.all([maintenance(f), maintenance(f)])) assert.equal(response.status, 200);
-  assert.equal(f.sms.length, before + 1); assert.equal(f.sms.at(-1).to, owner);
-  assert.match(f.sms.at(-1).body, /Upcoming call/);
+  assert.equal(f.sms.length, before + 2);
+  assert.match(f.sms.slice(before).find(message => message.to === owner).body, /Upcoming call/);
+  const customerReminder = f.sms.slice(before).find(message => message.to === customer);
+  assert.match(customerReminder.body, /Home2Smart reminder: expect our call/);
+  assert.match(customerReminder.body, /phone consultation, not an installation visit/);
   assert.equal(Date.parse(row.next_reminder_at), start);
-  await maintenance(f); assert.equal(f.sms.length, before + 1);
+  await maintenance(f); assert.equal(f.sms.length, before + 2);
   clock = start;
   for (const response of await Promise.all([maintenance(f), maintenance(f)])) assert.equal(response.status, 200);
-  assert.equal(f.sms.length, before + 2); assert.equal(f.sms.at(-1).to, owner);
+  assert.equal(f.sms.length, before + 3); assert.equal(f.sms.at(-1).to, owner);
   assert.match(f.sms.at(-1).body, /Call now/);
   assert.equal(row.next_reminder_at, null);
-  await maintenance(f); assert.equal(f.sms.length, before + 2);
-  assert.ok(f.sms.slice(before).every(message => message.to === owner && message.body.includes(customer)));
+  await maintenance(f); assert.equal(f.sms.length, before + 3);
+  assert.equal(f.sms.slice(before).filter(message => message.to === customer).length, 1);
+  assert.ok(f.sms.slice(before).filter(message => message.to === owner).every(message => message.body.includes(customer)));
 });
 
 test('missed pre-window reminder does not create a burst at window start, and old unenrolled appointments stay untouched', async () => {
@@ -221,6 +225,63 @@ test('missed pre-window reminder does not create a burst at window start, and ol
   await maintenance(f); assert.equal(f.sms.length, before + 1);
 });
 
+test('customer reminders require current SMS consent and an accepted consultation confirmation', async () => {
+  for (const missing of ['consent', 'confirmation']) {
+    let clock = Date.now();
+    const f = createFixture(env, { now: () => clock }), row = await submit(f);
+    await f.post('commercial-consultation-response', { token: row.response_token, action: 'approve' });
+    if (missing === 'consent') f.tables.commercial_leads[0].attribution.communicationConsent.smsOptIn = false;
+    else row.customer_confirmation_sent_at = null;
+    const before = f.sms.length;
+    clock = Date.parse(row.selected_slot_start) - 15 * 60000;
+    const result = await (await maintenance(f)).json();
+    assert.equal(result.processed[0].customerNotification, null);
+    assert.match(result.processed[0].customerReminderSkipped, /accepted confirmation and active SMS consent/);
+    assert.deepEqual(f.sms.slice(before).map(message => message.to), [owner]);
+    assert.equal(Date.parse(row.next_reminder_at), Date.parse(row.selected_slot_start));
+  }
+});
+
+test('a rejected customer reminder retries safely without resending the accepted owner reminder', async () => {
+  let clock = Date.now();
+  const f = createFixture(env, { now: () => clock }), row = await submit(f);
+  await f.post('commercial-consultation-response', { token: row.response_token, action: 'approve' });
+  const before = f.sms.length, start = Date.parse(row.selected_slot_start);
+  clock = start - 15 * 60000;
+  f.faults.smsByRecipient = { [customer]: 'rejected' };
+  const result = await (await maintenance(f)).json();
+  assert.equal(result.processed[0].action, 'call_reminder_review_required');
+  assert.equal(result.processed[0].notification.ok, true);
+  assert.equal(result.processed[0].customerNotification.ok, false);
+  assert.equal(Date.parse(row.next_reminder_at), clock);
+  assert.deepEqual(f.sms.slice(before).map(message => message.to), [owner]);
+  delete f.faults.smsByRecipient;
+  await maintenance(f);
+  assert.deepEqual(f.sms.slice(before).map(message => message.to), [owner, customer]);
+  assert.equal(Date.parse(row.next_reminder_at), start);
+  await maintenance(f);
+  assert.equal(f.sms.length, before + 2);
+});
+
+test('an uncertain customer reminder is not automatically resent and cannot block the owner window-start reminder', async () => {
+  let clock = Date.now();
+  const f = createFixture(env, { now: () => clock }), row = await submit(f);
+  await f.post('commercial-consultation-response', { token: row.response_token, action: 'approve' });
+  const before = f.sms.length, attempts = f.providerAttempts.length, start = Date.parse(row.selected_slot_start);
+  clock = start - 15 * 60000;
+  f.faults.smsByRecipient = { [customer]: 'timeout' };
+  await maintenance(f);
+  assert.equal(f.providerAttempts.length, attempts + 2);
+  delete f.faults.smsByRecipient;
+  await maintenance(f);
+  assert.equal(f.providerAttempts.length, attempts + 2, 'An uncertain customer attempt requires reconciliation, not another send');
+  clock = start;
+  await maintenance(f);
+  assert.deepEqual(f.sms.slice(before).map(message => message.to), [owner, owner]);
+  assert.match(f.sms.at(-1).body, /Call now/);
+  assert.equal(row.next_reminder_at, null);
+});
+
 test('Eastern call reminders retain the same local window on both sides of DST and reject stale rescheduled snapshots', async () => {
   for (const [start, end] of [['2027-03-15T13:00:00Z','2027-03-15T13:30:00Z'],
     ['2027-11-08T14:00:00Z','2027-11-08T14:30:00Z']]) {
@@ -233,6 +294,7 @@ test('Eastern call reminders retain the same local window on both sides of DST a
       new Date(Date.parse(start) - 15 * 60000));
     assert.equal(result.action, 'call_reminder_accepted');
     assert.match(f.sms.at(-1).body, /9:00 AM to 9:30 AM Eastern Time/);
+    assert.equal(f.sms.at(-1).to, customer);
     const stale = structuredClone(row), before = f.sms.length;
     row.response_token = 'rescheduled-token-fixture'; row.status = 'reschedule_requested';
     const changed = await f.runtime.sendConsultationCallReminder(stale, f.tables.commercial_leads[0], new Date(start));
@@ -270,16 +332,19 @@ test('canceled, mismatched, unassigned, unbooked, premature and elapsed consulta
   }
 });
 
-test('owner acknowledgements and reminders appear with separate role and purpose in existing communication history', () => {
+test('owner acknowledgements and customer/owner reminders have distinct roles and purposes in communication history', () => {
   const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript');
   const source = fs.readFileSync(path.join(__dirname, '..', 'lib', 'commercial_communications.ts'), 'utf8');
   const module = { exports: {} };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
     { module, exports: module.exports, require: () => ({ communicationLabels: { provider_accepted: 'Accepted' } }) });
-  const events = module.exports.commercialCommunicationSummary(['owner_reply:approve', 'owner_call:before', 'owner_call:start'].map(kind =>
-    ({ kind, state: 'accepted', details: { to: owner } })), []);
-  assert.equal(events.length, 3);
-  assert.ok(events.every(event => event.role === 'Consultation owner' && event.recipient === owner));
+  const events = module.exports.commercialCommunicationSummary(['owner_reply:approve', 'owner_call:before', 'owner_call:start', 'customer_call:before'].map(kind =>
+    ({ kind, state: 'accepted', details: { to: kind.startsWith('customer_') ? customer : owner } })), []);
+  assert.equal(events.length, 4);
+  assert.ok(events.slice(0, 3).every(event => event.role === 'Consultation owner' && event.recipient === owner));
   assert.match(events[1].purpose, /15 minutes before/);
   assert.match(events[2].purpose, /window start/);
+  assert.equal(events[3].role, 'Customer');
+  assert.equal(events[3].recipient, customer);
+  assert.match(events[3].purpose, /Customer consultation call reminder/);
 });

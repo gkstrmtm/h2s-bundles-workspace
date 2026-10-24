@@ -4,7 +4,7 @@
 
 ### Consultation review links and call reminders
 
-Current local workflow: the owner opens the request-specific review link,
+Current workflow: the owner opens the request-specific review link,
 reviews that consultation, and explicitly clicks Approve or Decline. SMS
 YES/NO commands (with or without reference codes) no longer make decisions.
 The link-only backend was deployed on 2026-10-24 as
@@ -17,6 +17,13 @@ rejection (403), signed empty-payload rejection (400), unknown review token
 messages or changing bookings. No frontend release, provider reconfiguration
 or schema migration was needed. The notes below describe the earlier cutover;
 the owner's individually paced live approval/reminder check is still pending.
+
+The customer pre-window reminder was subsequently deployed as
+`dpl_54aGoANx1RKqDuBwVB71GH4dX6Vo` at the same backend alias. Both changed
+application source hashes were verified against the isolated build. All 111
+focused working-tree fixtures, TypeScript and the isolated production build
+passed; the same non-mutating production checks passed without a test send,
+booking change, provider reconfiguration or migration.
 
 The 2026-10-23 live SMS check found the business number's incoming SMS webhook
 still pointed to PurelyAutomation. Its generic forwarding alert sent the owner's
@@ -63,9 +70,19 @@ test; the release did not replay the earlier YES or send additional SMS.
   delivery. Existing communication history and signed callbacks are preserved.
 - Newly booked consultations enroll the existing `next_reminder_at` field for
   an owner call reminder 15 minutes before the window and another at its start.
+  The pre-window stage also sends one customer reminder, only when the original
+  confirmation was accepted and current Text first/SMS consent still permits
+  it. It states that this is a phone consultation, not an installation visit.
+  Customers do not receive a second window-start reminder or a late catch-up
+  reminder if the pre-window stage was missed. Customer reminders have their
+  own effect key, delivery callbacks and Customer communication-history entry.
+  Known customer-send rejections can retry before the window without repeating
+  an accepted owner reminder; uncertain attempts are not automatically resent.
+  A failed customer reminder does not block the owner's window-start reminder.
   The existing 15-minute maintenance cron drives these reminders; this is not a
-  new sales-chasing policy. Only the recorded, still-configured consultation
-  owner receives them. The linked appointment identity, state and window are
+  new sales-chasing policy or an exact-to-the-minute timer. Only the recorded,
+  still-configured consultation owner receives the staff reminders.
+  The linked appointment identity, state and window are
   checked, and the effect ledger prevents repeated sends across concurrent cron
   runs. A missed pre-window reminder is not sent together with the start reminder.
   In-flight provider messages cannot be recalled.
@@ -77,7 +94,7 @@ test; the release did not replay the earlier YES or send additional SMS.
 - The dashboard remains the record of responsibility, appointment and
   communication evidence. Do not substitute a bare SMS or provider acceptance
   for the saved record. With one initial reviewer, the full successful SMS path
-  has two customer messages and three owner messages, with no inbound reply;
+  has three customer messages and three owner messages, with no inbound reply;
   additional initial reviewers add messages. SMS charges depend on segments and
   carrier fees, so dashboard-led review avoids redundant broadcasts and chasing.
 

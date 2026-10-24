@@ -271,7 +271,8 @@ function createFixture(environment = {}, integration = {}) {
     'node:crypto': crypto,
     twilio: Object.assign(() => ({ messages: { create: async message => {
       providerAttempts.push(copy(message));
-      if (faults.sms) throw Object.assign(new Error('Fixture provider failure'), { status: faults.sms === 'rejected' ? 400 : 504 });
+      const failure = faults.smsByRecipient?.[message.to] || faults.sms;
+      if (failure) throw Object.assign(new Error('Fixture provider failure'), { status: failure === 'rejected' ? 400 : 504 });
       sms.push(copy(message));
       return { sid: `fixture-${sms.length}`, status: 'queued' };
     } } }), { validateRequest: require('twilio').validateRequest }),
