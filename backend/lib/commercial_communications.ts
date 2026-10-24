@@ -6,6 +6,7 @@ type Delivery = { message_sid: string; to_phone: string; status: string; receive
 const purposes: Record<string, string> = {
   dispatch: 'Technician request', reminder: 'Technician reminder', escalation: 'Staff escalation',
   customer_confirmation: 'Customer confirmation', customer_acknowledgement: 'Customer acknowledgement notice',
+  owner_reply: 'Owner response confirmation', owner_call: 'Owner consultation call reminder',
 };
 export function commercialCommunicationSummary(effects: Effect[], receipts: Receipt[], deliveries: Delivery[] = []) {
   const messages = new Map(receipts.map(row => [row.twilio_sid, row]));
@@ -24,7 +25,9 @@ export function commercialCommunicationSummary(effects: Effect[], receipts: Rece
           : row.state === 'uncertain' && !delivery ? 'uncertain'
             : row.state === 'accepted' || ['queued','accepted','sending','sent','scheduled'].includes(providerStatus) ? 'provider_accepted' : 'pending';
     return {
-      purpose: purposes[purpose], role: purpose === 'escalation' ? 'Staff notification'
+      purpose: purpose === 'owner_call' ? row.kind.split(':')[1] === 'before'
+        ? 'Owner call reminder (15 minutes before)' : 'Owner call reminder (window start)' : purposes[purpose],
+      role: purpose.startsWith('owner_') ? 'Consultation owner' : purpose === 'escalation' ? 'Staff notification'
         : purpose.startsWith('customer_') ? 'Customer' : 'Technician notification',
       recipient: /^\+?\d{7,15}$/.test(recipient || delivery?.to_phone || '') ? recipient || delivery?.to_phone : null,
       result, statusLabel: communicationLabels[result],

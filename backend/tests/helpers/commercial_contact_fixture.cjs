@@ -91,7 +91,7 @@ function matchesPostgrestFilter(row, expression) {
 }
 
 function createFixture(environment = {}, integration = {}) {
-  const tables = { commercial_leads: [], commercial_lead_operations: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [] };
+  const tables = { commercial_leads: [], commercial_lead_operations: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [], h2s_orders: [] };
   const sms = [];
   const providerAttempts = [];
   const appointments = [];
@@ -164,6 +164,10 @@ function createFixture(environment = {}, integration = {}) {
         if (!req.related_order_id) {
           const appointment = { id: crypto.randomUUID(), requestId: req.request_id };
           appointments.push(appointment);
+          tables.h2s_orders.push({ id: appointment.id, commercial_request_id: req.request_id,
+            status: 'queued', appointment_confirmed: true, metadata_json: {
+              slot_start_iso: req.selected_slot_start, slot_end_iso: req.selected_slot_end,
+            } });
           req.related_order_id = appointment.id;
         }
         delete req.metadata.appointment_error;
@@ -247,6 +251,10 @@ function createFixture(environment = {}, integration = {}) {
   };
   const globals = {
     process: { env },
+    ...(integration.now ? { Date: class extends Date {
+      constructor(...args) { super(...(args.length ? args : [integration.now()])); }
+      static now() { return new Date(integration.now()).getTime(); }
+    } } : {}),
     fetch: async (url, options) => {
       assert.equal(new URL(url).pathname, '/api/schedule-appointment', 'Unexpected network call');
       appointments.push(JSON.parse(options.body));
@@ -257,17 +265,21 @@ function createFixture(environment = {}, integration = {}) {
     '@/lib/commercial_email': { sendInitialCommercialEmail: integration.sendInitialCommercialEmail || (async (_consultation, lead) =>
       ({ state: lead.contact_preference === 'email' ? 'unavailable' : 'not_applicable' })) },
     '@/lib/supabase': { getSupabase: () => database },
+    '../../../../lib/supabase': { getSupabase: () => database, getSupabaseMgmt: () => database },
+    '../../_lib/phone': { normalizePhone: utils.normalizePhone },
     '@/lib/commercial_consultation.js': utils,
     'node:crypto': crypto,
-    twilio: () => ({ messages: { create: async message => {
+    twilio: Object.assign(() => ({ messages: { create: async message => {
       providerAttempts.push(copy(message));
       if (faults.sms) throw Object.assign(new Error('Fixture provider failure'), { status: faults.sms === 'rejected' ? 400 : 504 });
       sms.push(copy(message));
       return { sid: `fixture-${sms.length}`, status: 'queued' };
-    } } }),
-    'next/server': { NextResponse: { json: (body, options = {}) => new Response(JSON.stringify(body), {
-      ...options, headers: { 'Content-Type': 'application/json', ...options.headers },
-    }) } },
+    } } }), { validateRequest: require('twilio').validateRequest }),
+    'next/server': { NextResponse: class extends Response {
+      static json(body, options = {}) { return new Response(JSON.stringify(body), {
+        ...options, headers: { 'Content-Type': 'application/json', ...options.headers },
+      }); }
+    } },
   };
   const modules = new Map();
   function load(relative) {

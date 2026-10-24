@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import twilio from 'twilio';
 import { getSupabase, getSupabaseMgmt } from '../../../../lib/supabase';
 import { normalizePhone } from '../../_lib/phone';
-import { handleTechnicianReply } from '@/lib/commercial_consultation_runtime';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,9 +29,12 @@ export async function POST(req: NextRequest) {
 
     const form = await req.formData();
     const params: Record<string, string> = {};
+    let duplicate = false;
     form.forEach((v, k) => {
+      if (Object.hasOwn(params, k)) duplicate = true;
       params[String(k)] = String(v);
     });
+    if (duplicate) return xmlResponse('<Response></Response>', 400);
 
     const urlCandidates = [
       String(process.env.TWILIO_INBOUND_SMS_WEBHOOK_URL || '').trim(),
@@ -40,7 +42,8 @@ export async function POST(req: NextRequest) {
     ].filter(Boolean);
 
     // Allow turning off validation for local debugging only.
-    const disableSig = String(process.env.TWILIO_DISABLE_SIGNATURE_VALIDATION || '').trim() === '1';
+    const disableSig = process.env.NODE_ENV !== 'production' && process.env.VERCEL_ENV !== 'production'
+      && String(process.env.TWILIO_DISABLE_SIGNATURE_VALIDATION || '').trim() === '1';
     if (!disableSig) {
       const ok = urlCandidates.some((u) => {
         try {
@@ -59,8 +62,10 @@ export async function POST(req: NextRequest) {
     const body = String(params.Body || '').trim();
     const sid = String(params.MessageSid || '').trim();
 
-    if (!fromPhone || !toPhone || !body) {
-      return xmlResponse('<Response></Response>', 200);
+    const ownedNumbers = [process.env.TWILIO_FROM_NUMBER, process.env.TWILIO_PHONE_NUMBER].map(value => normalizePhone(value || '')).filter(Boolean);
+    if (!fromPhone || !toPhone || !body || !/^(SM|MM)[a-f0-9]{32}$/i.test(sid)
+      || params.AccountSid !== getRequiredEnv('TWILIO_ACCOUNT_SID') || !ownedNumbers.includes(toPhone)) {
+      return xmlResponse('<Response></Response>', 400);
     }
 
     const sb = (() => {
@@ -71,15 +76,27 @@ export async function POST(req: NextRequest) {
       }
     })();
 
+    const { data: received, error: receivedError } = await sb.from('sms_messages').select('message_id')
+      .eq('twilio_sid', sid).eq('direction', 'INBOUND').limit(1);
+    if (receivedError) {
+      console.error('[twilio inbound] message lookup failed:', receivedError.code);
+      return xmlResponse('<Response></Response>', 500);
+    }
+
+    if (!received?.length) {
     // Upsert thread by contact phone (the external number), preserving unread_count.
-    const { data: existingThread } = await sb
+    const { data: existingThread, error: existingThreadError } = await sb
       .from('sms_threads')
       .select('thread_id, unread_count')
       .eq('contact_phone', fromPhone)
       .maybeSingle();
+    if (existingThreadError) {
+      console.error('[twilio inbound] thread lookup failed:', existingThreadError.code);
+      return xmlResponse('<Response></Response>', 500);
+    }
 
-    const nextUnread = (existingThread && typeof (existingThread as any).unread_count === 'number')
-      ? Math.max(0, Number((existingThread as any).unread_count) || 0) + 1
+    const nextUnread = (existingThread && typeof existingThread.unread_count === 'number')
+      ? Math.max(0, existingThread.unread_count) + 1
       : 1;
 
     const { data: thread, error: threadErr } = await sb
@@ -117,11 +134,6 @@ export async function POST(req: NextRequest) {
       console.error('[twilio inbound] message insert error:', msgErr);
       return xmlResponse('<Response></Response>', 500);
     }
-
-    const commercialReply = await handleTechnicianReply(req, fromPhone, body);
-    if (commercialReply.handled) {
-      const safeReply = String(commercialReply.replyText || '').replace(/[<&>]/g, '');
-      return xmlResponse(`<Response><Message>${safeReply}</Message></Response>`, commercialReply.ok ? 200 : 200);
     }
 
     return xmlResponse('<Response></Response>', 200);

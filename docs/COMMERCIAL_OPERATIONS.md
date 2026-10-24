@@ -2,6 +2,91 @@
 
 ## Staff-controlled business tools (released)
 
+### Consultation review links and call reminders
+
+Current local workflow: the owner opens the request-specific review link,
+reviews that consultation, and explicitly clicks Approve or Decline. SMS
+YES/NO commands (with or without reference codes) no longer make decisions.
+The link-only backend was deployed on 2026-10-24 as
+`dpl_4WJeAgMosNvWZRfkCF3ARTAwedUW` at the existing
+`https://h2s-backend.vercel.app` alias. All five deployed application source
+hashes match the isolated build. The 108 focused working-tree fixtures,
+TypeScript check and isolated production build passed. Production signature
+rejection (403), signed empty-payload rejection (400), unknown review token
+(404), and public approval-page loading (200) were verified without sending
+messages or changing bookings. No frontend release, provider reconfiguration
+or schema migration was needed. The notes below describe the earlier cutover;
+the owner's individually paced live approval/reminder check is still pending.
+
+The 2026-10-23 live SMS check found the business number's incoming SMS webhook
+still pointed to PurelyAutomation. Its generic forwarding alert sent the owner's
+YES to a number being used as the test customer; Home2Smart never received that
+decision. Test roles were not reversed. Replacing this route is an explicit
+provider configuration change, not something an application deployment does.
+
+The selective five-file backend correction was deployed on 2026-10-24 at
+03:20 UTC as `dpl_63vGp99v6vmngZND3nfSjuoUz7FU`, followed by the authorized
+SMS webhook cutover. All five deployed source hashes match the tested overlay;
+signature rejection and signed empty-payload rejection were checked without
+creating messages or records. Voice/fallback settings were independently
+unchanged. At that earlier release, application changes were uncommitted over
+`f9c4a07`; the current selective source commit includes the correction and
+the subsequent link-only decision workflow.
+The fresh test `COM-F412A8` remained pending after cutover. Actual owner reply
+and timed-reminder delivery require the owner's individually paced acceptance
+test; the release did not replay the earlier YES or send additional SMS.
+
+- Incoming SMS must POST to
+  `https://h2s-backend.vercel.app/api/twilio/inbound-sms`.
+  Configure `TWILIO_INBOUND_SMS_WEBHOOK_URL` to that exact URL in the backend's
+  production environment before deploying the matching handler. Keep the
+  existing `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` and owned sender settings.
+  Do not disable signatures in production. Delivery callbacks remain at
+  `/api/twilio/message-status`; inbound and delivery callbacks are different.
+- Cut over only the number's SMS URL/method/application binding. Preserve its
+  voice forwarding, voice application, fallback and other provider settings.
+  Do not forward arbitrary incoming text to customer or staff phones. Ordinary
+  customer replies stay in the existing dashboard Messages inbox.
+- Initial and rescheduled owner messages offer the unique review link only.
+  Opening a link loads its request without approving it. An explicit button
+  action posts the token-bound decision. A reschedule rotates that token, so
+  an old link cannot approve the revised window. References remain useful
+  identifiers, not SMS commands.
+- All signed incoming SMS, including owner YES/NO replies and replies to older
+  messages, stay in the existing Messages inbox. They do not approve, decline,
+  forward alerts, or send automatic replies.
+- Link approval persists acceptance and the existing consultation appointment,
+  then queues the customer's call-window confirmation. The review page displays
+  the separate decision, appointment and notification results; it does not send
+  the former SMS-reply acknowledgement. Appointment or customer-text failures
+  produce review instructions instead. Provider acceptance is not proof of
+  delivery. Existing communication history and signed callbacks are preserved.
+- Newly booked consultations enroll the existing `next_reminder_at` field for
+  an owner call reminder 15 minutes before the window and another at its start.
+  The existing 15-minute maintenance cron drives these reminders; this is not a
+  new sales-chasing policy. Only the recorded, still-configured consultation
+  owner receives them. The linked appointment identity, state and window are
+  checked, and the effect ledger prevents repeated sends across concurrent cron
+  runs. A missed pre-window reminder is not sent together with the start reminder.
+  In-flight provider messages cannot be recalled.
+- Previously booked consultations with no reminder due time are not retroactively
+  enrolled. Passed windows and ended appointments stop generating reminders.
+  Sales Hold/Close does not silently cancel booked consultations or these call
+  reminders. Invalid ownership or appointment state requires operator review.
+  Internal installation reservations still do not send messages.
+- The dashboard remains the record of responsibility, appointment and
+  communication evidence. Do not substitute a bare SMS or provider acceptance
+  for the saved record. With one initial reviewer, the full successful SMS path
+  has two customer messages and three owner messages, with no inbound reply;
+  additional initial reviewers add messages. SMS charges depend on segments and
+  carrier fees, so dashboard-led review avoids redundant broadcasts and chasing.
+
+No schema migration is required for this correction. It reuses the existing
+consultation, appointment, SMS inbox, effect ledger and maintenance endpoint.
+Local fixtures are not evidence that the provider webhook has been changed.
+Record actual deployment and provider verification separately. Do not replay a
+historical YES or send another acceptance test without the owner's instruction.
+
 ### Scheduling and workload increment
 
 Migration `036_commercial_calendar_workload.sql` is additive. The owner authorized

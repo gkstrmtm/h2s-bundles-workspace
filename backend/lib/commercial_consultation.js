@@ -455,7 +455,7 @@ function buildCustomerPendingMessage(input) {
 function buildCustomerConfirmedMessage(input) {
   const slotLabel = normalizeText(input.slotLabel, 120) || 'your consultation time';
   const reference = normalizeText(input.referenceCode, 32) || 'your request';
-  return `Home2Smart confirmed ${reference} for ${slotLabel}. This confirms a consultation, not an installation. Reply if you need to reschedule or share project details.`;
+  return `Home2Smart accepted ${reference}. Expect our call during ${slotLabel} to discuss your project. This confirms a phone consultation, not an installation. Reply if you need to reschedule or share project details.`;
 }
 
 function buildEscalationMessage(input) {

@@ -244,7 +244,7 @@ test('public call configuration respects explicit overrides and otherwise uses t
   }
 });
 
-test('dispatch SMS keeps the review URL separate from safe text-reply instructions', async () => {
+test('initial and rescheduled dispatch SMS offer only the request-specific review link', async () => {
   for (const rescheduled of [false, true]) {
     const pending = pendingRequest();
     if (rescheduled) pending.metadata.last_reschedule_key = 'fixture-reschedule';
@@ -256,26 +256,20 @@ test('dispatch SMS keeps the review URL separate from safe text-reply instructio
     assert.ok(lines.includes(sent.links.reviewUrl));
     assert.equal(new URL(sent.links.reviewUrl).searchParams.has('action'), false);
     assert.ok(sent.body.includes(`${sent.links.reviewUrl}\n\n`));
-    if (rescheduled) {
-      assert.match(sent.body, /text replies cannot approve a rescheduled window/);
-      assert.doesNotMatch(sent.body, /Or reply YES/);
-    } else {
-      assert.match(sent.body, /Or reply YES COM-ABCDEF or NO COM-ABCDEF\./);
-    }
+    assert.match(sent.body, /Open the link to review/);
+    assert.doesNotMatch(sent.body, /reply YES|reply NO|text replies/i);
+    if (rescheduled) assert.match(sent.body, /updated window/);
     assert.deepEqual(f.sms.map(message => message.to), trustedPhones);
     assert.equal(f.network.length, 0);
   }
 });
 
-test('historically assigned but unconfigured phones cannot authorize technician SMS replies', async () => {
+test('SMS consultation decision helpers are no longer exported', () => {
   const f = fixture({ requests: [pendingRequest()] });
-  assert.equal(await f.runtime.findConsultationForTechnicianReply(forgedPhone, 'YES COM-ABCDEF'), null);
-  assert.equal(await f.runtime.findConsultationForTechnicianReply(forgedPhone, 'YES'), null);
-  assert.equal(await f.runtime.loadConsultationContextByReference('COM-ABCDEF', forgedPhone), null);
+  for (const name of ['handleTechnicianReply', 'parseTechnicianReply', 'findConsultationForTechnicianReply', 'loadConsultationContextByReference']) {
+    assert.equal(f.runtime[name], undefined);
+  }
   assertNoEffects(f);
-  f.tables.commercial_consultation_requests[0].assigned_technician_phone = trustedPhones[0];
-  const context = await f.runtime.findConsultationForTechnicianReply(trustedPhones[0], 'YES COM-ABCDEF');
-  assert.equal(context.consultation.request_id, 'request-fixture');
 });
 
 test('canonical URL fallbacks are explicit and HTTP is confined to configured nonproduction loopback', () => {
@@ -392,8 +386,8 @@ test('valid cron bearer and dedicated manual header authentication preserve auth
       const response = await f.route('commercial-consultation-maintenance')[method](maintenanceRequest(method, headers));
       assert.equal(response.status, 200);
       assert.equal((await response.json()).ok, true);
-      assert.equal(f.calls.length, 1);
-      assert.equal(f.calls[0].mode, 'select');
+      assert.equal(f.calls.length, 2);
+      assert.ok(f.calls.every(call => call.mode === 'select' && call.table === 'commercial_consultation_requests'));
       assert.equal(f.sms.length, 0);
       assert.equal(f.network.length, 0);
     }

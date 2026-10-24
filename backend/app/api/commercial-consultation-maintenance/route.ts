@@ -13,6 +13,7 @@ import {
   nextReminderIso,
   notifyManagementEscalation,
   sendTechnicianConsultationRequest,
+  sendConsultationCallReminder,
 } from '@/lib/commercial_consultation_runtime';
 
 export const dynamic = 'force-dynamic';
@@ -122,6 +123,28 @@ async function processMaintenance(request: Request) {
     processed.push({ requestId: consultation.request_id, action: reminded ? 'reminded' : 'changed_during_processing', notifications: sent.results });
   }
 
+  const { data: booked, error: bookedError } = await sb.from('commercial_consultation_requests').select('*')
+    .in('status', ['approved','customer_confirmed']).lte('next_reminder_at', nowIso)
+    .order('next_reminder_at', { ascending: true }).limit(25);
+  if (bookedError) throw new Error(commercialDatabaseErrorMessage(bookedError));
+  for (const consultation of booked || []) {
+    const lead = await getLeadById(consultation.lead_id);
+    if (!lead) {
+      processed.push({ requestId: consultation.request_id, action: 'missing_lead_review_required' });
+      continue;
+    }
+    const result = await sendConsultationCallReminder(consultation, lead, new Date(nowIso));
+    const ended = ['window_passed','appointment_ended'].includes(result.action);
+    if (ended) console.warn('Commercial call reminder ended without another send', { requestId: consultation.request_id, reason: result.action });
+    if (ended || 'nextReminderAt' in result && result.notification?.ok) {
+      const { error: updateError } = await sb.from('commercial_consultation_requests')
+        .update({ next_reminder_at: 'nextReminderAt' in result ? result.nextReminderAt : null, updated_at: new Date().toISOString() })
+        .eq('request_id', consultation.request_id).eq('status', consultation.status)
+        .eq('response_token', consultation.response_token).eq('next_reminder_at', consultation.next_reminder_at);
+      if (updateError) throw new Error(commercialDatabaseErrorMessage(updateError));
+    }
+    processed.push({ requestId: consultation.request_id, ...result });
+  }
   return NextResponse.json({ ok: true, processed }, { headers: corsHeaders(request) });
 }
 

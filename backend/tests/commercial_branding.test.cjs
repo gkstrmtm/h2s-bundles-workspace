@@ -126,24 +126,25 @@ test('legacy email message generation and current call follow-up retain Home2Sma
     attempts(f);
   }
 });
-test('YES/NO replies, confirmation/decline sends and rejected/uncertain/appointment failure paths stay branded', async t => {
-  for (const action of ['YES', 'NO']) for (const failure of [null, 'rejected', 'timeout', 'appointment']) {
+test('link approval/decline sends and rejected/uncertain/appointment failure paths stay branded', async t => {
+  for (const action of ['approve', 'decline']) for (const failure of [null, 'rejected', 'timeout', 'appointment']) {
     await t.test(`${action}: ${failure || 'accepted'}`, async () => {
       const f = createFixture(), row = await submit(f);
       if (failure === 'appointment') f.faults.commercial_create_appointment = 'Fixture appointment failure';
       else if (failure) f.faults.sms = failure;
-      const result = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `${action} ${row.reference_code}`);
-      assert.equal(result.handled, true);
-      branded(result.replyText);
+      const response = await f.post('commercial-consultation-response', { token: row.response_token, action });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).ok, true);
       attempts(f);
-      if (action === 'NO' || failure === 'appointment') assert.equal(f.appointments.length, 0);
+      if (action === 'decline' || failure === 'appointment') assert.equal(f.appointments.length, 0);
     });
   }
 });
-test('rescheduling and unmatched, delayed or invalid technician replies retain branding and current approval authority', async () => {
+test('rescheduling retains branded sends and rejects stale link authority or invalid customer contact', async () => {
   const f = createFixture(), row = await submit(f);
-  const unknown = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', 'YES COM-UNKNOWN');
-  branded(unknown.replyText);
+  const oldToken = row.response_token;
+  const unknown = await f.post('commercial-consultation-response', { token: 'unknown-fixture-token', action: 'approve' });
+  assert.equal(unknown.status, 404);
   const slot = utils.buildSlotSuggestions()[1];
   const reschedule = await f.post('commercial-consultation', {
     publicToken: f.tables.commercial_leads[0].public_token, mode: 'reschedule', requestId: row.request_id,
@@ -151,21 +152,19 @@ test('rescheduling and unmatched, delayed or invalid technician replies retain b
   });
   assert.equal(reschedule.status, 200);
   attempts(f);
-  const delayed = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${row.reference_code}`);
-  assert.equal(delayed.ok, false);
-  branded(delayed.replyText);
-  assert.match(delayed.replyText, /current approval link/);
+  const delayed = await f.post('commercial-consultation-response', { token: oldToken, action: 'approve' });
+  assert.equal(delayed.status, 404);
   const g = createFixture(), invalid = await submit(g);
   g.tables.commercial_leads[0].phone = '';
-  const rejected = await g.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${invalid.reference_code}`);
-  assert.equal(rejected.ok, false);
-  branded(rejected.replyText);
+  const rejected = await g.post('commercial-consultation-response', { token: invalid.response_token, action: 'approve' });
+  assert.equal(rejected.status, 409);
+  assert.equal((await rejected.json()).ok, false);
 });
 test('safe recovery regenerates branded messages but never resends accepted or uncertain effects', async () => {
   for (const failure of ['rejected', 'timeout']) {
     const f = createFixture(), row = await submit(f);
     f.faults.sms = failure;
-    await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${row.reference_code}`);
+    await f.post('commercial-consultation-response', { token: row.response_token, action: 'approve' });
     const before = f.providerAttempts.length;
     delete f.faults.sms;
     await f.runtime.retryCommercialProcessing(new Request('http://localhost'), row.request_id);

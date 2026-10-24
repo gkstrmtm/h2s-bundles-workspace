@@ -428,7 +428,7 @@ export async function sendSmsAndPersist(to: string, body: string, contactName?: 
   return { ok: true, accepted: true, to, sid: message.sid, status: message.status || 'queued', persistenceError };
 }
 
-async function sendRecordedSms(consultation: any, kind: string, to: string, body: string, name?: string | null) {
+async function sendRecordedSms(consultation: any, kind: string, to: string, body: string, name?: string | null): Promise<SmsResult & { skipped?: boolean; reason?: string }> {
     const claimed = await commercialRpc('commercial_claim_effect', { p_request_id: consultation.request_id, p_kind: kind });
     if (!claimed) {
       const { data, error } = await getSupabase().from('commercial_effects').select('state,details')
@@ -478,67 +478,23 @@ export async function maybeCreateAppointment(request: Request, consultation: any
   if (!startIso) return { ok: false, skipped: 'missing_slot' };
   if (!lead?.phone) return { ok: false, skipped: 'missing_phone' };
   try {
+    if (consultation.related_order_id) {
+      const { data: existing, error } = await getSupabase().from('h2s_orders')
+        .select('id,commercial_request_id,status,appointment_confirmed,metadata_json').eq('id', consultation.related_order_id).maybeSingle();
+      if (error) throw new Error(commercialDatabaseErrorMessage(error));
+      if (!existing || existing.commercial_request_id !== consultation.request_id || !existing.appointment_confirmed
+        || !['queued','scheduled','confirmed'].includes(existing.status)
+        || Date.parse(existing.metadata_json?.slot_start_iso) !== Date.parse(consultation.selected_slot_start)
+        || Date.parse(existing.metadata_json?.slot_end_iso) !== Date.parse(consultation.selected_slot_end)) {
+        return { ok: false, skipped: 'appointment_changed', error: 'The existing consultation appointment needs review; it was not recreated.' };
+      }
+      return { ok: true, appointment: existing };
+    }
     const appointment = await commercialRpc('commercial_create_appointment', { p_request_id: consultation.request_id });
     return { ok: true, appointment };
   } catch (error: unknown) {
     return { ok: false, skipped: 'appointment_create_failed', error: error instanceof Error ? error.message : 'Appointment creation failed' };
   }
-}
-
-export async function loadConsultationContextByReference(referenceCode: string, technicianPhone?: string | null) {
-  if (technicianPhone && !getTechnicianPhones().includes(normalizePhone(technicianPhone))) return null;
-  const sb = getSupabase();
-  let query = sb
-    .from('commercial_consultation_requests')
-    .select('*')
-    .eq('reference_code', referenceCode)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (technicianPhone) {
-    query = query.eq('assigned_technician_phone', technicianPhone);
-  }
-
-  const { data, error } = await query.maybeSingle();
-  if (error) {
-    throw new Error(commercialDatabaseErrorMessage(error));
-  }
-  if (!data) return null;
-  const lead = await getLeadById(data.lead_id);
-  return { consultation: data, lead };
-}
-
-export function parseTechnicianReply(text: string) {
-  const normalized = normalizeText(text, 200).toLowerCase();
-  if (!normalized) return null;
-  if (/\b(yes|y|approve|approved|accept|accepted)\b/.test(normalized)) return 'approve';
-  if (/\b(no|n|decline|declined|reject|rejected)\b/.test(normalized)) return 'decline';
-  return null;
-}
-
-export async function findConsultationForTechnicianReply(fromPhone: string, body: string) {
-  if (!getTechnicianPhones().includes(normalizePhone(fromPhone))) return null;
-  const refMatch = String(body || '').toUpperCase().match(/\bCOM-[A-Z0-9]{6,}\b/);
-  if (refMatch) {
-    return loadConsultationContextByReference(refMatch[0], fromPhone);
-  }
-
-  const sb = getSupabase();
-  const { data, error } = await sb
-    .from('commercial_consultation_requests')
-    .select('*')
-    .eq('assigned_technician_phone', fromPhone)
-    .in('status', ['pending', 'escalated', 'reschedule_requested'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(commercialDatabaseErrorMessage(error));
-  }
-  if (!data) return null;
-  const lead = await getLeadById(data.lead_id);
-  return { consultation: data, lead };
 }
 
 export async function notifyManagementEscalation(consultation: any, lead: any) {
@@ -562,7 +518,7 @@ export async function applyConsultationDecision(params: {
   consultation: any;
   lead: any;
   action: 'approve' | 'decline';
-  channel: 'sms' | 'web' | 'manual';
+  channel: 'web' | 'manual';
   note?: string;
 }) {
   const sb = getSupabase();
@@ -587,8 +543,8 @@ export async function applyConsultationDecision(params: {
     response_note: consultation.status === nextStatus ? consultation.response_note || null : normalizeText(params.note || '', 500) || null,
     response_at: consultation.status === nextStatus ? consultation.response_at || new Date().toISOString() : new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    next_reminder_at: null,
   };
+  if (action === 'decline' || !['approved','customer_confirmed'].includes(consultation.status)) patch.next_reminder_at = null;
 
   const decisionUpdate = sb
     .from('commercial_consultation_requests')
@@ -601,7 +557,7 @@ export async function applyConsultationDecision(params: {
     .select('*')
     .maybeSingle();
 
-  if (error || !updated) return { ok: false, error: error?.message || 'The request changed. Reload its current status before acting.' };
+  if (error || !updated) return { ok: false, conflict: !error && !updated, error: error?.message || 'The request changed. Reload its current status before acting.' };
 
   const result: any = {
     ok: true,
@@ -609,6 +565,7 @@ export async function applyConsultationDecision(params: {
   };
 
   if (action === 'approve') {
+    const enrollCallReminders = !consultation.related_order_id;
     const appointment = await maybeCreateAppointment(params.request, updated, lead);
     result.appointment = appointment;
     if (!appointment.ok) {
@@ -630,6 +587,9 @@ export async function applyConsultationDecision(params: {
     const confirmPatch: any = {
       updated_at: new Date().toISOString(),
     };
+    if (enrollCallReminders) {
+      confirmPatch.next_reminder_at = new Date(Date.parse(updated.selected_slot_start) - 15 * 60000).toISOString();
+    }
     if (customerSms.ok) {
       confirmPatch.customer_confirmation_sent_at = new Date().toISOString();
     }
@@ -666,49 +626,38 @@ export async function applyConsultationDecision(params: {
   return result;
 }
 
-export async function handleTechnicianReply(request: Request, fromPhone: string, body: string) {
-  const action = parseTechnicianReply(body);
-  if (!action) return { handled: false as const };
-  const context = await findConsultationForTechnicianReply(fromPhone, body);
-  if (!context?.consultation || !context?.lead) {
-    return {
-      handled: true as const,
-      ok: false,
-      replyText: 'Home2Smart | No pending commercial consultation was found for that reply. Include the reference code or use the approval link in the original text.',
-    };
+export async function sendConsultationCallReminder(consultation: any, lead: any, now = new Date()) {
+  const start = Date.parse(consultation.selected_slot_start), end = Date.parse(consultation.selected_slot_end);
+  if (!['approved','customer_confirmed'].includes(consultation.status) || !consultation.related_order_id
+    || isManualCommercialFollowUp(consultation, lead)) return { action: 'not_booked' };
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return { action: 'invalid_window' };
+  if (now.getTime() >= end) return { action: 'window_passed' };
+  if (start - now.getTime() > 15 * 60000) return { action: 'not_due' };
+  const current = await getConsultationByToken(consultation.response_token);
+  if (!current || !['approved','customer_confirmed'].includes(current.consultation.status)
+    || current.consultation.related_order_id !== consultation.related_order_id
+    || current.consultation.selected_slot_start !== consultation.selected_slot_start
+    || current.consultation.selected_slot_end !== consultation.selected_slot_end
+    || current.consultation.assigned_technician_phone !== consultation.assigned_technician_phone
+    || current.consultation.next_reminder_at !== consultation.next_reminder_at) return { action: 'request_changed' };
+  const owner = normalizePhone(consultation.assigned_technician_phone);
+  if (!getTechnicianPhones().includes(owner) || normalizePhone(lead?.phone) === owner) {
+    return { action: 'owner_review_required' };
   }
-  if (context.consultation.metadata?.last_reschedule_key) {
-    return { handled: true as const, ok: false, replyText: 'Home2Smart | This consultation window changed. Use the current approval link to review the new window; a delayed text reply cannot approve it.' };
-  }
-
-  const outcome = await applyConsultationDecision({
-    request,
-    consultation: context.consultation,
-    lead: context.lead,
-    action,
-    channel: 'sms',
-    note: normalizeText(body, 500),
-  });
-
-  if (!outcome.ok) {
-    return {
-      handled: true as const,
-      ok: false,
-      replyText: `Home2Smart | ${outcome.error || 'We could not record that response. Please use the approval link or reply again with the reference code.'}`,
-    };
-  }
-
-  const reference = context.consultation.reference_code;
-  return {
-    handled: true as const,
-    ok: true,
-    replyText: action === 'approve'
-      ? `Home2Smart | ${reference} approval recorded. Check Commercial Queue for appointment and customer communication results; approval alone does not confirm an appointment.`
-      : `Home2Smart | ${reference} declined. ${outcome.managementSms?.some((item: SmsResult) => item.ok)
-        ? 'Management notification accepted for follow-up.'
-        : 'Management notification needs review in Commercial Queue.'} Customer follow-up is still required.`,
-    outcome,
-  };
+  const { data: appointment, error } = await getSupabase().from('h2s_orders')
+    .select('id,commercial_request_id,status,appointment_confirmed,metadata_json').eq('id', consultation.related_order_id).maybeSingle();
+  if (error) throw new Error(commercialDatabaseErrorMessage(error));
+  if (appointment && ['cancelled','canceled','completed'].includes(appointment.status)) return { action: 'appointment_ended' };
+  if (!appointment || appointment.commercial_request_id !== consultation.request_id || !appointment.appointment_confirmed
+    || !['queued','scheduled','confirmed'].includes(appointment.status)
+    || Date.parse(appointment.metadata_json?.slot_start_iso) !== start
+    || Date.parse(appointment.metadata_json?.slot_end_iso) !== end) return { action: 'appointment_review_required' };
+  const stage = now.getTime() < start ? 'before' : 'start';
+  const name = normalizeText(lead.full_name || lead.company_name, 60) || 'the customer';
+  const body = `Home2Smart | ${consultation.reference_code}: ${stage === 'before' ? 'Upcoming call' : 'Call now'}: ${name} (${lead.phone}). ${getSlotLabel(consultation.selected_slot_start, consultation.selected_slot_end)}. Project details: Commercial Queue.`;
+  const notification = await sendRecordedSms(consultation, `owner_call:${stage}:${consultation.selected_slot_start}:${owner}`, owner, body);
+  return { action: notification.ok ? 'call_reminder_accepted' : 'call_reminder_review_required', notification,
+    nextReminderAt: notification.ok ? stage === 'before' ? new Date(start).toISOString() : null : consultation.next_reminder_at };
 }
 
 export async function sendTechnicianConsultationRequest(consultation: any, lead: any, purpose = 'dispatch') {
@@ -727,8 +676,8 @@ export async function sendTechnicianConsultationRequest(consultation: any, lead:
     responseToken: consultation.response_token,
     serviceNeeds: Array.isArray(lead.service_needs) ? lead.service_needs : [],
   }) + (consultation.metadata?.last_reschedule_key
-    ? '\n\nThe window changed. Use the review link above; text replies cannot approve a rescheduled window.'
-    : `\n\nOr reply YES ${consultation.reference_code} or NO ${consultation.reference_code}.`);
+    ? '\n\nThe window changed. Open the link to review the updated window and approve or decline.'
+    : '\n\nOpen the link to review the details and approve or decline.');
 
   const results = [];
   for (const phone of technicianPhones) {

@@ -27,16 +27,16 @@ async function submit(f) {
 }
 const decision = (f, row, action = 'approve') => f.post('commercial-consultation-response', { token: row.response_token, action });
 
-test('technician SMS YES reuses appointment/confirmation processing and exposes each persisted result in the queue', async () => {
+test('link approval exposes each persisted appointment and confirmation result in the queue', async () => {
   for (const failure of [null, 'appointment', 'rejected', 'timeout']) {
     const f = createFixture();
     const row = await submit(f);
     if (failure === 'appointment') f.faults.commercial_create_appointment = 'Fixture appointment insert failed';
     else if (failure) f.faults.sms = failure;
-    const result = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${row.reference_code}`);
+    const result = await (await decision(f, row)).json();
     assert.equal(result.ok, true);
     assert.equal(row.status, 'approved');
-    assert.equal(row.response_channel, 'sms');
+    assert.equal(row.response_channel, 'web');
     assert.ok(row.response_at);
     const queued = (await f.queue()).queue[0];
     assert.equal(queued.consultation.responseAt, row.response_at);
@@ -57,25 +57,26 @@ test('technician SMS YES reuses appointment/confirmation processing and exposes 
       }
     }
     assert.equal(Object.hasOwn(queued.followUp, 'handled'), false);
-    assert.match(result.replyText, /approval alone does not confirm an appointment/);
+    assert.equal(result.appointment.ok, failure !== 'appointment');
+    if (failure === 'appointment') assert.equal(result.notifications.customer, null);
+    else assert.equal(result.notifications.customer.ok, !failure);
   }
 });
 
-test('technician SMS NO retains alternate-time follow-up despite notification failure and never creates an appointment', async () => {
+test('link decline retains alternate-time follow-up despite notification failure and never creates an appointment', async () => {
   for (const failure of [null, 'rejected', 'timeout']) {
     const f = createFixture();
     const row = await submit(f);
     if (failure) f.faults.sms = failure;
-    const result = await f.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `NO ${row.reference_code}`);
+    const result = await (await decision(f, row, 'decline')).json();
     assert.equal(result.ok, true);
     assert.equal(row.status, 'declined');
-    assert.equal(row.response_channel, 'sms');
+    assert.equal(row.response_channel, 'web');
     assert.equal(f.appointments.length, 0);
     const queued = (await f.queue()).queue[0];
     assert.match(queued.followUp.nextAction, /Technician declined.*arrange another window/);
     assert.equal(queued.followUp.needsAttention, true);
-    assert.match(result.replyText, /Customer follow-up is still required/);
-    assert.match(result.replyText, failure ? /notification needs review/ : /notification accepted/);
+    assert.equal(result.notifications.management.some(item => item.ok), !failure);
     if (failure) assert.match(queued.followUp.nextAction, failure === 'rejected' ? /provider rejected/ : /uncertain provider/);
   }
 });
@@ -267,9 +268,7 @@ test('simultaneous approvals create one appointment; stale approval authority is
     lead: g.tables.commercial_leads[0], action: 'approve', channel: 'web' });
   assert.equal(stale.ok, false);
   assert.equal(g.appointments.length, 0);
-  const delayedReply = await g.runtime.handleTechnicianReply(new Request('http://localhost'), '+15550000001', `YES ${pending.reference_code}`);
-  assert.equal(delayedReply.ok, false);
-  assert.match(delayedReply.replyText, /current approval link/);
+  assert.equal((await decision(g, old)).status, 404);
   assert.equal(g.appointments.length, 0);
 });
 
