@@ -3099,6 +3099,40 @@
                             </div>
                         </div>
 
+                        <section id="notificationRouting" class="card notification-routing" hidden aria-labelledby="notificationRoutingTitle">
+                            <div class="notification-routing__head">
+                                <h3 id="notificationRoutingTitle" class="workspace-card__title">Owner notifications</h3>
+                                <button id="notificationRoutingEdit" class="btn btn-secondary" type="button" onclick="notificationRoutingUI.edit()" disabled>Edit</button>
+                            </div>
+                            <div class="notification-routing__recipient">
+                                <span>Residential alerts</span>
+                                <strong id="notificationRoutingOwner">Loading...</strong>
+                            </div>
+                            <p>Inquiry links, callback reminders and installation reminders.</p>
+                            <p id="notificationRoutingSource"></p>
+                            <details class="notification-routing__other">
+                                <summary>Other routes (unchanged)</summary>
+                                <dl class="notification-routing__rows">
+                                    <dt>Commercial technician requests</dt><dd id="notificationRoutingTechnicians">Loading...</dd>
+                                    <dt>Management escalation</dt><dd id="notificationRoutingEscalation">Loading...</dd>
+                                </dl>
+                                <p>Public business phone, text sender, customer numbers, installer assignments and media-upload reminders are not changed here.</p>
+                            </details>
+                            <form id="notificationRoutingForm" hidden onsubmit="notificationRoutingUI.save(event)">
+                                <label for="notificationRoutingPhone">Residential owner notification phone</label>
+                                <input id="notificationRoutingPhone" type="tel" autocomplete="tel" maxlength="40" required aria-describedby="notificationRoutingHelp" />
+                                <p id="notificationRoutingHelp">Use a US number or +country code. Saving does not verify ownership or send a text.</p>
+                                <p>Existing links still open the same customer, but follow-up acceptance and pending reminders for the previous recipient require staff review. Nothing is transferred or resent. In-flight sends may finish at the previous number.</p>
+                                <label class="notification-routing__ack"><input id="notificationRoutingAcknowledge" type="checkbox" required /> I understand existing links and reminders are not transferred.</label>
+                                <div class="notification-routing__actions">
+                                    <button id="notificationRoutingSave" type="submit" class="btn">Save</button>
+                                    <button id="notificationRoutingCancel" type="button" class="btn btn-secondary" onclick="notificationRoutingUI.cancel()">Cancel</button>
+                                </div>
+                            </form>
+                            <p id="notificationRoutingStatus" role="status" aria-live="polite"></p>
+                            <button id="notificationRoutingReload" type="button" class="btn btn-secondary" onclick="notificationRoutingUI.reload()" hidden>Reload saved routing</button>
+                        </section>
+
                         <div class="workspace-metric-grid">
                             <div class="workspace-metric">
                                 <div class="workspace-metric__label">Assigned tasks</div>

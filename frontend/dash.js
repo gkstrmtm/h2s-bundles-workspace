@@ -22628,6 +22628,141 @@ function deliverablesBrowserRender(mode) {
             workspaceSummaryRefreshState.bound = true;
         }
 
+        const notificationRoutingUI = {
+            snapshot: null,
+            editing: false,
+            saving: false,
+            session: '',
+            loading: false,
+            element(name) { return document.getElementById('notificationRouting' + name); },
+            status(message, state = '') {
+                this.element('').dataset.state = state;
+                this.element('Status').textContent = message;
+            },
+            async request(method, body) {
+                const token = getDashboardSessionToken();
+                if (!isAdminRole() || !token) throw new Error('Administrator session required.');
+                const response = await fetch(`${API_BASE}/api/notification-routing`, {
+                    method, cache: 'no-store',
+                    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    ...(body ? { body: JSON.stringify(body) } : {})
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok) {
+                    const error = new Error(data.error || 'Notification routing request failed.');
+                    error.status = response.status;
+                    throw error;
+                }
+                return data;
+            },
+            render() {
+                const owner = this.snapshot.owner;
+                this.element('Owner').textContent = owner.phone || 'Not configured';
+                this.element('Technicians').textContent = this.snapshot.commercialTechnicians.join(', ') || 'Not configured';
+                this.element('Escalation').textContent = this.snapshot.managementEscalation.join(', ') || 'Not configured';
+                this.element('Source').textContent = owner.source === 'saved'
+                    ? `Updated ${new Date(owner.updatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} by ${owner.updatedBy.name}. Not verified.`
+                    : 'Using environment default until first save. Not verified.';
+                this.element('Edit').disabled = this.editing || this.saving;
+                this.element('Form').hidden = !this.editing;
+                this.element('Reload').hidden = true;
+            },
+            async load() {
+                const root = this.element('');
+                if (!root) return;
+                const token = getDashboardSessionToken();
+                root.hidden = !isAdminRole() || !token;
+                if (root.hidden) {
+                    this.snapshot = null;
+                    this.editing = false;
+                    this.session = '';
+                    return;
+                }
+                if (this.session !== token) {
+                    this.snapshot = null;
+                    this.editing = false;
+                    this.session = token;
+                }
+                if (this.editing || this.saving || this.loading) return;
+                this.loading = true;
+                this.element('Edit').disabled = true;
+                this.status('Loading saved routing...');
+                try {
+                    const data = await this.request('GET');
+                    if (token !== getDashboardSessionToken() || !isAdminRole()) return;
+                    this.snapshot = data.routing;
+                    this.render();
+                    this.status('');
+                } catch (error) {
+                    if (token !== getDashboardSessionToken() || !isAdminRole()) return;
+                    this.element('Owner').textContent = 'Unavailable';
+                    this.status(error.message, 'error');
+                    this.element('Reload').hidden = false;
+                } finally {
+                    this.loading = false;
+                }
+            },
+            edit() {
+                if (!this.snapshot || this.saving) return;
+                this.editing = true;
+                this.element('Phone').value = this.snapshot.owner.phone || '';
+                this.element('Acknowledge').checked = false;
+                this.render();
+                this.status('');
+                this.element('Phone').focus();
+            },
+            async cancel() {
+                if (this.saving) return;
+                this.editing = false;
+                this.render();
+                await this.load();
+                if (this.element('').dataset.state !== 'error') this.status('Edit cancelled. Saved routing was not changed.');
+                this.element('Edit').focus();
+            },
+            async reload() {
+                if (this.saving || this.editing && !window.confirm('Discard this draft and reload saved notification routing?')) return;
+                this.editing = false;
+                this.element('Form').hidden = true;
+                await this.load();
+            },
+            async save(event) {
+                event.preventDefault();
+                if (this.saving || !this.editing) return;
+                if (!this.element('Acknowledge').checked) {
+                    this.status('Acknowledge the handling of existing links and reminders before saving.', 'error');
+                    return;
+                }
+                const token = getDashboardSessionToken();
+                this.saving = true;
+                for (const name of ['Save', 'Cancel', 'Phone', 'Acknowledge']) this.element(name).disabled = true;
+                this.status('Saving routing. No text will be sent...');
+                try {
+                    const data = await this.request('POST', {
+                        phone: this.element('Phone').value, revision: this.snapshot.owner.revision,
+                        acknowledgeRecipientChange: true
+                    });
+                    if (token !== getDashboardSessionToken() || !isAdminRole()) return;
+                    this.snapshot.owner = data.owner;
+                    this.editing = false;
+                    this.render();
+                    this.status('Saved. No text sent; number ownership is not verified.', 'success');
+                    this.element('Edit').focus();
+                } catch (error) {
+                    if (token !== getDashboardSessionToken() || !isAdminRole()) return;
+                    const next = error.status === 409 ? 'Reload saved routing before retrying.'
+                        : error.status && error.status < 500 ? 'Your draft is retained.'
+                        : 'Save result is uncertain. Your draft is retained; reload saved routing before retrying.';
+                    this.status(`${error.message} ${next}`, 'error');
+                    this.element('Reload').hidden = false;
+                } finally {
+                    this.saving = false;
+                    for (const name of ['Save', 'Cancel', 'Phone', 'Acknowledge']) this.element(name).disabled = false;
+                    this.element('Edit').disabled = this.editing;
+                }
+            }
+        };
+        window.notificationRoutingUI = notificationRoutingUI;
+
         async function loadWorkspaceSummary(silent = false) {
             const userKey = normalizeUsername(currentUser || '');
             const progressFill = document.getElementById('workspaceTaskProgressFill');
@@ -49881,6 +50016,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const pane = document.getElementById('workspace-pane');
                 if (pane && pane.classList.contains('active')) {
                     bindWorkspaceSummaryAutoRefresh();
+                    notificationRoutingUI.load();
                     loadWorkspaceSummary(pane.dataset.initialized === 'true');
                     pane.dataset.initialized = 'true';
                 }

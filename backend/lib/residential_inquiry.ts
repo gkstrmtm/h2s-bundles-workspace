@@ -5,6 +5,7 @@ import {
 } from '@/lib/commercial_consultation_runtime';
 import { BusinessError, readJson, checked, text } from '@/lib/commercial_business';
 import { getSupabase } from '@/lib/supabase';
+import { readOwnerRouting } from '@/lib/notification_routing';
 
 const utils = require('@/lib/commercial_consultation.js');
 type Availability = { date: string; period: 'morning' | 'afternoon' | 'evening' | 'flexible' };
@@ -19,17 +20,16 @@ const tokenPattern = /^[A-Za-z0-9_-]{20,120}$/;
 export const marketOf = (lead: { attribution?: { market?: string } } | null) => lead?.attribution?.market || 'commercial';
 const customerMayText = (lead: {contact_preference?: string}) => lead.contact_preference==='sms' && utils.hasCommercialSmsConsent(lead);
 
-export function residentialRouting() {
+export async function residentialRouting() {
   const enabled = process.env.RESIDENTIAL_SMS_ENABLED === 'true';
-  const raw = String(process.env.RESIDENTIAL_REVIEWER_PHONE || '').trim();
-  const phone: string | null = raw ? utils.normalizePhone(raw) : null;
-  if ((raw && (!/^[+\d\s().-]+$/.test(raw) || !phone)) || enabled && !phone) {
-    throw new BusinessError('Configure a valid RESIDENTIAL_REVIEWER_PHONE before enabling residential SMS.',503);
+  const { phone } = await readOwnerRouting();
+  if (enabled && !phone) {
+    throw new BusinessError('Configure the residential owner phone in dashboard Notification routing before enabling residential SMS.',503);
   }
   return { enabled, phone };
 }
 export async function residentialSetup() {
-  const routing=residentialRouting();
+  const routing=await residentialRouting();
   getPublicBaseUrl();
   const ready=await getSupabase().rpc('h2s_residential_intake_ready',{});
   if(ready.error || ready.data!=='037') {
@@ -81,7 +81,7 @@ export function availabilityLabel(lead: { assessment_answers?: { availabilityPre
   return (lead.assessment_answers?.availabilityPreferences || []).map(value=>`${value.date} (${value.period})`).join(', ') || 'Discuss availability by phone';
 }
 async function notifyInitial(request: InquiryRequest, lead: InquiryLead) {
-  const routing = residentialRouting();
+  const routing = await residentialRouting();
   if (!routing.enabled || request.status!=='pending') return { enabled:routing.enabled, staff:null, customer:null };
   if (!routing.phone || !request.assigned_technician_phone || request.assigned_technician_phone!==routing.phone) {
     throw new BusinessError('Residential reviewer changed. Staff must review routing before any send.',409);
@@ -145,7 +145,7 @@ export async function reviewResidential(request: Request) {
   const body = await readJson(request,4096);
   const token = requiredText(body.token,'Review link',120), action = body.action;
   if (!['approve','decline'].includes(String(action))) throw new BusinessError('Choose Accept follow-up or Needs another reviewer.');
-  const context = await residentialContext(token), routing = residentialRouting();
+  const context = await residentialContext(token), routing = await residentialRouting();
   if (!routing.phone || context.consultation.assigned_technician_phone!==routing.phone
     || routing.phone===context.lead.phone) throw new BusinessError('Residential reviewer configuration needs staff review.',503);
   const result = checked(await getSupabase().rpc('h2s_review_residential_inquiry',{

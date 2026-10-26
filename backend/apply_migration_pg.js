@@ -11,13 +11,14 @@ const businessReview = require('./lib/commercial_business_review.cjs');
 const calendarReview = require('./lib/commercial_calendar_review.cjs');
 const residentialReview = require('./lib/residential_inquiry_review.cjs');
 const workspaceReview = require('./lib/residential_workspace_review.cjs');
+const notificationReview = require('./lib/notification_routing_review.cjs');
 
 const root = __dirname;
 const prerequisiteTables = ['owner_media_uploads', 'proof_assets'];
 const managedTables = [...prerequisiteTables, 'media_placements'];
 const ledger = 'public.h2s_schema_migrations';
 const stripeMetadataVersion = stripeMetadataReview.version;
-const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version, operationsReview.version, stripeMetadataVersion, queueReview.version, businessReview.version, calendarReview.version, residentialReview.version, workspaceReview.version];
+const versions = ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', commercialReview.version, operationsReview.version, stripeMetadataVersion, queueReview.version, businessReview.version, calendarReview.version, residentialReview.version, workspaceReview.version, notificationReview.version];
 const migrationOrder = versions;
 
 function digest(value) {
@@ -99,6 +100,10 @@ function authorizeApply(target, confirmProject) {
   if (target.workspace038?.reviewOnly !== false || !target.workspace038?.authorization
     || target.workspace038?.sqlSha256 !== migrations().find(file => file.version === workspaceReview.version).sha256) {
     throw new Error('038 remains review-only; separate explicit authorization and reviewed checksum are required');
+  }
+  if (target.notification039?.reviewOnly !== false || !target.notification039?.authorization
+    || target.notification039?.sqlSha256 !== migrations().find(file => file.version === notificationReview.version).sha256) {
+    throw new Error('039 remains review-only; separate explicit authorization and reviewed checksum are required');
   }
 }
 
@@ -224,6 +229,7 @@ async function verify(client, target) {
   const calendar036 = await calendarReview.inspect(client, rows.some(row => row.version === calendarReview.version));
   const residential037 = await residentialReview.inspect(client, rows.some(row => row.version === residentialReview.version));
   const workspace038 = await workspaceReview.inspect(client, rows.some(row => row.version === workspaceReview.version));
+  const notification039 = await notificationReview.inspect(client, rows.some(row => row.version === notificationReview.version));
   const access = (await client.query(`
     select has_table_privilege('anon','public.media_placements','SELECT') as anon_select,
       has_table_privilege('authenticated','public.media_placements','INSERT') as authenticated_insert,
@@ -231,7 +237,7 @@ async function verify(client, target) {
         from unnest(array['SELECT','INSERT','UPDATE','DELETE']) p) as service_access`)).rows[0];
   if (access.anon_select || access.authenticated_insert || !access.service_access) throw new Error('Unexpected placement table access grants');
   const pending = files.slice(rows.length).map(file => file.version);
-  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031, commercial032, stripe033, queue034, business035, calendar036, residential037, workspace038,
+  return { verified: pending.length === 0, appliedHistoryVerified: true, pending, commercial031, commercial032, stripe033, queue034, business035, calendar036, residential037, workspace038, notification039,
     columns: schema.columns.filter((row) => row.table_name === 'media_placements').map((row) => row.name), access, migrations: rows };
 }
 

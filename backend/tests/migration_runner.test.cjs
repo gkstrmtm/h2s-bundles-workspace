@@ -21,12 +21,14 @@ const target = () => {
     calendar036: { ...config.calendar036, reviewOnly: true, authorization: undefined, sqlSha256: null },
     residential037: { ...config.residential037, reviewOnly: true, authorization: undefined, sqlSha256: null },
     workspace038: { ...config.workspace038, reviewOnly: true, authorization: undefined, sqlSha256: null },
+    notification039: { reviewOnly: false, authorization: 'Fixture only; no remote authority',
+      sqlSha256: runner.migrations().find(file => file.version === '039_notification_routing.sql').sha256 },
   };
 };
 
 test('registered production authorization includes exactly the owner-approved reviewed migration scope', () => {
   const config = registeredTarget();
-  assert.deepEqual(config.authorizedMigrations, runner.migrations().map(file => file.version));
+  assert.deepEqual(config.authorizedMigrations, runner.migrations().map(file => file.version).filter(version => !version.startsWith('039_')));
   assert.equal(config.commercial031.reviewOnly, false);
   assert.match(config.commercial031.authorization, /2026-10-20/);
   assert.equal(config.commercial031.sqlSha256, 'c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071');
@@ -51,18 +53,22 @@ test('registered production authorization includes exactly the owner-approved re
   assert.equal(config.workspace038.reviewOnly,false);
   assert.match(config.workspace038.authorization,/2026-10-26/);
   assert.equal(config.workspace038.sqlSha256,'f362259f2ae778507aab8fbaab86faf9f02ec350627141e52a6490d07a43f29d');
-  assert.doesNotThrow(()=>runner.authorizeApply(config,ref));
+  assert.throws(()=>runner.authorizeApply(config,ref),/outside the explicitly authorized scope/);
+  assert.equal(config.notification039.reviewOnly,true);
+  assert.equal(config.notification039.authorization,null);
+  assert.equal(config.notification039.sqlSha256,runner.migrations().find(file=>file.version.startsWith('039_')).sha256);
+  assert.throws(()=>runner.authorizeApply({...config,authorizedMigrations:runner.migrations().map(file=>file.version)},ref),/039 remains review-only/);
   assert.throws(()=>runner.authorizeApply({...config,
     authorizedMigrations:config.authorizedMigrations.filter(version=>!/^03[78]_/.test(version))},ref),/outside the explicitly authorized scope/);
   const future={...config,residential037:{reviewOnly:true},workspace038:{reviewOnly:true}};
-  assert.throws(()=>runner.authorizeApply(future,ref),/037 remains review-only/);
-  assert.throws(()=>runner.authorizeApply({...future,residential037:{reviewOnly:false,authorization:'Fixture only',
+  assert.throws(()=>runner.authorizeApply({...future,authorizedMigrations:runner.migrations().map(file=>file.version)},ref),/037 remains review-only/);
+  assert.throws(()=>runner.authorizeApply({...future,authorizedMigrations:runner.migrations().map(file=>file.version),residential037:{reviewOnly:false,authorization:'Fixture only',
     sqlSha256:runner.migrations().find(file=>file.version.startsWith('037_')).sha256}},ref),/038 remains review-only/);
   for (const calendar036 of [
     {...config.calendar036,reviewOnly:true},
     {...config.calendar036,authorization:null},
     {...config.calendar036,sqlSha256:'changed'},
-  ]) assert.throws(() => runner.authorizeApply({...future,calendar036},ref),/036 remains review-only/);
+  ]) assert.throws(() => runner.authorizeApply({...future,authorizedMigrations:runner.migrations().map(file=>file.version),calendar036},ref),/036 remains review-only/);
 });
 
 test('target is explicit, no MGMT or generic URL fallback, and exact project/session port is checked', () => {
@@ -143,8 +149,8 @@ test('TLS requires a CA, keeps certificate/hostname verification, and rejects in
 
 test('only reviewed migrations are selected and history detects changed or out-of-order SQL', () => {
   const files = runner.migrations();
-  assert.equal(files.length, 10);
-  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql','035_commercial_business_tools.sql','036_commercial_calendar_workload.sql','037_residential_inquiries.sql','038_residential_workspace.sql']);
+  assert.equal(files.length, 11);
+  assert.deepEqual(files.map((file) => file.version), ['029_create_media_placements.sql', '030_owner_media_placement_fields.sql', '031_commercial_reliability.sql','032_commercial_operations.sql','033_atomic_stripe_order_metadata.sql','034_commercial_followup_delivery.sql','035_commercial_business_tools.sql','036_commercial_calendar_workload.sql','037_residential_inquiries.sql','038_residential_workspace.sql','039_notification_routing.sql']);
   const config = target();
   const rows = files.map((file) => ({
     version: file.version, sha256: file.sha256, project_ref: ref, environment: 'production',

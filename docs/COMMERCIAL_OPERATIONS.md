@@ -1,5 +1,73 @@
 # Commercial operations: existing-order workflow
 
+## Notification routing settings (local; not released)
+
+Canonical dashboard location: **My Summary > Owner notifications**, in
+`frontend/dash.html`. The existing ADMIN username/email + PIN session is required
+for both reading and saving `/api/notification-routing`; neither a public review
+token nor a VA account can read/change these settings.
+The compact overview leads with the residential owner number and Edit.
+Commercial technician requests and management escalation remain under
+**Other routes (unchanged)**; recipient-change cautions appear beside Save,
+not as repeated overview paragraphs. It is part of the existing full dashboard,
+not a separate settings application.
+
+Only **Residential owner alerts** are editable: new inquiry review texts,
+callback reminders and installation owner reminders. Commercial technician
+requests and management escalation show their existing effective recipients,
+read-only. Their existing environment routes are unchanged. Public business
+phones, Twilio sender, customer contacts, installer assignments and the separate
+media-upload reminder recipient are not modified.
+
+`notification_routing.route_key = residential_owner` is authoritative once saved.
+Until its first save, the existing `RESIDENTIAL_REVIEWER_PHONE` is the explicit
+default; reading never seeds or changes it. A saved number supersedes even a
+different/invalid environment default. Database errors or invalid saved routing
+fail closed: no silent use of the former recipient. A missing environment
+default is shown as not configured and blocks residential SMS until configured.
+The routing migration must precede a future matching application deployment.
+
+Save normalizes US/international phone syntax, requires acknowledgment of
+recipient-bound handling and checks the displayed revision. Simultaneous/stale
+edits receive 409 without overwriting another administrator's change. The draft
+is retained; Reload saved routing explicitly discards it after confirmation.
+The server derives the actor from the authenticated ADMIN session; the atomic
+SQL RPC stores prior/new phone, source, revision, actor and change time in
+`notification_routing_activity`. Browser roles have no table/RPC privileges;
+the application service role has SELECT and the reviewed RPC, not direct writes.
+Saving does not send a text or verify number ownership. No test-SMS action was
+added; a future test send requires separate explicit authorization.
+
+Routing changes are **not customer or job handoffs**. New inquiries capture the
+current saved recipient. Existing links still open their original customer and
+existing ADMIN access remains unchanged, but token-only follow-up acceptance
+for the old recipient is blocked by the existing assignment guard. Pending
+notices for old assignments return `routing_review_required`, including customer
+notices protected by the same guard; they are not redirected or resent. Existing
+reservations/assignments are untouched. A separate authorized reconciliation is
+required before those old notices/decisions can proceed; this setting does not
+provide a reassignment or token-rotation action. Already sent messages cannot be
+recalled. Requests, sends or reminder batches already in flight may finish with
+their earlier routing/authorization snapshot.
+
+Review-only prerequisite: `backend/migrations/039_notification_routing.sql`.
+It is registered but absent from the production authorized scope, and its
+`notification039.reviewOnly` remains `true`. No production deployment, migration,
+message, test customer or live routing change is part of this increment.
+
+Fixture validation: run `node --test --test-concurrency=1
+tests/notification_routing.test.cjs tests/notification_routing_ui.test.cjs
+tests/migration_runner.test.cjs` from `backend`. These cover actual SQL/API
+permissions and audit, normalization, concurrent edits, environment fallback,
+storage failure, saved-recipient inquiry/callback/installation delivery,
+recipient-bound old links/reminders and UI Save/Cancel/reload/conflicts.
+Read-only fixture inspection and saves were also browser-checked at 320/390px;
+no horizontal overflow, 44px action targets and zero provider attempts.
+The combined routing/residential/commercial/mobile/media regression passed
+304 fixture tests; backend `npx --no-install tsc --noEmit --incremental false`
+and dashboard syntax checks passed. These are local fixtures, not live delivery
+or production acceptance results.
+
 ## Lightweight homeowner inquiries (released 2026-10-26)
 
 Production release: `PORTAL_BUILD_20261026_190027_e70af30_residential`, built

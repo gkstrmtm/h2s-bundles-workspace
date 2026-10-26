@@ -8,6 +8,11 @@
       "sqlSha256": "34a46bba7bd55f05591ad504a4a3beb38c5a0bf5c9968b1b334756e11a85b665"
     },
     "connectionEnv": "DATABASE_URL_DIRECT",
+    "notification039": {
+      "reviewOnly": true,
+      "authorization": null,
+      "sqlSha256": "daf2487b9b26086804d256f44985462fca9fc19cbc95e21dd9db424a3cbf58e6"
+    },
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
     "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql", "037_residential_inquiries.sql", "038_residential_workspace.sql"],

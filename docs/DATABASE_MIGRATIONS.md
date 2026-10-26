@@ -19,6 +19,39 @@ residential inspectors, with no pending migrations. The 031 verifier recognizes
 only the exact reviewed 037 trigger definitions/function bodies and market
 index; altered objects still fail verification. Approved SQL was not changed.
 
+### Proposed 039 notification routing (review only)
+
+`backend/migrations/039_notification_routing.sql` adds one constrained
+residential-owner routing row and an append-only-through-RPC audit table.
+It seeds no phone numbers, modifies no customers/requests/bookings, sends no
+messages and grants no browser access. The application service role receives
+SELECT and a reviewed revision-checked save RPC, not direct table writes.
+Existing ADMIN authentication supplies the audit actor; that trusted server
+boundary is retained because dashboard authentication can use its existing
+separate management database.
+
+The explicit no-row default is the existing backend `RESIDENTIAL_REVIEWER_PHONE`;
+first save audits that prior effective value. The saved row then takes
+precedence. Storage failures never silently fall back. Existing commercial and
+media reminder routes are not changed.
+
+The normalized-LF SHA-256 is
+`daf2487b9b26086804d256f44985462fca9fc19cbc95e21dd9db424a3cbf58e6`.
+`notification039` is registered with `reviewOnly: true`, no authorization and
+no addition to `authorizedMigrations`. The runner rejects a production apply
+even if someone adds only its version to scope without separate reviewed
+authorization/checksum. No remote migration was run for this increment.
+Before any future release, explicitly approve 039, apply it through the
+existing verified-TLS runner, independently verify schema/access/audit, then
+deploy the matching routing resolver, API and dashboard together.
+
+The inspector verifies exact save-function source/signature/search path/grants,
+default-deny RLS/policies, table and column privileges, all constraints, column
+types/defaults/nullability and absence of unreviewed table triggers. Local
+fixtures exercise the real SQL, immutable audit, revision conflicts and
+unchanged recipient-bound review/reminder protections. No destructive
+reconciliation, recipient reassignment, resend or production test is authorized.
+
 ### Authorized 038 homeowner scheduling workspace
 
 `backend/migrations/038_residential_workspace.sql` follows 037. On 2026-10-26

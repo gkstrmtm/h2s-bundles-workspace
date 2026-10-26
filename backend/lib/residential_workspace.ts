@@ -74,7 +74,7 @@ export async function processResidentialNotices(options: { leadId?: string; now?
     const lead = checked(await getSupabase().from('commercial_leads').select('attribution').eq('lead_id', options.leadId).maybeSingle());
     if (lead?.attribution?.market !== 'residential') return { enabled: false, needsReview: false, processed: [] };
   }
-  const routing = residentialRouting();
+  const routing = await residentialRouting();
   if (!routing.enabled) return { enabled: false, needsReview: false, processed: [] };
   await residentialWorkspaceSetup();
   getPublicBaseUrl();

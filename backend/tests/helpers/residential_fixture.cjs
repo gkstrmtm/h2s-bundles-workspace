@@ -3,7 +3,7 @@ const {PGlite}=require('@electric-sql/pglite');
 const {createFixture}=require('./commercial_contact_fixture.cjs');
 const root=path.resolve(__dirname,'..','..');
 const sql=name=>fs.readFileSync(path.join(root,'migrations',name),'utf8');
-async function createResidentialFixture(env={}, {workspace=false}={}) {
+async function createResidentialFixture(env={}, {workspace=false,routing=false}={}) {
   const db=new PGlite();
   await db.exec(sql('014_create_commercial_consultation.sql').split('alter table commercial_leads enable row level security;')[0]);
   await db.exec(`
@@ -30,10 +30,11 @@ async function createResidentialFixture(env={}, {workspace=false}={}) {
   }
   await db.exec(sql('037_residential_inquiries.sql'));
   if(workspace)await db.exec(sql('038_residential_workspace.sql'));
+  if(routing)await db.exec(sql('039_notification_routing.sql'));
   await db.exec('set role service_role');
   const memory=createFixture();
   function from(table) {
-    assert.ok(['commercial_leads','commercial_consultation_requests','commercial_lead_operations','commercial_reservations','residential_notices'].includes(table));
+    assert.ok(['commercial_leads','commercial_consultation_requests','commercial_lead_operations','commercial_reservations','residential_notices','notification_routing'].includes(table));
     const args=[],clauses=[];
     let ordering=[],limit=500,single=false,columns='*';
     const column=name=>{assert.match(name,/^[a-z_][a-z0-9_]*$/);return `"${name}"`;};
@@ -56,7 +57,7 @@ async function createResidentialFixture(env={}, {workspace=false}={}) {
     return builder;
   }
   const database={
-    from:table=>['commercial_leads','commercial_consultation_requests',...(workspace?['commercial_lead_operations','commercial_reservations','residential_notices']:[])].includes(table)?from(table):memory.database.from(table),
+    from:table=>['commercial_leads','commercial_consultation_requests',...(workspace?['commercial_lead_operations','commercial_reservations','residential_notices']:[]),...(routing?['notification_routing']:[])].includes(table)?from(table):memory.database.from(table),
     async rpc(name,args){
       assert.match(name,/^[a-z_][a-z0-9_]*$/);
       const keys=Object.keys(args);

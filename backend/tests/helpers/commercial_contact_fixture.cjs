@@ -92,7 +92,7 @@ function matchesPostgrestFilter(row, expression) {
 }
 
 function createFixture(environment = {}, integration = {}) {
-  const tables = { commercial_leads: [], commercial_lead_operations: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [], h2s_orders: [] };
+  const tables = { notification_routing: [], commercial_leads: [], commercial_lead_operations: [], commercial_consultation_requests: [], commercial_effects: [], sms_threads: [], sms_messages: [], h2s_orders: [] };
   const sms = [];
   const providerAttempts = [];
   const appointments = [];
@@ -297,6 +297,7 @@ function createFixture(environment = {}, integration = {}) {
   const runtime = load('lib\\commercial_consultation_runtime.ts');
   imports['@/lib/commercial_consultation_runtime'] = runtime;
   imports['@/lib/commercial_business'] = load('lib\\commercial_business.ts');
+  imports['@/lib/notification_routing'] = load('lib\\notification_routing.ts');
   imports['@/lib/residential_inquiry'] = load('lib\\residential_inquiry.ts');
   imports['@/lib/residential_workspace'] = load('lib\\residential_workspace.ts');
   imports['@/lib/adminAuth'] = { corsHeaders: runtime.corsHeaders };

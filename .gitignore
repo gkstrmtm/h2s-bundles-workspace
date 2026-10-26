@@ -257,3 +257,4 @@ backend/.env.production
 !frontend/residential-review.js
 !backend/migrations/037_residential_inquiries.sql
 !backend/migrations/038_residential_workspace.sql
+!backend/migrations/039_notification_routing.sql
