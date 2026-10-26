@@ -12,6 +12,77 @@ The owner separately authorized exact-checksum 032 followed by 033 on
 verified before the matching direct Vercel release.
 This does not authorize arbitrary future migrations.
 
+On 2026-10-26, the owner authorized and the guarded runner applied exact-checksum
+037 and 038 to production `nkccbnrduojnzjfrpwva`. A fresh verified-TLS connection
+independently verified migration history, schema, access boundaries and both
+residential inspectors, with no pending migrations. The 031 verifier recognizes
+only the exact reviewed 037 trigger definitions/function bodies and market
+index; altered objects still fail verification. Approved SQL was not changed.
+
+### Authorized 038 homeowner scheduling workspace
+
+`backend/migrations/038_residential_workspace.sql` follows 037. On 2026-10-26
+the owner explicitly authorized both additive migrations and the matching
+production activation through Vercel. Its exact checksum is registered in
+the production target. It additionally
+requires a `workspace038` review record with `reviewOnly: false`, explicit
+authorization and the reviewed normalized-LF SQL SHA-256. Authorization for
+037 does not authorize 038.
+
+038 adds callback status/revision fields to existing lead operations and a
+default-deny `residential_notices` table, without parallel customer, job or
+calendar tables. Trigger-maintained notice versions supersede obsolete
+callback/reservation reminders across existing write surfaces. Service-only
+RPCs record callbacks and atomically claim/reconcile sends through the existing
+effect ledger. Browser roles receive no table or RPC privileges; the service
+role can select notices and use reviewed RPCs but cannot directly mutate them.
+The inspector checks function sources/search paths/execute grants, column
+defaults, constraints/indexes, enabled trigger bindings, RLS and table grants.
+
+Before adoption, reconcile any existing residential callback times or calendar
+reservations: preflight refuses those rows rather than guessing reminder
+history or sending retrospective notices. Reconcile any untracked 038 objects
+as explicit drift. No destructive SQL or automatic backfill is included.
+
+Apply and verify require the existing externally configured
+`DATABASE_URL_DIRECT` and `MIGRATION_CA_CERT_PATH`, explicit project/target
+confirmation, ordered reviewed migration scopes and checksums. Application
+service keys are not schema credentials. Local PGlite fixtures exercise the
+actual SQL and inspector without network access. The authorized release verified
+the remote schema, Pro hosting eligibility and deployed cron definitions.
+Independent-session scheduling concurrency and real SMS delivery still require
+separate acceptance evidence. See
+[Commercial operations](COMMERCIAL_OPERATIONS.md) for feature gates and timing.
+
+### Authorized 037 homeowner inquiry boundary
+
+`backend/migrations/037_residential_inquiries.sql` is registered after 036.
+The owner's explicit 2026-10-26 activation approval covers its exact registered
+checksum on production `nkccbnrduojnzjfrpwva`. Apply is
+blocked without both explicit scope approval and a `residential037` review
+record containing `reviewOnly: false`, authorization, and the reviewed
+normalized-LF SQL SHA-256. Target credentials remain outside Git. Applied status must be established by
+the guarded runner and independent verification, not this authorization record.
+
+037 reuses existing leads, requests, activity, effect ledger and company
+calendar; it creates no parallel customer/job/calendar tables. It adds
+market/non-booking guards, an atomic submission RPC and an audited token-bound
+follow-up decision RPC. The new inspector verifies exact function sources,
+search paths, execution privileges, enabled trigger bindings and market index.
+Anonymous/authenticated browser roles cannot execute these RPCs.
+
+Before adoption, inspect existing remote lead attribution and requests.
+Unknown markets, pre-existing residential records, or untracked 037 objects
+must be reconciled explicitly; the migration does not silently relabel or
+convert them. Existing Commercial rows without a market remain Commercial.
+No destructive SQL, data backfill, or automatic booking is included.
+Use the existing external `DATABASE_URL_DIRECT` and `MIGRATION_CA_CERT_PATH`,
+not an application service key, for a separately authorized apply/verify.
+The public intake is enabled in the approved production backend and checks the
+037 readiness RPC before any record or notification is created. Flags still
+default off in other environments. See the homeowner section
+in [Commercial operations](COMMERCIAL_OPERATIONS.md) for application flags.
+
 The owner authorized the connected Commercial release on 2026-10-23 at
 14:38 US Eastern, including its reviewed additive prerequisite
 `036_commercial_calendar_workload.sql` on production `nkccbnrduojnzjfrpwva`.

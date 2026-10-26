@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     }
 
     const lead = await getLeadByToken(publicToken);
-    if (!lead) {
+    if (!lead || lead.attribution?.market==='residential') {
       return NextResponse.json(
         { ok: false, error: 'Commercial lead not found' },
         { status: 404, headers: corsHeaders(request) }

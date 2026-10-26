@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     }
 
     const context = await getConsultationByToken(token);
-    if (!context?.consultation || !context?.lead) {
+    if (!context?.consultation || !context?.lead || context.lead.attribution?.market==='residential') {
       return NextResponse.json({ ok: false, error: 'Consultation not found' }, { status: 404, headers: corsHeaders(request) });
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     const context = await getConsultationByToken(token);
-    if (!context?.consultation || !context?.lead) {
+    if (!context?.consultation || !context?.lead || context.lead.attribution?.market==='residential') {
       return NextResponse.json({ ok: false, error: 'Consultation not found' }, { status: 404, headers: corsHeaders(request) });
     }
 

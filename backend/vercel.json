@@ -10,6 +10,10 @@
   "trailingSlash": false,
   "crons": [
     {
+      "path": "/api/residential-maintenance",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/owner-media-reminder",
       "schedule": "0 15 * * *"
     },

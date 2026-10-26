@@ -108,6 +108,7 @@ function assertPost(schema, target) {
   equal(schema.policies, baseline.policies, 'existing/default-deny policies');
   const newTriggers = ['commercial_appointment_write_guard', 'commercial_appointment_truncate_guard'];
   equal(schema.triggers.filter(row => !newTriggers.includes(row.name)
+    && !require('./residential_inquiry_review.cjs').isReviewedInquiryTrigger(row)
     && !require('./commercial_calendar_review.cjs').isReviewedOrderTrigger(row)), baseline.triggers, 'existing trigger definitions and functions');
   equal(schema.roles, baseline.roles, 'API role privilege flags');
   equal(schema.defaultPrivileges, baseline.defaultPrivileges, 'existing default privileges');
@@ -161,7 +162,8 @@ function assertPost(schema, target) {
     commercial_submission_key: ['commercial_consultation_requests', ['lead_id','submission_key'], 'submission_keyisnotnull'],
     commercial_effects_pkey: ['commercial_effects', ['request_id','kind'], ''],
   };
-  equal(schema.indexes.filter(row => !Object.hasOwn(newIndexes, row.name)), baseline.indexes, 'existing indexes');
+  equal(schema.indexes.filter(row => !Object.hasOwn(newIndexes, row.name)
+    && !require('./residential_inquiry_review.cjs').isReviewedMarketIndex(row)), baseline.indexes, 'existing indexes');
   if (!schema.constraints.some(row => row.table_name === 'h2s_orders' && row.name === 'h2s_orders_order_id_key'
     && row.validated && compact(row.definition) === 'uniqueorder_id')) throw new Error('Global order key uniqueness is required');
   for (const [name, [table, columns, predicate]] of Object.entries(newIndexes)) {

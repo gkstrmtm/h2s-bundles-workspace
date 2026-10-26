@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path');
 const { JSDOM, VirtualConsole } = require('jsdom');
 const { createFixture, queuePage } = require('./helpers/commercial_contact_fixture.cjs');
 const utils = require('../lib/commercial_consultation.js');
@@ -129,7 +130,7 @@ test('technician routing reports current-window provider acceptance, not an inve
   assert.match(labels.technician(item.consultation).detail, /Delivery and reading are unverified/);
   assert.equal(item.timeline, 'asap');
   assert.equal(item.budgetBand, '5k_10k');
-  assert.match(item.followUp.nextAction, /Awaiting technician YES\/NO/);
+  assert.match(item.followUp.nextAction, /request-specific review link/);
   consultation.metadata.workflow[`dispatch:${selected}:current:+15550000005`].state = 'uncertain';
   item = (await fixture.queue(params())).queue[0];
   assert.match(labels.technician(item.consultation).label, /needs review/);
@@ -296,12 +297,20 @@ for (const decision of ['approve', 'decline']) {
     assert.equal(result.status, 200);
     const messages = fixture.sms.filter(message => message.to === '+15550000005').map(message => message.body);
     assert.ok(messages.some(body => body.includes('Thanks for contacting Home2Smart.')));
-    assert.ok(messages.some(body => body.includes(decision === 'approve' ? 'Home2Smart confirmed' : 'Home2Smart is reviewing another')));
+    assert.ok(messages.some(body => body.includes(decision === 'approve' ? 'Home2Smart accepted' : 'Home2Smart is reviewing another')));
     messages.forEach(body => assert.doesNotMatch(body, /Home (?:Too|Two|2) Smart/i));
   });
 }
 
-async function mount(fixture) {
+async function waitFor(condition) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.fail('Queue did not reach its expected state');
+}
+
+async function mount(fixture, { calendarEntries } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', error => errors.push(error.message));
@@ -313,16 +322,26 @@ async function mount(fixture) {
     beforeParse(window) {
       window.matchMedia = () => media;
       window.HTMLElement.prototype.scrollIntoView = () => {};
-      window.setInterval = (callback, delay) => { assert.equal(delay, 60000); interval = callback; return 1; };
+      window.setInterval = (callback, delay) => {
+        if (calendarEntries && delay === 30000) return 2;
+        assert.equal(delay, 60000); interval = callback; return 1;
+      };
+      window.API_BASE = 'http://fixture.invalid';
+      window.getDashboardSessionToken = () => 'fixture-admin';
+      window.scrollTo = () => {};
       Object.defineProperty(window.document, 'visibilityState', { value: 'visible', writable: true, configurable: true });
       window.fetch = async (url, options) => {
         calls.push({ url, options });
-        assert.equal(options.method, 'GET', 'Unexpected mutation; only fixture GET is allowed');
+        assert.equal(options.method || 'GET', 'GET', 'Unexpected mutation; only fixture GET is allowed');
         const target = new URL(url, 'http://fixture.invalid');
+        if (calendarEntries && target.pathname === '/api/commercial-calendar') {
+          return { ok: true, json: async () => ({ ok: true, calendar: { name: 'Fixture calendar', entries: calendarEntries, booking: null, history: [] } }) };
+        }
         assert.equal(target.pathname, '/api/v1');
         assert.equal(target.searchParams.get('action'), 'commercialQueue');
         return { ok: true, json: async () => ({ ok: true, commercialQueue: await fixture.queue(target.searchParams) }) };
       };
+      if (calendarEntries) window.eval(fs.readFileSync(path.resolve(__dirname, '..', '..', 'frontend', 'commercial-calendar.js'), 'utf8'));
     },
   });
   const ui = dom.window.commercialQueueUI;
@@ -330,6 +349,127 @@ async function mount(fixture) {
   assert.deepEqual(errors, []);
   return { dom, ui, calls, media, interval: () => interval(), errors };
 }
+
+test('Queue / Calendar views are exclusive, lazy, and preserve Queue controls, position and draft DOM', async () => {
+  const fixture = createFixture();
+  seed(fixture, 30);
+  const { dom, ui, calls, errors } = await mount(fixture, { calendarEntries: [] });
+  try {
+    const document = dom.window.document, queue = document.getElementById('commercialQueueData');
+    const calendar = document.getElementById('commercialCalendar');
+    assert.equal(queue.hidden, false); assert.equal(calendar.hidden, true);
+    assert.equal(calendar.children.length, 0);
+    assert.equal(calls.some(call => call.url.includes('/api/commercial-calendar')), false);
+    document.getElementById('commercialQueueSearch').value = 'Fixture';
+    ui.state.query = 'Fixture'; ui.resetSearch(); await ui.refresh(); await ui.goToPage(1);
+    const selected = ui.state.selectedLeadId, detail = document.getElementById('commercialQueueDetail');
+    const draft = document.createElement('textarea'); draft.value = 'Unsaved reservation notes'; detail.append(draft);
+    document.getElementById('commercialQueueList').scrollTop = 93;
+    document.querySelector('[data-work-view-button=calendar]').click();
+    assert.equal(queue.hidden, true); assert.equal(calendar.hidden, false);
+    assert.equal(document.querySelector('[data-work-view-button=calendar]').getAttribute('aria-pressed'), 'true');
+    await waitFor(() => calendar.querySelectorAll('.commercial-calendar-day').length === 42);
+    assert.equal(calendar.querySelector('[aria-label="Calendar market filter"]').hidden, true);
+    const dateControl = calendar.querySelector('[name=day]'), originalDay = dateControl.value;
+    document.querySelector('[data-work-view-button=queue]').click();
+    assert.equal(queue.hidden, false); assert.equal(calendar.hidden, true);
+    assert.equal(ui.state.selectedLeadId, selected); assert.equal(ui.state.pageIndex, 1);
+    assert.equal(document.getElementById('commercialQueueSearch').value, 'Fixture');
+    assert.equal(document.getElementById('commercialQueueList').scrollTop, 93);
+    assert.equal(draft.isConnected, true); assert.equal(draft.value, 'Unsaved reservation notes');
+    ui.setWorkView('calendar');
+    assert.equal(calendar.querySelector('[name=day]'), dateControl);
+    assert.equal(dateControl.value, originalDay);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('Calendar shares the market filter and opens off-page lead details with a mobile return to the same calendar', async () => {
+  const fixture = createFixture(), leads = seed(fixture, 30);
+  leads[0].attribution = { market: 'residential' };
+  const start = new Date(); start.setHours(12, 0, 0, 0);
+  const end = new Date(start); end.setHours(13);
+  const entries = [0, 1].map(index => ({ lead_id: leads[index].lead_id, customer: leads[index].full_name,
+    market: index ? 'commercial' : 'residential', effective_state: 'confirmed', starts_at: start.toISOString(), ends_at: end.toISOString() }));
+  const { dom, ui, media, errors } = await mount(fixture, { calendarEntries: entries });
+  try {
+    const document = dom.window.document, calendar = document.getElementById('commercialCalendar');
+    await ui.goToPage(1); const selected = ui.state.selectedLeadId;
+    media.matches = true;
+    ui.setWorkView('calendar');
+    await waitFor(() => calendar.querySelectorAll('.commercial-calendar-event').length === 2);
+    calendar.querySelector('[data-calendar-view=agenda]').click();
+    await waitFor(() => !calendar.querySelector('.commercial-calendar-month'));
+    const date = calendar.querySelector('[name=day]').value;
+    calendar.querySelector(`[data-calendar-open="${leads[0].lead_id}"]`).click();
+    await waitFor(() => ui.state.agendaSelection);
+    assert.equal(ui.state.workView, 'queue'); assert.equal(calendar.hidden, true);
+    assert.equal(ui.state.selectedLeadId, leads[0].lead_id);
+    assert.equal(document.getElementById('commercialqueue-pane').dataset.queueView, 'detail');
+    assert.equal(document.querySelector('.commercial-queue-back').textContent, 'Back to calendar');
+    document.querySelector('.commercial-queue-back').click();
+    assert.equal(ui.state.workView, 'calendar'); assert.equal(calendar.hidden, false);
+    assert.equal(ui.state.selectedLeadId, selected); assert.equal(ui.state.pageIndex, 1);
+    assert.equal(calendar.querySelector('[data-calendar-view=agenda]').getAttribute('aria-pressed'), 'true');
+    assert.equal(calendar.querySelector('[name=day]').value, date);
+    const market = document.getElementById('commercialQueueMarket');
+    market.value = 'residential'; market.dispatchEvent(new dom.window.Event('change'));
+    await ui.inFlight.promise;
+    assert.match(calendar.querySelector('.commercial-calendar-agenda').textContent, /Fixture Contact 1/);
+    assert.doesNotMatch(calendar.querySelector('.commercial-calendar-agenda').textContent, /Fixture Contact 2/);
+    assert.equal(ui.state.workView, 'calendar'); assert.equal(document.getElementById('commercialQueueData').hidden, true);
+    ui.setWorkView('queue');
+    assert.equal(ui.state.appliedMarket, 'residential'); assert.equal(ui.state.items.length, 1);
+    assert.deepEqual(errors, []);
+  } finally { dom.window.close(); }
+});
+
+test('missing calendar module reports a visible error without discarding Queue work', async () => {
+  const fixture = createFixture(); seed(fixture, 1);
+  const { dom, ui } = await mount(fixture);
+  try {
+    ui.setWorkView('calendar');
+    assert.match(dom.window.document.getElementById('commercialCalendar').textContent, /Calendar unavailable/);
+    ui.setWorkView('queue');
+    assert.equal(dom.window.document.getElementById('commercialQueueData').hidden, false);
+    assert.equal(ui.state.items.length, 1);
+  } finally { dom.window.close(); }
+});
+
+test('homeowner Queue shows preferences and follow-up scope, filters markets, and loads an authenticated review link',async()=>{
+  const fixture=createFixture();
+  const leads=seed(fixture,2);
+  leads[0].attribution={market:'residential'};
+  leads[0].assessment_answers={availabilityPreferences:[{date:'2099-01-01',period:'afternoon'}]};
+  request(fixture,1,'approved',{related_order_id:null,metadata:{request_kind:'residential_inquiry'}});
+  const {dom,ui,calls}=await mount(fixture);
+  try{
+    const document=dom.window.document;
+    assert.match(document.getElementById('commercialQueueDetail').textContent,/Preferred availability \(not booked\).*2099-01-01/);
+    assert.match(document.getElementById('commercialQueueDetail').textContent,/Follow-up accepted.*scheduling is separate/);
+    assert.doesNotMatch(document.getElementById('commercialQueueDetail').textContent,/Technician approved - appointment needs review/);
+    const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Load homeowner review link');
+    assert.ok(button);
+    dom.window.API_BASE='http://fixture.invalid';
+    dom.window.getDashboardSessionToken=()=>'fixture-admin';
+    const original=dom.window.fetch;
+    dom.window.fetch=async(url,options)=>{
+      if(new URL(url,'http://fixture.invalid').pathname==='/api/residential-review'){
+        assert.equal(options.headers.Authorization,'Bearer fixture-admin');
+        assert.equal(new URL(url).searchParams.get('leadId'),leads[0].lead_id);
+        return Response.json({ok:true,reviewLink:'https://fixture.invalid/residential-review?token=fixture-staff-review-token'});
+      }
+      return original(url,options);
+    };
+    await ui.loadHomeownerReviewLink(leads[0].lead_id,button);
+    assert.equal(document.querySelector('a[href*="residential-review"]').rel,'noopener noreferrer');
+    document.getElementById('commercialQueueMarket').value='residential';ui.onMarketChange();await ui.inFlight.promise;
+    assert.equal(ui.state.appliedMarket,'residential');assert.equal(ui.state.items.length,1);
+    assert.equal(new URL(calls.at(-1).url,'http://fixture.invalid').searchParams.get('market'),'residential');
+    document.getElementById('commercialQueueMarket').value='commercial';ui.onMarketChange();await ui.inFlight.promise;
+    assert.equal(ui.state.items.length,1);assert.equal(ui.state.items[0].leadId,leads[1].lead_id);
+  }finally{dom.window.close();}
+});
 
 test('queue hierarchy exposes usable contact links, separate scope/notes, page counts and no lead token', async () => {
   const fixture = createFixture();

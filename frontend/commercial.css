@@ -1816,6 +1816,10 @@ textarea {
     max-height: min(220px, 40vh);
   }
 
+  .commercial-custom-select-option {
+    min-height: 44px;
+  }
+
   .page-footer__inner {
     padding: 14px 16px 16px;
   }

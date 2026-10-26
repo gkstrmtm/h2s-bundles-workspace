@@ -71,12 +71,13 @@ function matchesPostgrestFilter(row, expression) {
     children.push(group[2].slice(start));
     return group[1] === 'and' ? children.every(child => matchesPostgrestFilter(row, child)) : children.some(child => matchesPostgrestFilter(row, child));
   }
-  const match = /^(.+?)\.(ilike|eq|lt)\.(.*)$/s.exec(expression);
+  const match = /^(.+?)\.(ilike|eq|lt|is)\.(.*)$/s.exec(expression);
   assert.ok(match, `Unsupported fixture filter: ${expression}`);
   const [, field, operator, encoded] = match;
   const [column, index] = field.split('->>');
-  const value = index === undefined ? row[column] : row[column]?.[Number(index)];
+  const value = index === undefined ? row[column] : row[column]?.[index];
   const expected = encoded.startsWith('"') ? JSON.parse(encoded) : encoded;
+  if (operator==='is') {assert.equal(expected,'null');return value==null;}
   if (value === null || value === undefined) return false;
   if (operator === 'eq') return String(value) === expected;
   if (operator === 'lt') return column.endsWith('_at') ? Date.parse(value) < Date.parse(expected) : String(value) < expected;
@@ -106,7 +107,7 @@ function createFixture(environment = {}, integration = {}) {
     CRON_SECRET: 'fixture-only-cron-secret',
     ...environment,
   };
-  const database = {
+  const memoryDatabase = {
     rpc(name, args) {
       calls.push({ rpc: name });
       if (faults[name]) return Promise.resolve({ data: null, error: { message: faults[name] } });
@@ -249,6 +250,7 @@ function createFixture(environment = {}, integration = {}) {
       return query;
     },
   };
+  const database = integration.database || memoryDatabase;
   const globals = {
     process: { env },
     ...(integration.now ? { Date: class extends Date {
@@ -265,6 +267,7 @@ function createFixture(environment = {}, integration = {}) {
     '@/lib/commercial_email': { sendInitialCommercialEmail: integration.sendInitialCommercialEmail || (async (_consultation, lead) =>
       ({ state: lead.contact_preference === 'email' ? 'unavailable' : 'not_applicable' })) },
     '@/lib/supabase': { getSupabase: () => database },
+    '@/lib/dashboardAuth': { getDashboardAuthUserFromSession: integration.getDashboardAuthUserFromSession || (async () => null) },
     '../../../../lib/supabase': { getSupabase: () => database, getSupabaseMgmt: () => database },
     '../../_lib/phone': { normalizePhone: utils.normalizePhone },
     '@/lib/commercial_consultation.js': utils,
@@ -293,6 +296,10 @@ function createFixture(environment = {}, integration = {}) {
   imports['@/lib/sms_delivery'] = load('lib\\sms_delivery.ts');
   const runtime = load('lib\\commercial_consultation_runtime.ts');
   imports['@/lib/commercial_consultation_runtime'] = runtime;
+  imports['@/lib/commercial_business'] = load('lib\\commercial_business.ts');
+  imports['@/lib/residential_inquiry'] = load('lib\\residential_inquiry.ts');
+  imports['@/lib/residential_workspace'] = load('lib\\residential_workspace.ts');
+  imports['@/lib/adminAuth'] = { corsHeaders: runtime.corsHeaders };
   const queue = evaluate('commercial-queue-projection.ts', queueFunctions(), {}, {
     getSupabase: () => database, safeTrim: value => String(value || '').trim(),
     toInt: (value, fallback) => Number.parseInt(value, 10) || fallback,
@@ -300,7 +307,7 @@ function createFixture(environment = {}, integration = {}) {
   });
   function route(name) { return load(`app\\api\\${name}\\route.ts`); }
   return {
-    tables, sms, providerAttempts, appointments, calls, runtime, route, faults, effects, objects, database,
+    tables, sms, providerAttempts, appointments, calls, runtime, workspace: imports['@/lib/residential_workspace'], route, faults, effects, objects, database,
     queue: (params = 150) => queue.loadCommercialQueueSnapshot(params),
     post: (name, body) => route(name).POST(new Request(`http://localhost:3002/api/${name}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

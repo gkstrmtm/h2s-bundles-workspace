@@ -2268,10 +2268,12 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
   const queryText = (params?.get('q') || '').trim();
   if (queryText.length > 120 || /[*\u0000-\u001f\u007f]/.test(queryText)) invalidInput('Search must be at most 120 characters, without asterisks or control characters.');
   const filter = params?.get('filter') || 'all';
+  const market = params?.get('market') || 'all';
+  if (!['all','commercial','residential'].includes(market)) invalidInput('Unknown customer market.');
   if (!['all', 'active', 'held', 'closed', 'attention', 'pending', 'approved', 'escalated', 'no_consultation'].includes(filter)) invalidInput('Unknown commercial queue filter.');
   const lookupLeadId = params?.get('leadId') || '';
   if (lookupLeadId && (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(lookupLeadId)
-    || filter !== 'all' || queryText || params?.get('cursor'))) invalidInput('Exact lead lookup requires a valid lead ID without search, filter or cursor restrictions.');
+    || filter !== 'all' || market !== 'all' || queryText || params?.get('cursor'))) invalidInput('Exact lead lookup requires a valid lead ID without search, filter or cursor restrictions.');
   type Cursor = { submitted: string; created: string; id: string };
   const encodeCursor = (row: any) => Buffer.from(JSON.stringify({
     submitted: row.last_submitted_at, created: row.created_at, id: row.lead_id,
@@ -2349,6 +2351,7 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
 
   const shapeLead = (lead: any) => {
     const leadId = safeTrim(lead?.lead_id);
+    const residential = lead?.attribution?.market === 'residential';
     const operation = (Array.isArray(lead?.commercial_lead_operations) ? lead.commercial_lead_operations[0] : lead?.commercial_lead_operations) || {};
     const closed = operation.disposition === 'closed';
     const held = !closed && Date.parse(operation.hold_until || '') > Date.now();
@@ -2362,23 +2365,24 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
     const workflow = latestConsultation?.metadata?.workflow || {};
     const dispatchPrefix = `dispatch:${latestConsultation?.selected_slot_start || 'manual'}:${latestConsultation?.metadata?.last_reschedule_key || 'initial'}:`;
     const technicianEffects = Object.entries(workflow)
-      .filter(([key]) => key.startsWith(dispatchPrefix))
+      .filter(([key]) => key.startsWith(residential ? 'owner_inquiry:' : dispatchPrefix))
       .map(([, entry]) => entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
     const effectStates = Object.values(workflow).map((entry: unknown) =>
       entry && typeof entry === 'object' && 'state' in entry ? String(entry.state) : 'unknown');
     const providerReview = effectStates.some(state => state === 'processing' || state === 'uncertain');
-    const appointmentFailed = ['approved', 'customer_confirmed'].includes(consultationStatus) && !latestConsultation?.related_order_id;
+    const appointmentFailed = !residential && ['approved', 'customer_confirmed'].includes(consultationStatus) && !latestConsultation?.related_order_id;
     const windowExpired = !!latestConsultation?.selected_slot_start && new Date(latestConsultation.selected_slot_start).getTime() <= Date.now();
     const persistenceWarning = Object.values(workflow).some((entry: unknown) =>
       entry && typeof entry === 'object' && 'details' in entry && entry.details &&
       typeof entry.details === 'object' && 'persistenceError' in entry.details && !!entry.details.persistenceError);
     const followUp = {
       submitted: !!latestConsultation,
-      kind: manualFollowUp ? 'manual_follow_up' : 'consultation',
+      kind: residential ? 'residential_inquiry' : manualFollowUp ? 'manual_follow_up' : 'consultation',
       requestedContactMethod,
       contactDetail,
-      needsAttention: providerReview || appointmentFailed || persistenceWarning || effectStates.includes('failed') || consultationStatus === 'declined',
-      recoveryAllowed: !!latestConsultation && !providerReview && !windowExpired && (appointmentFailed || effectStates.includes('failed')),
+      needsAttention: providerReview || appointmentFailed || persistenceWarning || effectStates.includes('failed') || consultationStatus === 'declined'
+        || residential && !!latestConsultation && !operation.next_follow_up_at,
+      recoveryAllowed: !residential && !!latestConsultation && !providerReview && !windowExpired && (appointmentFailed || effectStates.includes('failed')),
       statusLabel: !latestConsultation ? 'Saved draft - not submitted'
         : manualFollowUp && ['pending', 'escalated', 'reschedule_requested'].includes(consultationStatus)
           ? 'Manual follow-up pending review' : `Submitted request: ${consultationStatus}`,
@@ -2389,13 +2393,19 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
             : `Manually call ${contactDetail || 'the customer (contact details need review)'}. Review any preferred window with them; it is not a confirmed appointment. Staff handles project follow-up; no customer text is automated for this preference.`
           : 'Review the technician response and requested window. Customer texts require Text first and explicit texting permission.',
     };
-    if (!manualFollowUp && latestConsultation) {
+    if (residential && latestConsultation) {
+      followUp.statusLabel = consultationStatus === 'approved' ? 'Follow-up accepted - scheduling is separate'
+        : consultationStatus === 'declined' ? 'Needs another reviewer' : 'Homeowner inquiry awaiting review';
+      followUp.nextAction = `${consultationStatus === 'approved' ? 'Reviewer accepted responsibility for follow-up.' :
+        consultationStatus === 'declined' ? 'Reviewer cannot take this inquiry; staff must arrange follow-up.' :
+        'Open the request-specific homeowner review link to accept follow-up.'} Contact ${contactDetail || 'the homeowner'} to discuss scope, equipment and availability. Preferred days are not reservations. Check the shared calendar and explicitly confirm only an agreed window. No Portal dispatch, order, payment or appointment is created by acceptance.`;
+    } else if (!manualFollowUp && latestConsultation) {
       if (consultationStatus === 'declined') followUp.nextAction = `Technician declined. Contact ${contactDetail || 'the customer'} to arrange another window; no revised appointment is confirmed.`;
       else if (appointmentFailed) followUp.nextAction = `Technician approved; appointment is not created. ${windowExpired ? 'The requested window has passed; contact the customer to arrange a new window. Do not retry the old window.' : 'Resolve the appointment error and retry processing.'} No booking confirmation should be sent before an appointment exists. ${safeTrim(latestConsultation.metadata?.appointment_error)}`.trim();
       else if (latestConsultation.related_order_id) followUp.nextAction = `Technician approved; appointment exists. ${latestConsultation.customer_confirmation_sent_at ? 'The SMS provider accepted the customer confirmation; delivery and customer acknowledgement remain unverified.' : 'Customer confirmation has not been accepted by the SMS provider. Review its processing result.'}`;
       else if (windowExpired || consultationStatus === 'expired') followUp.nextAction = `Requested window has passed. Contact ${contactDetail || 'the customer'} to arrange a new window; do not retry the old window.`;
       else if (consultationStatus === 'escalated') followUp.nextAction = 'No technician response recorded; the request is escalated for management review. Arrange technician coverage or an alternate window with the customer.';
-      else if (consultationStatus === 'pending') followUp.nextAction = 'Awaiting technician YES/NO. Scheduled reminders and escalation remain active; no appointment is confirmed.';
+      else if (consultationStatus === 'pending') followUp.nextAction = 'Awaiting a decision through the request-specific review link. Scheduled reminders and escalation remain active; no appointment is confirmed.';
       else if (consultationStatus === 'reschedule_requested') followUp.nextAction = 'The requested window changed. Await the technician decision through the current approval link; no revised appointment is confirmed.';
     }
     if (providerReview) followUp.nextAction += ' Reconcile the pending or uncertain provider attempt before retrying. Do not resend automatically; delivery and customer acknowledgement are not verified.';
@@ -2445,6 +2455,8 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
 
     return {
       leadId,
+      market: residential ? 'residential' : 'commercial',
+      availabilityPreferences: residential ? readJsonArraySafe(lead?.assessment_answers?.availabilityPreferences) : [],
       fullName: safeTrim(lead?.full_name),
       companyName: safeTrim(lead?.company_name),
       email: safeTrim(lead?.email),
@@ -2501,6 +2513,8 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
   if (/^\d{7,15}$/.test(phoneDigits) && phoneDigits !== queryText) searchTerms.push(`phone.ilike."%${phoneDigits}%"`);
   const applySearch = <T extends { or: (value: string) => T }>(request: T, boundary: Cursor | null): T => {
     const clauses: string[] = [];
+    if (market==='residential') clauses.push('attribution->>market.eq.residential');
+    if (market==='commercial') clauses.push('or(attribution->>market.is.null,attribution->>market.eq.commercial)');
     if (lookupLeadId) clauses.push(`lead_id.eq.${lookupLeadId}`);
     if (searchTerms.length) clauses.push(`or(${searchTerms.join(',')})`);
     if (boundary) clauses.push(`or(last_submitted_at.lt.${boundary.submitted},and(last_submitted_at.eq.${boundary.submitted},created_at.lt.${boundary.created}),and(last_submitted_at.eq.${boundary.submitted},created_at.eq.${boundary.created},lead_id.lt.${boundary.id}))`);

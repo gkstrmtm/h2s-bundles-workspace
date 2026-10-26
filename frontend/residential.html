@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Request TV mounting or security camera installation for your home. A short request, a real conversation, and an agreed time before anything is booked.">
+  <title>TV Mounting &amp; Security Cameras for Your Home | Home2Smart</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="/dash.css">
+  <link rel="stylesheet" href="/residential.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13"></script>
+  <script defer src="/date-popup.js"></script>
+  <script defer src="/residential.js"></script>
+</head>
+<body class="residential-page">
+  <header class="residential-nav"><a href="/residential" class="residential-brand">Home2Smart</a><a href="/commercial">For businesses</a></header>
+  <main class="residential-shell">
+    <section class="residential-intro">
+      <p class="residential-eyebrow">For your home</p>
+      <h1>Your TV on the wall.<br>Your home in view.</h1>
+      <p>TV mounting and security camera installation, without the long booking questionnaire.</p>
+      <p>Tell us what you need. We will talk through the details, confirm the quote, and agree on a time with you.</p>
+      <details class="residential-optional"><summary>How your request works</summary>
+        <ul class="residential-benefits"><li>Choose a service. Leave your number.</li><li>Have equipment already? Need help choosing? We will discuss it.</li><li>No checkout, payment, or automatic appointment.</li></ul>
+        <p class="residential-note">Installation-only and equipment-included work are quoted separately. Equipment, wiring, mounting surfaces, access, and travel can affect scope and price. Nothing is assumed included.</p>
+      </details>
+    </section>
+    <section class="residential-request" aria-labelledby="request-title">
+      <h2 id="request-title">What can we help with?</h2>
+      <p>A short request. We will handle the details in a conversation.</p>
+      <form id="residential-form">
+        <fieldset class="residential-services"><legend>Choose one or both services</legend>
+          <label><input type="checkbox" name="service" value="TV Mounting"><span>TV mounting</span></label>
+          <label><input type="checkbox" name="service" value="Security Cameras"><span>Security cameras</span></label>
+        </fieldset>
+        <label class="residential-field">Your name<input class="form-input" name="fullName" autocomplete="name" maxlength="120" required></label>
+        <div class="residential-fields">
+          <label class="residential-field">Phone number<input class="form-input" name="phone" type="tel" autocomplete="tel" maxlength="40" required></label>
+          <label class="residential-field">City<input class="form-input" name="city" autocomplete="address-level2" maxlength="120" required></label>
+        </div>
+        <details class="residential-optional"><summary>Preferred days or a quick note (optional)</summary>
+          <p class="residential-note">Up to three preferred days, in Eastern Time. These do not hold or book time. Windows are broad preferences, not arrival promises.</p>
+          <div id="residential-availability"></div>
+          <button type="button" class="residential-secondary" id="residential-add-day">Add a preferred day</button>
+          <label class="residential-field">Anything helpful to know?<textarea class="form-input" name="notes" rows="3" maxlength="1000"></textarea></label>
+        </details>
+        <label class="residential-consent"><input type="checkbox" name="smsOptIn"><span>I agree to project texts from Home2Smart, including automated updates. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.</span></label>
+        <p class="residential-note">Leave the box unchecked for a phone call instead. We will not send project texts without your permission.</p>
+        <button class="residential-primary" id="residential-submit" type="submit" disabled>Request a follow-up</button>
+        <p class="residential-note">Submitting is an inquiry, not a confirmed booking. No payment is collected.</p>
+        <p id="residential-status" role="status" aria-live="polite">Checking availability of the request form...</p>
+      </form>
+      <noscript><p>Enable JavaScript to send a request. No request has been submitted.</p></noscript>
+    </section>
+  </main>
+  <footer class="residential-footer">Home2Smart &middot; Residential installation inquiries &middot; <a href="/commercial">Commercial projects</a></footer>
+</body>
+</html>

@@ -10145,6 +10145,17 @@
             font-weight: 700;
         }
 
+        .commercial-queue-viewbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; }
+        .commercial-queue-view-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; padding: 4px; gap: 4px; background: var(--surface-2); }
+        .commercial-queue-view-switch button { min-width: 100px; min-height: 40px; padding: 8px 16px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--muted); font: 600 14px Inter, sans-serif; cursor: pointer; }
+        .commercial-queue-view-switch [aria-pressed="true"] { background: var(--surface); border-color: var(--azure); color: var(--azure); }
+        .commercial-queue-view-switch button:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+        .commercial-queue-market { display: grid; gap: 4px; min-width: 220px; color: var(--muted); font-size: 12px; }
+        #commercialQueueData { display: grid; gap: 16px; min-width: 0; }
+        #commercialqueue-pane [data-work-view][hidden], .commercial-calendar [hidden] { display: none !important; }
+        #commercialqueue-pane[data-work-mode="calendar"] #commercialQueueStatus,
+        #commercialqueue-pane[data-work-mode="calendar"] #commercialQueueUpdatedAt { display: none; }
+
         .commercial-queue-summary {
             display: flex;
             flex-wrap: wrap;
@@ -10451,24 +10462,128 @@
         .commercial-operations-form[hidden], .commercial-operations-form [hidden] { display: none; }
         .commercial-workload-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
         .commercial-workload-btn { justify-self: start; align-self: end; width: auto; }
-        .commercial-calendar { padding: 16px; margin-bottom: 16px; }
-        .commercial-calendar-table { overflow-x: auto; }
-        .commercial-calendar table { width: 100%; min-width: 0 !important; table-layout: fixed; border-collapse: collapse; font-size: 13px; overflow-wrap: anywhere; }
-        .commercial-calendar caption { text-align: left; white-space: normal; overflow-wrap: anywhere; padding: 8px 0; font-weight: 600; color: var(--cobalt); }
-        .commercial-calendar th, .commercial-calendar td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
-        .commercial-calendar-open {
+        .commercial-calendar { padding: 16px; margin-bottom: 16px; overflow: visible; }
+        .commercial-calendar--editor { padding: 0; margin-bottom: 0; }
+        .commercial-calendar [hidden] { display: none !important; }
+        .commercial-calendar [data-calendar-status]:empty { display: none; }
+        .commercial-calendar [data-agenda-day] { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: 8px; }
+        .commercial-calendar [data-agenda-day] label { flex: 1 1 200px; max-width: 280px; }
+        .commercial-calendar [data-agenda-day] input { height: 32px; min-height: 32px; padding: 4px 10px; font-size: 13px; }
+        .commercial-calendar .commercial-workload-btn { min-height: 32px; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--cobalt); font: 500 13px/22px Inter, sans-serif; cursor: pointer; }
+        .commercial-calendar .commercial-workload-btn:hover { border-color: var(--azure); }
+        .commercial-calendar .commercial-workload-btn:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+        .commercial-calendar .commercial-calendar-open {
             min-height: 44px;
-            padding: 0;
-            border: 0;
-            background: transparent;
-            color: var(--azure);
-            font: inherit;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--surface);
+            color: var(--cobalt);
+            font: 600 13px/20px Inter, sans-serif;
             text-align: left;
-            text-decoration: underline;
+            text-decoration: none;
             cursor: pointer;
+        }
+        .commercial-calendar .commercial-calendar-open:hover { border-color: var(--azure); }
+        .commercial-calendar-agenda { margin: 16px 0 0; min-width: 0; }
+        .commercial-calendar-agenda-heading { display: grid; gap: 4px; margin-bottom: 12px; }
+        .commercial-calendar-agenda-heading h5 { margin: 0; color: var(--cobalt); font: 600 16px/1.4 "Space Grotesk", sans-serif; }
+        .commercial-calendar-agenda-heading > span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+        .commercial-calendar-agenda-list { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+        .commercial-calendar-reservation { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); font: 13px/1.5 Inter, sans-serif; overflow-wrap: anywhere; }
+        .commercial-calendar-reservation-top { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .commercial-calendar-reservation-top > strong { font: 600 13px/1.5 "JetBrains Mono", monospace; }
+        .commercial-calendar-reservation-state { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--cobalt); }
+        .commercial-calendar-reservation-state[data-state="tentative"] { border-style: dashed; }
+        .commercial-calendar-reservation-state[data-state="cancelled"],
+        .commercial-calendar-reservation-state[data-state="expired"] { color: var(--muted); }
+        .commercial-calendar-customer { font-size: 15px; }
+        .commercial-calendar-reservation .commercial-calendar-open { justify-self: start; }
+        .commercial-calendar-empty { margin: 0; padding: 12px; border: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+        .commercial-calendar-filters { margin: 8px 0; }
+        .commercial-calendar-filters summary { min-height: 44px; padding: 10px; border: 1px solid var(--border); border-radius: 4px; color: var(--cobalt); font-size: 13px; cursor: pointer; }
+        .commercial-calendar-help { margin-top: 16px; font-size: 13px; color: var(--muted); }
+        .commercial-calendar-help summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+        @media (min-width: 721px) {
+            .commercial-calendar-agenda-list { gap: 0; border-top: 1px solid var(--border); }
+            .commercial-calendar-reservation { grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) auto; gap: 4px 16px; padding: 12px 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+            .commercial-calendar-reservation-top { grid-column: 1; grid-row: 1 / span 5; flex-direction: column; justify-content: start; }
+            .commercial-calendar-customer, .commercial-calendar-reservation > span { grid-column: 2; }
+            .commercial-calendar-reservation .commercial-calendar-open { grid-column: 3; grid-row: 1 / span 5; align-self: start; }
         }
         .commercial-calendar-open:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
         .commercial-calendar-open:disabled { color: var(--muted); cursor: progress; }
+        .commercial-calendar-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 12px 0; }
+        .commercial-calendar-controls [aria-pressed="true"] { border-color: var(--azure); color: var(--azure); font-weight: 700; }
+        .commercial-calendar-month-title { margin: 16px 0 8px; font: 600 16px "Space Grotesk", sans-serif; color: var(--cobalt); }
+        .commercial-calendar-weekdays, .commercial-calendar-month { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); }
+        .commercial-calendar-weekdays { text-align: center; font-size: 12px; color: var(--muted); padding: 8px 0; }
+        .commercial-calendar-month { border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+        .commercial-calendar-day { min-width: 0; min-height: 100px; padding: 4px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+        .commercial-calendar-day.is-outside { background: var(--bg); }
+        .commercial-calendar-day.is-outside .commercial-calendar-day-label { color: var(--muted); }
+        .commercial-calendar-day.is-today { outline: 1px dashed var(--muted); outline-offset: -3px; }
+        .commercial-calendar-day.is-selected { outline: 2px solid var(--azure); outline-offset: -2px; background: var(--surface-2); }
+        .commercial-calendar .commercial-calendar-day-label { display: flex; align-items: center; justify-content: center; width: 100%; min-width: 0; min-height: 32px; padding: 4px; border: 0; background: transparent; color: var(--cobalt); cursor: pointer; font: 600 13px "JetBrains Mono", monospace; }
+        .commercial-calendar .commercial-calendar-day-label:hover { background: var(--surface-2); }
+        .commercial-calendar .commercial-calendar-event { display: grid; width: 100%; text-align: left; overflow-wrap: anywhere; margin: 4px 0; padding: 4px; border: 1px solid var(--border); border-left: 3px solid var(--azure); background: var(--surface, #fff); color: var(--cobalt); font: 12px/1.4 Inter, sans-serif; cursor: pointer; }
+        .commercial-calendar-event[data-state="expired"], .commercial-calendar-event[data-state="cancelled"] { border-left-color: var(--muted); color: var(--muted); }
+        .commercial-calendar-event[data-state="tentative"] { border-left-style: dashed; }
+        .commercial-calendar-day-label:focus-visible, .commercial-calendar-event:focus-visible { outline: 2px solid var(--azure); outline-offset: 1px; }
+        .commercial-calendar-day-count { display: none; }
+        .commercial-calendar-state-filter { display: grid; gap: 4px; color: var(--muted); font-size: 12px; width: 176px; min-width: 0; }
+        .commercial-calendar-state-filter .form-select { height: 32px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); box-shadow: none; color: var(--cobalt); font: 500 13px/20px Inter, sans-serif; }
+        .commercial-calendar .dashboard-custom-select-menu { border-color: var(--border); border-radius: 6px; box-shadow: none; }
+        .commercial-calendar .dashboard-custom-select-option { min-height: 32px; padding: 6px 8px; }
+        #commercialqueue-pane .dashboard-custom-select-menu:not([hidden]) { animation: commercial-control-in 140ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+        #commercialqueue-pane [data-work-view]:not([hidden]),
+        .commercial-calendar [data-calendar-entries] > .commercial-calendar-month,
+        .commercial-calendar [data-calendar-entries] > .commercial-calendar-table { animation: commercial-view-in 160ms ease-out; }
+        .commercial-queue-view-switch button,
+        .commercial-calendar .commercial-workload-btn,
+        .commercial-calendar-day-label, .commercial-calendar-day-count, .commercial-calendar-event { transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+        @keyframes commercial-control-in {
+            from { opacity: 0; transform: translateY(-3px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes commercial-view-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @media (max-width: 980px) {
+            .commercial-calendar [data-agenda-day] input,
+            .commercial-calendar-state-filter .form-select { height: 44px; min-height: 44px; }
+            .commercial-calendar .commercial-workload-btn,
+            .commercial-calendar .dashboard-custom-select-option { min-height: 44px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #commercialqueue-pane [data-work-view],
+            #commercialqueue-pane .dashboard-custom-select-menu,
+            .commercial-calendar [data-calendar-entries] > * { animation: none !important; }
+            #commercialqueue-pane .dashboard-custom-select-trigger,
+            #commercialqueue-pane .dashboard-custom-select-trigger::after,
+            #commercialqueue-pane .dashboard-custom-select-option,
+            .commercial-queue-view-switch button,
+            .commercial-calendar .commercial-workload-btn,
+            .commercial-calendar-day-label, .commercial-calendar-day-count, .commercial-calendar-event { transition: none; }
+        }
+        .commercial-calendar-mobile-hint { display: none; }
+        @media (max-width: 720px) {
+            .commercial-calendar-mobile-hint { display: block; }
+            .commercial-queue-view-switch { width: 100%; }
+            .commercial-queue-view-switch button { flex: 1; min-height: 44px; min-width: 0; }
+            .commercial-queue-market { width: 100%; min-width: 0; }
+            .commercial-calendar { padding: 8px; }
+            .commercial-calendar [data-agenda-day] label { flex-basis: 100%; max-width: none; }
+            .commercial-calendar-day { min-height: 56px; padding: 2px; }
+            .commercial-calendar .commercial-calendar-day-label { flex-direction: column; gap: 2px; min-height: 52px; padding: 2px; }
+            .commercial-calendar-day-count { display: block; padding: 1px 5px; border-radius: 4px; color: var(--azure); background: var(--surface-2); font: 600 11px "JetBrains Mono", monospace; }
+            .commercial-calendar-month-title { position: sticky; top: 0; z-index: 2; padding: 8px 0; background: var(--surface); }
+            .commercial-calendar-controls[aria-label="Calendar view"] { display: grid; grid-template-columns: 1fr 1fr; }
+            .commercial-calendar-controls[aria-label="Calendar view"] button { width: 100%; }
+            .commercial-calendar-day-count span, .commercial-calendar-month .commercial-calendar-event { display: none; }
+            .commercial-calendar-state-filter { width: 100%; }
+        }
         @media (max-width: 540px) {
             .commercial-calendar table, .commercial-calendar .commercial-operations-note { font-size: 12px; }
         }
@@ -10715,6 +10830,18 @@
         }
 
         @media (max-width: 980px) {
+            #commercialqueue-pane input:not([type="checkbox"]):not([type="radio"]),
+            #commercialqueue-pane select,
+            #commercialqueue-pane textarea {
+                min-height: 44px;
+                font-size: 16px;
+            }
+
+            #commercialqueue-pane button:not(.commercial-calendar-day-label):not(.commercial-calendar-day-count),
+            #commercialqueue-pane label:has(input[type="checkbox"]) {
+                min-height: 44px;
+            }
+
             #commercialqueue-pane:not([data-queue-view="detail"]) .commercial-queue-panel--detail,
             #commercialqueue-pane[data-queue-view="detail"] .commercial-queue-panel--list,
             #commercialqueue-pane[data-queue-view="detail"] .commercial-queue-summary {
@@ -17617,12 +17744,12 @@ select:focus, .form-select:focus, select.user-gate-select:focus, .deliverables-s
     z-index: 99999 !important;
 }
 
-.flatpickr-calendar.open {
+.flatpickr-calendar.animate.open {
     animation: fpFadeIn 0.14s ease;
 }
 
 .h2s-date-clear {
-    margin: 4px 8px 0;
+    margin: 8px 8px 6px;
     padding: 8px 12px;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -17636,7 +17763,8 @@ select:focus, .form-select:focus, select.user-gate-select:focus, .deliverables-s
 .flatpickr-rContainer, .flatpickr-days { width: 100%; }
 .flatpickr-calendar .dayContainer { width: 100%; min-width: 0; max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
-    .flatpickr-calendar.open { animation: none; }
+    .flatpickr-calendar.animate.open { animation: none; }
+    .flatpickr-calendar * { animation: none !important; transition: none !important; }
 }
 
 @keyframes fpFadeIn {
@@ -17723,7 +17851,7 @@ select:focus, .form-select:focus, select.user-gate-select:focus, .deliverables-s
     border: 1px solid transparent;
     height: 36px;
     line-height: 36px;
-    max-width: 36px;
+    max-width: none;
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 

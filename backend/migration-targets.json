@@ -10,7 +10,17 @@
     "connectionEnv": "DATABASE_URL_DIRECT",
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql", "037_residential_inquiries.sql", "038_residential_workspace.sql"],
+    "residential037": {
+      "reviewOnly": false,
+      "authorization": "On 2026-10-26 the workspace owner explicitly selected the production activation release: apply guarded additive migrations 037 and 038 to established production nkccbnrduojnzjfrpwva, deploy matching backend/frontend through Vercel, and enable residential intake, owner scheduling and approved SMS reminders. The dedicated recipient is configured outside Git; Commercial routing remains unchanged. Exact reviewed 037 checksum below. No destructive reconciliation, fabricated customer records, test messages, charges or permission expansion is authorized.",
+      "sqlSha256": "7f7652cf1cdd2f15b3eda64f428bb2a1d0473f3f162353f28fe317ded72227ac"
+    },
+    "workspace038": {
+      "reviewOnly": false,
+      "authorization": "The owner's explicit production activation selection on 2026-10-26 separately authorizes exact-checksum additive 038 after guarded 037 on nkccbnrduojnzjfrpwva, with independent verification before the matching Vercel release. Enable the approved residential notice policy and dedicated reviewer outside Git, preserving existing ADMIN authentication and Commercial routing. No destructive reconciliation, retrospective notice backfill, test sends, charges or operational acceptance mutations is authorized.",
+      "sqlSha256": "f362259f2ae778507aab8fbaab86faf9f02ec350627141e52a6490d07a43f29d"
+    },
     "baselineSha256": "c8d848d14bf42cebc9b1a5f59a41b15cfea878c9140dd7cb29d78a4b7da3d3e3",
     "securitySha256": "0c5c6b648664ec7c7a246d0575f23a24f9f6b5f91317c8c9d046ae5dde9c7409",
     "commercial032": {

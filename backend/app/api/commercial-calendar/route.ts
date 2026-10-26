@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabase } from '@/lib/supabase';
 import { getDashboardAuthUserFromSession } from '@/lib/dashboardAuth';
 import { corsHeaders } from '@/lib/adminAuth';
+import { processResidentialNotices } from '@/lib/residential_workspace';
 
 export const dynamic = 'force-dynamic';
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -42,6 +43,17 @@ async function handle(request: Request, write: boolean) {
       const result = checked(await db.rpc('commercial_calendar_snapshot', {
         p_start: instant(url.searchParams.get('start')), p_end: instant(url.searchParams.get('end')), p_lead_id: lead || null,
       }));
+      if (!Array.isArray(result.entries)) throw new CalendarError('Calendar returned invalid entries.',503);
+      const ids = Array.from(new Set<string>(result.entries.map((entry: {lead_id: string}) => entry.lead_id)));
+      if (ids.length) {
+        const leads = checked(await db.from('commercial_leads').select('lead_id,attribution').in('lead_id',ids));
+        if (!Array.isArray(leads)) throw new CalendarError('Calendar customer identities could not be loaded.',503);
+        const markets = new Map(leads.map(row=>[row.lead_id,row.attribution?.market==='residential'?'residential':'commercial']));
+        result.entries = result.entries.map((entry: {lead_id: string}) => {
+          if (!markets.has(entry.lead_id)) throw new CalendarError('A calendar customer could not be loaded. Reload before planning.',503);
+          return {...entry,market:markets.get(entry.lead_id)};
+        });
+      }
       return NextResponse.json({ ok: true, calendar: result }, { headers });
     }
     const body = await request.json().catch(() => { throw new CalendarError('Invalid JSON request.'); });
@@ -64,7 +76,13 @@ async function handle(request: Request, write: boolean) {
       p_lead_id: body.leadId, p_revision: body.revision, p_operation_id: body.operationId,
       p_actor: { id: actor.userId, name: actor.displayName || actor.username }, p_action: body.action, p_payload: payload,
     }));
-    return NextResponse.json({ ok: true, booking }, { headers });
+    let notifications;
+    try { notifications = await processResidentialNotices({ leadId: body.leadId }); }
+    catch (error) {
+      console.error('Calendar saved but residential notifications need review', error);
+      notifications = { enabled: true, needsReview: true, processed: [] };
+    }
+    return NextResponse.json({ ok: true, booking, notifications }, { headers });
   } catch (error) {
     if (!(error instanceof CalendarError)) console.error('Commercial calendar request failed', error);
     return NextResponse.json({ ok: false, error: error instanceof CalendarError ? error.message : 'Commercial calendar request failed.' },

@@ -8,6 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'das
 function fixture(html) {
   const dom = new JSDOM(html, { runScripts: 'outside-only' });
   const { window } = dom;
+  window.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'date-popup.js'), 'utf8'));
   const block = source.slice(source.indexOf('        function h2sDispatchDateInputEvents('),
     source.indexOf('        function taskCreatorOpenDueField('));
   window.eval(block);
@@ -104,6 +105,15 @@ test('Queue filter participates in the same global styled-select lifecycle', () 
   assert.doesNotMatch(filter, /data-custom-select="off"/);
   assert.match(source, /dashboardSyncAllCustomSelects\(document\);\s+h2sInitDateInputs\(document\)/);
   assert.match(source, /removed\.forEach\(input => \{ if \(input\._flatpickr\) input\._flatpickr\.destroy\(\)/);
+});
+
+test('vendor date-picker styles load before dashboard overrides so popup footer spacing is retained', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.html'), 'utf8');
+  const vendor = html.indexOf('flatpickr@4.6.13/dist/flatpickr.min.css');
+  assert.ok(vendor > 0);
+  assert.ok(vendor < html.indexOf('href="/dashboard-design-system.css"'));
+  assert.ok(vendor < html.indexOf('data-h2s-app-styles="true"'));
+  assert.equal(html.match(/flatpickr@4\.6\.13\/dist\/flatpickr\.min\.css/g).length, 1);
 });
 
 test('popup positioning stays within the viewport without reading cross-origin stylesheet rules', () => {

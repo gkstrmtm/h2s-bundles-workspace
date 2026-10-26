@@ -209,6 +209,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;600;900&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <!-- Dashboard Design System (single source of truth) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <link rel="stylesheet" href="/dashboard-design-system.css">
 
     <!-- App Icons -->
@@ -241,7 +242,6 @@
 
     <!-- jsPDF Library for PDF Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
@@ -2292,7 +2292,7 @@
                         <span class="app-sidebar-group-chevron" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
                     </button>
                     <div class="app-sidebar-group-items">
-                        <button type="button" class="app-sidebar-nav-item" data-tab="commercialqueue" onclick="switchToTab('commercialqueue')">Commercial Queue</button>
+                        <button type="button" class="app-sidebar-nav-item" data-tab="commercialqueue" onclick="switchToTab('commercialqueue')">Customer Queue</button>
                         <button type="button" class="app-sidebar-nav-item" data-tab="admin" onclick="switchToTab('admin')">Admin Dashboard</button>
                         <button type="button" class="app-sidebar-nav-item" data-tab="proofpacks" onclick="switchToTab('proofpacks')">Website Media</button>
                     </div>
@@ -3215,9 +3215,9 @@
                     <div class="commercial-queue-shell">
                         <div class="commercial-queue-header">
                             <div>
-                                <div class="commercial-queue-eyebrow">Commercial operations</div>
-                                <h2 class="commercial-queue-title">Commercial Queue</h2>
-                                <p class="commercial-queue-copy">Customer follow-up and consultation requests.</p>
+                                <div class="commercial-queue-eyebrow">Residential and commercial operations</div>
+                                <h2 class="commercial-queue-title">Customer Queue</h2>
+                                <p class="commercial-queue-copy">Inquiries, follow-up, and the shared company schedule. Requested availability is not a booking.</p>
                             </div>
                             <div class="commercial-queue-actions">
                                 <div class="commercial-queue-updated" id="commercialQueueUpdatedAt">Waiting for first load</div>
@@ -3225,7 +3225,24 @@
                             <div id="commercialQueueStatus" class="commercial-queue-status" role="status" aria-live="polite" hidden></div>
                         </div>
 
-                        <section id="commercialCalendar" class="commercial-queue-panel commercial-calendar" aria-label="Shared Commercial installation agenda"></section>
+                        <div class="commercial-queue-viewbar">
+                            <div class="commercial-queue-view-switch" role="group" aria-label="Work view">
+                                <button type="button" data-work-view-button="queue" aria-pressed="true" aria-controls="commercialQueueData"
+                                    onclick="window.commercialQueueUI.setWorkView('queue')">Queue</button>
+                                <button type="button" data-work-view-button="calendar" aria-pressed="false" aria-controls="commercialCalendar"
+                                    onclick="window.commercialQueueUI.setWorkView('calendar')">Calendar</button>
+                            </div>
+                            <label class="commercial-queue-market">Customer market
+                                <select id="commercialQueueMarket" class="form-select commercial-queue-filter" aria-label="Customer market"
+                                    onchange="window.commercialQueueUI && window.commercialQueueUI.onMarketChange()">
+                                    <option value="all">Residential + commercial</option>
+                                    <option value="residential">Residential</option>
+                                    <option value="commercial">Commercial</option>
+                                </select>
+                            </label>
+                        </div>
+                        <section id="commercialCalendar" data-work-view="calendar" class="commercial-queue-panel commercial-calendar" aria-label="Shared company installation calendar" hidden></section>
+                        <div id="commercialQueueData" data-work-view="queue" role="region" aria-label="Queue view">
                         <div class="commercial-queue-summary" id="commercialQueueSummary">
                             <div class="commercial-queue-metric commercial-queue-metric--placeholder">
                                 <div class="spinner"></div>
@@ -3259,8 +3276,8 @@
                                             <option value="active">Active leads</option>
                                             <option value="held">On hold</option>
                                             <option value="closed">Closed leads</option>
-                                            <option value="all">All commercial intakes</option>
-                                            <option value="pending">Pending consults</option>
+                                            <option value="all">All customer intakes</option>
+                                            <option value="pending">Pending review</option>
                                             <option value="approved">Approved / confirmed</option>
                                             <option value="escalated">Escalated</option>
                                             <option value="no_consultation">No consultation yet</option>
@@ -3279,6 +3296,7 @@
                                     <div class="spinner"></div>
                                 </div>
                             </section>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -5402,7 +5420,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
-                for (const filename of ['commercial-labels.js', 'commercial-business.js', 'commercial-calendar.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
+                for (const filename of ['date-popup.js', 'commercial-labels.js', 'commercial-business.js', 'commercial-calendar.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
                     await loadScript(filename);
                 }
                 window.__h2sDashboardScriptsLoaded = true;

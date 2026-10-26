@@ -38,7 +38,7 @@ function safeParseJson(value: any): any {
 }
 
 const ORDERS_SELECT =
-  'order_id,created_at,status,service_name,address,city,state,zip,geo_lat,geo_lng,order_subtotal,subtotal,delivery_date,delivery_time,items,special_instructions,customer_name,metadata_json,metadata';
+  'id,order_id,created_at,status,service_name,address,city,state,zip,subtotal,delivery_date,delivery_time,items,special_instructions,customer_name,metadata_json';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -1319,6 +1319,7 @@ async function enrichJobsFromOrders(client: any, ordersClient: any, jobs: any[])
     const jid = meta?.dispatch_job_id || meta?.job_id;
     if (jid) orderByJobId.set(String(jid), o);
     if (o?.order_id) orderByOrderId.set(String(o.order_id), o);
+    if (o?.id && !orderByOrderId.has(String(o.id))) orderByOrderId.set(String(o.id), o);
   }
 
   let enriched = jobs

@@ -65,6 +65,8 @@ export async function POST(request: Request) {
     if (!lead) {
       return NextResponse.json({ ok: false, error: 'Commercial lead not found' }, { status: 404, headers: corsHeaders(request) });
     }
+    if (lead.attribution?.market==='residential') return NextResponse.json({ok:false,error:'Homeowner inquiries do not book Commercial consultations.'},
+      {status:409,headers:corsHeaders(request)});
     const contactError = validateCommercialContact(lead);
     if (contactError) {
       return NextResponse.json({ ok: false, error: contactError.message, field: contactError.field }, { status: 400, headers: corsHeaders(request) });

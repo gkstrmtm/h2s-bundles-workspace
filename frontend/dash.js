@@ -1558,7 +1558,7 @@
             training: { label: 'Training', areaTitle: 'Training', paneId: 'training-pane', sidebarGroupId: 'workflow' },
             workspace: { label: 'My Summary', areaTitle: 'My Summary', paneId: 'workspace-pane', sidebarGroupId: 'workflow' },
             deliverables: { label: 'Deliverables', areaTitle: 'Deliverables', paneId: 'deliverables-pane', sidebarGroupId: 'salestools' },
-            commercialqueue: { label: 'Commercial Queue', areaTitle: 'Commercial Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
+            commercialqueue: { label: 'Customer Queue', areaTitle: 'Customer Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             admin: { label: 'Admin Dashboard', areaTitle: 'Admin Dashboard', paneId: 'admin-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             proofpacks: { label: 'Website Media', areaTitle: 'Website Media', paneId: 'proofpacks-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             owneruploads: { label: 'Owner Uploads', areaTitle: 'Owner Uploads', paneId: 'owneruploads-pane', sidebarGroupId: 'salestools' },
@@ -49024,6 +49024,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 appliedPageIndex: 0,
                 appliedQuery: '',
                 appliedFilter: '',
+                market: 'all',
+                appliedMarket: 'all',
+                workView: 'queue',
                 detailOpen: false,
                 lastSuccessAt: 0,
             },
@@ -49038,11 +49041,10 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const pane = document.getElementById('commercialqueue-pane');
                 if (!pane) return;
                 this.bindFreshness();
-                window.H2SCommercialCalendar?.mountDashboard(document.getElementById('commercialCalendar'), {
-                    apiBase: API_BASE, getToken: getDashboardSessionToken, onOpenLead: id => this.openAgendaLead(id),
-                });
+                this.syncWorkView();
+                if (this.state.workView === 'calendar') this.mountCalendar();
                 const context = {
-                    query: this.state.query, filter: this.state.filter, pageIndex: this.state.pageIndex,
+                    query: this.state.query, filter: this.state.filter, market: this.state.market, pageIndex: this.state.pageIndex,
                     cursor: this.state.cursors[this.state.pageIndex] || '',
                 };
                 const key = JSON.stringify(context);
@@ -49058,7 +49060,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const execute = async () => {
                     try {
                         const params = new URLSearchParams({
-                            action: 'commercialQueue', limit: '25', q: context.query, filter: context.filter, _ts: String(Date.now()),
+                            action: 'commercialQueue', limit: '25', q: context.query, filter: context.filter, market: context.market, _ts: String(Date.now()),
                         });
                         if (context.cursor) params.set('cursor', context.cursor);
                         const response = await fetch(`${API_URL}?${params}`, {
@@ -49088,6 +49090,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         this.state.legacy = !next.pagination;
                         this.state.appliedQuery = context.query;
                         this.state.appliedFilter = context.filter;
+                        this.state.appliedMarket = context.market;
                         this.state.appliedPageIndex = context.pageIndex;
                         this.state.cursors.length = context.pageIndex + 1;
                         if (next.pagination && next.pagination.hasMore) this.state.cursors.push(next.pagination.nextCursor);
@@ -49132,6 +49135,45 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.refresh();
             },
 
+            onMarketChange() {
+                this.state.market = document.getElementById('commercialQueueMarket').value;
+                this.resetSearch();
+                this.refresh();
+            },
+
+            mountCalendar() {
+                const root = document.getElementById('commercialCalendar');
+                if (!window.H2SCommercialCalendar) {
+                    root.innerHTML = uiRenderState({tone:'error',title:'Calendar unavailable',message:'Reload the dashboard to load the calendar controls. No reservations were changed.'});
+                    return;
+                }
+                window.H2SCommercialCalendar.mountDashboard(root, {
+                    apiBase: API_BASE, getToken: getDashboardSessionToken, market: this.state.market,
+                    onOpenLead: id => this.openAgendaLead(id),
+                });
+            },
+
+            setWorkView(view) {
+                if (!['queue','calendar'].includes(view)) return;
+                if (view === 'calendar' && this.agendaOrigin) { this.backToAgenda(); return; }
+                this.agendaRequestId = (this.agendaRequestId || 0) + 1;
+                this.state.workView = view;
+                this.syncWorkView();
+                if (view === 'calendar') this.mountCalendar();
+            },
+
+            syncWorkView() {
+                const pane = document.getElementById('commercialqueue-pane');
+                if (!pane) return;
+                pane.dataset.workMode = this.state.workView;
+                pane.querySelectorAll('[data-work-view]').forEach(element => {
+                    element.hidden = element.dataset.workView !== this.state.workView;
+                });
+                pane.querySelectorAll('[data-work-view-button]').forEach(button => {
+                    button.setAttribute('aria-pressed', String(button.dataset.workViewButton === this.state.workView));
+                });
+            },
+
             resetSearch() {
                 this.agendaRequestId = (this.agendaRequestId || 0) + 1;
                 this.state.agendaSelection = null;
@@ -49172,6 +49214,31 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 return lead;
             },
 
+            async loadHomeownerReviewLink(leadId, button) {
+                if (button.disabled) return;
+                const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),20000);
+                const token=getDashboardSessionToken();
+                button.disabled=true;
+                try {
+                    const query=new URLSearchParams({leadId});
+                    const response=await fetch(`${API_BASE}/api/residential-review?${query}`,{
+                        cache:'no-store',signal:controller.signal,headers:{Authorization:`Bearer ${token}`},
+                    });
+                    const result=await response.json();
+                    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not load this inquiry review link.');
+                    const url=new URL(result.reviewLink);
+                    if (!['https:','http:'].includes(url.protocol)) throw new Error('Invalid homeowner review URL.');
+                    if (token!==getDashboardSessionToken() || !button.isConnected) return;
+                    const link=document.createElement('a');
+                    link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';
+                    link.className='commercial-calendar-open';link.textContent='Open this homeowner review';
+                    button.replaceWith(link);
+                } catch(error) {
+                    button.disabled=false;
+                    showToast(error.message || 'Could not load the homeowner review link.','error');
+                } finally {clearTimeout(timer);}
+            },
+
             async openAgendaLead(id) {
                 const requestId = this.agendaRequestId = (this.agendaRequestId || 0) + 1;
                 const token = getDashboardSessionToken(), controller = new AbortController();
@@ -49181,6 +49248,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     if (requestId!==this.agendaRequestId || token!==getDashboardSessionToken()) return;
                     if (!this.agendaOrigin) this.agendaOrigin = {selectedLeadId:this.state.selectedLeadId,top:window.scrollY,left:window.scrollX};
                     this.state.agendaSelection = lead;
+                    this.state.workView = 'queue';
+                    this.syncWorkView();
                     this.selectLead(id);
                 } finally { clearTimeout(timer); }
             },
@@ -49191,6 +49260,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.state.agendaSelection=null;this.agendaOrigin=null;
                 this.state.selectedLeadId=origin.selectedLeadId;this.state.detailOpen=false;
                 this.renderList();this.renderDetail();this.syncMobileView();
+                this.state.workView='calendar';this.syncWorkView();this.mountCalendar();
                 document.querySelector(`#commercialCalendar [data-calendar-open="${id}"]`)?.focus({preventScroll:true});
                 window.scrollTo({left:origin.left,top:origin.top,behavior:'instant'});
             },
@@ -49243,7 +49313,10 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
             syncMobileView() {
                 const pane = document.getElementById('commercialqueue-pane');
-                if (pane) pane.dataset.queueView = this.state.detailOpen ? 'detail' : 'list';
+                if (pane) {
+                    pane.dataset.queueView = this.state.detailOpen ? 'detail' : 'list';
+                    pane.querySelector('.commercial-queue-back').textContent = this.agendaOrigin ? 'Back to calendar' : 'Back to queue';
+                }
             },
 
             bindFreshness() {
@@ -49395,7 +49468,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     status.hidden = !message;
                     status.innerHTML = `${escapeHtml(message)}${this.state.error ? `<button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.refresh()"${this.state.loading ? ' disabled' : ''}>Retry</button>` : ''}`;
                 }
-                ['commercialQueueSearch', 'commercialQueueFilter'].forEach(id => {
+                ['commercialQueueSearch', 'commercialQueueFilter', 'commercialQueueMarket'].forEach(id => {
                     const control = document.getElementById(id);
                     if (control) control.disabled = this.state.legacy;
                 });
@@ -49428,7 +49501,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         <span data-page-status aria-live="polite"></span>
                         <button type="button" class="commercial-queue-page-btn" data-page-direction="next">Next</button>`;
                 }
-                const contextCurrent = this.state.appliedQuery === this.state.query && this.state.appliedFilter === this.state.filter;
+                const contextCurrent = this.state.appliedQuery === this.state.query && this.state.appliedFilter === this.state.filter
+                    && this.state.appliedMarket === this.state.market;
                 const previous = container.querySelector('[data-page-direction="previous"]');
                 const next = container.querySelector('[data-page-direction="next"]');
                 previous.onclick = () => this.goToPage(page - 1);
@@ -49479,7 +49553,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const items = Array.isArray(filteredItems) ? filteredItems : this.getFilteredItems();
                 if (metaEl) {
                     const pagination = this.state.pagination;
-                    const scope = `Results: ${this.labelForStatus(this.state.appliedFilter === 'all' ? 'all commercial intakes' : this.state.appliedFilter)}${this.state.appliedQuery ? ` / "${this.state.appliedQuery}"` : ''}.`;
+                    const scope = `Results: ${this.state.appliedMarket === 'all' ? 'both markets' : this.state.appliedMarket} / ${this.labelForStatus(this.state.appliedFilter === 'all' ? 'all customer intakes' : this.state.appliedFilter)}${this.state.appliedQuery ? ` / "${this.state.appliedQuery}"` : ''}.`;
                     metaEl.textContent = `${scope} ${items.length} on this page${pagination && pagination.totalMatches !== null ? ` of ${pagination.totalMatches} matches` : ''}. Newest intake first.${pagination && pagination.scanLimitReached ? ' Search continues on the next page; a full matching total is not yet known.' : ''}`;
                 }
 
@@ -49511,6 +49585,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                     <div class="commercial-queue-row__contact">${escapeHtml(item.fullName || item.email || item.phone || 'No direct contact captured')}</div>
                                 </div>
                                 <div class="commercial-queue-pillset">
+                                    ${this.renderPill('market', item.market === 'residential' ? 'Residential' : 'Commercial')}
                                     ${this.renderPill(consultationStatus, this.statusForItem(item))}
                                     ${['high', 'urgent'].includes(item.priorityTier) ? this.renderPill(item.priorityTier, this.labelForStatus(item.priorityTier)) : ''}
                                 </div>
@@ -49558,7 +49633,9 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const requestedMethod = item.followUp && item.followUp.requestedContactMethod || item.contactPreference || 'sms';
                 const methodLabel = requestedMethod === 'email' ? 'Prefers email' : requestedMethod === 'call' ? 'Prefers call' : 'Prefers text';
                 const routingLabel = requestedMethod === 'email' ? 'Email first (manual)' : requestedMethod === 'call' ? 'Call first (manual)' : 'Text first (explicit permission required)';
-                const consultationCopy = item.consultation
+                const consultationCopy = item.market === 'residential'
+                    ? `Preferred availability (not booked): ${(item.availabilityPreferences || []).map(value => `${value.date} (${value.period})`).join(', ') || 'Discuss with homeowner'}.`
+                    : item.consultation
                     ? (item.consultation.slotLabel || 'No preferred window selected.')
                     : 'No consultation request has been created for this lead yet.';
                 const windowReviewNote = item.followUp && item.followUp.submitted && item.followUp.kind === 'manual_follow_up'
@@ -49568,7 +49645,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     : '';
 
                 detailEl.innerHTML = `
-                    ${this.agendaOrigin ? '<button type="button" class="commercial-workload-btn" onclick="window.commercialQueueUI.backToAgenda()">Back to agenda</button>' : ''}
+                    ${this.agendaOrigin ? '<button type="button" class="commercial-workload-btn" onclick="window.commercialQueueUI.backToAgenda()">Back to calendar</button>' : ''}
                     <div class="commercial-queue-detail__header">
                         <div>
                             <h3 class="commercial-queue-detail__title">${escapeHtml(item.companyName || item.fullName || 'Unnamed commercial lead')}</h3>
@@ -49591,6 +49668,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                         <section data-commercial-operations></section>
                         <section class="commercial-queue-detail__section" aria-label="Requested work">
                             <h4 class="commercial-queue-detail__section-title">Requested work</h4>
+                            ${item.market === 'residential' && item.consultation ? `<button type="button" class="commercial-workload-btn"
+                                onclick="window.commercialQueueUI.loadHomeownerReviewLink('${escapeHtml(item.leadId)}',this)">Load homeowner review link</button>` : ''}
                             <div class="commercial-queue-detail__tags">
                                 ${(Array.isArray(item.serviceNeeds) && item.serviceNeeds.length)
                                     ? item.serviceNeeds.map((service) => `<span>${escapeHtml(service)}</span>`).join('')
@@ -49611,8 +49690,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                 ${this.renderDetailRow('Sites', item.siteCount ? String(item.siteCount) : 'Not provided', '')}
                                 ${this.renderDetailRow('Attachments', `${Number(item.projectPhotoCount || 0)} uploaded`, 'Viewing unavailable in this queue.')}
                                 ${this.renderDetailRow('Preferred window', consultationCopy, windowReviewNote)}
-                                ${this.renderDetailRow('Technician response', this.technicianResponseForItem(item), item.consultation && item.consultation.responseAt ? this.formatDateTime(item.consultation.responseAt) : '')}
-                                ${this.renderDetailRow('Appointment', item.consultation && item.consultation.relatedOrderId ? 'Created - opening unavailable in this queue.' : 'Not created', '')}
+                                ${this.renderDetailRow(item.market === 'residential' ? 'Follow-up review' : 'Technician response', this.technicianResponseForItem(item), item.consultation && item.consultation.responseAt ? this.formatDateTime(item.consultation.responseAt) : '')}
+                                ${this.renderDetailRow(item.market === 'residential' ? 'Installation timing' : 'Appointment', item.market === 'residential' ? 'Review the shared calendar reservation and customer agreement. Accepting follow-up does not reserve time.' : item.consultation && item.consultation.relatedOrderId ? 'Created - opening unavailable in this queue.' : 'Not created', '')}
                                 ${this.renderDetailRow('Customer confirmation', this.confirmationForItem(item), '')}
                             </dl>
                         </section>
@@ -49680,6 +49759,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const consultation = item.consultation;
                 if (!consultation) return 'Saved draft - not submitted';
                 const status = consultation.status;
+                if (item.market === 'residential') return item.followUp?.statusLabel || 'Homeowner follow-up review';
                 const method = item.followUp && item.followUp.requestedContactMethod || item.contactPreference;
                 if (item.followUp && item.followUp.kind === 'manual_follow_up' &&
                     ['pending', 'escalated', 'reschedule_requested'].includes(status)) {
@@ -49713,11 +49793,13 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (item.followUp && item.followUp.kind === 'manual_follow_up') return 'Manual customer follow-up required';
                 const channel = { sms: 'SMS', web: 'approval link', manual: 'staff action' }[consultation.responseChannel];
                 const via = channel ? ` via ${channel}` : '';
+                if (item.market === 'residential') return consultation.status === 'approved' ? `Follow-up accepted${via}; scheduling is separate`
+                    : consultation.status === 'declined' ? 'Needs another reviewer' : 'Awaiting decision through the homeowner review link';
                 if (['approved', 'customer_confirmed'].includes(consultation.status)) return `Approved${via}`;
                 if (consultation.status === 'declined') return `Declined${via} - alternate window required`;
                 if (consultation.status === 'escalated') return 'No response recorded - escalated to management';
                 if (consultation.status === 'reschedule_requested') return 'Awaiting decision on the revised window';
-                if (consultation.status === 'pending') return 'Awaiting YES/NO';
+                if (consultation.status === 'pending') return 'Awaiting decision through the current review link';
                 return 'No decision recorded';
             },
 

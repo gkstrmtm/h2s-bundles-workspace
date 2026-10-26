@@ -1,5 +1,263 @@
 # Commercial operations: existing-order workflow
 
+## Lightweight homeowner inquiries (released 2026-10-26)
+
+Production release: `PORTAL_BUILD_20261026_190027_e70af30_residential`, built
+from base commit `e70af30a6a39282277630af2741a0b6675144344` plus the scoped,
+validated local residential/shared changes, not the entire dirty workspace.
+Backend deployment: `dpl_37j66gfWDPqoSYUAnqcBhXcZuvD9`.
+Frontend deployment: `dpl_54TeVtxRc8sn9Jy6Kd22UNEHkCJX`.
+No commit or push was performed.
+
+- Residential customers: <https://shop.home2smart.com/residential>
+- Commercial customers: <https://shop.home2smart.com/commercial>
+- Manager/owner: <https://shop.home2smart.com/dash>
+
+The exact candidate passed 228 scoped fixture tests and its backend build.
+Production checks verified 37 deployed source hashes, clean routes/assets,
+the frontend API proxy, enabled intake readiness, invalid-token rejection,
+ADMIN/maintenance access protection, and deployed reminder schedules.
+Commercial routing configuration was unchanged. Both public customer pages
+were read-only browser-checked at 320px and 390px without horizontal overflow
+or uncaught page errors; no fixture markup appeared.
+These checks did not submit a production inquiry, send a test SMS, create or
+modify a customer/booking, charge a payment, or manually run reminder maintenance.
+Real handset delivery and a controlled end-to-end booking/login/notification
+acceptance test remain outstanding before scaling paid traffic.
+
+- Customer page: `frontend/residential.html` (`/residential`), with its own
+  CSS/JS. Service choices are TV mounting and security cameras; required fields
+  are name, phone, and city. Notes and up to three preferred dates/broad periods
+  are optional. No public prices, checkout, mandatory equipment questionnaire,
+  automatic appointment, routing to Portal installers, or payment is added.
+- `/api/residential-intake` uses an atomic, idempotent migration-037 wrapper
+  around the existing lead/request RPCs. Records remain in `commercial_leads`
+  and `commercial_consultation_requests`, with authoritative
+  `attribution.market = residential` and `metadata.request_kind =
+  residential_inquiry`. Legacy missing market means Commercial. The database
+  prevents changing a lead's market and prevents homeowner requests from
+  acquiring consultation windows, appointment links, or consultation reminders.
+- Preferences live at `assessment_answers.availabilityPreferences`, as up to
+  three `{date, period}` pairs; periods are morning/afternoon/evening/flexible.
+  They express availability only, never capacity holds or promised arrival
+  windows. Staff discuss timing and scope, check the shared calendar, and use
+  its existing explicit hold/confirm/reschedule/cancel actions. Confirmation
+  still requires recorded customer agreement; overlaps block across markets.
+- Dedicated reviewer texts include the homeowner name, services, city,
+  preference summary and unique `/residential-review?token=...` link.
+  Opening the page only reads. Accept follow-up / Needs another reviewer are
+  explicit POST actions, with immutable activity in the existing lead history.
+  Acceptance means responsibility for a conversation, not an appointment.
+  Concurrent/repeated decisions are deduplicated; reversing one requires staff
+  review rather than reusing the link for a conflicting action.
+- Customer receipt/accepted-follow-up notices require explicit texting consent
+  and Text first. Otherwise the inquiry requests a manual call and sends no
+  customer SMS. The existing effect ledger, history and delivery callbacks are
+  reused; provider acceptance is not delivery. Known rejections may retry
+  without resending accepted messages; uncertain attempts require reconciliation.
+  These intake notices do not book an appointment. The separately gated owner
+  workspace below adds scheduling notices; SMS YES/NO decisions remain disabled.
+- The existing dashboard pane retains its internal IDs but displays Customer
+  Queue, with server-side market filtering, market badges and preferred dates.
+  Administrators can load the inquiry's review link from its detail, without
+  sending a text; the lead-ID lookup requires an authenticated ADMIN session
+  and does not expose review tokens through the general Queue projection.
+  Queue / Calendar is a mutually exclusive view switch; Queue is the default
+  and the calendar loads on first use. Switching retains Queue search, cursors,
+  selection and draft DOM, as well as the calendar's date, month/day view and
+  reservation-state filter. Both views share the customer-market selector.
+  Changing the calendar date updates the visible range immediately; there is
+  no Show/refresh button. The existing 30-second visible-calendar refresh remains.
+  Clearing the navigator retains the previous range with an explicit prompt;
+  it never clears a reservation. Controls use consistent compact heights
+  (larger touch targets on mobile), with reduced-motion support.
+  The same company calendar offers a 42-day month and full day agenda.
+  Market/state filters change visibility, never capacity. Mobile uses a compact
+  seven-column month with tappable dates/counts rather than sideways scrolling;
+  selecting a date now keeps the month visible, marks the selected date and
+  shows its readable reservation list immediately below. No hover or long press
+  is required. Day agenda remains an explicit focused view; neither view uses a
+  sideways-scrolling table. The filter disclosure always names the active
+  market and reservation state, with touch-sized choices inside. Calendar
+  entries open the existing detail surface with a Back to calendar action.
+  In the same-link owner workspace, Check reservation explains whether the time
+  belongs to the current customer without switching the customer being scheduled.
+  The shared component applies its styling class when mounted; homeowner section
+  dividers are scoped to top-level workspace sections, not individual day cells.
+  The calendar shows explicit holds/reservations, not unbooked inquiry preferences.
+  Existing reservation drafts, revisions, agreement/history and operation-key
+  retries remain intact.
+- Equipment-included versus installation-only is settled during quoting, not
+  assumed by the form. Residential versus Commercial offers remain separate.
+  Existing Bundles prices/promises and the proposed offline pricing package
+  are not approved prices for this funnel; no pricing module is imported.
+
+### Same-link owner workspace (local implementation; not released)
+
+Mobile controls use 16px editable text and 44px primary touch controls.
+The owner page uses compact label/value rows with wrapping values, not stacked
+full-height fields. The dashboard and both residential pages share `date-popup.js`:
+it positions Flatpickr inside the visual viewport without reading cross-origin
+stylesheet rules, follows viewport/keyboard changes while open, and permits
+scrolling the popup on short screens. Vendor CSS precedes application overrides.
+Commercial approval blocks repeat taps while saving and disables decisions
+after completion. An interrupted response explicitly says the result is
+uncertain and requires reopening/reloading the link to read the saved state;
+it does not automatically repeat the decision or send another message.
+
+The customer-specific review URL also hosts an ADMIN-authenticated owner
+workspace. Accepting follow-up is still not a booking. The review token alone
+does not grant calendar or scheduling access; the owner signs in through the
+existing dashboard username/email + PIN session, without leaving the customer
+context. This is staff authentication, not a customer login or a new credential
+system. Valid sessions are reused across customer-specific links on the same
+origin/device.
+
+The current callback API and existing shared-calendar API both require the
+existing `ADMIN` dashboard role; `VA` does not have scheduling permission.
+This implementation does not introduce that restriction, change roles or
+create accounts. A 401 requests sign-in; a 403 explains the existing permission
+requirement without deleting a valid staff session or repeatedly asking the
+same user to log in. Selecting another staff account is an explicit action.
+Brandon does not currently have dashboard credentials, as confirmed by the
+workspace owner; his account and appropriate permissions remain a separate
+setup decision, not an implicit grant of administrator access.
+
+The customer name leads the page, followed by service/city, operational status,
+saved installation or callback time, a callable phone number, and one
+state-dependent primary action. Confirmed jobs lead with the confirmed window
+and Reschedule; completed jobs offer View installation, not new-booking
+instructions. Callback-due jobs lead with Call customer. Reference, preferences
+and notes remain visible in secondary Customer details. Saved callback and
+installation summaries stay on the overview, alongside concise recent text
+status. Set callback/Edit callback, Book installation/Reschedule, View calendar
+and View history open one focused task dialog, not stacked disclosures. The
+existing shared calendar retains customer context and its filters; its booking
+history is shown with the supporting text records in Customer history.
+Account is a header control, outside job content. Sign-in guidance only appears
+when access is required; private saved times are cleared from the overview on
+sign-out. The test server alone injects the fixture banner.
+Its Preview options menu switches between fictional owner and homeowner
+examples; it is not application navigation. The public homeowner intake and
+customer-specific owner workspace remain separate pages, with scheduling
+protected by the existing dashboard session.
+Residential date fields show readable month/day/year dates and 12-hour times
+without seconds. Separate hidden machine values retain the existing date
+formats, and unchanged saved instants retain their original seconds and
+timezone semantics. Picker-internal year/time inputs are excluded from the
+full-size form-field styling so month/year controls remain legible on mobile.
+Local fixture inspection covers unscheduled, callback-due, confirmed, cancelled
+and completed customers at 320px and 390px, including focused editors and long
+wrapped details. These responsive-browser checks do not certify physical
+devices or live message delivery.
+Customer availability remains separate from the authenticated
+installation window: a preferred Tuesday-through-Thursday range is not a
+booking. The calendar checks recorded conflicts when a time is saved; there
+is no automatic preferred-window slot finder. Saved details update when the
+page regains focus/visibility and after saves, without a routine refresh button.
+Only one task panel is active. Callback and installation editors use a common
+Save/Cancel footer. Cancel, Escape or switching tasks prompts before discarding
+unsaved edits; Keep editing preserves them. Discard affects local drafts and
+retry state, not a save that may already have reached the server. Busy saves
+block task exit. Saving returns to the overview; closing restores its scroll
+and initiating control. Unsaved drafts and uncertain/conflicting operations
+remain protected. Text updates use plain labels; notices needing review remain
+visible, with full records behind View history.
+
+- Save, reopen, complete or cancel a callback, with an explicit note. Callback
+  times reuse `commercial_lead_operations.next_follow_up_at`; revisions and
+  operation keys reject stale edits and deduplicate identical retries.
+- The existing shared company calendar and reservation editor provide tentative
+  holds, confirmed installation windows, rescheduling and cancellation. Other
+  calendar entries do not replace the current customer's review link. Explicit
+  customer agreement is required to confirm; preferences are not bookings.
+  Capacity checks cover recorded company reservations, not personal calendars,
+  staff availability, travel or inferred installation duration.
+- Migration 038 persists versioned `residential_notices` and reuses the existing
+  effect ledger and provider delivery tracking. Triggers cover writes from the
+  review workspace and existing dashboard/reservation surfaces.
+
+Approved notification policy:
+
+| Event | Recipient and timing |
+| --- | --- |
+| Scheduled callback | Owner, 15 minutes before the saved callback. |
+| Confirmed or rescheduled installation | Customer confirmation when saved, if consent permits. |
+| Confirmed installation approaching | Owner and consenting customer, 60 minutes before the window starts. |
+| Confirmed installation cancelled | Consenting customer receives cancellation; obsolete reminders stop. |
+
+Tentative holds do not send booking texts. Unchanged installation windows do
+not start another notice sequence. Rescheduling, cancellation and completion
+supersede obsolete notices; callback completion/cancellation stops its reminder.
+Owner texts contain name, services, general city, relevant time and the same
+customer-specific link. Full addresses and owner credentials stay out of
+customer texts. Text-first preference and current explicit SMS consent are
+rechecked before each customer send.
+
+The server processes due notices, not browser timers. Installation windows
+booked less than 60 minutes ahead make both confirmation and reminder due;
+confirmation is processed first. A callback saved less than 15 minutes ahead
+also makes its notice immediately due. The maintenance cadence determines
+actual dispatch; expired notices are not sent late. Do not promise exact
+minute delivery. The proposed every-minute Vercel cron requires a hosting plan
+that supports that cadence before release.
+
+Provider acceptance is not handset delivery. GSM-7/UCS-2 segment estimates are
+recorded for cost visibility. Failed or uncertain sends require review rather
+than automatic resend; a lost processing result is reconciled after five
+minutes without another provider call. Notification warnings do not disguise
+a successfully saved calendar reservation as a failed save. A cancellation
+cannot retract an SMS already accepted by the provider, including the small
+race after the final transactional state check.
+
+### Activation and future environment approval
+
+All feature flags below default off. The owner separately authorized production
+activation on 2026-10-26; the three residential flags are enabled there and the
+dedicated recipient ends in 9776. Do not configure real recipients or enable
+live intake/SMS as part of local fixture validation in other environments.
+
+| Backend environment variable | Purpose |
+| --- | --- |
+| `RESIDENTIAL_INTAKE_ENABLED` | Explicit `true` enables submission only after the 037 readiness RPC succeeds. |
+| `RESIDENTIAL_SMS_ENABLED` | Explicit `true` enables this funnel's recorded texts. |
+| `RESIDENTIAL_WORKSPACE_ENABLED` | Explicit `true` enables the ADMIN workspace and notice processor only after migration 038 readiness succeeds. |
+| `RESIDENTIAL_REVIEWER_PHONE` | Dedicated authorized reviewer; no fallback to Commercial recipients. |
+| `CRON_SECRET` | Bearer secret authorizing scheduled `/api/residential-maintenance` invocations. |
+| `RESIDENTIAL_MAINTENANCE_TOKEN` | Optional separate Bearer secret for authorized manual maintenance. |
+| `COMMERCIAL_PUBLIC_BASE_URL` | Existing canonical HTTPS frontend origin, reused for review links. |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Existing server-side application connection, not schema authority. |
+| Existing Twilio sender/account/auth/callback settings | Existing transport and signed delivery/inbound handling, unchanged. |
+
+Configure secrets/phone settings outside Git in the approved backend environment.
+Before release, inspect/reconcile and separately authorize migrations 037/038 through
+the guarded runner, configure the dedicated recipient, then deploy matching
+frontend/backend code, verify cron eligibility/authentication, and explicitly
+enable the features. Production migrations 037/038 were applied and independently
+verified during the authorized release. The existing cron secret was preserved;
+the residential schedule is every minute and Commercial remains every 15 minutes.
+No public prices, checkout, ad tracking/attribution experiments or residential
+offers were changed by this increment.
+
+Local checks (no real database, provider, payment, or production messages):
+`node --test tests/residential_inquiry.test.cjs tests/residential_ui.test.cjs
+tests/residential_workspace.test.cjs tests/residential_workspace_ui.test.cjs
+tests/migration_runner.test.cjs` from `backend`. The workspace SQL fixture runs
+actual 031/032/034/036/037/038 functions under `service_role`, and verifies shared-calendar
+capacity using the existing 036 fixture. Browser/DOM checks cover minimal
+submission, popup date preferences, retry identity, review buttons, market
+filters and the month/day toggle. Independent-session calendar concurrency
+requires the existing dedicated local `H2S_CALENDAR_TEST_DATABASE_URL`; without
+that variable its separate regression remains skipped.
+
+The mobile pass also exercises commercial submission/approval, callback
+save/reopen, installation confirmation/reschedule/cancellation, discarded
+drafts, Queue/Calendar navigation and filters against isolated fake-data
+servers. Responsive Chromium checks cover 320/390/430/768/1440px widths and
+short landscape date popups. These checks do not certify physical iOS/Android,
+real provider delivery, or production scheduler operation. Shared popup and
+interrupted-approval regressions are in `tests/mobile_funnel_controls.test.cjs`.
+
 ## Staff-controlled business tools (released)
 
 ### Consultation review links and call reminders
@@ -155,7 +413,7 @@ remain the adapter; a future residential intake can call the same preparation
 RPC without adopting Commercial intake or pricing rules.
 
 - Agenda customer buttons open the same linked lead/job, including closed leads
-  outside the current Queue page/filter. Back to agenda preserves its date and
+  outside the current Queue page/filter. Back to calendar preserves its date and
   Queue search/cursors. Queue remains a responsibility/follow-up view.
 - Job detail reuses existing order scope, work location, schedule, directory
   assignments, proof, completion and payment evidence. Scope/materials/site
@@ -349,8 +607,8 @@ selection), restored selections, native photo upload, each preference's receipt,
 and the footer with Safari controls expanded/collapsed and during bottom bounce.
 Use an approved fixture request rather than submitting production test data.
 
-- Follow-up and installation start/end remain native `datetime-local` inputs,
-  using the browser/OS picker rather than Flatpickr. Labels name the browser's
+- Follow-up and installation start/end retain canonical `datetime-local` values,
+  using the shared styled Flatpickr editor. Labels name the browser's
   timezone. Unchanged values retain their exact saved instant, including
   subsecond precision and the original occurrence of an ambiguous DST time.
   Edited nonexistent or twice-occurring clock-change times are rejected with

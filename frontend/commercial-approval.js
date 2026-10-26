@@ -8,6 +8,24 @@
   })();
 
   const RESPONSE_ENDPOINT = `${API_BASE}/commercial-consultation-response`;
+  let ready = false, submitting = false;
+
+  function syncControls() {
+    ['approveBtn', 'declineBtn', 'approvalNote'].forEach(function (id) {
+      const node = byId(id);
+      if (node) node.disabled = !ready || submitting;
+    });
+  }
+
+  async function request(url, options) {
+    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || 'The request service is unavailable.');
+      return payload;
+    } finally { clearTimeout(timer); }
+  }
 
   function byId(id) {
     return document.getElementById(id);
@@ -60,18 +78,23 @@
       return null;
     }
 
-    const response = await fetch(`${RESPONSE_ENDPOINT}?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      setMessage(payload.error || 'Failed to load consultation request.', 'error');
+    try {
+      const payload = await request(`${RESPONSE_ENDPOINT}?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
+      renderContext(payload);
+      ready = ['pending', 'escalated'].includes(payload.consultation.status);
+      syncControls();
+      setMessage(ready
+        ? 'Approval records the technician decision. Appointment creation and customer notification are separate results.'
+        : 'This request is no longer awaiting a decision. Check Commercial Queue for appointment and text-update results.', '');
+      return payload;
+    } catch (error) {
+      setMessage(`Could not load this request: ${error.message} Check your connection and reload this link.`, 'error');
       return null;
     }
-    renderContext(payload);
-    setMessage('Approval records the technician decision. Appointment creation and customer notification are separate results.', '');
-    return payload;
   }
 
   async function submitDecision(action) {
+    if (!ready || submitting) return;
     const token = tokenFromUrl();
     if (!token) {
       setMessage('Missing consultation token.', 'error');
@@ -79,30 +102,37 @@
     }
 
     const note = byId('approvalNote') ? byId('approvalNote').value.trim() : '';
+    submitting = true;
+    syncControls();
     setMessage(`Submitting ${action}...`, '');
-    const response = await fetch(RESPONSE_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, action, note })
-    });
-    const payload = await response.json();
-    if (!response.ok || !payload.ok) {
-      setMessage(payload.error || 'Failed to record consultation response.', 'error');
-      return;
+    try {
+      const payload = await request(RESPONSE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, action, note })
+      });
+      renderContext(payload);
+      ready = false;
+      const appointment = payload.appointment;
+      const customer = payload.notifications && payload.notifications.customer;
+      setMessage(action === 'approve'
+        ? appointment && appointment.ok
+          ? customer && customer.ok
+            ? 'Appointment exists. The SMS provider accepted the customer confirmation; delivery and customer acknowledgement are not verified.'
+            : 'Appointment exists, but customer communication needs review in Commercial Queue. Do not resend an uncertain provider attempt.'
+          : 'Technician approval recorded. Appointment creation needs review in Commercial Queue. No booking confirmation was sent.'
+        : 'Decline recorded. Review the management notification result in Commercial Queue.', 'success');
+    } catch (error) {
+      ready = false;
+      setMessage(`Could not verify the result: ${error.message} Your decision may have been saved. Reload this link to check its status before trying again.`, 'error');
+    } finally {
+      submitting = false;
+      syncControls();
     }
-    renderContext(payload);
-    const appointment = payload.appointment;
-    const customer = payload.notifications && payload.notifications.customer;
-    setMessage(action === 'approve'
-      ? appointment && appointment.ok
-        ? customer && customer.ok
-          ? 'Appointment exists. The SMS provider accepted the customer confirmation; delivery and customer acknowledgement are not verified.'
-          : 'Appointment exists, but customer communication needs review in Commercial Queue. Do not resend an uncertain provider attempt.'
-        : 'Technician approval recorded. Appointment creation needs review in Commercial Queue. No booking confirmation was sent.'
-      : 'Decline recorded. Review the management notification result in Commercial Queue.', 'success');
   }
 
   async function init() {
+    syncControls();
     const context = await loadContext();
     if (!context) return;
 
@@ -112,7 +142,7 @@
     if (declineBtn) declineBtn.addEventListener('click', function () { submitDecision('decline'); });
 
     const urlAction = actionFromUrl();
-    if (urlAction === 'approve' || urlAction === 'decline') {
+    if (ready && (urlAction === 'approve' || urlAction === 'decline')) {
       setMessage(`Ready to ${urlAction} this consultation request.`, '');
     }
   }

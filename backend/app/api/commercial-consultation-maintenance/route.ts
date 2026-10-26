@@ -64,7 +64,7 @@ async function processMaintenance(request: Request) {
   const processed: any[] = [];
 
   for (const consultation of data || []) {
-    if (consultation.metadata?.request_kind === 'manual_follow_up') continue;
+    if (['manual_follow_up','residential_inquiry'].includes(consultation.metadata?.request_kind)) continue;
     const lead = await getLeadById(consultation.lead_id);
     if (!lead) continue;
     if (isManualCommercialFollowUp(consultation, lead)) continue;

@@ -253,3 +253,7 @@ frontend/_target_dash.*
 # Backend envs (ensure these are ignored)
 backend/.env.production.vercel
 backend/.env.production
+
+!frontend/residential-review.js
+!backend/migrations/037_residential_inquiries.sql
+!backend/migrations/038_residential_workspace.sql

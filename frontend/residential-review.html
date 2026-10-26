@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow">
+  <title>Customer Request | Home2Smart</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+  <link rel="stylesheet" href="/dash.css"><link rel="stylesheet" href="/residential.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+  <script defer src="/date-popup.js"></script>
+  <script defer src="/commercial-calendar.js"></script>
+  <script defer src="/residential-workspace.js"></script>
+  <script defer src="/residential-review.js"></script>
+</head>
+<body class="residential-page residential-review-page">
+  <header class="residential-nav"><span class="residential-brand">Home2Smart</span><button id="workspace-account-trigger" class="residential-secondary" type="button" data-workspace-task="account">Account</button></header>
+  <main class="residential-review-shell"><section class="residential-request residential-customer-overview" aria-labelledby="residential-customer-name">
+    <h1 id="residential-customer-name">Loading customer...</h1>
+    <p id="residential-customer-context" class="residential-customer-context"></p>
+    <p id="residential-operational-status" class="residential-operational-status" aria-live="polite"></p>
+    <dl class="residential-overview-rows">
+      <div><dt>Installation</dt><dd id="residential-next-time"><span id="residential-installation-time">Checking saved times...</span></dd></div>
+      <div><dt>Callback</dt><dd id="workspace-saved">Sign in to view saved callback.</dd></div>
+      <div><dt>Next</dt><dd id="residential-next-action">Loading customer details...</dd></div>
+      <div id="residential-phone-row" hidden><dt>Phone</dt><dd><a id="residential-call" hidden></a></dd></div>
+    </dl>
+    <a id="residential-primary-call" class="residential-primary residential-primary-link" hidden>Call customer</a>
+    <button id="residential-primary-action" class="residential-primary" type="button" hidden></button>
+    <p id="residential-review-boundary" class="residential-note" hidden>Accepting follow-up does not book an installation.</p>
+    <p id="residential-review-status" role="status" aria-live="polite"></p>
+    <button id="residential-review-trigger" class="residential-secondary" type="button" data-workspace-task="review" hidden>Review options</button>
+    <section class="residential-customer-details" id="residential-customer-details" aria-labelledby="residential-details-heading"><h2 id="residential-details-heading">Customer details</h2>
+      <dl id="residential-review-details" class="residential-review-details"></dl>
+    </section>
+    <noscript>Enable JavaScript to review. Opening this link does not accept the request.</noscript>
+  </section>
+  <section id="residential-workspace" class="residential-workspace" aria-label="Customer actions">
+    <p id="workspace-status" role="status" aria-live="polite"></p>
+    <p id="workspace-storage" class="residential-note" role="status"></p>
+    <div id="workspace-authenticated" hidden>
+      <p id="workspace-approval" class="residential-note"></p>
+      <div class="residential-workspace-toolbar" aria-label="Customer tasks">
+        <span id="workspace-followup-section" hidden><button id="workspace-callback-label" class="residential-secondary" type="button" data-workspace-task="callback">Edit callback</button></span>
+        <span id="workspace-reservation-section" hidden><button id="workspace-installation-label" class="residential-secondary" type="button" data-workspace-task="installation">Book installation</button></span>
+        <button class="residential-secondary" type="button" data-workspace-task="calendar">View calendar</button>
+      </div>
+      <section class="residential-text-overview" aria-labelledby="workspace-text-heading">
+        <div class="residential-section-heading"><h2 id="workspace-text-heading">Text status</h2><button class="residential-secondary" type="button" data-workspace-task="history">View history</button></div>
+        <p id="workspace-text-summary" class="residential-saved-summary"></p>
+        <p id="workspace-notice-warning" class="residential-note" role="status"></p>
+      </section>
+      <p id="workspace-calendar-result" class="residential-note" role="status"></p>
+    </div>
+  </section></main>
+  <dialog id="workspace-task-dialog" class="residential-workspace residential-task-dialog" aria-labelledby="workspace-task-title" aria-describedby="workspace-task-customer">
+    <header class="residential-task-header">
+      <h2 id="workspace-task-title" tabindex="-1" autofocus></h2>
+      <p id="workspace-task-customer"></p>
+      <nav id="workspace-task-nav" class="residential-task-nav" aria-label="Switch customer task">
+        <button type="button" class="residential-secondary" data-workspace-task="callback">Callback</button>
+        <button type="button" class="residential-secondary" data-workspace-task="installation">Installation</button>
+        <button type="button" class="residential-secondary" data-workspace-task="calendar">Calendar</button>
+        <button type="button" class="residential-secondary" data-workspace-task="history">History</button>
+      </nav>
+    </header>
+    <div id="workspace-task-body" class="residential-task-body">
+      <div id="workspace-task-review" data-workspace-task-panel="review" hidden>
+      <div id="residential-review-options" hidden>
+      <form id="residential-review-form" hidden>
+      <label class="residential-field">Optional note<textarea name="note" class="form-input" maxlength="500" rows="2"></textarea></label>
+      <div class="residential-review-actions">
+        <button class="residential-secondary" type="submit" name="action" value="approve">Accept follow-up</button>
+        <button class="residential-secondary" type="submit" name="action" value="decline">Needs another reviewer</button>
+      </div>
+      </form>
+      </div>
+      </div>
+      <div id="workspace-task-account" data-workspace-task-panel="account" hidden>
+    <p id="workspace-context" class="residential-note"></p>
+    <p id="workspace-login-explanation" class="residential-note" hidden>Sign in with your existing dashboard account to view saved times and make changes.</p>
+    <form id="workspace-login" hidden>
+      <div class="residential-fields">
+        <label class="residential-field">Dashboard username or email<input name="username" autocomplete="username" required></label>
+        <label class="residential-field">Dashboard PIN<input name="pin" type="password" autocomplete="current-password" required></label>
+      </div>
+      <button class="residential-secondary" type="submit">Sign in to dashboard</button>
+    </form>
+    <button id="workspace-account-switch" class="residential-secondary" type="button" hidden>Use another staff account</button>
+        <button id="workspace-signout" class="residential-secondary" type="button" hidden>Sign out on this device</button>
+      </div>
+      <div id="workspace-callback-editor" data-workspace-task-panel="callback" hidden>
+        <form id="workspace-callback" hidden>
+        <p class="residential-note">Reminder 15 minutes before the saved call time.</p>
+        <label class="residential-field">Callback action<select name="callbackAction" class="form-select"><option value="schedule_callback">Set call time</option><option value="complete_callback">Mark call done</option><option value="cancel_callback">Cancel planned call</option></select></label>
+        <label id="workspace-callback-time-field" class="residential-field">When to call (your local time)<input name="dueAt" type="text" data-workspace-date placeholder="Choose date and time" autocomplete="off"></label>
+        <label class="residential-field">Call note (required)<textarea name="note" maxlength="1000" rows="2" required></textarea></label>
+        <div hidden>
+          <button class="residential-secondary" type="submit" value="schedule_callback">Save call time</button>
+          <button class="residential-secondary" type="submit" value="complete_callback">Mark call done</button>
+          <button class="residential-secondary" type="submit" value="cancel_callback">Cancel planned call</button>
+        </div>
+        </form>
+      <div id="workspace-callback-recovery" class="residential-workspace-toolbar" hidden>
+        <button id="workspace-retry" class="residential-secondary" type="button" hidden>Retry unchanged callback request</button>
+        <button id="workspace-discard" class="residential-secondary" type="button" hidden>Discard callback draft and reload latest</button>
+      </div>
+      </div>
+      <div id="workspace-installation-editor" data-workspace-task-panel="installation" hidden>
+        <p id="workspace-reservation-dirty" class="residential-note"></p>
+          <p class="residential-note" id="workspace-installation-help"></p>
+          <div id="workspace-reservation"></div>
+      </div>
+      <div id="workspace-calendar-details" data-workspace-task-panel="calendar" hidden>
+        <p id="workspace-calendar-context" role="status"></p>
+        <div id="commercialCalendar"></div>
+      </div>
+      <div id="workspace-message-details" data-workspace-task-panel="history" hidden>
+        <h3>Text updates</h3><ul id="workspace-notices" class="residential-note"></ul>
+        <h3>Installation history</h3><p id="workspace-calendar-message" class="residential-note"></p><div id="workspace-calendar-history"></div>
+      </div>
+    </div>
+    <section id="workspace-task-exit" class="residential-task-exit" aria-label="Unsaved changes" hidden>
+      <h3>Leave this task?</h3><p id="workspace-task-exit-message"></p>
+      <div class="residential-workspace-toolbar"><button id="workspace-task-keep" class="residential-secondary" type="button">Keep editing</button><button id="workspace-task-discard" class="residential-secondary" type="button">Discard changes</button></div>
+    </section>
+    <footer class="residential-task-footer">
+      <p id="workspace-task-status" role="status" aria-live="polite"></p>
+      <button id="workspace-task-cancel" class="residential-secondary" type="button">Cancel</button>
+      <button id="workspace-task-save" class="residential-primary" type="button" hidden>Save</button>
+    </footer>
+  </dialog>
+</body>
+</html>

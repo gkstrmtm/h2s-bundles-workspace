@@ -12,6 +12,7 @@ async function createCalendarFixture(base) {
         : token === ['Bearer','fixture-va'].join(' ') ? { userId:id(10),displayName:'Fixture Staff',username:'STAFF_FIXTURE',role:'VA' } : null;
     } },
     '@/lib/adminAuth': { corsHeaders: () => ({}) },
+    '@/lib/residential_workspace': { processResidentialNotices: async () => ({enabled:false,needsReview:false,processed:[]}) },
   });
   fixture.calendarRequest = (method, body, token = 'fixture-admin', query = {}) => {
     const url = new URL('http://fixture.invalid/api/commercial-calendar');

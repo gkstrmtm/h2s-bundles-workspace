@@ -47,6 +47,8 @@ export async function GET(request: Request) {
     const token = normalizeText(url.searchParams.get('token') || '', 120);
     const config = publicConfig();
     const lead = token ? await getLeadByToken(token) : null;
+    if (lead?.attribution?.market==='residential') return NextResponse.json({ok:false,error:'Commercial intake not found.'},
+      {status:404,headers:corsHeaders(request)});
     const submission = lead ? await findLatestConsultationForLead(lead.lead_id) : null;
 
     return NextResponse.json(
@@ -90,6 +92,9 @@ export async function POST(request: Request) {
     const publicToken = normalizeText(body.publicToken || '', 120) || generateResponseToken();
 
     const existing = publicToken ? await getLeadByToken(publicToken) : null;
+    if (existing?.attribution?.market==='residential' || normalized.attribution?.market==='residential') {
+      return NextResponse.json({ok:false,error:'Use the homeowner form for residential inquiries.'},{status:409,headers:corsHeaders(request)});
+    }
     const mergedPhotoUrls = Array.from(
       new Set([
         ...((existing?.project_photo_urls || []) as string[]),

@@ -266,6 +266,9 @@ export async function retryCommercialProcessing(request: Request, requestId: str
       if (!data) return { ok: false, error: 'Commercial request not found' };
       const lead = await getLeadById(data.lead_id);
       if (!lead) return { ok: false, error: 'Commercial lead not found' };
+      if (lead.attribution?.market==='residential' || data.metadata?.request_kind==='residential_inquiry') {
+        return { ok:false,error:'Use the homeowner review link; Commercial retries cannot route homeowner requests.' };
+      }
       if (!isManualCommercialFollowUp(data, lead) && data.selected_slot_start && new Date(data.selected_slot_start).getTime() <= Date.now()) {
         return { ok: false, error: 'Requested window has passed. Contact the customer to arrange a new window; do not retry the old window.' };
       }
@@ -428,13 +431,14 @@ export async function sendSmsAndPersist(to: string, body: string, contactName?: 
   return { ok: true, accepted: true, to, sid: message.sid, status: message.status || 'queued', persistenceError };
 }
 
-async function sendRecordedSms(consultation: any, kind: string, to: string, body: string, name?: string | null): Promise<SmsResult & { skipped?: boolean; reason?: string }> {
+export async function sendRecordedSms(consultation: any, kind: string, to: string, body: string, name?: string | null): Promise<SmsResult & { skipped?: boolean; reason?: string }> {
     const claimed = await commercialRpc('commercial_claim_effect', { p_request_id: consultation.request_id, p_kind: kind });
     if (!claimed) {
       const { data, error } = await getSupabase().from('commercial_effects').select('state,details')
         .eq('request_id', consultation.request_id).eq('kind', kind).maybeSingle();
       if (error) throw new Error(commercialDatabaseErrorMessage(error));
       return { ok: data?.state === 'accepted', accepted: data?.state === 'accepted', to, skipped: true,
+        persistenceError: data?.details?.persistenceError || undefined,
         reason: 'Previously accepted or awaiting provider reconciliation; no automatic resend.' };
     }
     const result = await sendSmsAndPersist(to, body, name);
@@ -525,6 +529,9 @@ export async function applyConsultationDecision(params: {
   const consultation = params.consultation;
   const lead = params.lead;
   const action = params.action;
+  if (lead?.attribution?.market==='residential' || consultation.metadata?.request_kind==='residential_inquiry') {
+    return { ok:false, error:'Use the homeowner review link. Accepting an inquiry does not book a consultation or installation.' };
+  }
   if (isManualCommercialFollowUp(consultation, lead)) {
     return { ok: false, error: 'This request requires manual customer follow-up. It is not a confirmed consultation; review the requested contact method in Commercial Queue.' };
   }
@@ -701,7 +708,7 @@ export async function sendCustomerPendingAcknowledgement(consultation: any, lead
   return sendCommercialCustomerSms(lead, body, consultation, `customer_acknowledgement:${consultation.metadata?.last_reschedule_key || 'initial'}`);
 }
 
-async function sendCommercialCustomerSms(lead: any, body: string, consultation: any, kind: string) {
+export async function sendCommercialCustomerSms(lead: any, body: string, consultation: any, kind: string) {
   if ((lead?.contact_preference || 'sms') !== 'sms' || !hasCommercialSmsConsent(lead)) {
     return { ok: false, to: lead?.phone || '', skipped: true, reason: 'Customer texts are disabled for this contact preference or texting choice.' };
   }
