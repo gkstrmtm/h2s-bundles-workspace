@@ -1511,7 +1511,6 @@ textarea {
 }
 
 @media (max-width: 1100px) {
-  .hero,
   .assessment-shell,
   .proof-grid {
     grid-template-columns: 1fr;
@@ -1525,14 +1524,6 @@ textarea {
     order: 2;
   }
 
-  .hero h1 {
-    max-width: 11ch;
-  }
-
-  .hero {
-    gap: 24px;
-  }
-
   .assessment__rail {
     position: static;
     align-self: start;
@@ -1544,6 +1535,41 @@ textarea {
 
   .wizard-progress {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 521px) and (max-width: 1100px) {
+  .hero__visual {
+    align-self: center;
+  }
+
+  .media-stage {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 799px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    padding: var(--space-6) 0 28px;
+  }
+
+  .hero__copy {
+    max-width: none;
+  }
+
+  .hero h1 {
+    max-width: 22ch;
+  }
+
+  .hero__lede {
+    max-width: 60ch;
+  }
+
+  .hero__visual {
+    width: min(100%, 480px);
+    justify-self: start;
   }
 }
 
@@ -1625,7 +1651,6 @@ textarea {
     border-radius: 12px;
   }
 
-  .hero,
   .proof-section,
   .assessment {
     padding: var(--space-7) 0;
@@ -1637,6 +1662,59 @@ textarea {
 
   .page-footer__band {
     margin-top: var(--space-7);
+  }
+
+  .compact-card,
+  .proof-card,
+  .work-card,
+  .success-panel,
+  .review-card,
+  .approval-card,
+  .wizard-shell {
+    padding: var(--space-4);
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .commercial-custom-select-trigger {
+    min-height: 50px;
+    padding: 13px 14px;
+  }
+
+  .form-actions .btn,
+  .wizard-nav .btn {
+    width: 100%;
+  }
+
+  .form-actions,
+  .wizard-nav {
+    gap: 12px;
+  }
+
+  .site-header__actions,
+  .page-footer__actions,
+  .form-actions {
+    width: auto;
+  }
+
+  .page-footer__actions {
+    width: 100%;
+    display: flex;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(18, 41, 67, 0.1);
+  }
+
+  .page-footer__actions > * {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .header-link--phone #headerCallText {
+    display: none;
   }
 
   .hero {
@@ -1665,53 +1743,9 @@ textarea {
     border-radius: 22px;
   }
 
-  .compact-card,
-  .proof-card,
-  .work-card,
-  .success-panel,
-  .review-card,
-  .approval-card,
-  .wizard-shell {
-    padding: var(--space-4);
-  }
-
-  .field input,
-  .field select,
-  .field textarea,
-  .commercial-custom-select-trigger {
-    min-height: 50px;
-    padding: 13px 14px;
-  }
-
   .hero__actions,
-  .hero__actions .btn,
-  .form-actions .btn,
-  .wizard-nav .btn {
+  .hero__actions .btn {
     width: 100%;
-  }
-
-  .form-actions,
-  .wizard-nav {
-    gap: 12px;
-  }
-
-  .site-header__actions,
-  .page-footer__actions,
-  .form-actions {
-    width: auto;
-  }
-
-  .page-footer__actions {
-    width: 100%;
-    display: flex;
-    gap: 12px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(18, 41, 67, 0.1);
-  }
-
-  .page-footer__actions > * {
-    width: 100%;
-    justify-content: flex-start;
   }
 }
 
@@ -1822,11 +1856,5 @@ textarea {
 
   .page-footer__inner {
     padding: 14px 16px 16px;
-  }
-}
-
-@media (max-width: 520px) {
-  .header-link--phone #headerCallText {
-    display: none;
   }
 }

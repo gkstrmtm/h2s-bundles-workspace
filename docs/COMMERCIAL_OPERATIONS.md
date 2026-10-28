@@ -1,5 +1,19 @@
 # Commercial operations: existing-order workflow
 
+## Commercial hero responsive correction (local, not deployed)
+
+The hero is independent of the gallery/form's 1100px stacking breakpoint.
+Two columns remain at 800px, where the copy has about 371px and the media
+frame has 360px. Below 800px, the heading and description use wider line
+lengths, the CTA remains intrinsic-width, and left-aligned media is capped
+at 480px. Compact typography and full-width CTA start at 520px rather than
+stretching that composition across intermediate windows. Existing 320/390px
+phone and wide-desktop styling is retained.
+
+The canonical stylesheet controls both the website and Website Media's
+inert destination-page preview. No placement fit, focal coordinates, zoom,
+shared originals or saved media selection changes are required.
+
 ## Residential release candidate (2026-10-28; not deployed)
 
 This selective increment contains residential copy, native control styling,

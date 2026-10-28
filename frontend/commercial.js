@@ -1686,7 +1686,7 @@
       mediaEl.loading = 'eager';
       mediaEl.decoding = 'async';
       mediaEl.fetchPriority = 'high';
-      mediaEl.sizes = '(max-width: 720px) calc(100vw - 24px), (max-width: 1100px) min(100vw - 40px, 1180px), 42vw';
+      mediaEl.sizes = '(max-width: 430px) calc(100vw - 44px), (max-width: 520px) calc(100vw - 40px), (max-width: 799px) 480px, (max-width: 1100px) 48vw, 42vw';
       mediaEl.alt = 'Approved commercial installation photo';
       mediaEl.src = mediaUrl;
     }
