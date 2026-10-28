@@ -17,7 +17,11 @@ function homeowner(handler) {
     const picker={options,open(){},destroy(){}};
     pickers.push(picker);return picker;
   };
-  window.eval(file('date-popup.js'));window.eval(file('residential.js'));
+  window.console.warn=()=>{};
+  window.eval(file('date-popup.js'));window.eval(file('media-placement-style.js'));
+  window.TextEncoder=TextEncoder;
+  Object.defineProperty(window.crypto,'subtle',{value:require('node:crypto').webcrypto.subtle});
+  window.eval(file('residential-media.js'));window.eval(file('residential.js'));
   const form=window.document.getElementById('residential-form');
   const fill=()=>{form.elements.fullName.value='Browser Fixture';form.elements.phone.value='+15550000005';form.elements.city.value='Fixture City';form.querySelector('[name=service]').checked=true;};
   return {dom,window,form,fill,requests,pickers,close:()=>window.close()};
@@ -39,7 +43,7 @@ test('preferred days use popup calendars, cap at three, support removal, and rem
   const f=homeowner(async()=>Response.json({ok:true,reference:'HOME-DATES',notifications:{enabled:false}}));
   try{
     await waitFor(()=>!f.form.querySelector('[type=submit]').disabled);f.fill();
-    f.form.querySelector('details').open=true;
+    assert.equal(f.form.querySelector('details'),null);
     const add=f.window.document.getElementById('residential-add-day');
     for(let index=0;index<3;index++)add.click();
     assert.equal(f.pickers.length,3);assert.equal(add.disabled,true);
@@ -52,6 +56,37 @@ test('preferred days use popup calendars, cap at three, support removal, and rem
     f.form.requestSubmit();
     await waitFor(()=>f.requests.some(value=>value.options.method==='POST'));
     assert.equal(JSON.parse(f.requests.find(value=>value.options.method==='POST').options.body).availabilityPreferences.length,2);
+  }finally{f.close();}
+});
+test('initial contact has no address lookup or accordion; note, dates and unchecked consent remain independent',async()=>{
+  const f=homeowner(async()=>Response.json({ok:true,reference:'HOME-OPTIONAL',notifications:{enabled:false}}));
+  try{
+    await waitFor(()=>!f.form.querySelector('[type=submit]').disabled);f.fill();
+    assert.equal(f.form.querySelector('[name=street]'),null);
+    assert.equal(f.window.document.querySelector('script[src="/address-autocomplete.js"]'),null);
+    assert.equal(f.form.elements.smsOptIn.checked,false);
+    f.form.elements.notes.value='I have my own TV and mount.';
+    f.window.document.getElementById('residential-add-day').click();
+    f.form.elements.smsOptIn.checked=true;
+    f.form.requestSubmit();
+    await waitFor(()=>f.requests.some(value=>value.options.method==='POST'));
+    const body=JSON.parse(f.requests.find(value=>value.options.method==='POST').options.body);
+    assert.equal(body.installationAddress,undefined);
+    assert.deepEqual(body.availabilityPreferences,[]);
+    assert.equal(body.notes,'I have my own TV and mount.');
+    assert.equal(body.smsOptIn,true);
+  }finally{f.close();}
+});
+test('required errors are attached to their controls and validation does not submit',async()=>{
+  const f=homeowner(async()=>{assert.fail('Invalid contact must not submit');});
+  try{
+    await waitFor(()=>!f.form.querySelector('[type=submit]').disabled);
+    f.form.requestSubmit();
+    assert.match(f.window.document.getElementById('residential-service-error').textContent,/Choose/);
+    for(const name of ['fullName','phone','city'])assert.equal(f.form.elements[name].getAttribute('aria-invalid'),'true');
+    f.fill();f.form.elements.phone.value='123';f.form.requestSubmit();
+    assert.match(f.window.document.getElementById('residential-phone-error').textContent,/valid area code/);
+    assert.equal(f.requests.filter(value=>value.options.method==='POST').length,0);
   }finally{f.close();}
 });
 test('uncertain submission locks the original payload and retry cannot create a second identity',async()=>{

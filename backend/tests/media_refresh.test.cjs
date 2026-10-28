@@ -50,6 +50,7 @@ async function destinationFixture(t) {
   const e = fixture(t), { ui, w, document } = e;
   w.H2SPageHeroes = require('../../frontend/media-page-heroes.js');
   w.H2SMediaPlacements = { style: () => '' };
+  w.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'residential-media.js'), 'utf8'));
   w.getDashboardSessionToken = () => 'fixture-only';
   document.body.insertAdjacentHTML('beforeend', '<div id="ppPageHeroesContent"></div><p id="ppPageMediaStatus"></p><p id="ppPageMediaContext"></p><button id="ppInspectSavedMedia"></button><p id="ppPageMediaInventoryStatus"></p><div id="ppPlacementSelection" hidden></div><button data-filter="live:yes"></button><button data-filter="live:no"></button>');
   const camera = { ...asset('two'), media_url: '/camera.jpg', original_filename: 'Camera installation' };
@@ -60,7 +61,9 @@ async function destinationFixture(t) {
   e.reads = [];
   ui.fetchJson = async url => {
     e.reads.push(url);
-    return url.includes('proof-slots') ? { ok: true, hero_media: [], hero_exclusions: [
+    return url.includes('surface=residential') ? {ok:true,surface:'residential',sections:{
+      residential_tv_proof:{items:[hero]},residential_camera_proof:{items:[camera]}}}
+      : url.includes('proof-slots') ? { ok: true, hero_media: [], hero_exclusions: [
       { asset_source: 'proof_asset', asset_id: w.H2SPageHeroes.bundlesFallbackAssetId },
     ], slots: { hero: { tv_mounting: [eligible] } } }
       : { ok: true, sections };
@@ -145,7 +148,7 @@ test('a placement save invalidates inspection and rejects concurrent stale inspe
 
 test('destination inspection and usage filters use public selections rather than legacy eligibility or hero alternatives', async t => {
   const { ui, document, reads } = await destinationFixture(t);
-  assert.equal(document.querySelectorAll('[data-page-area]').length, 4);
+  assert.equal(document.querySelectorAll('[data-page-area]').length, 6);
   assert.match(document.querySelector('[data-page-area="commercial_security_rail"]').textContent, /Camera installation.*Automatic selection/s);
   assert.match(document.querySelector('[data-page-area="commercial_hero"]').textContent, /Chosen for this area/);
   assert.match(document.querySelector('[data-page-area="commercial_hero"] summary').textContent, /load-error alternative.*not selected/);
@@ -377,7 +380,7 @@ test('page media reports resolved selections without exposing legacy lists or re
   };
   w.H2SMediaPlacements = { style: () => '' };
   await ui.refreshLivePreview();
-  assert.equal(container.querySelectorAll('[data-page-hero]').length, 4);
+  assert.equal(container.querySelectorAll('[data-page-hero]').length, 6);
   assert.match(container.textContent, /Bundles \/ Hero background.*Automatic selection/s);
   assert.match(container.textContent, /Commercial \/ Hero photo.*Chosen for this area/s);
   assert.doesNotMatch(container.textContent, /Historical|\bLIVE\b|retained|asset_id/);

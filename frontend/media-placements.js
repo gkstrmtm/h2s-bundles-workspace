@@ -229,12 +229,13 @@
             button.className = 'media-destination-option';
             button.dataset.destinationSurface = surface;
             button.dataset.destinationArea = area.key;
-            const mismatch = area.service && area.service !== (options.asset.service || options.asset.service_type);
+            const mismatch = area.photoOnly && options.asset.media_kind !== 'photo'
+              || area.service && area.service !== (options.asset.service || options.asset.service_type);
             button.disabled = !!mismatch;
             button.innerHTML = `<strong>${escape(area.title)}</strong><small>${row
               ? `${row.enabled ? 'Included here' : 'Excluded here'}; order ${row.display_order}`
-              : 'No placement saved for this media'}${isCurrent ? ' · Shown here' : ''}${mismatch ? ' · Requires ' + escape(area.service.replaceAll('_', ' ')) : ''}</small>
-              <small>${current?.areas?.[area.key] ? `${current.areas[area.key].length} selected · ` : ''}${area.limit === 1 ? '1 photo or video' : `Up to ${area.limit} photos or videos`}</small>`;
+              : 'No placement saved for this media'}${isCurrent ? ' · Shown here' : ''}${mismatch ? ' · Requires ' + escape(area.photoOnly && options.asset.media_kind !== 'photo' ? 'a photo' : area.service.replaceAll('_', ' ')) : ''}</small>
+              <small>${current?.areas?.[area.key] ? `${current.areas[area.key].length} selected · ` : ''}${area.photoOnly ? '1 installation photo' : area.limit === 1 ? '1 photo or video' : `Up to ${area.limit} photos or videos`}</small>`;
             button.addEventListener('click', () => {
               close();
               options.onSelect({ surface, area: area.key });

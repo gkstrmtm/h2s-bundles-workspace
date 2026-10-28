@@ -235,6 +235,45 @@ function adminRoute(user, db) {
   });
 }
 
+test('Residential destinations reject videos without changing another page or shared asset', async () => {
+  const db = dbMock([{ asset_id: assetId, is_visible: true, service: 'tv_mounting', media_kind: 'video' }]);
+  const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, db.client);
+  const response = await route.PUT(new Request('http://localhost/api/admin/media-placements', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(placement({ surface: 'residential', area: 'residential_tv_proof' })),
+  }));
+  assert.equal(response.status, 409);
+  assert.match(response.body.error, /photo, not video/);
+  assert.equal(db.calls.some(call => call.method === 'upsert'), false);
+});
+
+test('Residential public feed reads its own placements and photo-only approved service pools', async () => {
+  const proof = dbMock([
+    { asset_id: assetId, media_kind: 'photo', service: 'tv_mounting', storage_bucket: 'proof', storage_path: 'tv.jpg' },
+    { asset_id: '22222222-2222-4222-8222-222222222222', media_kind: 'photo', service: 'cameras', storage_bucket: 'proof', storage_path: 'camera.jpg' },
+  ]);
+  const owner = dbMock([]);
+  const surfaces = [];
+  const route = loadTs('backend\\app\\api\\owner-media\\public\\route.ts', {
+    'next/server': { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
+    '@/lib/supabase': { getSupabase: () => ({ from: table => (table === 'proof_assets' ? proof.client : owner.client).from(table) }) },
+    '@/lib/ownerMediaDb': { OWNER_MEDIA_DB_BUCKET: 'owner-media-db' },
+    '@/lib/mediaPlacements': { ...library,
+      readMediaPlacements: async surface => { surfaces.push(surface); return []; },
+      resolvePlacementAssets: async () => [],
+    },
+  });
+  const response = await route.GET(new Request('http://localhost/api/owner-media/public?surface=residential&limit=1'));
+  assert.equal(response.status, 200);
+  assert.deepEqual(surfaces, ['residential']);
+  assert.equal(response.body.sections.residential_tv_proof.items[0].service, 'tv_mounting');
+  assert.equal(response.body.sections.residential_camera_proof.items[0].service, 'cameras');
+  assert.equal(response.body.sections.commercial_hero, undefined);
+  assert.ok(proof.calls.some(call => call.method === 'eq' && call.args[0] === 'media_kind' && call.args[1] === 'photo'));
+  assert.ok(proof.calls.some(call => call.method === 'eq' && call.args[0] === 'is_visible' && call.args[1] === true));
+  assert.equal((await route.GET(new Request('http://localhost/api/owner-media/public?surface=unknown'))).status, 400);
+});
+
 test('placement API saves only a placement row and never rewrites the shared asset', async () => {
   const db = dbMock([{ asset_id: assetId, is_visible: true, service: 'tv_mounting' }]);
   const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, db.client);

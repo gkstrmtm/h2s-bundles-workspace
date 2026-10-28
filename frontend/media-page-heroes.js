@@ -3,6 +3,8 @@
 
   const bundlesFallbackAssetId = 'de955df6-d4d9-4603-be3a-90ed2fb25e45';
   const pages = {
+    residential: { title: 'Residential', area: 'residential_tv_proof', page: 'residential.html',
+      areas: { residential_tv_proof: 'TV installation proof', residential_camera_proof: 'Camera installation proof' } },
     bundles: { title: 'Bundles', area: 'hero', page: 'bundles.html', areas: { hero: 'Hero background' } },
     commercial_intake: { title: 'Commercial', area: 'commercial_hero', page: 'commercial.html', areas: {
       commercial_hero: 'Hero photo', commercial_security_rail: 'Security camera rail', commercial_display_rail: 'Display and TV rail',
@@ -59,8 +61,9 @@
     const page = pages[surface];
     if (!page?.areas[area]) throw new Error('Unsupported media destination');
     const local = new URL(page.page, currentUrl);
-    const deployed = new URL(surface === 'bundles' ? '/bundles' : '/commercial', 'https://shop.home2smart.com');
-    const anchor = { commercial_hero: 'heroMediaStage', commercial_security_rail: 'cameraProofRail', commercial_display_rail: 'tvProofRail' }[area];
+    const deployed = new URL(surface === 'bundles' ? '/bundles' : surface === 'residential' ? '/residential' : '/commercial', 'https://shop.home2smart.com');
+    const anchor = { commercial_hero: 'heroMediaStage', commercial_security_rail: 'cameraProofRail', commercial_display_rail: 'tvProofRail',
+      residential_tv_proof: 'residential_tv_proof', residential_camera_proof: 'residential_camera_proof' }[area];
     if (anchor) { local.hash = anchor; deployed.hash = anchor; }
     return { local: local.href, deployed: deployed.href };
   }
@@ -70,9 +73,11 @@
     const alternative = area === pages[surface]?.area && (selections?.[surface]?.heroCandidates || []).slice(1)
       .some(item => item.asset_id === asset.asset_id && (item.source || item.media_placement?.asset_source || 'proof_asset') === source);
     const placement = inspection?.placements?.find(row => row.surface === surface && row.area === area);
-    const service = area === 'commercial_security_rail' ? 'cameras' : area === 'commercial_display_rail' ? 'tv_mounting' : null;
+    const service = ['commercial_security_rail', 'residential_camera_proof'].includes(area) ? 'cameras'
+      : ['commercial_display_rail', 'residential_tv_proof'].includes(area) ? 'tv_mounting' : null;
     const assetService = asset.service || asset.service_type;
-    const serviceEligible = ['cameras', 'tv_mounting'].includes(assetService) && (!service || assetService === service);
+    const serviceEligible = ['cameras', 'tv_mounting'].includes(assetService) && (!service || assetService === service)
+      && (surface !== 'residential' || asset.media_kind === 'photo');
     const eligible = source === 'proof_asset' && typeof asset.is_visible === 'boolean' ? asset.is_visible && serviceEligible
       : source === 'owner_media' && typeof asset.qa_hold === 'boolean' && asset.review_state && asset.usage_rights_status
         ? asset.review_state === 'published' && asset.usage_rights_status === 'social_allowed' && !asset.qa_hold
@@ -96,6 +101,10 @@
       if (!result?.ok) throw new Error(result?.error || 'Page media could not be loaded.');
       return result;
     };
+    if (surface === 'residential') {
+      const renderer = typeof module === 'object' && module.exports ? require('./residential-media.js') : root.H2SResidentialMedia;
+      return renderer.read(checked);
+    }
     if (surface === 'bundles') {
       const payload = await checked('/api/proof-slots?surface=bundles&limit=6');
       const selected = bundlesSelection(payload.hero_media || [], payload.hero_exclusions || []);

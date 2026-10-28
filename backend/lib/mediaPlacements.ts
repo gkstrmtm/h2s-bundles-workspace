@@ -2,7 +2,7 @@ import { getSupabase } from '@/lib/supabase';
 import { OWNER_MEDIA_DB_BUCKET } from '@/lib/ownerMediaDb';
 import catalog from './mediaPlacementCatalog.json';
 
-type MediaArea = { key: string; title: string; aspect: string; limit: number; service?: string };
+type MediaArea = { key: string; title: string; aspect: string; limit: number; service?: string; photoOnly?: boolean };
 export const MEDIA_PAGES: Record<string, { title: string; areas: MediaArea[] }> = catalog;
 export const MEDIA_AREAS: Record<string, MediaArea[]> = Object.fromEntries(
   Object.entries(MEDIA_PAGES).map(([key, page]) => [key, page.areas]),

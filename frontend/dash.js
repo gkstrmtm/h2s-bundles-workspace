@@ -7385,6 +7385,7 @@ function smsStartNewMessage(prefillPhone) {
                     const unavailable = selected.mode === 'unavailable';
                     const label = unavailable ? 'Unavailable · retained media is not a verified current selection'
                         : !items.length ? 'No media selected'
+                        : surface === 'residential' ? 'Installation photo selected by these rules · rendering unverified'
                         : area === page.area ? 'Primary hero selected by these rules · rendering unverified'
                         : `${items.length} selected by these rules · up to 4 photos or videos, in display order`;
                     const links = heroes.destinationLinks(surface, area, location.href);
@@ -7423,6 +7424,16 @@ function smsStartNewMessage(prefillPhone) {
                     });
                 }).join('');
                 this.patchMediaTiles(container, html, 'pageMediaKey');
+                container.querySelectorAll('[data-hero-edit="residential"]').forEach(button => {
+                    const asset = this.state.pageHeroes.residential.areas?.[button.dataset.mediaArea]?.[Number(button.dataset.mediaIndex)];
+                    if (!asset) return;
+                    const frame = button.querySelector('.pp-hero-thumbnail');
+                    frame.style.aspectRatio = '4 / 3';
+                    frame.replaceChildren(window.H2SResidentialMedia.image(asset, document));
+                    const error = document.createElement('span');
+                    error.dataset.thumbnailError = ''; error.hidden = true; error.textContent = 'Preview unavailable';
+                    frame.append(error);
+                });
                 container.querySelectorAll('[data-hero-choose]').forEach(button => { button.onclick = () => this.choosePageHero(button.dataset.heroChoose, button.dataset.mediaArea); });
                 container.querySelectorAll('[data-hero-edit]').forEach(button => { button.onclick = () => this.editPageHero(button.dataset.heroEdit,
                     button.dataset.mediaArea, Number(button.dataset.mediaIndex), button.dataset.mediaAlternative === 'true'); });

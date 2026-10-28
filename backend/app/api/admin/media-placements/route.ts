@@ -73,10 +73,10 @@ async function handle(request: Request) {
       return reply({ ok: true });
     }
     const { data: asset, error: assetError } = placement.asset_source === 'proof_asset'
-      ? await client.from('proof_assets').select('asset_id, is_visible, service')
+      ? await client.from('proof_assets').select('asset_id, is_visible, service, media_kind')
         .eq('asset_id', placement.asset_id).maybeSingle()
       : await client.from('owner_media_uploads')
-        .select('asset_id, review_state, usage_rights_status, qa_hold, customer_media_opt_in, service_type')
+        .select('asset_id, review_state, usage_rights_status, qa_hold, customer_media_opt_in, service_type, media_kind')
         .eq('asset_id', placement.asset_id).maybeSingle();
     if (assetError) throw new Error(assetError.message);
     if (!asset) return reply({ ok: false, error: 'Media asset no longer exists' }, 404);
@@ -90,6 +90,9 @@ async function handle(request: Request) {
         return reply({ ok: false, error: 'Set the asset service to tv_mounting or cameras before placing it' }, 409);
       }
       const area = getMediaPage(placement.surface)?.areas.find((entry) => entry.key === placement.area);
+      if (area?.photoOnly && asset.media_kind !== 'photo') {
+        return reply({ ok: false, error: 'This display area requires an installation photo, not video' }, 409);
+      }
       if (area?.service && service !== area.service) {
         return reply({ ok: false, error: 'The asset service does not match this display area' }, 409);
       }

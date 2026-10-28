@@ -1,5 +1,46 @@
 # Commercial operations: existing-order workflow
 
+## Residential presentation closeout (2026-10-27; not deployed)
+
+The production sources are `frontend/residential.html`, `residential.css`,
+`residential.js` and `residential-media.js`. The frontend Vercel configuration
+already rewrites `/residential` to that HTML; direct `/residential.html` is also
+supported. No fixture markup, demo toolbar or fictional customers ship.
+The existing typography/layout, approved logo and Commercial link remain.
+Service/name/phone/manual city are primary; note and preferred days are optional.
+Consent is unchecked, unchanged and separate from the request button.
+
+The most recent submission has a **per-tab sessionStorage receipt**, containing
+only a SHA-256 digest, original submission IDs and a confirmed reference when
+available, never a form draft. Reload restores no inputs and sends nothing.
+Explicit identical normalized resubmission shows the earlier confirmation without
+another POST; uncertain retries reuse the original IDs. Different work remains
+possible, including identical details through the explicit "Start a separate
+project" action. Storage failure blocks sending rather than losing retry identity.
+This is not cross-device, cross-tab or indefinite duplicate detection.
+
+This supersedes the earlier seven-file packaging: include the residential photo
+renderer, public-feed/catalog/photo-only placement checks, minimal dashboard
+renderer hooks and focused tests; exclude cross-flow address tests/integration,
+migration 040 and unrelated dashboard work. Existing Website Media destinations
+and 4:3 framing remain independent of Commercial/Bundles and shared originals.
+No live placements or migrations are saved by this release.
+
+Initial-contact presentation needs no migration 040. The inherited backend at
+`cdd0743` reads notification routing, so deploying that backend still requires
+the separately reviewed migration 039 first. An absent routing table fails closed;
+the environment recipient is a fallback only for an existing table with no row.
+Do not silently apply either migration or deploy this branch.
+
+Closeout validation: 193 selected fixture checks passed, and the production
+backend build passed with non-live configuration. Two unrelated Commercial
+assertions (old YES/NO copy and an outdated exact cron list) failed identically
+on untouched HEAD and were excluded from the final selected run, not weakened.
+Standalone Chrome inspected desktop/390/320px, real approved photos, both entry
+paths, calendar, validation, growing note, loading/failure states, Queue data,
+confirmed duplicate blocking and uncertain-response replay after reload.
+Physical iOS Safari/keyboard and Lighthouse were not tested.
+
 ## Notification routing settings (local; not released)
 
 Canonical dashboard location: **My Summary > Owner notifications**, in

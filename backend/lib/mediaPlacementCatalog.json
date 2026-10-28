@@ -7,6 +7,13 @@
       { "key": "pre_cta", "title": "Cart reassurance strip", "aspect": "4 / 3", "limit": 3 }
     ]
   },
+  "residential": {
+    "title": "Residential",
+    "areas": [
+      { "key": "residential_tv_proof", "title": "TV installation proof", "aspect": "4 / 3", "limit": 1, "service": "tv_mounting", "photoOnly": true },
+      { "key": "residential_camera_proof", "title": "Camera installation proof", "aspect": "4 / 3", "limit": 1, "service": "cameras", "photoOnly": true }
+    ]
+  },
   "commercial_intake": {
     "title": "Commercial",
     "areas": [

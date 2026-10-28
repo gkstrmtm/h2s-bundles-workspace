@@ -7,8 +7,20 @@
 .residential-nav, .residential-footer { max-width: 1120px; margin: auto; padding: 20px 24px; }
 .residential-nav { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border, #dce2eb); }
 .residential-brand { font: 700 22px "Space Grotesk", sans-serif; text-decoration: none; color: var(--cobalt) !important; }
-.residential-shell { max-width: 1120px; margin: 32px auto; padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: start; }
-.residential-intro h1 { color: var(--cobalt); font: 700 clamp(30px, 4vw, 46px)/1.12 "Space Grotesk", sans-serif; margin: 8px 0 24px; }
+.residential-shell { max-width: 1120px; margin: 24px auto; padding: 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.residential-intro { min-width: 0; }
+.residential-intro h1 { color: var(--cobalt); font: 700 clamp(30px, 4vw, 46px)/1.12 "Space Grotesk", sans-serif; margin: 8px 0 16px; }
+.residential-service-copy { margin: 0 0 16px; }
+.residential-proof h2, .residential-next h2 { font: 600 18px "Space Grotesk", sans-serif; color: var(--cobalt); margin: 0 0 8px; }
+.residential-proof-media { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.residential-proof-media figure { margin: 0; min-width: 0; }
+.residential-proof-frame { aspect-ratio: 4 / 3; overflow: hidden; border-radius: 4px; background: var(--surface); }
+.residential-proof-frame img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.residential-proof-media figcaption { margin-top: 4px; font-size: 13px; color: var(--muted); }
+.residential-proof [role=status]:empty { display: none; }
+.residential-next { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 16px; }
+.residential-next p { margin: 8px 0; }
+.residential-form-intro { margin: 0 0 12px; }
 .residential-eyebrow { color: var(--muted); font-weight: 600; }
 .residential-benefits { padding-left: 20px; }
 .residential-benefits li { margin: 12px 0; }
@@ -38,6 +50,38 @@
 .residential-periods { display: flex; flex-wrap: wrap; gap: 8px 12px; border: 0; padding: 0; margin: 8px 0; }
 .residential-periods label { font-size: 13px; display: flex; align-items: center; gap: 4px; }
 .residential-page [role=status] { overflow-wrap: anywhere; font-size: 14px; }
+.residential-intake-page .residential-nav { align-items: center; padding-block: 12px; }
+.residential-intake-page .residential-brand { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; }
+.residential-brand img { display: block; flex-shrink: 0; object-fit: contain; }
+.residential-nav .residential-business-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px; color: var(--muted); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; border-radius: 4px; }
+.residential-business-link:hover { color: var(--cobalt); background: var(--surface); }
+.residential-intake-page .residential-shell { margin-block: 20px; }
+.residential-intake-page .residential-eyebrow { margin: 0; }
+.residential-intake-page .residential-next { border: 0; padding-top: 0; }
+.residential-intake-page .residential-request { padding: 20px; }
+.residential-intake-page .residential-field { gap: 4px; margin: 0; }
+.residential-intake-page .residential-fields { gap: 12px; }
+.residential-intake-page .residential-services { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 0; min-width: 0; }
+.residential-intake-page .residential-services label { align-items: center; gap: 8px; padding: 8px; min-height: 52px; margin: 0; font-size: 16px; line-height: 1.4; }
+.residential-intake-page .residential-services input, .residential-intake-page .residential-consent input { width: 20px; height: 20px; margin: 0; accent-color: var(--azure, var(--primary)); flex-shrink: 0; }
+.residential-intake-page .residential-services label:has(:checked) { background: var(--bg); font-weight: 700; }
+.residential-intake-page .residential-services label:has(:focus-visible) { outline: 2px solid var(--azure, var(--primary)); outline-offset: 3px; }
+.residential-note-field textarea { overflow-y: hidden; resize: vertical; }
+.residential-field-error { display: block; min-height: 16px; margin: 0; color: var(--danger); font-size: 12px; font-weight: 400; line-height: 16px; overflow-wrap: anywhere; }
+.residential-intake-page [aria-invalid=true] { border-color: var(--danger); }
+.residential-note-field { margin-top: 4px !important; }
+.residential-preferences { margin-top: 8px; }
+.residential-preferences > p { margin: 0; }
+.residential-preferences [role=status]:empty { display: none; }
+.residential-page .residential-date-action { border: 0; background: transparent; padding: 8px 0; font-size: 14px; font-weight: 600; }
+.residential-intake-page .residential-consent { align-items: start; margin: 0; gap: 10px; line-height: 1.5; }
+.residential-permission { margin-top: 16px; }
+.residential-intake-page .residential-consent input { margin-top: 1px; }
+.residential-call-alternative { padding-left: 30px; margin: 4px 0 0; }
+.residential-submit-area { display: grid; gap: 8px; margin-top: 16px; }
+.residential-submit-area > p { margin: 0; }
+.residential-submit-area .residential-primary { min-height: 48px; font-weight: 600; }
+.residential-submit-area [role=status] { min-height: 22px; }
 .residential-review-shell { max-width: 680px; margin: 24px auto; padding: 0 16px; }
 .residential-review-details { margin: 8px 0; }
 .residential-review-details > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 4px 0; }
@@ -134,9 +178,25 @@
   .residential-page select { min-height: 44px; }
 }
 @media (max-width: 720px) {
-  .residential-shell { grid-template-columns: 1fr; gap: 24px; margin: 24px auto; padding: 0 16px; }
+  .residential-shell { grid-template-columns: 1fr; gap: 16px; margin: 16px auto; padding: 0 16px; }
+  .residential-intro { display: contents; }
+  .residential-intro > .residential-eyebrow { margin: 0; }
+  .residential-intro h1 { margin: -8px 0 0; }
+  .residential-service-copy { margin: 0; }
+  .residential-proof { margin: 0; order: 2; }
+  .residential-proof h2 { font-size: 16px; }
+  .residential-proof-media { gap: 8px; }
+  .residential-next { order: 3; margin-top: 0; padding-top: 12px; }
+  .residential-request { order: 1; }
   .residential-request { padding: 16px; }
   .residential-nav { padding: 16px; font-size: 14px; }
+  .residential-intake-page .residential-nav { gap: 8px; }
+  .residential-intake-page .residential-brand { gap: 8px; font-size: 18px; }
+  .residential-intake-page .residential-brand img { width: 32px; height: 32px; }
+  .residential-nav .residential-business-link { padding-inline: 4px; }
+  .residential-intake-page .residential-shell { margin-block: 12px; gap: 12px; }
+  .residential-intake-page .residential-request { padding: 16px; }
+  .residential-intake-page .residential-fields { grid-template-columns: 1fr; gap: 0; }
   .residential-fields { grid-template-columns: 1fr; gap: 0; }
   .residential-review-page .residential-brand { font-size: 20px; }
   .residential-review-page .residential-request h1 { font-size: 24px; line-height: 1.25; }

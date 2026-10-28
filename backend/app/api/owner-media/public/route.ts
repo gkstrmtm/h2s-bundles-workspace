@@ -10,9 +10,14 @@ type PublicSectionConfig = {
   key: string;
   title: string;
   service: 'cameras' | 'tv_mounting';
+  photoOnly?: boolean;
 };
 
 const SURFACE_CONFIG: Record<string, PublicSectionConfig[]> = {
+  residential: [
+    { key: 'residential_tv_proof', title: 'TV mounting', service: 'tv_mounting', photoOnly: true },
+    { key: 'residential_camera_proof', title: 'Security cameras', service: 'cameras', photoOnly: true },
+  ],
   commercial_intake: [
     { key: 'commercial_security_rail', title: 'Security camera work', service: 'cameras' },
     { key: 'commercial_display_rail', title: 'Display and TV work', service: 'tv_mounting' },
@@ -119,7 +124,7 @@ type OwnerMediaPublicRow = {
   content_sha256: string | null;
 };
 
-async function fetchOwnerMediaRows(sectionKey: string, limit: number, serviceType: string) {
+async function fetchOwnerMediaRows(sectionKey: string, limit: number, serviceType: string, photoOnly = false) {
   let client;
   try {
     client = getSupabase();
@@ -127,7 +132,7 @@ async function fetchOwnerMediaRows(sectionKey: string, limit: number, serviceTyp
     return [];
   }
 
-  const { data, error } = await client
+  let query = client
     .from('owner_media_uploads')
     .select('asset_id, media_kind, city, service_type, review_state, display_order, psychological_weight, created_at, updated_at, soft_location_label, content_sha256')
     .contains('frontend_destinations', [sectionKey])
@@ -135,7 +140,9 @@ async function fetchOwnerMediaRows(sectionKey: string, limit: number, serviceTyp
     .eq('review_state', 'published')
     .eq('usage_rights_status', 'social_allowed')
     .neq('customer_media_opt_in', 'declined')
-    .eq('service_type', serviceType)
+    .eq('service_type', serviceType);
+  if (photoOnly) query = query.eq('media_kind', 'photo');
+  const { data, error } = await query
     .order('display_order', { ascending: true, nullsFirst: false })
     .order('psychological_weight', { ascending: false, nullsFirst: false })
     .order('updated_at', { ascending: false, nullsFirst: false })
@@ -157,7 +164,7 @@ async function fetchOwnerMediaRows(sectionKey: string, limit: number, serviceTyp
   return deduped.map((row) => mapOwnerMediaItem(row, sectionKey));
 }
 
-async function fetchProofFallback(sectionKey: string, service: 'cameras' | 'tv_mounting', limit: number) {
+async function fetchProofFallback(sectionKey: string, service: 'cameras' | 'tv_mounting', limit: number, photoOnly = false) {
   let client;
   try {
     client = getSupabase();
@@ -165,12 +172,13 @@ async function fetchProofFallback(sectionKey: string, service: 'cameras' | 'tv_m
     return [];
   }
 
-  const baseQuery = client
+  let baseQuery = client
     .from('proof_assets')
     .select('*')
     .eq('is_visible', true)
     .eq('service', service)
     .limit(limit);
+  if (photoOnly) baseQuery = baseQuery.eq('media_kind', 'photo');
 
   const recent = await baseQuery.order('updated_at', { ascending: false }).order('created_at', { ascending: false });
   const fallback = recent.error ? await baseQuery.order('created_at', { ascending: false }) : recent;
@@ -186,10 +194,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const surface = normalizeSurface(url.searchParams.get('surface') || 'commercial_intake');
   const limit = clampInt(url.searchParams.get('limit'), 4, 1, 8);
-  const sections = SURFACE_CONFIG[surface] || SURFACE_CONFIG.commercial_intake;
+  const sections = SURFACE_CONFIG[surface];
+  if (!sections) return NextResponse.json({ ok: false, error: 'Unsupported public media page' }, { status: 400, headers: corsHeaders() });
   let placements: MediaPlacement[];
   try {
-    placements = await readMediaPlacements('commercial_intake');
+    placements = await readMediaPlacements(surface);
   } catch (error) {
     console.error('[owner-media/public] Placement read failed', error);
     return NextResponse.json({ ok: false, error: 'Could not load page placements' }, { status: 503, headers: corsHeaders() });
@@ -200,14 +209,14 @@ export async function GET(request: Request) {
   for (const section of sections) {
     let ownerItems: any[] = [];
     try {
-      ownerItems = await fetchOwnerMediaRows(section.key, limit, section.service);
+      ownerItems = await fetchOwnerMediaRows(section.key, limit, section.service, section.photoOnly);
     } catch {
       ownerItems = [];
     }
 
     let items = ownerItems.slice(0, limit);
     if (items.length < limit) {
-      const proofItems = await fetchProofFallback(section.key, section.service, limit - items.length);
+      const proofItems = await fetchProofFallback(section.key, section.service, limit - items.length, section.photoOnly);
       items = items.concat(proofItems);
     }
 
@@ -215,7 +224,8 @@ export async function GET(request: Request) {
       const explicit = await resolvePlacementAssets(placements, section.key);
       payloadSections[section.key] = {
         title: section.title,
-        items: mergeMediaPlacements(items, explicit, placements, section.key, limit, section.service),
+        items: mergeMediaPlacements(items, section.photoOnly ? explicit.filter(item => item.media_kind === 'photo') : explicit,
+          placements, section.key, limit, section.service),
       };
     } catch (error) {
       console.error('[owner-media/public] Placed media failed', error);
@@ -223,7 +233,7 @@ export async function GET(request: Request) {
     }
   }
 
-  try {
+  if (surface === 'commercial_intake') try {
     const hero = await resolvePlacementAssets(placements, 'commercial_hero');
     const railItems = sections.flatMap((section) => payloadSections[section.key].items);
     const fallback = railItems.filter((item) => item.media_kind !== 'video')
