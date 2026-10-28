@@ -9,13 +9,13 @@
     },
     "connectionEnv": "DATABASE_URL_DIRECT",
     "notification039": {
-      "reviewOnly": true,
-      "authorization": null,
+      "reviewOnly": false,
+      "authorization": "On 2026-10-28 at 08:33 US Eastern the workspace owner explicitly authorized applying only 039_notification_routing.sql to production nkccbnrduojnzjfrpwva through the guarded runner, exact LF-normalized SHA-256 daf2487b9b26086804d256f44985462fca9fc19cbc95e21dd9db424a3cbf58e6, after target/TLS/prerequisite/checksum checks with stop on drift and independent verification. Deploy backend then matching frontend from complete clean application bfae38102ff3c0894e99725d0212c488c1140bf8; this authorization amendment is separate. Normal genuinely due Residential notification processing under existing flags/cron is authorized. Preserve media and recipients; exclude 040, fabricated submissions, test messages, routing changes and extra recovery actions.",
       "sqlSha256": "daf2487b9b26086804d256f44985462fca9fc19cbc95e21dd9db424a3cbf58e6"
     },
     "applyAuthorized": true,
     "authorization": "Workspace owner explicitly classified this project as production and authorized additive Owner Uploads and media placement migrations on 2026-10-16.",
-    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql", "037_residential_inquiries.sql", "038_residential_workspace.sql"],
+    "authorizedMigrations": ["029_create_media_placements.sql", "030_owner_media_placement_fields.sql", "031_commercial_reliability.sql", "032_commercial_operations.sql", "033_atomic_stripe_order_metadata.sql", "034_commercial_followup_delivery.sql", "035_commercial_business_tools.sql", "036_commercial_calendar_workload.sql", "037_residential_inquiries.sql", "038_residential_workspace.sql", "039_notification_routing.sql"],
     "residential037": {
       "reviewOnly": false,
       "authorization": "On 2026-10-26 the workspace owner explicitly selected the production activation release: apply guarded additive migrations 037 and 038 to established production nkccbnrduojnzjfrpwva, deploy matching backend/frontend through Vercel, and enable residential intake, owner scheduling and approved SMS reminders. The dedicated recipient is configured outside Git; Commercial routing remains unchanged. Exact reviewed 037 checksum below. No destructive reconciliation, fabricated customer records, test messages, charges or permission expansion is authorized.",
