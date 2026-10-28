@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Request TV mounting or security camera installation for your home. A short request, a real conversation, and an agreed time before anything is booked.">
+  <meta name="description" content="TV mounting and security camera installation in Greenville, Spartanburg and surrounding Upstate South Carolina. Request a call or text to discuss your installation and equipment needs.">
   <title>TV Mounting &amp; Security Cameras for Your Home | Home2Smart</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Space+Grotesk:wght@500;700&amp;display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
@@ -26,8 +26,8 @@
   <main class="residential-shell">
     <section class="residential-intro">
       <p class="residential-eyebrow">For your home</p>
-      <h1>Your TV on the wall.<br>Your home in view.</h1>
-      <p class="residential-service-copy">TV mounting and security camera installation for your home. Have equipment already or need help choosing?</p>
+      <h1>TVs mounted.<br>Security cameras installed.</h1>
+      <p class="residential-service-copy">We install equipment you already own or help you choose and supply what you need. Equipment is quoted separately from installation.</p>
       <section class="residential-proof" aria-labelledby="residential-proof-title">
         <h2 id="residential-proof-title">Installation work</h2>
         <div id="residential-proof-media" class="residential-proof-media" aria-busy="true"></div>
@@ -35,42 +35,42 @@
       </section>
       <section class="residential-next" aria-labelledby="residential-next-title">
         <h2 id="residential-next-title">What happens next</h2>
-        <p>Discuss the work. Review the quote. Agree on a time.</p>
-        <p class="residential-note">Installation-only and equipment-included work are quoted separately. Equipment, wiring, mounting surfaces, access and travel affect scope and price.</p>
+        <p>We call or text to discuss your equipment and installation needs. Then we review the quote with you and agree on a time.</p>
+        <p class="residential-note">Serving Greenville, Spartanburg and surrounding Upstate South Carolina. Share your city so we can confirm service at your location.</p>
       </section>
     </section>
     <section class="residential-request" aria-labelledby="request-title">
-      <h2 id="request-title">What can we help with?</h2>
+      <h2 id="request-title">What do you need installed?</h2>
       <form id="residential-form" novalidate>
         <fieldset class="residential-services" aria-describedby="residential-service-error"><legend>Service &middot; choose one or both</legend>
           <label><input type="checkbox" name="service" value="TV Mounting"><span>TV mounting</span></label>
-          <label><input type="checkbox" name="service" value="Security Cameras"><span>Security cameras</span></label>
+          <label><input type="checkbox" name="service" value="Security Cameras"><span>Camera installation</span></label>
         </fieldset>
         <p id="residential-service-error" class="residential-field-error"></p>
         <label class="residential-field">Your name<input class="form-input" name="fullName" autocomplete="name" maxlength="120" aria-describedby="residential-name-error" required><span id="residential-name-error" class="residential-field-error"></span></label>
         <div class="residential-fields">
           <label class="residential-field">Phone number<input class="form-input" name="phone" type="tel" autocomplete="tel" maxlength="40" aria-describedby="residential-phone-error" required><span id="residential-phone-error" class="residential-field-error"></span></label>
-          <label class="residential-field">City<input class="form-input" name="city" autocomplete="address-level2" maxlength="120" aria-describedby="residential-city-error" required><span id="residential-city-error" class="residential-field-error"></span></label>
+          <label class="residential-field">Installation city<input class="form-input" name="city" autocomplete="address-level2" maxlength="120" aria-describedby="residential-city-error" required><span id="residential-city-error" class="residential-field-error"></span></label>
         </div>
-        <label class="residential-field residential-note-field">Quick note (optional)<textarea class="form-input" name="notes" rows="2" maxlength="1000"></textarea></label>
+        <label class="residential-field residential-note-field">Project note (optional)<textarea class="form-input" name="notes" rows="2" maxlength="1000"></textarea></label>
         <section class="residential-preferences" aria-label="Optional preferred days">
-          <button type="button" class="residential-secondary residential-date-action" id="residential-add-day" aria-controls="residential-availability" aria-describedby="residential-preferences-hint">Add preferred days (optional)</button>
-          <p id="residential-preferences-hint" class="residential-note" hidden>Up to three days, Eastern Time.</p>
+          <button type="button" class="residential-secondary residential-date-action" id="residential-add-day" aria-controls="residential-availability" aria-describedby="residential-preferences-hint"><svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4m8-4v4M3 10h18"/><rect x="3" y="4" width="18" height="18" rx="2"/></svg>Add preferred days (optional)</button>
+          <p id="residential-preferences-hint" class="residential-note" hidden>Choose up to three days that could work for installation. These are preferences, not reserved times. Eastern Time.</p>
           <div id="residential-availability"></div>
           <p id="residential-preferences-status" class="residential-field-error" role="status"></p>
         </section>
         <div class="residential-permission">
           <label class="residential-consent"><input type="checkbox" name="smsOptIn"><span>I agree to project texts from Home2Smart, including automated updates. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.</span></label>
-          <p class="residential-note residential-call-alternative">For a phone call instead, leave this unchecked.</p>
+          <p class="residential-note residential-call-alternative">Prefer a call? Leave the box unchecked.</p>
         </div>
         <div class="residential-submit-area">
-          <button class="residential-primary" id="residential-submit" type="submit" aria-describedby="residential-submit-hint residential-status" disabled>Request a follow-up</button>
-          <p id="residential-submit-hint" class="residential-note">This requests follow-up, not a confirmed installation.</p>
+          <button class="residential-primary" id="residential-submit" type="submit" aria-describedby="residential-submit-hint residential-status" disabled>Request a call or text</button>
+          <p id="residential-submit-hint" class="residential-note">We'll contact you to discuss the work. This does not book an installation.</p>
           <p id="residential-status" role="status" aria-live="polite">Checking the request form...</p>
           <button type="button" class="residential-secondary" id="residential-separate" hidden>Start a separate project</button>
         </div>
       </form>
-      <noscript><p>Enable JavaScript to send a request. No request has been submitted.</p></noscript>
+      <noscript><p>Turn on JavaScript in your browser to send this request.</p></noscript>
     </section>
   </main>
   <footer class="residential-footer">Home2Smart &middot; Residential installation inquiries &middot; <a href="/commercial">Commercial projects</a></footer>

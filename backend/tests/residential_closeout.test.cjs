@@ -161,3 +161,132 @@ test('installation previews share the canonical renderer, apply only destination
     assert.match(status.textContent,/photo could not load.*still send/);
   }finally{dom.window.close();}
 });
+test('copy names services, equipment options and established coverage without changing the consent disclosure',()=>{
+  const html=file('residential.html');
+  assert.match(html,/<h1>TVs mounted\.<br>Security cameras installed\.<\/h1>/);
+  assert.match(html,/equipment you already own or help you choose and supply what you need/);
+  assert.match(html,/Equipment is quoted separately from installation/);
+  assert.match(html,/Serving Greenville, Spartanburg and surrounding Upstate South Carolina/);
+  assert.match(html,/Share your city so we can confirm service at your location/);
+  assert.match(html,/>Request a call or text<\/button>/);
+  assert.match(html,/preferences, not reserved times/);
+  const dom=new JSDOM(html);
+  try{
+    const box=dom.window.document.querySelector('[name=smsOptIn]');
+    assert.equal(box.checked,false);
+    assert.equal(box.parentElement.querySelector('span').textContent,
+      'I agree to project texts from Home2Smart, including automated updates. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.');
+  }finally{dom.window.close();}
+});
+test('compact proof stays in the desktop intro and precedes the mobile request with quieter unselected tiles',()=>{
+  const dom=new JSDOM(file('residential.html'));
+  try{
+    const doc=dom.window.document,css=file('residential.css'),mobile=css.slice(css.indexOf('@media (max-width: 720px)'));
+    assert.ok(doc.querySelector('.residential-intro > .residential-proof'));
+    assert.equal(doc.querySelectorAll('#residential-proof-media').length,1);
+    assert.match(css,/\.residential-proof-media\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+    assert.match(mobile,/\.residential-intake-page \.residential-proof\s*\{[^}]*order:\s*1;/);
+    assert.match(mobile,/\.residential-intake-page \.residential-request\s*\{[^}]*order:\s*2;/);
+    assert.doesNotMatch(mobile,/^\s*\.residential-request\s*\{[^}]*order:/m);
+    assert.match(css,/\.residential-intake-page \.residential-services label\s*\{[^}]*border:\s*1px solid var\(--border\)/);
+    assert.match(css,/\.residential-intake-page \.residential-services label:has\(:checked\)\s*\{[^}]*border:\s*2px solid var\(--azure\)/);
+  }finally{dom.window.close();}
+});
+test('residential photo crops do not change the shared source or other destination settings',async()=>{
+  const dom=new JSDOM('<div id="media"></div><p id="status"></p>',{url:'http://localhost/residential',runScripts:'outside-only'});
+  try{
+    const w=dom.window;w.eval(file('media-placement-style.js'));w.eval(file('residential-media.js'));
+    const source={asset_id:'shared-photo',media_kind:'photo',media_url:'/approved-original.jpg'};
+    const tv={...source,service:'tv_mounting',media_placement:{fit:'cover',focal_x:50,focal_y:45,zoom:1.8}};
+    const camera={...source,service:'cameras',media_placement:{fit:'cover',focal_x:60,focal_y:30,zoom:1}};
+    const otherPlacements={commercial:{fit:'contain',focal_x:25,focal_y:70,zoom:1.1},
+      bundles:{fit:'cover',focal_x:75,focal_y:20,zoom:1.3}};
+    const before=JSON.stringify({source,tv,camera,otherPlacements});
+    const selected=await w.H2SResidentialMedia.read(async()=>({ok:true,surface:'residential',
+      sections:{residential_tv_proof:{items:[tv]},residential_camera_proof:{items:[camera]}}}));
+    const container=w.document.getElementById('media');
+    w.H2SResidentialMedia.render(container,selected,w.document.getElementById('status'));
+    const images=container.querySelectorAll('img');
+    assert.equal(images.length,2);
+    assert.equal(images[0].style.transform,'scale(1.8)');assert.equal(images[0].style.transformOrigin,'50% 45%');
+    assert.equal(images[1].style.transform,'scale(1)');assert.equal(images[1].style.objectPosition,'60% 30%');
+    assert.equal(images[0].getAttribute('src'),images[1].getAttribute('src'));
+    assert.equal(JSON.stringify({source,tv,camera,otherPlacements}),before);
+  }finally{dom.window.close();}
+});
+test('refined controls keep labeled native multi-select inputs and a decorative-only calendar icon',()=>{
+  const dom=new JSDOM(file('residential.html'));
+  try{
+    const doc=dom.window.document,services=Array.from(doc.querySelectorAll('.residential-services input'));
+    assert.equal(services.length,2);
+    for(const input of services){
+      assert.equal(input.type,'checkbox');assert.equal(input.name,'service');
+      assert.equal(input.checked,false);assert.equal(input.hasAttribute('role'),false);
+      assert.ok(input.closest('label').textContent.trim());
+    }
+    for(const name of ['fullName','phone','city','notes']){
+      const field=doc.querySelector(`[name="${name}"]`);
+      assert.ok(field.closest('label').textContent.trim());assert.equal(field.hasAttribute('placeholder'),false);
+    }
+    const action=doc.getElementById('residential-add-day'),icon=action.querySelector('svg');
+    assert.equal(action.textContent,'Add preferred days (optional)');
+    assert.equal(icon.getAttribute('aria-hidden'),'true');assert.equal(icon.getAttribute('focusable'),'false');
+    assert.equal(icon.getAttribute('width'),'16');assert.equal(icon.getAttribute('height'),'16');
+    assert.equal(doc.querySelector('[name=smsOptIn]').checked,false);
+  }finally{dom.window.close();}
+});
+test('Call and Text confirmations, duplicates and notification warnings match consent without claiming delivery',async t=>{
+  for(const smsOptIn of [false,true])for(const needsReview of [false,true])await t.test(`${smsOptIn?'Text':'Call'} / review ${needsReview}`,async()=>{
+    const saved=storage(),handler=async()=>Response.json({ok:true,reference:'HOME-COPY',
+      notifications:{enabled:true,staff:{needsReview},customer:smsOptIn?{ok:true}:null}});
+    const p=page(handler,saved);
+    try{
+      await waitFor(()=>!p.submit.disabled);p.fill();p.form.elements.smsOptIn.checked=smsOptIn;
+      p.form.requestSubmit();await waitFor(()=>p.submit.textContent==='Request received');
+      const text=p.w.document.getElementById('residential-status').textContent;
+      assert.match(text,new RegExp(`We will ${smsOptIn?'text':'call'} you to discuss your equipment and installation needs\\.`));
+      assert.match(text,/No installation is booked/);
+      assert.equal(/notification needs staff review/i.test(text),needsReview);
+      assert.doesNotMatch(text,/message (?:was |has been )?(?:sent|delivered)|text (?:was |has been )?(?:sent|delivered)/i);
+      const reopened=page(handler,saved);
+      try{
+        await waitFor(()=>!reopened.submit.disabled);reopened.fill();reopened.form.elements.smsOptIn.checked=smsOptIn;
+        reopened.form.requestSubmit();await waitFor(()=>reopened.submit.textContent==='Request received');
+        assert.equal(reopened.posts.length,0);
+        assert.match(reopened.w.document.getElementById('residential-status').textContent,new RegExp(`We will ${smsOptIn?'text':'call'} you`));
+      }finally{reopened.close();}
+    }finally{p.close();}
+  });
+});
+test('unavailable form copy does not imply a received inquiry',async()=>{
+  const p=page(async()=>assert.fail('Disabled form must not submit'),storage(),false);
+  try{
+    await waitFor(()=>p.w.document.getElementById('residential-status').textContent.includes('not accepting'));
+    assert.equal(p.submit.disabled,true);p.fill();p.form.requestSubmit();
+    assert.equal(p.posts.length,0);
+    assert.match(p.w.document.getElementById('residential-status').textContent,/No request was submitted/);
+  }finally{p.close();}
+});
+test('server and network errors use readable copy and retain the same retry identity',async t=>{
+  for(const kind of ['server','network','invalid response'])await t.test(kind,async()=>{
+    let attempts=0;
+    const p=page(async()=>{
+      if(!attempts++){
+        if(kind==='network')throw new p.w.TypeError('Fixture fetch implementation detail');
+        if(kind==='invalid response')return new Response('<html>Fixture gateway</html>',{status:502});
+        return Response.json({ok:false,error:'Fixture internal routing table storage detail'},{status:503});
+      }
+      return Response.json({ok:true,reference:'HOME-RETRY-COPY',notifications:{enabled:false}});
+    });
+    try{
+      await waitFor(()=>!p.submit.disabled);p.fill();p.form.requestSubmit();
+      await waitFor(()=>p.submit.textContent==='Retry this same request');
+      const error=p.w.document.getElementById('residential-status').textContent;
+      assert.match(error,/could not confirm the result/);
+      assert.doesNotMatch(error,/Fixture|TypeError|Unexpected token|<html|routing table/);
+      assert.equal(p.form.elements.fullName.disabled,true);p.form.requestSubmit();
+      await waitFor(()=>p.submit.textContent==='Request received');
+      assert.deepEqual(p.posts[0],p.posts[1]);
+    }finally{p.close();}
+  });
+});

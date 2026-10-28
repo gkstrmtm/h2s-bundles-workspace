@@ -13,10 +13,13 @@
   function readReceipt() {
     const raw = sessionStorage.getItem(receiptKey);
     if (!raw) return null;
-    const receipt = JSON.parse(raw), token = /^[A-Za-z0-9_-]{20,120}$/;
+    let receipt;
+    try { receipt=JSON.parse(raw); }
+    catch (error) { console.error('[Residential receipt]',error);throw new Error('Your previous request could not be checked. Contact Home2Smart before sending again.'); }
+    const token = /^[A-Za-z0-9_-]{20,120}$/;
     if (!receipt || !/^[a-f0-9]{64}$/.test(receipt.digest) || !token.test(receipt.publicToken)
       || !token.test(receipt.submissionKey) || !(receipt.reference===null || typeof receipt.reference==='string' && receipt.reference.length<=80)) {
-      throw new Error('The previous submission receipt could not be read. Contact Home2Smart before sending again.');
+      throw new Error('Your previous request could not be checked. Contact Home2Smart before sending again.');
     }
     return receipt;
   }
@@ -29,12 +32,15 @@
     document.getElementById('residential-submit-hint').hidden=true;
     status.textContent=message;separate.hidden=false;separate.disabled=false;
   }
+  function nextContact(byText) {
+    return `We will ${byText?'text':'call'} you to discuss your equipment and installation needs.`;
+  }
   separate.onclick = () => {
     completed=false;pending=null;pendingDigest=null;formIdentity=null;separateProject=true;
     Array.from(form.elements).forEach(control=>{control.disabled=false;});
     document.querySelectorAll('[data-remove]').forEach(button=>button.click());
     form.reset();sizeNote();separate.hidden=true;submit.disabled=!enabled;
-    submit.textContent='Request a follow-up';document.getElementById('residential-submit-hint').hidden=false;
+    submit.textContent='Request a call or text';document.getElementById('residential-submit-hint').hidden=false;
     status.textContent='Enter the details for the separate project.';form.querySelector('[name=service]').focus();
   };
   function fieldError(name, message) {
@@ -46,7 +52,7 @@
     const services = form.querySelectorAll('[name=service]:checked');
     serviceError.textContent = services.length ? '' : 'Choose one or both services.';
     let first = services.length ? null : form.querySelector('[name=service]');
-    for (const [name, message] of [['fullName','Enter your name.'],['phone','Enter your phone number.'],['city','Enter your city.']]) {
+    for (const [name, message] of [['fullName','Enter your name.'],['phone','Enter your phone number.'],['city','Enter the installation city.']]) {
       const field = form.elements.namedItem(name);
       let error = field.value.trim() ? '' : message;
       if (!error && name === 'phone') {
@@ -82,9 +88,18 @@
     try {
       const response = await fetch('/api/residential-intake',{method,cache:'no-store',signal:controller.signal,
         ...(body?{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{})});
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw Object.assign(new Error(data.error || 'The request service is unavailable.'),{status:response.status});
+      let data;
+      try { data=await response.json(); }
+      catch (error) { console.error('[Residential response]',error);throw new Error('We could not confirm the response from Home2Smart.'); }
+      if (!response.ok || !data.ok) {
+        if (response.status>=500) console.error('[Residential request]',{status:response.status,error:data.error});
+        throw Object.assign(new Error(response.status>=500?'The request service is temporarily unavailable.'
+          :data.error || 'We could not process your request right now.'),{status:response.status});
+      }
       return data;
+    } catch (error) {
+      if (error instanceof TypeError) throw new Error('We could not connect to Home2Smart. Check your connection.');
+      throw error;
     } finally { clearTimeout(timer); }
   }
   function preference(row) { return {date:row.querySelector('[data-date]').value,period:row.querySelector('input:checked').value}; }
@@ -96,8 +111,8 @@
     document.getElementById('residential-preferences-hint').hidden=false;
     const id = ++sequence, row = document.createElement('div');
     row.className = 'residential-availability-row';
-    row.innerHTML = `<label class="residential-field">Preferred day<input data-date type="text" placeholder="Choose a day (optional)" aria-label="Preferred day ${id}"></label>
-      <fieldset class="residential-periods"><legend>Broad availability</legend>${['morning','afternoon','evening','flexible'].map(value=>
+    row.innerHTML = `<label class="residential-field">Preferred day<input class="form-input" data-date type="text" placeholder="Choose a day (optional)" aria-label="Preferred day ${id}"></label>
+      <fieldset class="residential-periods"><legend>Preferred time of day</legend>${['morning','afternoon','evening','flexible'].map(value=>
         `<label><input type="radio" name="period-${id}" value="${value}" ${value==='flexible'?'checked':''}>${value[0].toUpperCase()+value.slice(1)}</label>`).join('')}</fieldset>
       <button type="button" class="residential-secondary" data-remove>Remove day</button>`;
     holder.append(row);
@@ -131,39 +146,39 @@
         pendingDigest=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
         const receipt=readReceipt(), matching=receipt?.digest===pendingDigest;
         if (!separateProject && matching && receipt.reference) {
-          finish(`These details match request ${receipt.reference}, already sent from this tab. It was not sent again. Start a separate project only for different work.`);
+          finish(`Request ${receipt.reference} is already saved. It was not sent again. ${nextContact(input.smsOptIn)} Start a separate project only for different work.`);
           return;
         }
         if (!separateProject && receipt && !receipt.reference && !matching) {
           separate.hidden=false;
-          throw new Error('A previous request may have been received. Re-enter the same details to retry, or start a separate project only for different work.');
+          throw new Error('Your previous request may already be saved. Re-enter the same details to check it, or start a separate project only for different work.');
         }
         formIdentity ||= !separateProject && matching
           ? {publicToken:receipt.publicToken,submissionKey:receipt.submissionKey} : identity();
         pending={...formIdentity,...input};
       }
       try { remember(); }
-      catch (error) { console.error('[Residential receipt]',error);throw new Error('This browser could not retain a safe retry receipt. Allow site storage and try again.'); }
-      status.textContent='Sending your inquiry...';posted=true;
+      catch (error) { console.error('[Residential receipt]',error);throw new Error('Your browser must allow site storage so a retry does not create a duplicate. Allow site storage and try again.'); }
+      status.textContent='Sending your request...';posted=true;
       const result=await request('POST',pending);
       const delivery=result.notifications;
       const issue=delivery?.enabled && [delivery.staff,delivery.customer].some(value=>value?.needsReview);
-      finish(`Request received: ${result.reference}. No installation is booked. We will contact you to discuss the work and agree on timing.${issue?' Your inquiry is saved, but text delivery needs staff review. Please do not submit again.':''}`);
+      finish(`Request received: ${result.reference}. ${nextContact(pending.smsOptIn)} No installation is booked.${issue?' A notification needs staff review. Your request is saved; please do not submit again.':''}`);
       try { remember(result.reference); }
-      catch (error) { console.error('[Residential receipt]',error);status.textContent+=' This browser could not retain the confirmation. Keep your reference; do not send a new request for the same work.'; }
+      catch (error) { console.error('[Residential receipt]',error);status.textContent+=' Your browser could not keep this confirmation. Keep your reference and do not send another request for the same work.'; }
     } catch (error) {
       const editable=!posted || error.status===400 || error.status===413;
       if(editable) {
         pending=null;pendingDigest=null;controls.forEach((node,index)=>{node.disabled=disabled[index];});
         if(posted)try {sessionStorage.removeItem(receiptKey);}
-        catch(storageError){console.error('[Residential receipt]',storageError);error.message+=' The rejected submission receipt could not be cleared; contact Home2Smart before sending changed details.';}
+        catch(storageError){console.error('[Residential receipt]',storageError);error.message+=' Your browser could not clear the previous request check. Contact Home2Smart before sending changed details.';}
       }
-      status.textContent=`${!posted?'Your request was not sent: ':''}${error.name==='AbortError'?'The connection timed out.':error.message} ${editable?'Review your details before sending.':'Your details are retained and locked to avoid duplicates. Retry sends this same request.'}`;
+      status.textContent=`${!posted?'Your request was not sent. ':''}${error.name==='AbortError'?'The connection timed out.':error.message} ${editable?'Review your details before sending.':'We could not confirm the result. Your details are kept unchanged; retry checks the same request without creating another.'}`;
       submit.disabled=false;submit.textContent=editable?'Review and send request':'Retry this same request';
     } finally {sending=false;}
   };
   request('GET').then(result=>{
     enabled=result.enabled===true;submit.disabled=!enabled;
-    status.textContent=enabled?'':'This new homeowner request form is not live yet. No request can be submitted.';
-  }).catch(error=>{status.textContent=`The request service could not load. No request was submitted. ${error.message}`;});
+    status.textContent=enabled?'':'This form is not accepting requests right now. No request was submitted.';
+  }).catch(error=>{status.textContent=`The request form could not load. No request was submitted. ${error.message}`;});
 })();

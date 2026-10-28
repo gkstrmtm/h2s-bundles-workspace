@@ -1,5 +1,79 @@
 # Commercial operations: existing-order workflow
 
+## Residential release candidate (2026-10-28; not deployed)
+
+This selective increment contains residential copy, native control styling,
+compact mobile installation proof, calendar decorative-overflow correction,
+Call/Text confirmation and retry wording, and Residential-specific Queue copy.
+It preserves consent, submission identities, shared media originals and all
+backend implementations. Shared address/autocomplete work, migration 040,
+owner-routing changes and other dashboard/media edits are excluded.
+
+The isolated release fixture uses 036-039 without 040. Draft 040 is NOT a
+dependency of these presentation changes. Without 040, the existing calendar
+does not enforce a complete residential installation address at confirmation;
+do not claim that protection or selected-place metadata invalidation. The
+separate address increment must explicitly adopt and verify those guards.
+
+Read-only production `status` and `verify --target production` succeeded using
+the established ignored `backend/.env.migrations.local`, with connection
+fallback from ignored `backend/.env.local`. Both commands verify TLS and use
+read-only transactions. `DATABASE_URL_DIRECT` and `MIGRATION_CA_CERT_PATH`
+are available there; no credentials belong in Git. History and objects through
+038 are verified. **039 is not applied and its objects are absent.** Existing
+committed owner-routing reads require it, even with residential SMS disabled.
+Missing 039 fails closed; an environment phone does not bypass a missing table.
+No migrations were applied during candidate preparation.
+
+Reviewed additive prerequisite: `backend/migrations/039_notification_routing.sql`.
+Runner SHA-256 (UTF-8, CRLF normalized to LF):
+`daf2487b9b26086804d256f44985462fca9fc19cbc95e21dd9db424a3cbf58e6`.
+The Windows raw-byte SHA-256 at inspection was
+`be3abcdd4ddde6f6428b9c78a82466a82d915954b97d4bf9257be414d4b08dd0`;
+the runner deliberately uses normalized SQL, not that checkout-specific hash.
+039 creates default-deny routing/audit tables and a service-only, revision-checked,
+transactionally audited save RPC. It seeds no phone, changes no recipient and
+sends nothing. Its target registration remains review-only and lacks separate
+apply authorization. Do not silently authorize or apply it.
+
+Authenticated Vercel metadata confirms the backend's team is **active Pro**,
+supporting the existing every-minute `/api/residential-maintenance` cron.
+The production cron definition is enabled. Production project configuration has
+all three residential flags true, a configured E.164 reviewer default,
+`CRON_SECRET`, existing Supabase/Twilio settings, and canonical link origin
+`https://shop.home2smart.com`. Values for credentials and recipient numbers are
+not recorded here. These are project configuration checks, not handset delivery
+or successful cron-execution evidence. Changes to Vercel environment configuration
+only take effect in deployments that include them.
+
+Scheduling, callbacks, Queue access and routing changes require an enabled
+`Dashboard_Users` ADMIN, a nonexpired `Dashboard_Sessions` bearer session, and
+the configured management database (or existing application-database fallback).
+An owner review token only permits its explicit follow-up decision; it does not
+grant ADMIN access. Confirm the intended person's real login separately; fixture
+ADMIN success is not proof of that person's access. Do not create sessions,
+change roles, routing or recipients as part of this release.
+
+Exact isolated candidate validation passed: **284 tests, zero failures or skips**,
+plus `npm --prefix backend run build` (production compilation/type checking,
+non-live placeholder configuration). Test command, run from the candidate root:
+
+```powershell
+node --test backend\tests\residential_release.test.cjs backend\tests\residential_inquiry.test.cjs backend\tests\residential_workspace.test.cjs backend\tests\residential_workspace_ui.test.cjs backend\tests\residential_closeout.test.cjs backend\tests\residential_ui.test.cjs backend\tests\notification_routing.test.cjs backend\tests\notification_routing_ui.test.cjs backend\tests\commercial_queue.test.cjs backend\tests\commercial_calendar.test.cjs backend\tests\commercial_operations.test.cjs backend\tests\media_placements.test.cjs backend\tests\media_page_heroes.test.cjs backend\tests\media_refresh.test.cjs
+```
+
+Chrome inspected the candidate's actual HTML/CSS at 1440/390/320px with approved
+photo bytes and isolated backend intake: no horizontal overflow, compact paired
+proof, reachable services, unchecked consent, validation and call-first saved
+confirmation. The temporary server closed after inspection. Physical iOS and
+native multi-session PostgreSQL concurrency were not tested in this increment.
+
+A passing build is not permission to deploy against production missing 039.
+Keep automatic `retro-dev` deployment disabled. Remaining acceptance:
+separately authorized 039 application and
+read-only verification, intended staff login, deployed origin/route/media checks,
+cron execution and provider/handset acceptance without duplicate sends.
+
 ## Residential presentation closeout (2026-10-27; not deployed)
 
 The production sources are `frontend/residential.html`, `residential.css`,

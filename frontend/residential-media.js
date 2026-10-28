@@ -1,6 +1,6 @@
 (function (root) {
   'use strict';
-  const areas = { residential_tv_proof: 'TV mounting', residential_camera_proof: 'Security cameras' };
+  const areas = { residential_tv_proof: 'TV mounted by Home2Smart', residential_camera_proof: 'Camera installed by Home2Smart' };
   function selection(sections) {
     const selected = Object.fromEntries(Object.keys(areas).map(area => [area,
       (sections?.[area]?.items || []).filter(asset => asset.media_kind !== 'video'

@@ -49806,7 +49806,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
 
                     <section class="commercial-queue-next" aria-label="Next follow-up action">
                         <div class="commercial-queue-detail__section-note"><strong>Next action</strong> · ${escapeHtml(methodLabel)} · ${escapeHtml(item.followUp && item.followUp.nextAction || 'Review saved contact preference before contacting the customer.')}</div>
-                        <div class="commercial-queue-detail__section-note">Technician approval does not complete customer follow-up.</div>
+                        <div class="commercial-queue-detail__section-note">${item.market === 'residential' ? 'Accepting follow-up does not book an installation.' : 'Technician approval does not complete customer follow-up.'}</div>
                         ${this.renderContactDetails(item)}
                     </section>
 
@@ -49950,6 +49950,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             },
 
             confirmationForItem(item) {
+                if (item.market === 'residential') return 'Review installation confirmation and text status in the homeowner workspace. Follow-up acceptance does not confirm a booking.';
                 const consultation = item.consultation;
                 if (!consultation || !consultation.relatedOrderId) return 'Not confirmed; no appointment created';
                 if (consultation.customerConfirmationSentAt) return 'SMS provider accepted; delivery and customer acknowledgement unverified';

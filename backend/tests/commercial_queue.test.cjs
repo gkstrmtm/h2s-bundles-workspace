@@ -447,6 +447,10 @@ test('homeowner Queue shows preferences and follow-up scope, filters markets, an
     const document=dom.window.document;
     assert.match(document.getElementById('commercialQueueDetail').textContent,/Preferred availability \(not booked\).*2099-01-01/);
     assert.match(document.getElementById('commercialQueueDetail').textContent,/Follow-up accepted.*scheduling is separate/);
+    assert.match(document.getElementById('commercialQueueDetail').textContent,/Accepting follow-up does not book an installation/);
+    assert.doesNotMatch(document.getElementById('commercialQueueDetail').textContent,/Technician approval does not complete customer follow-up/);
+    assert.match(document.getElementById('commercialQueueDetail').textContent,/Review installation confirmation and text status in the homeowner workspace/);
+    assert.doesNotMatch(document.getElementById('commercialQueueDetail').textContent,/Not confirmed; no appointment created/);
     assert.doesNotMatch(document.getElementById('commercialQueueDetail').textContent,/Technician approved - appointment needs review/);
     const button=Array.from(document.querySelectorAll('button')).find(button=>button.textContent==='Load homeowner review link');
     assert.ok(button);

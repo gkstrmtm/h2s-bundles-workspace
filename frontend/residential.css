@@ -62,26 +62,74 @@
 .residential-intake-page .residential-field { gap: 4px; margin: 0; }
 .residential-intake-page .residential-fields { gap: 12px; }
 .residential-intake-page .residential-services { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 0; min-width: 0; }
-.residential-intake-page .residential-services label { align-items: center; gap: 8px; padding: 8px; min-height: 52px; margin: 0; font-size: 16px; line-height: 1.4; }
-.residential-intake-page .residential-services input, .residential-intake-page .residential-consent input { width: 20px; height: 20px; margin: 0; accent-color: var(--azure, var(--primary)); flex-shrink: 0; }
-.residential-intake-page .residential-services label:has(:checked) { background: var(--bg); font-weight: 700; }
+.residential-intake-page .residential-services label { align-items: center; gap: 8px; padding: 11px; min-height: 56px; margin: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 16px; line-height: 1.4; background: var(--surface); }
+.residential-intake-page .residential-services label:has(:checked) { border: 2px solid var(--azure); padding: 10px; background: color-mix(in srgb, var(--azure) 6%, var(--surface)); font-weight: 700; }
 .residential-intake-page .residential-services label:has(:focus-visible) { outline: 2px solid var(--azure, var(--primary)); outline-offset: 3px; }
+.residential-intake-page .residential-services input, .residential-intake-page .residential-consent input {
+  appearance: none; display: grid; place-content: center; width: 18px; height: 18px; margin: 0;
+  border: 1.5px solid var(--gray-500); border-radius: 4px; background: var(--surface); flex-shrink: 0; cursor: pointer;
+}
+.residential-intake-page .residential-services input::before, .residential-intake-page .residential-consent input::before {
+  content: ""; width: 4px; height: 8px; border: solid var(--white); border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg); visibility: hidden;
+}
+.residential-intake-page .residential-services input:checked, .residential-intake-page .residential-consent input:checked { background: var(--azure); border-color: var(--azure); }
+.residential-intake-page .residential-services input:checked::before, .residential-intake-page .residential-consent input:checked::before { visibility: visible; }
+.residential-intake-page .residential-services input:focus-visible { outline: none; }
+.residential-intake-page .residential-services label:has(:disabled) { cursor: not-allowed; opacity: .7; }
+.residential-intake-page #residential-form .form-input {
+  min-height: 48px; padding: 10px 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm);
+  background: var(--surface); box-shadow: none; transition: none;
+}
+.residential-intake-page #residential-form input.form-input:not([type=hidden]) { height: 48px; }
+.residential-intake-page #residential-form .form-input:focus {
+  border-color: var(--azure); outline: 2px solid var(--azure); outline-offset: 2px; box-shadow: none;
+}
+.residential-intake-page #residential-form .form-input[aria-invalid=true] { border-color: var(--danger); }
+.residential-intake-page #residential-form .form-input:disabled { background: var(--bg); color: var(--muted); cursor: not-allowed; }
+.residential-intake-page #residential-form input.form-input:disabled { -webkit-text-fill-color: var(--muted); opacity: 1; }
 .residential-note-field textarea { overflow-y: hidden; resize: vertical; }
 .residential-field-error { display: block; min-height: 16px; margin: 0; color: var(--danger); font-size: 12px; font-weight: 400; line-height: 16px; overflow-wrap: anywhere; }
 .residential-intake-page [aria-invalid=true] { border-color: var(--danger); }
-.residential-note-field { margin-top: 4px !important; }
+.residential-intake-page .residential-note-field { margin-top: 0; }
 .residential-preferences { margin-top: 8px; }
 .residential-preferences > p { margin: 0; }
 .residential-preferences [role=status]:empty { display: none; }
-.residential-page .residential-date-action { border: 0; background: transparent; padding: 8px 0; font-size: 14px; font-weight: 600; }
+.residential-intake-page .residential-date-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--cobalt); font-size: 14px; font-weight: 600;
+}
+.residential-date-action svg { flex-shrink: 0; }
+.residential-intake-page .residential-date-action:hover:not(:disabled) { background: var(--bg); border-color: var(--gray-300); }
+.residential-intake-page #residential-availability:not(:empty) { margin-top: 12px; }
+.residential-intake-page .residential-availability-row { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); padding: 12px; margin-bottom: 8px; }
+.residential-intake-page #residential-form .residential-availability-row [data-date] + input:not(:placeholder-shown):not(:disabled) {
+  border-color: var(--azure); background: color-mix(in srgb, var(--azure) 4%, var(--surface)); color: var(--cobalt);
+}
+.residential-intake-page .residential-periods { gap: 4px 12px; }
+.residential-intake-page .residential-periods legend { color: var(--muted); font-size: 13px; }
+.residential-intake-page .residential-periods label { gap: 6px; cursor: pointer; }
+.residential-intake-page .residential-periods input { margin: 0; accent-color: var(--azure); }
+.residential-intake-page .residential-periods label:has(:checked) { color: var(--cobalt); font-weight: 600; }
+.residential-intake-page .residential-availability-row [data-remove] { min-height: 44px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface); }
 .residential-intake-page .residential-consent { align-items: start; margin: 0; gap: 10px; line-height: 1.5; }
 .residential-permission { margin-top: 16px; }
-.residential-intake-page .residential-consent input { margin-top: 1px; }
-.residential-call-alternative { padding-left: 30px; margin: 4px 0 0; }
+.residential-intake-page .residential-consent input { margin-top: 2px; }
+.residential-call-alternative { padding-left: 28px; margin: 4px 0 0; }
 .residential-submit-area { display: grid; gap: 8px; margin-top: 16px; }
 .residential-submit-area > p { margin: 0; }
-.residential-submit-area .residential-primary { min-height: 48px; font-weight: 600; }
+.residential-intake-page .residential-submit-area .residential-primary { min-height: 48px; border-radius: var(--radius-sm); font-weight: 600; box-shadow: none; }
+.residential-intake-page .residential-submit-area .residential-primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.residential-intake-page #residential-separate { border-radius: var(--radius-sm); }
 .residential-submit-area [role=status] { min-height: 22px; }
+@media (max-width: 360px) {
+  .residential-intake-page .residential-services label { gap: 6px; padding-inline: 7px; }
+  .residential-intake-page .residential-services label:has(:checked) { padding-inline: 6px; }
+}
+@media (forced-colors: active) {
+  .residential-intake-page .residential-services input, .residential-intake-page .residential-consent input { appearance: auto; }
+  .residential-intake-page .residential-services input::before, .residential-intake-page .residential-consent input::before { display: none; }
+}
 .residential-review-shell { max-width: 680px; margin: 24px auto; padding: 0 16px; }
 .residential-review-details { margin: 8px 0; }
 .residential-review-details > div { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; padding: 4px 0; }
@@ -90,6 +138,8 @@
 .residential-review-actions { display: grid; gap: 12px; }
 .residential-page .residential-call:not([hidden]) { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 4px; text-decoration: none; color: var(--cobalt); font-weight: 600; }
 .residential-page .flatpickr-calendar { border: 1px solid var(--border, #cbd5e1); font-family: Inter, sans-serif; }
+.residential-page .flatpickr-calendar::before,
+.residential-page .flatpickr-calendar::after { display: none; }
 .residential-page .flatpickr-day.selected { background: var(--azure, var(--primary)); border-color: var(--azure, var(--primary)); }
 .residential-page .flatpickr-months { min-height: 48px; padding: 0 4px; }
 .residential-page .flatpickr-months .flatpickr-month { height: 48px; }
@@ -183,11 +233,11 @@
   .residential-intro > .residential-eyebrow { margin: 0; }
   .residential-intro h1 { margin: -8px 0 0; }
   .residential-service-copy { margin: 0; }
-  .residential-proof { margin: 0; order: 2; }
+  .residential-intake-page .residential-proof { margin: 0; order: 1; }
   .residential-proof h2 { font-size: 16px; }
   .residential-proof-media { gap: 8px; }
   .residential-next { order: 3; margin-top: 0; padding-top: 12px; }
-  .residential-request { order: 1; }
+  .residential-intake-page .residential-request { order: 2; }
   .residential-request { padding: 16px; }
   .residential-nav { padding: 16px; font-size: 14px; }
   .residential-intake-page .residential-nav { gap: 8px; }

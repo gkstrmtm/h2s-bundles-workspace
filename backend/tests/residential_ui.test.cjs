@@ -39,6 +39,10 @@ test('minimal homeowner form sends one service and contact without requiring ava
     assert.equal(f.requests.filter(value=>value.options.method==='POST').length,1);
   }finally{f.close();}
 });
+test('residential calendar removes decorative overflow without disabling constrained viewport scrolling',()=>{
+  assert.match(file('residential.css'),/\.residential-page \.flatpickr-calendar::before,\s*\.residential-page \.flatpickr-calendar::after\s*\{\s*display:\s*none;\s*\}/);
+  assert.match(file('date-popup.js'),/popup\.style\.overflowY = 'auto'/);
+});
 test('preferred days use popup calendars, cap at three, support removal, and remain explicitly preferences',async()=>{
   const f=homeowner(async()=>Response.json({ok:true,reference:'HOME-DATES',notifications:{enabled:false}}));
   try{
@@ -112,7 +116,7 @@ test('validation rejections allow corrected details; provider review warnings ar
     assert.equal(f.form.elements.phone.disabled,false);f.form.elements.phone.value='+15550000006';
     f.form.requestSubmit(f.form.querySelector('[type=submit]'));
     await waitFor(()=>f.window.document.getElementById('residential-status').textContent.includes('HOME-REVIEW'));
-    assert.match(f.window.document.getElementById('residential-status').textContent,/text delivery needs staff review/);
+    assert.match(f.window.document.getElementById('residential-status').textContent,/notification needs staff review/i);
     const posts=f.requests.filter(value=>value.options.method==='POST').map(value=>JSON.parse(value.options.body));
     assert.equal(posts[1].phone,'+15550000006');
     assert.equal(posts[1].publicToken,posts[0].publicToken);assert.equal(posts[1].submissionKey,posts[0].submissionKey);
