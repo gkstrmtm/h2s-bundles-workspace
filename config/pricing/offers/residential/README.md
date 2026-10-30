@@ -18,10 +18,13 @@ approval or any release. Nothing here authorizes push or deployment.
   supplied-fixed-mount 56-65-inch tier, $378.10 for two and $547.25 for three.
 - [v4-tv-219-experimental.json](v4-tv-219-experimental.json): **experimental, not
   approved**, $219 / $416.10 / $602.25 comparison using the same TV cost model.
+- [v5-launch-proposed.json](v5-launch-proposed.json): handoff adaptation, parent
+  v3, with combined camera incidentals, separate category invoice lines and both
+  contribution floors. This integration remains **uncommitted for review**.
 - [v1-original.sha256](v1-original.sha256) and
   [v2-margin-protected.sha256](v2-margin-protected.sha256): byte-level seals.
   New versions also have [v3](v3-tv-margin-improvement.sha256) and
-  [v4](v4-tv-219-experimental.sha256) seals. [Git attributes](.gitattributes)
+  [v4](v4-tv-219-experimental.sha256) and [v5](v5-launch-proposed.sha256) seals. [Git attributes](.gitattributes)
   preserve v1/v2's original bytes without text conversion and keep newer
   checksum-protected JSON in LF form across Windows checkouts.
 - [scenario.schema.json](scenario.schema.json): strict version, job, comparison,
@@ -34,6 +37,13 @@ approval or any release. Nothing here authorizes push or deployment.
 - [tests/offers.test.cjs](tests/offers.test.cjs): isolated automated tests.
 - [tests/tv-margin.test.cjs](tests/tv-margin.test.cjs): new tier, exact margins,
   scoped preservation and normalized comparisons.
+- [launch.cjs](launch.cjs): optional v5 costing and order-level launch safeguards.
+- [tests/launch.test.cjs](tests/launch.test.cjs): supplied handoff reconciliation,
+  combined orders, actual camera consultations, floors and customer-copy checks.
+- [handoff economics fixture](tests/fixtures/handoff-unit-economics.v1.json):
+  unchanged supplied reference data, not a second pricing source.
+- [customer price sheet](docs/customer-price-sheet-v5-draft.md): customer-safe,
+  unpublished draft without internal economics.
 
 Scenarios reference [baseline tiers](../../home2smart.v1.json), the
 [equipment catalog](../../equipment.v1.json), [camera configuration](../../residential-cameras.v1.json)
@@ -72,7 +82,7 @@ installed Ajv dependency. No new dependencies or package-manager changes:
 ```powershell
 node .\config\pricing\offers\residential\offers.cjs validate
 node .\config\pricing\offers\residential\offers.cjs compare
-node --test .\config\pricing\offers\residential\tests\offers.test.cjs .\config\pricing\offers\residential\tests\tv-margin.test.cjs
+node --test .\config\pricing\offers\residential\tests\offers.test.cjs .\config\pricing\offers\residential\tests\tv-margin.test.cjs .\config\pricing\offers\residential\tests\launch.test.cjs
 ```
 
 `compare` returns JSON grouped by example, with all sealed versions side by side,
@@ -134,7 +144,7 @@ $179 baseline and all 40 tiers remain unchanged. Other sizes and customer-suppli
 mount prices are not overridden. Mixed jobs still use the same marginal
 highest-price-first pricing rule, with only the matching tier's base price changed.
 
-Only TV-only jobs consisting entirely of matching 56-65-inch supplied-mount
+In v3/v4, only TV-only jobs consisting entirely of matching 56-65-inch supplied-mount
 installations use the new explicit cost model:
 
 - Combined equipment and supplies: **$42.84 per installed TV**. This is a modeled
@@ -287,6 +297,97 @@ all v1 camera examples fall below 18%; v2 two/three-camera examples also fall
 below 18%, while v2 four-camera reaches 18.18%. Actual defaults remain incomplete;
 do not present the illustrative figures as approved margins.
 
+## v5 launch handoff reconciliation
+
+The source is `Home2Smart_Offers_Agent_Handoff.zip`, SHA-256
+`34623cd9ac08803873cc925e9852933dedd77f1c7ebb1f62266dba7014cf306a`.
+Its standalone launch JSON was adapted into a new sealed child of v3, not copied
+over an earlier version. Only its economics fixture was imported unchanged.
+No shared camera/pricing files, live offers or compensation settings were edited.
+
+V5 keeps v3 TV prices and $499/$749/$999 S220 prices. Its $42.84 TV material
+assumption explicitly reconciles catalog references: $24.88 fixed mount +
+$14.96 external raceway kit + $3 consumables. Standard run length and wall/mount
+compatibility must be verified; additional raceway or unusual scope needs a
+custom quote. Catalog specifications are not duplicated.
+
+| Reference offer | Customer price | Materials | Incidentals | Company contribution | Margin |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| One standard TV | $199.00 | $42.84 | $10 | $57.07 | 28.68% |
+| Two standard TVs | $378.10 | $85.68 | $10 | $110.39 | 29.20% |
+| Three standard TVs | $547.25 | $128.52 | $10 | $159.60 | 29.16% |
+| Two S220 cameras | $499 | $199.98 | $25 | $98.15 | 19.67% |
+| Three S220 cameras | $749 | $299.97 | $30 | $150.80 | 20.13% |
+| Four S220 cameras | $999 | $399.96 | $35 | $203.46 | 20.37% |
+
+These are full-precision reference calculations before monthly overhead, using
+8% taxable-materials allowance, 3% processing, 5% reserve and 55% commission.
+Incidentals are modeled non-taxable combined job allowances; local tax treatment
+and actual supplies/travel/freight coverage still need verification. Every example
+requires review; complete planning arithmetic is not site approval.
+
+V5 uses the exact TV materials model for matching TV-only **and combined**
+TV/camera orders. Other TV sizes/customer mounts retain their previous pricing
+and costing path. Combined orders have separate TV and camera invoice lines,
+zero cross-category discount, and one invoice-level tax/processing/reserve and
+commission calculation. By explicit confirmation, default combined incidentals
+conservatively **add** $10 TV allowance to $25/$30/$35 camera allowance; shared
+travel savings are not assumed. A documented job `incidentalAllowance` replaces
+that combined amount (or the sole category allowance). `null` stays incomplete.
+Legacy `costOverrides`/`tvCostOverrides` cannot be mixed into this launch model;
+use explicit consultation material costs, `incidentalAllowance` or a new version.
+Launch-specific inputs fail explicitly outside supported launch-model TV scope.
+
+With `cameraConsultation`, equipment comes from the existing location-based
+recommender and verified procurement optimizer, not a forced S220 package.
+Ordinary required camera materials stay unknown unless itemized or explicitly
+verified covered by incidentals:
+
+```json
+{
+  "allowanceCoverage": {
+    "verified": true,
+    "notes": "Document actual ordinary consumables and initial charging coverage."
+  }
+}
+```
+
+This field requires an actual consultation. It covers only `camera_consumables`
+and `solar_initial_charging_materials`, rejects double-counted nonzero costs and
+does not clear unknown cards, hub setup, wiring, mounting or other site costs.
+Solar exposure, Wi-Fi, coverage and compatibility still require independent
+verification. Premium/mixed equipment uses actual compatible purchasing costs
+and needs a documented custom incidental allowance and reviewed price.
+HB2/S380 are not interchangeable. The disabled E40 $649/$999/$1,299 candidates
+are experiments, never automatic launch prices.
+
+One-camera equipment-inclusive work retains the canonical $299 starting price;
+installation-only retains $129/$229/$399 for 1/2/4 cameras, with unknown materials
+and custom-quote requirements. Three-camera installations are fully supported;
+only two/four-camera S220 packages are marked advertised in the draft metadata.
+
+Both **18% margin and $30 company contribution per completed order** must pass.
+Use unrounded figures, not rounded displays; unknown costs/price yield incomplete
+results and a custom-quote/manual-review flag. Commission sensitivity 50/55/60%
+remains illustrative. At 60%, the two-S220 offer fails the percentage floor.
+`serviceReserveHeld` and `companyRetainedIncludingReserve` distinguish company-owned
+reserve from expense cash outflow. Reserve is unavailable for routine owner
+distribution; do not deduct it twice or count it as distributable contribution.
+No installation labor/payroll is deducted.
+
+The supplied 100-order mix yields displayed AOV $330.94 and average contribution
+$90.52. Its $11,767.26 contribution at 130 hypothetical orders is reproducible
+only by rounding each job's contribution first. The retained full-precision
+weighted expectation is **$11,767.05**. Existing whole-visit apportionment at 130
+orders instead gives counts **65/36/16/10/3** and **$11,828.86**, not fractional
+jobs. The fixture intentionally preserves the source discrepancy. Conversion
+and volume targets are unverified assumptions, not sales performance claims.
+Actual overhead remains separately required before any owner allocation.
+
+Future move-in bundles, the $219 TV comparison, E40 price tests and commission
+variations remain explicitly disabled. No campaign, price sheet or offer is
+approved, published or activated.
+
 ## Monthly volume, sales mix and owner allocations
 
 `projectMonth(scenario, input, context?)`, or:
@@ -311,7 +412,7 @@ Projection input example (costs intentionally remain unknown unless supplied):
 Mix percentages must sum to 100. Whole visits are allocated using largest
 remainders; ties follow mix order, and counts always total monthly volume.
 Legacy job-level rounded expenses/commissions are multiplied by actual visit counts.
-When an active job uses exact TV financials, its raw amounts are aggregated and
+When an active job uses exact TV or launch financials, its raw amounts are aggregated and
 legacy camera/other job cents remain unchanged.
 Zero-weight/zero-volume jobs do not add expenses or missing costs.
 Add `costOverrides` and `commissionPercent` to individual jobs to test different
@@ -341,7 +442,7 @@ Create a patch JSON, for example:
 
 ```json
 {
-  "id": "v5-travel-tested",
+  "id": "v6-travel-tested",
   "parentVersion": "v2-margin-protected",
   "createdDate": "2026-10-30",
   "assumptions": {

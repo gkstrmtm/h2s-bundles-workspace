@@ -217,6 +217,6 @@ test('CLI default comparison includes old versions and both new scenarios', () =
   const run = spawnSync(process.execPath, [path.join(__dirname, '..', 'offers.cjs'), 'compare'], { encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
   const output = JSON.parse(run.stdout);
-  assert.deepEqual(Object.keys(output[0].versions), [previous.parentVersion, previous.id, improved.id, experimental.id]);
+  assert.deepEqual(Object.keys(output[0].versions), [previous.parentVersion, previous.id, improved.id, experimental.id, 'v5-launch-proposed']);
   assert.equal(output[0].versions[improved.id].companyContribution, 57.07);
 });

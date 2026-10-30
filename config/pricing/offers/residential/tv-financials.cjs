@@ -45,12 +45,53 @@ function belowMargin(value, revenue, threshold) {
   return value === null || !revenue ? null : value * 10000n < revenue * BigInt(usdCents(threshold, 'margin threshold'));
 }
 
+function expenseLine(id, value, taxable, notes, quantity = 1) {
+  return { id, quantity, amount: toMoney(value), exactAmount: exactString(value), taxable, notes };
+}
+
+function finalizeExactQuote(scenario, job, { revenue, revenueLines, expenseLines: inputs, flags: initialFlags, custom = false, recommendation = null }) {
+  const assumptions = scenario.assumptions;
+  const flags = new Set(initialFlags), expenseLines = [...inputs];
+  const taxable = expenseLines.filter(row => row.taxable);
+  const taxBase = taxable.some(row => row.exactAmount === null) ? null : sum(taxable.map(row => fromExact(row.exactAmount)));
+  expenseLines.push(
+    expenseLine('estimated_materials_tax', percentage(taxBase, assumptions.materialsTaxPercent), false, 'Estimated tax on itemized equipment and supplies; incidentals excluded.'),
+    expenseLine('payment_processing', percentage(revenue, assumptions.processingPercent), false, 'Revenue-based processing estimate.'),
+    expenseLine('service_reserve', percentage(revenue, assumptions.serviceReservePercent), false, 'Company-owned reserve retained before commission; not cash spent.')
+  );
+  const missingCosts = new Set(expenseLines.filter(row => row.exactAmount === null).map(row => row.id));
+  const known = sum(expenseLines.filter(row => row.exactAmount !== null).map(row => fromExact(row.exactAmount)));
+  const direct = missingCosts.size ? null : known;
+  const before = direct === null || revenue === null ? null : revenue - direct;
+  const rate = job.commissionPercent ?? assumptions.commissionPercent;
+  const commission = before === null ? null : percentage(before > 0n ? before : 0n, rate);
+  const company = commission === null ? null : before - commission;
+  const below = belowMargin(company, revenue, assumptions.minimumCompanyMarginPercent);
+  if (missingCosts.size) flags.add('missing_costs');
+  if (revenue === null) flags.add('customer_price_required');
+  if (revenue === 0n) flags.add('zero_revenue_margin_undefined');
+  if (below) flags.add('company_contribution_margin_below_threshold');
+  if (company !== null && company < 0n) { flags.add('negative_company_contribution'); custom = true; }
+  if (scenario.developmentStage === 'experimental_not_approved') flags.add('experimental_not_approved');
+  const exactFinancials = Object.fromEntries(Object.entries({
+    customerRevenue: revenue, knownDirectExpenses: known, directExpenses: direct,
+    contributionBeforeCommission: before, commission, companyContribution: company,
+  }).map(([key, value]) => [key, exactString(value)]));
+  return {
+    calculationMode: 'full_precision_display_only', exactFinancials,
+    revenueLines, expenseLines, customerRevenue: toMoney(revenue), knownDirectExpenses: toMoney(known), directExpenses: toMoney(direct),
+    contributionBeforeCommission: toMoney(before), commissionPercent: rate, commission: toMoney(commission), companyContribution: toMoney(company),
+    companyContributionMarginPercent: margin(company, revenue), belowMinimumCompanyMargin: below,
+    minimumCompanyMarginPercent: assumptions.minimumCompanyMarginPercent, missingCosts: [...missingCosts],
+    flags: [...flags], requiresCustomQuote: custom, recommendation,
+  };
+}
+
 function quoteTvModel(scenario, job, tvs, initialFlags) {
   const model = scenario.tv.costModel;
-  const assumptions = scenario.assumptions;
   const overrides = job.tvCostOverrides ?? {};
   const flags = new Set([...initialFlags, 'modeled_tv_job_allowance_coverage_requires_review']);
-  const missingCosts = new Set(), expenseLines = [];
+  const expenseLines = [];
   let custom = false;
   const revenueValues = [];
   const revenueLines = tvs.map(({ tv, index, group, tier, baselineTier }, position) => {
@@ -72,8 +113,7 @@ function quoteTvModel(scenario, job, tvs, initialFlags) {
     custom = true; flags.add('explicit_custom_price_not_approved');
   }
   function expense(id, value, taxable, notes, quantity = 1) {
-    if (value === null) missingCosts.add(id);
-    expenseLines.push({ id, quantity, amount: toMoney(value), exactAmount: exactString(value), taxable, notes });
+    expenseLines.push(expenseLine(id, value, taxable, notes, quantity));
   }
   const materialsInput = overrides.equipmentAndSuppliesPerTv ?? model.equipmentAndSuppliesPerTv;
   const allowanceInput = overrides.additionalJobAllowance ?? model.additionalJobAllowance;
@@ -81,34 +121,7 @@ function quoteTvModel(scenario, job, tvs, initialFlags) {
   const allowance = allowanceInput.amount === null ? null : fromMoney(allowanceInput.amount);
   expense('tv_equipment_and_supplies', materials, true, materialsInput.notes, tvs.length);
   expense('additional_tv_job_allowance', allowance, false, allowanceInput.notes);
-  expense('estimated_materials_tax', percentage(materials, assumptions.materialsTaxPercent), false, 'Estimated tax on combined equipment and supplies only.');
-  expense('payment_processing', percentage(revenue, assumptions.processingPercent), false, 'Revenue-based processing estimate.');
-  expense('service_reserve', percentage(revenue, assumptions.serviceReservePercent), false, 'Revenue-based reserve before commission.');
-  const known = sum(expenseLines.filter(row => row.exactAmount !== null).map(row => fromExact(row.exactAmount)));
-  const direct = missingCosts.size ? null : known;
-  const before = direct === null || revenue === null ? null : revenue - direct;
-  const rate = job.commissionPercent ?? assumptions.commissionPercent;
-  const commission = before === null ? null : percentage(before > 0n ? before : 0n, rate);
-  const company = commission === null ? null : before - commission;
-  const below = belowMargin(company, revenue, assumptions.minimumCompanyMarginPercent);
-  if (missingCosts.size) flags.add('missing_costs');
-  if (revenue === null) flags.add('customer_price_required');
-  if (revenue === 0n) flags.add('zero_revenue_margin_undefined');
-  if (below) flags.add('company_contribution_margin_below_threshold');
-  if (company !== null && company < 0n) { flags.add('negative_company_contribution'); custom = true; }
-  if (scenario.developmentStage === 'experimental_not_approved') flags.add('experimental_not_approved');
-  const exactFinancials = Object.fromEntries(Object.entries({
-    customerRevenue: revenue, knownDirectExpenses: known, directExpenses: direct,
-    contributionBeforeCommission: before, commission, companyContribution: company,
-  }).map(([key, value]) => [key, exactString(value)]));
-  return {
-    calculationMode: model.precision, exactFinancials,
-    revenueLines, expenseLines, customerRevenue: toMoney(revenue), knownDirectExpenses: toMoney(known), directExpenses: toMoney(direct),
-    contributionBeforeCommission: toMoney(before), commissionPercent: rate, commission: toMoney(commission), companyContribution: toMoney(company),
-    companyContributionMarginPercent: margin(company, revenue), belowMinimumCompanyMargin: below,
-    minimumCompanyMarginPercent: assumptions.minimumCompanyMarginPercent, missingCosts: [...missingCosts],
-    flags: [...flags], requiresCustomQuote: custom, recommendation: null,
-  };
+  return finalizeExactQuote(scenario, job, { revenue, revenueLines, expenseLines, flags, custom });
 }
 
 function projectExactMonth(scenario, input, rows) {
@@ -143,4 +156,4 @@ function projectExactMonth(scenario, input, rows) {
   };
 }
 
-module.exports = { fromMoney, fromExact, toMoney, exactString, percentage, sum, margin, belowMargin, quoteTvModel, projectExactMonth };
+module.exports = { fromMoney, fromExact, toMoney, exactString, percentage, sum, margin, belowMargin, quoteTvModel, projectExactMonth, expenseLine, finalizeExactQuote };

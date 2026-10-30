@@ -14,6 +14,7 @@
     "currency": {"const": "USD"},
     "activationAllowed": {"const": false},
     "developmentStage": {"enum": ["proposed_pending_approval", "experimental_not_approved"]},
+    "launchPolicy": {"$ref": "#/definitions/launchPolicy"},
     "references": {
       "type": "object", "additionalProperties": false,
       "required": ["baseline", "baselineDataSha256", "equipment", "cameraConfiguration", "cameraAlgorithm"],
@@ -129,6 +130,41 @@
     "changeNotes": {"$ref": "#/definitions/note"}
   },
   "definitions": {
+    "launchPolicy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourceArchive", "minimumCompanyContribution", "crossCategoryDiscountPercent", "mixedIncidentalTreatment", "cameraAllowances", "coveredCameraMaterialIds", "advertisedCameraQuantities", "supportedCameraQuantities", "tvMaterialEquipmentIds", "tvSuppliesAllowanceId", "futureExperiments", "notes"],
+      "properties": {
+        "sourceArchive": {"const": "Home2Smart_Offers_Agent_Handoff.zip"},
+        "minimumCompanyContribution": {"const": 30},
+        "crossCategoryDiscountPercent": {"const": 0},
+        "mixedIncidentalTreatment": {"const": "add_category_allowances_conservative"},
+        "cameraAllowances": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["quantity", "cost"],
+            "properties": {"quantity": {"enum": [2, 3, 4]}, "cost": {"$ref": "#/definitions/cost"}}
+          }
+        },
+        "coveredCameraMaterialIds": {"const": ["camera_consumables", "solar_initial_charging_materials"]},
+        "advertisedCameraQuantities": {"const": [2, 4]}, "supportedCameraQuantities": {"const": [1, 2, 3, 4]},
+        "tvMaterialEquipmentIds": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "tvSuppliesAllowanceId": {"const": "extra_tv_consumables"},
+        "futureExperiments": {
+          "type": "array", "minItems": 4,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "enabled", "notes"],
+            "properties": {
+              "id": {"enum": ["move_in_combined_tv_camera", "tv_219_comparison", "e40_premium_price_tests", "commission_sensitivity"]},
+              "enabled": {"const": false}, "notes": {"$ref": "#/definitions/note"},
+              "referenceScenario": {"$ref": "#/definitions/version"},
+              "candidatePrices": {"type": "array", "items": {"$ref": "#/definitions/money"}},
+              "candidateRates": {"const": [50, 55, 60]}
+            }
+          }
+        },
+        "notes": {"$ref": "#/definitions/note"}
+      }
+    },
     "version": {"type": "string", "pattern": "^v[1-9][0-9]*-[a-z][a-z0-9-]*$"},
     "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
     "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
@@ -160,6 +196,12 @@
         },
         "cameraPackageQuantity": {"type": "integer", "minimum": 0},
         "cameraConsultation": {"type": "object"},
+        "cameraService": {"enum": ["equipment_included", "installation_only"]},
+        "incidentalAllowance": {"$ref": "#/definitions/cost"},
+        "allowanceCoverage": {
+          "type": "object", "additionalProperties": false, "required": ["verified", "notes"],
+          "properties": {"verified": {"type": ["boolean", "null"]}, "notes": {"$ref": "#/definitions/note"}}
+        },
         "customPrice": {"$ref": "#/definitions/cost"},
         "costOverrides": {"$ref": "#/definitions/allowances"},
         "tvCostOverrides": {"$ref": "#/definitions/tvCostOverrides"},

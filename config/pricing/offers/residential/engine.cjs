@@ -5,6 +5,7 @@ const Ajv = require('ajv');
 const schema = require('./scenario.schema.json');
 const { usdCents, safeCentResult, validateBaseline } = require('../../pricing.cjs');
 const exact = require('./tv-financials.cjs');
+const launch = require('./launch.cjs');
 
 const ajv = new Ajv({ allErrors: true, strict: true, strictRequired: false, multipleOfPrecision: 8 });
 const scenarioShape = ajv.compile(schema);
@@ -134,6 +135,7 @@ function validateScenario(scenario, context = loadContext()) {
     if (amount !== null) usdCents(amount, key);
   }
   if (scenario.assumptions.overhead.monthlyAmount !== null) usdCents(scenario.assumptions.overhead.monthlyAmount, 'overhead');
+  launch.validateLaunchPolicy(scenario, context);
   return warnings;
 }
 
@@ -159,6 +161,19 @@ function quoteOffer(scenario, job, context = loadContext()) {
   const tvs = job.tvs.map((tv, index) => ({ tv, index, ...tvTier(scenario, context.baseline, tv) }))
     .sort((a, b) => (b.tier.price ?? b.tier.priceFrom ?? 0) - (a.tier.price ?? a.tier.priceFrom ?? 0) || a.index - b.index);
   const model = scenario.tv.costModel;
+  for (const [id, cost] of Object.entries({ incidentalAllowance: job.incidentalAllowance })) if (cost?.amount !== null && cost?.amount !== undefined) usdCents(cost.amount, id);
+  if (!scenario.launchPolicy && (job.cameraService || job.incidentalAllowance || job.allowanceCoverage)) {
+    throw new Error('Launch-specific inputs require a launch-policy scenario.');
+  }
+  if (launch.canUseLaunchModel(scenario, job, tvs)) {
+    return {
+      scenarioId: scenario.id, comparisonOnly: true, activationAllowed: false, requiresReview: true,
+      sourceFingerprints: sourceFingerprints(context), ...launch.quoteLaunch(scenario, job, context, tvs, flags),
+      exclusions: ['owner_installation_labor', 'technician_payroll'],
+      overheadTreatment: 'separate_monthly_projection_before_reinvestment_and_owner_distributions',
+    };
+  }
+  if (job.cameraService || job.incidentalAllowance || job.allowanceCoverage) throw new Error('Launch-specific inputs require supported TV scope or a camera-only job.');
   const modeledTvOnly = model && tvs.length > 0 && !job.cameraPackageQuantity && !job.cameraConsultation
     && tvs.every(({ tv, tier }) => !tv.customerSuppliedMount && tier.minInches === model.minInches && tier.maxInches === model.maxInches);
   if (modeledTvOnly) {
@@ -166,12 +181,12 @@ function quoteOffer(scenario, job, context = loadContext()) {
       throw new Error('Scoped TV model replaces legacy supplies/travel/shipping; use explicit tvCostOverrides instead.');
     }
     for (const [id, cost] of Object.entries(job.tvCostOverrides ?? {})) if (cost.amount !== null) usdCents(cost.amount, id);
-    return {
+    return launch.enforceLaunchFloors({
       scenarioId: scenario.id, comparisonOnly: true, activationAllowed: false, requiresReview: true,
       sourceFingerprints: sourceFingerprints(context), ...exact.quoteTvModel(scenario, job, tvs, flags),
       exclusions: ['owner_installation_labor', 'technician_payroll'],
       overheadTreatment: 'separate_monthly_projection_before_reinvestment_and_owner_distributions',
-    };
+    }, scenario);
   }
   if (job.tvCostOverrides) throw new Error('tvCostOverrides require a matching-tier Home2Smart-fixed-mount TV-only job.');
   const missingCosts = new Set(), expenseLines = [], revenueLines = [];
@@ -263,7 +278,7 @@ function quoteOffer(scenario, job, context = loadContext()) {
   if (missingCosts.size) flags.add('missing_costs');
   if (company !== null && company < 0) { flags.add('negative_company_contribution'); customQuote = true; }
   if (revenue === 0) flags.add('zero_revenue_margin_undefined');
-  return {
+  return launch.enforceLaunchFloors({
     scenarioId: scenario.id, comparisonOnly: true, activationAllowed: false, requiresReview: true, requiresCustomQuote: customQuote,
     sourceFingerprints: sourceFingerprints(context),
     revenueLines, expenseLines, customerRevenue: money(revenue), knownDirectExpenses: money(knownDirect), directExpenses: money(direct),
@@ -272,7 +287,7 @@ function quoteOffer(scenario, job, context = loadContext()) {
     belowMinimumCompanyMargin: belowThreshold, minimumCompanyMarginPercent: assumptions.minimumCompanyMarginPercent,
     missingCosts: [...missingCosts], flags: [...flags], recommendation,
     exclusions: ['owner_installation_labor', 'technician_payroll'], overheadTreatment: 'separate_monthly_projection_before_reinvestment_and_owner_distributions',
-  };
+  }, scenario);
 }
 
 function projectMonth(scenario, input, context = loadContext()) {

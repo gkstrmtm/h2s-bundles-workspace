@@ -1,0 +1,251 @@
+{
+  "$schema": "./scenario.schema.json",
+  "schemaVersion": "1.0.0",
+  "id": "v5-launch-proposed",
+  "parentVersion": "v3-tv-margin-improvement",
+  "createdDate": "2026-10-30",
+  "status": "offline_proposal_pending_reconciliation_and_review",
+  "currency": "USD",
+  "activationAllowed": false,
+  "references": {
+    "baseline": "../../home2smart.v1.json",
+    "baselineDataSha256": "e976cb48076c37e76d54e86125e41ea28b64bad9dc288aa43a71ada7bb33bf28",
+    "equipment": "../../equipment.v1.json",
+    "cameraConfiguration": "../../residential-cameras.v1.json",
+    "cameraAlgorithm": "../../camera-recommendations.cjs"
+  },
+  "equipmentCostSnapshots": [
+    {
+      "equipmentId": "onn_fixed_32_86",
+      "productId": "777842123",
+      "catalogField": "costAssumption.amount",
+      "amount": 24.88,
+      "checkedDate": "2026-10-30"
+    },
+    {
+      "equipmentId": "eufy_solocam_s220",
+      "productId": "T8134121",
+      "catalogField": "costAssumption.amount",
+      "amount": 99.99,
+      "checkedDate": "2026-10-30"
+    },
+    {
+      "equipmentId": "wire_trak_raceway_54",
+      "productId": "342180027",
+      "catalogField": "costAssumption.amount",
+      "amount": 14.96,
+      "checkedDate": "2026-10-30"
+    }
+  ],
+  "tv": {
+    "includedMountEquipmentId": "onn_fixed_32_86",
+    "includedMountTierGroup": "residentialWithStandardFixedMount",
+    "customerMountTierGroup": "residentialInstallationOnly",
+    "discounts": {
+      "basis": "marginal_highest_base_price_first",
+      "percentsByPosition": [
+        0,
+        10,
+        15
+      ],
+      "beyondSchedule": "custom_quote"
+    },
+    "exampleTier": {
+      "minInches": 56,
+      "maxInches": 65
+    },
+    "examples": [
+      {
+        "quantity": 1,
+        "revenue": 199
+      },
+      {
+        "quantity": 2,
+        "revenue": 378.1
+      },
+      {
+        "quantity": 3,
+        "revenue": 547.25
+      }
+    ],
+    "priceOverrides": [
+      {
+        "minInches": 56,
+        "maxInches": 65,
+        "price": 199,
+        "status": "proposed_pending_approval",
+        "notes": "Offline Home2Smart-supplied fixed-mount experiment only. Baseline $179 tier is unchanged."
+      }
+    ],
+    "costModel": {
+      "scope": "matching_tier_h2s_fixed_mount_tv_only_jobs",
+      "minInches": 56,
+      "maxInches": 65,
+      "precision": "full_precision_display_only",
+      "equipmentAndSuppliesPerTv": {
+        "amount": 42.84,
+        "notes": "User-specified combined equipment and supplies assumption; not a supplier SKU price or a replacement for catalog specifications."
+      },
+      "additionalJobAllowance": {
+        "amount": 10,
+        "notes": "Combined modeled TV-category travel/shipping/incidentals; not per TV. In a combined order, add camera-category allowance conservatively unless explicitly overridden."
+      },
+      "allowanceTreatment": "replaces_separate_tv_travel_and_shipping",
+      "notes": "The launch policy also applies this matching-tier TV component to combined orders, without a cross-category price discount. Fixed mount plus one standard external raceway kit plus ordinary consumables reconcile to $42.84; unusual wall types or longer cable runs require review."
+    }
+  },
+  "cameras": {
+    "standardEquipmentId": "eufy_solocam_s220",
+    "baselineTierGroup": "residentialEquipmentIncluded",
+    "packages": [
+      {
+        "quantity": 2,
+        "price": 499,
+        "baselineQuantityReference": 2
+      },
+      {
+        "quantity": 3,
+        "price": 749,
+        "baselineQuantityReference": null
+      },
+      {
+        "quantity": 4,
+        "price": 999,
+        "baselineQuantityReference": 4
+      }
+    ],
+    "otherConfigurations": "recommendation_algorithm_and_custom_quote",
+    "linkedCameraCostBasis": "current_verified_algorithm_procurement_and_material_lines"
+  },
+  "assumptions": {
+    "materialsTaxPercent": 8,
+    "materialsTaxBasis": "equipment_and_supplies_excluding_travel_shipping_and_customer_service_revenue",
+    "processingPercent": 3,
+    "serviceReservePercent": 5,
+    "serviceReserveBasis": "customer_revenue_before_commission",
+    "commissionPercent": 55,
+    "commissionScenarios": [
+      50,
+      55,
+      60
+    ],
+    "commissionBasis": "positive_contribution_after_modeled_direct_expenses",
+    "minimumCompanyMarginPercent": 18,
+    "ownerInstallationLaborDeduction": false,
+    "allowances": {
+      "tvSuppliesPerTv": {
+        "amount": 3,
+        "notes": "Existing extra_tv_consumables catalog estimate per TV; not an approved camera allowance."
+      },
+      "cameraSuppliesPerCamera": {
+        "amount": null,
+        "notes": "No approved camera consumable allowance supplied."
+      },
+      "solarChargingPerCamera": {
+        "amount": null,
+        "notes": "Verify compatible included/available charging supplies; do not assume zero."
+      },
+      "travelPerVisit": {
+        "amount": null,
+        "notes": "Enter site-specific travel expense, including any expected travel costs."
+      },
+      "shippingPerVisit": {
+        "amount": null,
+        "notes": "Verify supplier shipping charges; free shipping requires documented zero."
+      }
+    },
+    "overhead": {
+      "monthlyAmount": null,
+      "notes": "Enter monthly operating overhead separately; never deduct owner installation labor."
+    },
+    "reinvestmentPercent": 25,
+    "ownerDistributionPercent": 75,
+    "ownerCount": 3,
+    "distributionBasis": "positive_company_contribution_after_separately_entered_monthly_overhead",
+    "notes": "Planning assumptions only. Taxability requires local verification. Service reserve is retained but unavailable for modeled commission/distributions; no second reserve deduction. No technician payroll or owner installation labor is deducted."
+  },
+  "changeNotes": "Proposed launch overlay: separate $199 TV and S220 $499/$749/$999 offers, no combined-order promotion, camera-job allowance references $25/$30/$35, 18% and $30 floors. Preserve 40 canonical tiers, original versions and concurrent camera work. Not approved, not live, leave uncommitted for review.",
+  "developmentStage": "proposed_pending_approval",
+  "launchPolicy": {
+    "sourceArchive": "Home2Smart_Offers_Agent_Handoff.zip",
+    "minimumCompanyContribution": 30,
+    "crossCategoryDiscountPercent": 0,
+    "mixedIncidentalTreatment": "add_category_allowances_conservative",
+    "cameraAllowances": [
+      {
+        "quantity": 2,
+        "cost": {
+          "amount": 25,
+          "notes": "Proposed combined camera-job travel/shipping/ordinary incidentals; actual accessory and charging coverage requires verification."
+        }
+      },
+      {
+        "quantity": 3,
+        "cost": {
+          "amount": 30,
+          "notes": "Proposed three-camera combined incidental allowance, not an approved expense ceiling."
+        }
+      },
+      {
+        "quantity": 4,
+        "cost": {
+          "amount": 35,
+          "notes": "Proposed four-camera combined incidental allowance; special accessories and site conditions require cost review."
+        }
+      }
+    ],
+    "coveredCameraMaterialIds": [
+      "camera_consumables",
+      "solar_initial_charging_materials"
+    ],
+    "advertisedCameraQuantities": [
+      2,
+      4
+    ],
+    "supportedCameraQuantities": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "tvMaterialEquipmentIds": [
+      "onn_fixed_32_86",
+      "wire_trak_raceway_54"
+    ],
+    "tvSuppliesAllowanceId": "extra_tv_consumables",
+    "futureExperiments": [
+      {
+        "id": "move_in_combined_tv_camera",
+        "enabled": false,
+        "notes": "No move-in bundle, campaign name, cross-category discount or activation."
+      },
+      {
+        "id": "tv_219_comparison",
+        "enabled": false,
+        "referenceScenario": "v4-tv-219-experimental",
+        "notes": "Existing $219 comparison is an experiment only, not a launch price."
+      },
+      {
+        "id": "e40_premium_price_tests",
+        "enabled": false,
+        "candidatePrices": [
+          649,
+          999,
+          1299
+        ],
+        "notes": "Unapproved historical 2/3/4-camera price tests only. Never used by the quote engine; verify actual equipment, hubs and installation costs."
+      },
+      {
+        "id": "commission_sensitivity",
+        "enabled": false,
+        "candidateRates": [
+          50,
+          55,
+          60
+        ],
+        "notes": "Illustrative sensitivity only; not live compensation policy."
+      }
+    ],
+    "notes": "Offline adaptation of the standalone handoff into the next unused repository version. Require both 18% and $30 retained company contribution per order; actual unknown material costs or failed site checks require manual review. Service reserve remains company-owned, not cash spent or distribution-ready contribution."
+  }
+}
