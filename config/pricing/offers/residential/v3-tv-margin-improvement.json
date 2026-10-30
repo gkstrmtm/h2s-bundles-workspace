@@ -1,0 +1,162 @@
+{
+  "$schema": "./scenario.schema.json",
+  "schemaVersion": "1.0.0",
+  "id": "v3-tv-margin-improvement",
+  "parentVersion": "v2-margin-protected",
+  "createdDate": "2026-10-30",
+  "status": "offline_proposal_pending_reconciliation_and_review",
+  "currency": "USD",
+  "activationAllowed": false,
+  "references": {
+    "baseline": "../../home2smart.v1.json",
+    "baselineDataSha256": "e976cb48076c37e76d54e86125e41ea28b64bad9dc288aa43a71ada7bb33bf28",
+    "equipment": "../../equipment.v1.json",
+    "cameraConfiguration": "../../residential-cameras.v1.json",
+    "cameraAlgorithm": "../../camera-recommendations.cjs"
+  },
+  "equipmentCostSnapshots": [
+    {
+      "equipmentId": "onn_fixed_32_86",
+      "productId": "777842123",
+      "catalogField": "costAssumption.amount",
+      "amount": 24.88,
+      "checkedDate": "2026-10-30"
+    },
+    {
+      "equipmentId": "eufy_solocam_s220",
+      "productId": "T8134121",
+      "catalogField": "costAssumption.amount",
+      "amount": 99.99,
+      "checkedDate": "2026-10-30"
+    }
+  ],
+  "tv": {
+    "includedMountEquipmentId": "onn_fixed_32_86",
+    "includedMountTierGroup": "residentialWithStandardFixedMount",
+    "customerMountTierGroup": "residentialInstallationOnly",
+    "discounts": {
+      "basis": "marginal_highest_base_price_first",
+      "percentsByPosition": [
+        0,
+        10,
+        15
+      ],
+      "beyondSchedule": "custom_quote"
+    },
+    "exampleTier": {
+      "minInches": 56,
+      "maxInches": 65
+    },
+    "examples": [
+      {
+        "quantity": 1,
+        "revenue": 199
+      },
+      {
+        "quantity": 2,
+        "revenue": 378.1
+      },
+      {
+        "quantity": 3,
+        "revenue": 547.25
+      }
+    ],
+    "priceOverrides": [
+      {
+        "minInches": 56,
+        "maxInches": 65,
+        "price": 199,
+        "status": "proposed_pending_approval",
+        "notes": "Offline Home2Smart-supplied fixed-mount experiment only. Baseline $179 tier is unchanged."
+      }
+    ],
+    "costModel": {
+      "scope": "matching_tier_h2s_fixed_mount_tv_only_jobs",
+      "minInches": 56,
+      "maxInches": 65,
+      "precision": "full_precision_display_only",
+      "equipmentAndSuppliesPerTv": {
+        "amount": 42.84,
+        "notes": "User-specified combined equipment and supplies assumption; not a supplier SKU price or a replacement for catalog specifications."
+      },
+      "additionalJobAllowance": {
+        "amount": 10,
+        "notes": "User-confirmed combined modeled TV-only job allowance replacing separate travel/shipping deductions. Verify actual coverage before approval."
+      },
+      "allowanceTreatment": "replaces_separate_tv_travel_and_shipping",
+      "notes": "Only jobs entirely consisting of 56-65-inch TVs with Home2Smart fixed mounts use this model. Other sizes, customer mounts, camera/mixed jobs retain existing costing. Tax 8%, processing 3%, reserve 5%, commission 55% from inherited assumptions; no owner installation labor."
+    }
+  },
+  "cameras": {
+    "standardEquipmentId": "eufy_solocam_s220",
+    "baselineTierGroup": "residentialEquipmentIncluded",
+    "packages": [
+      {
+        "quantity": 2,
+        "price": 499,
+        "baselineQuantityReference": 2
+      },
+      {
+        "quantity": 3,
+        "price": 749,
+        "baselineQuantityReference": null
+      },
+      {
+        "quantity": 4,
+        "price": 999,
+        "baselineQuantityReference": 4
+      }
+    ],
+    "otherConfigurations": "recommendation_algorithm_and_custom_quote",
+    "linkedCameraCostBasis": "current_verified_algorithm_procurement_and_material_lines"
+  },
+  "assumptions": {
+    "materialsTaxPercent": 8,
+    "materialsTaxBasis": "equipment_and_supplies_excluding_travel_shipping_and_customer_service_revenue",
+    "processingPercent": 3,
+    "serviceReservePercent": 5,
+    "serviceReserveBasis": "customer_revenue_before_commission",
+    "commissionPercent": 55,
+    "commissionScenarios": [
+      50,
+      55,
+      60
+    ],
+    "commissionBasis": "positive_contribution_after_modeled_direct_expenses",
+    "minimumCompanyMarginPercent": 18,
+    "ownerInstallationLaborDeduction": false,
+    "allowances": {
+      "tvSuppliesPerTv": {
+        "amount": 3,
+        "notes": "Existing extra_tv_consumables catalog estimate per TV; not an approved camera allowance."
+      },
+      "cameraSuppliesPerCamera": {
+        "amount": null,
+        "notes": "No approved camera consumable allowance supplied."
+      },
+      "solarChargingPerCamera": {
+        "amount": null,
+        "notes": "Verify compatible included/available charging supplies; do not assume zero."
+      },
+      "travelPerVisit": {
+        "amount": null,
+        "notes": "Enter site-specific travel expense, including any expected travel costs."
+      },
+      "shippingPerVisit": {
+        "amount": null,
+        "notes": "Verify supplier shipping charges; free shipping requires documented zero."
+      }
+    },
+    "overhead": {
+      "monthlyAmount": null,
+      "notes": "Enter monthly operating overhead separately; never deduct owner installation labor."
+    },
+    "reinvestmentPercent": 25,
+    "ownerDistributionPercent": 75,
+    "ownerCount": 3,
+    "distributionBasis": "positive_company_contribution_after_separately_entered_monthly_overhead",
+    "notes": "Planning assumptions only. Taxability requires local verification. Service reserve is retained but unavailable for modeled commission/distributions; no second reserve deduction. No technician payroll or owner installation labor is deducted."
+  },
+  "changeNotes": "Proposed $199 TV-tier improvement with 10% second-TV and 15% third-TV discounts, exact full-precision financials, $42.84 per TV plus $10 per job. Four-plus TVs require custom quote. Camera prices and all baseline tiers unchanged.",
+  "developmentStage": "proposed_pending_approval"
+}

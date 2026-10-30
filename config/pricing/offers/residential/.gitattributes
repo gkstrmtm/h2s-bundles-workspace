@@ -1,0 +1,6 @@
+*.json text eol=lf
+*.sha256 text eol=lf
+v1-original.json -text -eol whitespace=cr-at-eol
+v1-original.sha256 -text -eol whitespace=cr-at-eol
+v2-margin-protected.json -text -eol whitespace=cr-at-eol
+v2-margin-protected.sha256 -text -eol whitespace=cr-at-eol

@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/offline-residential-offers-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "id", "parentVersion", "createdDate", "status", "currency", "activationAllowed", "references", "equipmentCostSnapshots", "tv", "cameras", "assumptions", "changeNotes"],
+  "properties": {
+    "$schema": {"const": "./scenario.schema.json"},
+    "schemaVersion": {"const": "1.0.0"},
+    "id": {"$ref": "#/definitions/version"},
+    "parentVersion": {"anyOf": [{"$ref": "#/definitions/version"}, {"type": "null"}]},
+    "createdDate": {"$ref": "#/definitions/date"},
+    "status": {"const": "offline_proposal_pending_reconciliation_and_review"},
+    "currency": {"const": "USD"},
+    "activationAllowed": {"const": false},
+    "developmentStage": {"enum": ["proposed_pending_approval", "experimental_not_approved"]},
+    "references": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline", "baselineDataSha256", "equipment", "cameraConfiguration", "cameraAlgorithm"],
+      "properties": {
+        "baseline": {"const": "../../home2smart.v1.json"}, "baselineDataSha256": {"$ref": "#/definitions/hash"},
+        "equipment": {"const": "../../equipment.v1.json"}, "cameraConfiguration": {"const": "../../residential-cameras.v1.json"},
+        "cameraAlgorithm": {"const": "../../camera-recommendations.cjs"}
+      }
+    },
+    "equipmentCostSnapshots": {
+      "type": "array", "minItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["equipmentId", "productId", "catalogField", "amount", "checkedDate"],
+        "properties": {
+          "equipmentId": {"type": "string", "minLength": 1}, "productId": {"type": "string", "minLength": 1},
+          "catalogField": {"const": "costAssumption.amount"}, "amount": {"$ref": "#/definitions/money"}, "checkedDate": {"$ref": "#/definitions/date"}
+        }
+      }
+    },
+    "tv": {
+      "type": "object", "additionalProperties": false,
+      "required": ["includedMountEquipmentId", "includedMountTierGroup", "customerMountTierGroup", "discounts", "exampleTier", "examples"],
+      "properties": {
+        "priceOverrides": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["minInches", "maxInches", "price", "status", "notes"],
+            "properties": {
+              "minInches": {"type": "integer", "minimum": 1}, "maxInches": {"type": "integer", "minimum": 1},
+              "price": {"$ref": "#/definitions/money"}, "status": {"enum": ["proposed_pending_approval", "experimental_not_approved"]},
+              "notes": {"$ref": "#/definitions/note"}
+            }
+          }
+        },
+        "costModel": {
+          "type": "object", "additionalProperties": false,
+          "required": ["scope", "minInches", "maxInches", "precision", "equipmentAndSuppliesPerTv", "additionalJobAllowance", "allowanceTreatment", "notes"],
+          "properties": {
+            "scope": {"const": "matching_tier_h2s_fixed_mount_tv_only_jobs"},
+            "minInches": {"const": 56}, "maxInches": {"const": 65},
+            "precision": {"const": "full_precision_display_only"},
+            "equipmentAndSuppliesPerTv": {"$ref": "#/definitions/cost"},
+            "additionalJobAllowance": {"$ref": "#/definitions/cost"},
+            "allowanceTreatment": {"const": "replaces_separate_tv_travel_and_shipping"},
+            "notes": {"$ref": "#/definitions/note"}
+          }
+        },
+        "includedMountEquipmentId": {"type": "string", "minLength": 1},
+        "includedMountTierGroup": {"const": "residentialWithStandardFixedMount"}, "customerMountTierGroup": {"const": "residentialInstallationOnly"},
+        "discounts": {
+          "type": "object", "additionalProperties": false, "required": ["basis", "percentsByPosition", "beyondSchedule"],
+          "properties": {
+            "basis": {"const": "marginal_highest_base_price_first"},
+            "percentsByPosition": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/percent"}},
+            "beyondSchedule": {"const": "custom_quote"}
+          }
+        },
+        "exampleTier": {
+          "type": "object", "additionalProperties": false, "required": ["minInches", "maxInches"],
+          "properties": {"minInches": {"type": "integer", "minimum": 1}, "maxInches": {"type": "integer", "minimum": 1}}
+        },
+        "examples": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["quantity", "revenue"],
+            "properties": {"quantity": {"type": "integer", "minimum": 1}, "revenue": {"$ref": "#/definitions/money"}}
+          }
+        }
+      }
+    },
+    "cameras": {
+      "type": "object", "additionalProperties": false,
+      "required": ["standardEquipmentId", "baselineTierGroup", "packages", "otherConfigurations", "linkedCameraCostBasis"],
+      "properties": {
+        "standardEquipmentId": {"type": "string", "minLength": 1}, "baselineTierGroup": {"const": "residentialEquipmentIncluded"},
+        "packages": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["quantity", "price", "baselineQuantityReference"],
+            "properties": {
+              "quantity": {"type": "integer", "minimum": 1}, "price": {"$ref": "#/definitions/money"},
+              "baselineQuantityReference": {"type": ["integer", "null"], "minimum": 1}
+            }
+          }
+        },
+        "otherConfigurations": {"const": "recommendation_algorithm_and_custom_quote"},
+        "linkedCameraCostBasis": {"const": "current_verified_algorithm_procurement_and_material_lines"}
+      }
+    },
+    "assumptions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["materialsTaxPercent", "materialsTaxBasis", "processingPercent", "serviceReservePercent", "serviceReserveBasis", "commissionPercent", "commissionScenarios", "commissionBasis", "minimumCompanyMarginPercent", "ownerInstallationLaborDeduction", "allowances", "overhead", "reinvestmentPercent", "ownerDistributionPercent", "ownerCount", "distributionBasis", "notes"],
+      "properties": {
+        "materialsTaxPercent": {"$ref": "#/definitions/percent"},
+        "materialsTaxBasis": {"const": "equipment_and_supplies_excluding_travel_shipping_and_customer_service_revenue"},
+        "processingPercent": {"$ref": "#/definitions/percent"}, "serviceReservePercent": {"$ref": "#/definitions/percent"},
+        "serviceReserveBasis": {"const": "customer_revenue_before_commission"},
+        "commissionPercent": {"enum": [50, 55, 60]}, "commissionScenarios": {"const": [50, 55, 60]},
+        "commissionBasis": {"const": "positive_contribution_after_modeled_direct_expenses"},
+        "minimumCompanyMarginPercent": {"$ref": "#/definitions/percent"}, "ownerInstallationLaborDeduction": {"const": false},
+        "allowances": {"$ref": "#/definitions/allowances"},
+        "overhead": {
+          "type": "object", "additionalProperties": false, "required": ["monthlyAmount", "notes"],
+          "properties": {"monthlyAmount": {"$ref": "#/definitions/nullableMoney"}, "notes": {"$ref": "#/definitions/note"}}
+        },
+        "reinvestmentPercent": {"const": 25}, "ownerDistributionPercent": {"const": 75}, "ownerCount": {"const": 3},
+        "distributionBasis": {"const": "positive_company_contribution_after_separately_entered_monthly_overhead"},
+        "notes": {"$ref": "#/definitions/note"}
+      }
+    },
+    "changeNotes": {"$ref": "#/definitions/note"}
+  },
+  "definitions": {
+    "version": {"type": "string", "pattern": "^v[1-9][0-9]*-[a-z][a-z0-9-]*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "note": {"type": "string", "pattern": "\\S"},
+    "money": {"type": "number", "minimum": 0, "multipleOf": 0.01},
+    "nullableMoney": {"type": ["number", "null"], "minimum": 0, "multipleOf": 0.01},
+    "percent": {"type": "number", "minimum": 0, "maximum": 100, "multipleOf": 0.01},
+    "cost": {
+      "type": "object", "additionalProperties": false, "required": ["amount", "notes"],
+      "properties": {"amount": {"$ref": "#/definitions/nullableMoney"}, "notes": {"$ref": "#/definitions/note"}}
+    },
+    "allowances": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "tvSuppliesPerTv": {"$ref": "#/definitions/cost"}, "cameraSuppliesPerCamera": {"$ref": "#/definitions/cost"},
+        "solarChargingPerCamera": {"$ref": "#/definitions/cost"}, "travelPerVisit": {"$ref": "#/definitions/cost"}, "shippingPerVisit": {"$ref": "#/definitions/cost"}
+      }
+    },
+    "job": {
+      "type": "object", "additionalProperties": false, "required": ["tvs", "cameraPackageQuantity"],
+      "properties": {
+        "tvs": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["inches", "customerSuppliedMount", "compatibilityVerified"],
+            "properties": {
+              "inches": {"type": "integer", "minimum": 1}, "customerSuppliedMount": {"type": "boolean"}, "compatibilityVerified": {"type": ["boolean", "null"]}
+            }
+          }
+        },
+        "cameraPackageQuantity": {"type": "integer", "minimum": 0},
+        "cameraConsultation": {"type": "object"},
+        "customPrice": {"$ref": "#/definitions/cost"},
+        "costOverrides": {"$ref": "#/definitions/allowances"},
+        "tvCostOverrides": {"$ref": "#/definitions/tvCostOverrides"},
+        "commissionPercent": {"enum": [50, 55, 60]}
+      }
+    },
+    "projection": {
+      "type": "object", "additionalProperties": false, "required": ["monthlyVolume", "salesMix", "overhead"],
+      "properties": {
+        "monthlyVolume": {"type": "integer", "minimum": 0},
+        "salesMix": {
+          "type": "array", "minItems": 1, "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "percent", "job"],
+            "properties": {"id": {"type": "string", "minLength": 1}, "percent": {"$ref": "#/definitions/percent"}, "job": {"$ref": "#/definitions/job"}}
+          }
+        },
+        "overhead": {"$ref": "#/definitions/cost"}
+      }
+    },
+    "comparisonOptions": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "costOverrides": {"$ref": "#/definitions/allowances"},
+        "tvCostOverrides": {"$ref": "#/definitions/tvCostOverrides"},
+        "tvCostModelFrom": {"$ref": "#/definitions/version"},
+        "commissionPercent": {"enum": [50, 55, 60]}
+      }
+    },
+    "tvCostOverrides": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "equipmentAndSuppliesPerTv": {"$ref": "#/definitions/cost"},
+        "additionalJobAllowance": {"$ref": "#/definitions/cost"}
+      }
+    },
+    "sourceFingerprints": {
+      "type": "object", "additionalProperties": false,
+      "required": ["baseline", "equipment", "cameraConfiguration", "cameraAlgorithm"],
+      "properties": {
+        "baseline": {"$ref": "#/definitions/hash"}, "equipment": {"$ref": "#/definitions/hash"},
+        "cameraConfiguration": {"$ref": "#/definitions/hash"}, "cameraAlgorithm": {"$ref": "#/definitions/hash"}
+      }
+    },
+    "review": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "scenarioId", "scenarioSha256", "sourceFingerprints", "decision", "cameraWorkReconciled", "reviewedDate", "reviewerRole", "notes", "activationAllowed"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}, "scenarioId": {"$ref": "#/definitions/version"}, "scenarioSha256": {"$ref": "#/definitions/hash"},
+        "sourceFingerprints": {"$ref": "#/definitions/sourceFingerprints"},
+        "decision": {"enum": ["approved_for_offline_planning", "changes_requested", "rejected"]},
+        "cameraWorkReconciled": {"type": "boolean"}, "reviewedDate": {"$ref": "#/definitions/date"},
+        "reviewerRole": {"$ref": "#/definitions/note"}, "notes": {"$ref": "#/definitions/note"}, "activationAllowed": {"const": false}
+      }
+    }
+  }
+}
