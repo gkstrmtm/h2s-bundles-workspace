@@ -20,7 +20,8 @@ approval or any release. Nothing here authorizes push or deployment.
   approved**, $219 / $416.10 / $602.25 comparison using the same TV cost model.
 - [v5-launch-proposed.json](v5-launch-proposed.json): handoff adaptation, parent
   v3, with combined camera incidentals, separate category invoice lines and both
-  contribution floors. This integration remains **uncommitted for review**.
+  contribution floors. Committed for review on `retro-dev`; still **offline and
+  unapproved**, with shared camera dependencies requiring separate reconciliation.
 - [v1-original.sha256](v1-original.sha256) and
   [v2-margin-protected.sha256](v2-margin-protected.sha256): byte-level seals.
   New versions also have [v3](v3-tv-margin-improvement.sha256) and
