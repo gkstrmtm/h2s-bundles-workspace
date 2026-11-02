@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "1.0.0",
+  "checkedDate": "2026-11-02",
+  "status": "proposed_pending_approval",
+  "catalogReference": "../equipment.v1.json",
+  "costBasis": "Use the greater of preserved planning cost and this exact-SKU observed price. Do not replace models or rely on rollback savings.",
+  "observations": [
+    {"equipmentId":"onn_fixed_32_86","productId":"777842123","supplier":"Walmart","sourceUrl":"https://www.walmart.com/ip/777842123","planningCost":24.88,"observedPrice":24.88,"modeledCost":24.88,"verification":"direct_product_page","notes":"32-86 inches, 120lb, 16/24-inch studs. Listing VESA envelope75x75 to600x400, not a verified complete pattern list; wall/TV hardware, template and level. Exact bolt/lag/anchor counts and model number unverified."},
+    {"equipmentId":"onn_tilt_50_86","productId":"299960224","supplier":"Walmart","sourceUrl":"https://www.walmart.com/ip/299960224","planningCost":25.24,"observedPrice":25.24,"modeledCost":25.24,"verification":"direct_product_page","notes":"50-86 inches, 120lb, 16/24-inch studs; exact VESA patterns/fastener quantities unverified."},
+    {"equipmentId":"onn_full_motion_50_86","productId":"866844895","supplier":"Walmart","sourceUrl":"https://www.walmart.com/ip/866844895","planningCost":54,"observedPrice":44.94,"modeledCost":54,"verification":"direct_product_page_rollback","notes":"Model100027961;50-86 inches,120lb;2 mounting arms and3 hardware bags, individual fastener counts unknown. Preserve $54 planning, not $44.94 rollback."},
+    {"equipmentId":"onn_full_motion_19_50","productId":"990431788","supplier":"Walmart","sourceUrl":"https://www.walmart.com/ip/990431788","planningCost":26.96,"observedPrice":26.96,"modeledCost":26.96,"verification":"direct_product_page_rollback","notes":"19-50 inches,50lb, single-stud;4 extension arms; exact model/fastener counts unverified. No approved customer upgrade price."},
+    {"equipmentId":"wire_trak_raceway_54","productId":"342180027","supplier":"Walmart","sourceUrl":"https://www.walmart.com/ip/342180027","planningCost":14.96,"observedPrice":14.96,"modeledCost":14.96,"verification":"direct_product_page","notes":"One kit:3 cover lengths totaling54 inches,2 joint covers,1 inside corner,1 90-degree elbow, adhesive. Not one54-inch piece; longer routes require separately counted kits."},
+    {"equipmentId":"eufy_wired_cam_c31","productId":"T817L121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t817l121","planningCost":59.99,"observedPrice":59.99,"modeledCost":59.99,"verification":"official_product_json_ld","notes":"5V/1A USB-C continuous power and2m cable;2.4GHz;separate microSD up to256GB or verified HomeBase Mini/3. Do not use HB2 or confuse camera/Hub adapters."},
+    {"equipmentId":"eufy_solocam_e30","productId":"T8171121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t8171121","planningCost":149.99,"observedPrice":149.99,"modeledCost":149.99,"verification":"official_product_json_ld","notes":"Rechargeable10,000mAh with included solar panel;2.4GHz;standalone microSD up to128GB separate. Official/secondary HB2 compatibility claims conflict: review firmware/model before any hub alternative."},
+    {"equipmentId":"eufy_floodlight_e30","productId":"T8426121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t8426121","planningCost":149.99,"observedPrice":149.99,"modeledCost":149.99,"verification":"official_product_json_ld","notes":"100-240VAC hardwired,UL-listed junction box,2.4GHz;microSD up to128GB or S380 separate. USB-C setup is not permanent power; electrical materials/licensing review mandatory."},
+    {"equipmentId":"eufy_solocam_s220","productId":"T8134121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t8134121","planningCost":99.99,"observedPrice":99.99,"modeledCost":99.99,"verification":"official_product_json_ld","notes":"Integrated solar,2.4GHz,8GB local event storage,no separate microSD. Standalone fixed view;conservatively3 hours surveyed sunlight, charging/seasonal/site verification. No continuous recording or guaranteed autonomy."},
+    {"equipmentId":"eufy_solocam_s340","productId":"T81701W1","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t81701w1","planningCost":199.99,"observedPrice":219.99,"modeledCost":219.99,"verification":"official_product_json_ld","notes":"Preserve199.99 original planning versus219.99 current observation. Dual-lens tracking/zoom,solar,2.4GHz,8GB standalone storage;conservative4 surveyed sun hours. Rotating view is not simultaneous multiple-position coverage."},
+    {"equipmentId":"eufycam_e40","productId":"T8144121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t8144121","planningCost":149.99,"observedPrice":149.99,"modeledCost":149.99,"verification":"official_product_json_ld","notes":"Add-on camera requires verified HB2 or S380;integrated solar;no standalone/microSD recording. Camera-to-hub radio and hub/router link must be verified."},
+    {"equipmentId":"e40_homebase2_kit","productId":"E8144121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/e8144121","planningCost":279.99,"observedPrice":279.99,"modeledCost":279.99,"verification":"official_product_json_ld","notes":"Two E40 cameras plus HomeBase2 with16GB shared storage;box fasteners,adapter,Ethernet/charging cable quantities/reach require verification."},
+    {"equipmentId":"e40_single","productId":"T8144121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/t8144121","planningCost":149.99,"observedPrice":149.99,"modeledCost":149.99,"verification":"official_product_json_ld","notes":"Same exact single add-on as eufycam_e40;distinct purchasing-option reference,not another camera model."},
+    {"equipmentId":"e40_two_addons","productId":"BUNDLE-T8144121-2","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/bundle-t8144121-2","planningCost":299.98,"observedPrice":299.98,"modeledCost":299.98,"verification":"official_product_json_ld","notes":"Two add-on cameras,no hub;requires verified HB2/S380. Not cheaper than279.99 HB2 two-camera kit."},
+    {"equipmentId":"e40_four_addons","productId":"BUNDLE-T8144121-4","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/bundle-t8144121-4","planningCost":599.96,"observedPrice":599.96,"modeledCost":599.96,"verification":"official_product_json_ld","notes":"Four add-on cameras,no hub;requires verified HB2/S380. Not cheaper than two HB2 kits559.98. Comparison widget S380379.99 differs from purchasable bundle429.99;keep variant unresolved."},
+    {"equipmentId":"e40_s380_kit_reference","productId":null,"supplier":"eufy","sourceUrl":"https://www.eufy.com/products/bundle-t8144121-2-t80301d1-1","planningCost":379.99,"observedPrice":429.99,"modeledCost":429.99,"verification":"official_bundle_price_exact_sku_unverified","notes":"Distinct2-camera S380 kit. Manufacturer JSON-LD SKU missing;retailer variant conflicts with archivedE8144123. Reference only;excluded from optimization,never substitute for HB2."},
+    {"equipmentId":"eufy_nvr_e50_4_kit","productId":"E7100121","supplier":"eufy","sourceUrl":"https://www.eufy.com/products/e7100121","planningCost":null,"observedPrice":1199.99,"modeledCost":1199.99,"verification":"official_product_json_ld","notes":"Four-camera PoE/NVR kit with2TB drive. PDF unnamed800-dollar kit is NOT this kit;historical E50 reference999.99 is stale. Metadata og:url aliasE7100123 conflicts with JSON-LD;verify delivered kit/manual,individual camera SKU,cable/connector/mount counts."}
+  ],
+  "linkedEquipment": [
+    {
+      "id": "eufy_nvr_e50_4_kit",
+      "brand": "eufy",
+      "name": "eufy Security NVR System E50-4-Cam Kit",
+      "productId": "E7100121",
+      "status": "proposed_pending_approval",
+      "cameraQuantity": 4,
+      "individualCameraModel": null,
+      "installationCategory": "poe_nvr",
+      "power": "PoE and mains-powered NVR;exact supply and per-run requirements need delivered-kit/manual verification.",
+      "storage": "2TB HDD included;verify retention/expansion expectations.",
+      "connectivity": "Cat6 camera-to-NVR/PoE paths and router uplink;not a solar or Wi-Fi installation.",
+      "includedAccessories": ["Four cameras", "NVR", "2TB HDD"],
+      "unverifiedAccessories": ["Cable lengths/counts", "Connectors", "PoE supply/ports", "Fasteners and weatherproof glands"],
+      "sourceUrl": "https://www.eufy.com/products/e7100121"
+    }
+  ]
+}

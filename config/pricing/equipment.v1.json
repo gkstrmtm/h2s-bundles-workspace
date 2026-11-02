@@ -1,0 +1,347 @@
+{
+  "$schema": "./equipment.schema.json",
+  "schemaVersion": "1.0.0",
+  "business": "Home2Smart",
+  "status": "proposed_pending_approval",
+  "currency": "USD",
+  "effectiveDate": null,
+  "baselineReference": {"file": "home2smart.v1.json", "version": "1.0.0"},
+  "cameraConfiguration": {"file": "residential-cameras.v1.json", "version": "1.0.0"},
+  "costPolicy": {
+    "excludedCosts": ["sales_tax", "shipping"],
+    "notes": "Editable planning costs, not supplier quotes or customer prices. No automatic baseline substitution, equipment approval or checkout use."
+  },
+  "items": [
+    {
+      "id": "onn_fixed_32_86",
+      "name": "onn fixed TV wall mount, 32-86 inches",
+      "type": "mount_fixed",
+      "status": "proposed_pending_approval",
+      "modelNumber": null,
+      "supplier": {
+        "name": "Walmart",
+        "itemId": "777842123",
+        "url": "https://www.walmart.com/ip/777842123",
+        "priceCheckDate": "2026-10-30",
+        "observedPrice": 24.88,
+        "priceStatus": "supplier_listing_observed"
+      },
+      "costAssumption": {"amount": 24.88, "editable": true, "basis": "proposed_retail", "notes": "Single mount; proposed retail cost matches the observed listing."},
+      "dimensionsInches": {"width": null, "height": null, "depth": null, "totalLength": null, "wallDistance": {"minimum": 1.1, "maximum": 1.1}},
+      "tvCompatibility": {
+        "minInches": 32, "maxInches": 86, "maxWeightLb": 120,
+        "vesaMm": {"minimumWidth": 75, "minimumHeight": 75, "maximumWidth": 600, "maximumHeight": 400, "supportedPatterns": null},
+        "studSpacingInches": [16, 24]
+      },
+      "verification": {
+        "status": "supplier_listing_pending_manual_verification",
+        "sourceUrl": "https://www.walmart.com/ip/777842123",
+        "manualCompatibilityCheckRequired": true,
+        "notes": "Dimensions and compatibility transcribed from the supplier's AI-generated highlights, not an installation manual. VESA bounds do not establish every supported pattern. Verify TV model, exact pattern, weight, wall construction and hardware before selection."
+      }
+    },
+    {
+      "id": "onn_tilt_50_86",
+      "name": "onn tilting TV wall mount, 50-86 inches",
+      "type": "mount_tilt",
+      "status": "proposed_pending_approval",
+      "modelNumber": null,
+      "supplier": {
+        "name": "Walmart",
+        "itemId": "299960224",
+        "url": "https://www.walmart.com/ip/299960224",
+        "priceCheckDate": "2026-10-30",
+        "observedPrice": 25.24,
+        "priceStatus": "supplier_listing_observed"
+      },
+      "costAssumption": {"amount": 25.24, "editable": true, "basis": "proposed_retail", "notes": "Single mount; proposed retail cost matches the observed listing."},
+      "dimensionsInches": {"width": null, "height": null, "depth": null, "totalLength": null, "wallDistance": {"minimum": 2, "maximum": 2}},
+      "tvCompatibility": {
+        "minInches": 50, "maxInches": 86, "maxWeightLb": 120,
+        "vesaMm": null,
+        "studSpacingInches": [16, 24]
+      },
+      "verification": {
+        "status": "supplier_listing_pending_manual_verification",
+        "sourceUrl": "https://www.walmart.com/ip/299960224",
+        "manualCompatibilityCheckRequired": true,
+        "notes": "Supplier AI-generated highlights report size, weight, wall distance and stud spacing but not exact VESA patterns. VESA and physical dimensions remain unknown; verify the manual and TV before selection."
+      }
+    },
+    {
+      "id": "onn_full_motion_50_86",
+      "name": "onn full-motion TV wall mount, 50-86 inches",
+      "type": "mount_full_motion",
+      "status": "proposed_pending_approval",
+      "modelNumber": "100027961",
+      "supplier": {
+        "name": "Walmart",
+        "itemId": "866844895",
+        "url": "https://www.walmart.com/ip/866844895",
+        "priceCheckDate": "2026-10-30",
+        "observedPrice": 44.94,
+        "priceStatus": "supplier_listing_observed"
+      },
+      "costAssumption": {"amount": 54.00, "editable": true, "basis": "proposed_retail", "notes": "Retain the proposed $54.00 planning cost. The listing currently shows a $44.94 rollback, with $54.00 as the former price; do not silently substitute a promotional price."},
+      "dimensionsInches": {"width": null, "height": null, "depth": null, "totalLength": null, "wallDistance": {"minimum": 2.5, "maximum": 16}},
+      "tvCompatibility": {
+        "minInches": 50, "maxInches": 86, "maxWeightLb": 120,
+        "vesaMm": {"minimumWidth": 200, "minimumHeight": 100, "maximumWidth": 600, "maximumHeight": 400, "supportedPatterns": null},
+        "studSpacingInches": [16, 24]
+      },
+      "verification": {
+        "status": "supplier_listing_pending_manual_verification",
+        "sourceUrl": "https://www.walmart.com/ip/866844895",
+        "manualCompatibilityCheckRequired": true,
+        "notes": "Model number is in the supplier title; dimensions and compatibility come from its AI-generated highlights, not an installation manual. VESA bounds do not establish every supported pattern. Verify TV, wall, hardware and articulation clearance."
+      }
+    },
+    {
+      "id": "onn_full_motion_19_50",
+      "name": "onn full-motion TV wall mount, 19-50 inches",
+      "type": "mount_full_motion",
+      "status": "proposed_pending_approval",
+      "modelNumber": null,
+      "supplier": {
+        "name": "Walmart",
+        "itemId": "990431788",
+        "url": "https://www.walmart.com/ip/990431788",
+        "priceCheckDate": "2026-10-30",
+        "observedPrice": 26.96,
+        "priceStatus": "supplier_listing_observed"
+      },
+      "costAssumption": {"amount": 26.96, "editable": true, "basis": "proposed_retail", "notes": "Exact 19-50 inch variant identified by item ID and product title; observed price is a rollback from $32.96. No customer upgrade amount has been proposed for this smaller variant."},
+      "dimensionsInches": {"width": null, "height": null, "depth": null, "totalLength": null, "wallDistance": {"minimum": 2.7, "maximum": 16.7}},
+      "tvCompatibility": {
+        "minInches": 19, "maxInches": 50, "maxWeightLb": 50,
+        "vesaMm": {"minimumWidth": 75, "minimumHeight": 75, "maximumWidth": 400, "maximumHeight": 400, "supportedPatterns": null},
+        "studSpacingInches": null
+      },
+      "verification": {
+        "status": "supplier_listing_pending_manual_verification",
+        "sourceUrl": "https://www.walmart.com/ip/990431788",
+        "manualCompatibilityCheckRequired": true,
+        "notes": "Exact supplier variant and price confirmed on its product page. AI-generated highlights describe single-stud mounting; stud spacing is not applicable. Physical dimensions and exact VESA patterns require manual verification."
+      }
+    },
+    {
+      "id": "wire_trak_raceway_54",
+      "name": "Wire Trak external raceway kit, 54 total inches, 1 x 1/2 inch channel",
+      "type": "raceway",
+      "status": "proposed_pending_approval",
+      "modelNumber": null,
+      "supplier": {
+        "name": "Walmart",
+        "itemId": "342180027",
+        "url": "https://www.walmart.com/ip/342180027",
+        "priceCheckDate": "2026-10-30",
+        "observedPrice": 14.96,
+        "priceStatus": "supplier_listing_observed"
+      },
+      "costAssumption": {"amount": 14.96, "editable": true, "basis": "proposed_retail", "notes": "Cost per complete kit, not per fitting or per inch. No customer raceway surcharge or automatic per-TV kit quantity is established."},
+      "dimensionsInches": {"width": 1, "height": 0.5, "depth": null, "totalLength": 54, "wallDistance": null},
+      "tvCompatibility": null,
+      "verification": {
+        "status": "supplier_listing_pending_manual_verification",
+        "sourceUrl": "https://www.walmart.com/ip/342180027",
+        "manualCompatibilityCheckRequired": true,
+        "notes": "Exact SKU and price confirmed. Product title gives channel dimensions and 54-inch length; AI-generated highlights describe three cover lengths totaling 54 inches plus fittings, not one 54-inch piece. External cable management only; verify usable capacity, surface adhesion and permitted cable types. VESA and TV weight are not applicable."
+      }
+    }
+  ],
+  "cameraItems": [
+    {
+      "id": "eufy_wired_cam_c31",
+      "productId": "T817L121",
+      "modelNumber": "T817L",
+      "brand": "eufy",
+      "name": "eufy Wired Cam C31",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "standard_wired_power",
+      "intendedUse": "Affordable front, side or backyard coverage where compatible continuous adapter power is available.",
+      "supplier": {"name": "eufy", "itemId": "T817L121", "url": "https://www.eufy.com/products/t817l121", "priceCheckDate": "2026-10-30", "observedPrice": 59.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [
+        {"supplier": "Walmart marketplace", "itemId": "20966818629", "url": "https://www.walmart.com/ip/20966818629", "observedPrice": 59.99, "priceCheckDate": "2026-10-30", "comparison": "color_variant_requires_verification", "notes": "Listing is black; exact color-specific SKU must be confirmed. Do not equate this with the official T817L121 SKU without checking the box."}
+      ],
+      "costAssumption": {"amount": 59.99, "originalPlanningAmount": 59.99, "editable": true, "basis": "proposed_retail", "notes": "Original proposed planning cost retained separately from the editable assumption; not approved procurement pricing."},
+      "power": {"mode": "continuous_usb_c_dc", "dcVolts": 5, "adapterAmps": 1, "acMinVolts": null, "acMaxVolts": null, "frequencyHz": null, "requirements": "Use the camera's original 5V/1A USB adapter and 2m USB-C cable. The separate HomeBase Mini adapter is 5V/2A, not the camera adapter. Confirm safe weather-protected supply, cable reach and the exact SKU/manual; an outlet alone is not proof of compatibility. Not a PoE or mains-hardwired camera."},
+      "solar": {"supported": false, "panelIncluded": false, "minimumDirectSunHoursPerDay": null, "notes": "This standard uses continuous USB-C adapter power; no solar conversion is standardized."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "Camera Wi-Fi is 2.4GHz. Do not infer camera 5GHz support from HomeBase router connectivity."},
+      "storage": {"strategy": "standalone_micro_sd", "microSdMaxGb": 256, "cardIncluded": false, "builtInStorageGb": 0, "homeBaseModels": ["HomeBase 3", "HomeBase Mini"], "subscriptionRequiredForLocalRecording": false, "recording": "continuous_24_7", "notes": "No built-in storage. Local microSD sold separately, formatted in the app; HomeBase is an alternative, not included in the single-camera SKU. Not HomeBase 2 or HomeKit compatible. No cloud subscription cost is assumed."},
+      "includedAccessories": ["Camera mounting bracket", "Camera screw pack", "5V/1A USB power adapter", "2m USB-C cable"],
+      "requiredMaterialIds": ["camera_micro_sd_128gb", "camera_consumables", "c31_power_weather_protection"],
+      "compatibleEnvironments": ["indoor", "outdoor_ip66_with_protected_compatible_power"],
+      "verification": {
+        "status": "official_specs_site_review_required",
+        "sourceUrls": ["https://www.eufy.com/products/t817l121", "https://cdn.shopify.com/s/files/1/0504/7094/4954/files/eufy_Wired_Cam_C31_User_Manual.pdf?v=1772177472", "https://www.manualslib.com/manual/4325698/Eufy-Wired-Cam-C31.html?page=2", "https://www.manualslib.com/manual/4325698/Eufy-Wired-Cam-C31.html?page=13"],
+        "manualCompatibilityCheckRequired": true,
+        "requirements": ["Confirm exact single-camera SKU, adapter label, cable and box contents; the manual also illustrates optional HomeBase kits.", "Verify outdoor power protection and cable routing; waterproof camera connectors do not establish adapter/outlet weather protection.", "Test 2.4GHz coverage, mounting surface, recording media and installation complexity."],
+        "notes": "Official product specifications and manufacturer-manual text mirrored by ManualsLib distinguish the camera adapter from HomeBase power. IP66 and 1080p are official product specifications. Verify purchased variant before procurement."
+      }
+    },
+    {
+      "id": "eufy_solocam_e30",
+      "productId": "T8171121",
+      "modelNumber": "T8171",
+      "brand": "eufy",
+      "name": "eufy SoloCam E30",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "default_residential_outdoor_solar",
+      "intendedUse": "Initial preferred outdoor option with suitable sunlight and Wi-Fi, especially where nearby electrical power is unavailable.",
+      "supplier": {"name": "eufy", "itemId": "T8171121", "url": "https://www.eufy.com/products/t8171121", "priceCheckDate": "2026-10-30", "observedPrice": 149.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [
+        {"supplier": "Walmart marketplace", "itemId": "16437465193", "url": "https://www.walmart.com/ip/16437465193", "observedPrice": 299.99, "priceCheckDate": "2026-10-30", "comparison": "different_bundle_not_comparable", "notes": "Observed selection is one camera WITH HomeBase 3. Do not use the bundle price or its accessories as the single-camera cost or box contents."}
+      ],
+      "costAssumption": {"amount": 149.99, "originalPlanningAmount": 149.99, "editable": true, "basis": "proposed_retail", "notes": "Original single-camera planning cost retained separately from the editable assumption; not approved procurement pricing."},
+      "power": {"mode": "rechargeable_battery_solar", "dcVolts": null, "adapterAmps": null, "acMinVolts": null, "acMaxVolts": null, "frequencyHz": null, "requirements": "10,000mAh rechargeable battery with included removable solar panel. Verify charging/placement against the exact manual and actual exposure; no AC outlet is required for normal solar operation. USB-C charging specifications and any initial charging adapter must be checked, not inferred."},
+      "solar": {"supported": true, "panelIncluded": true, "minimumDirectSunHoursPerDay": 2, "notes": "Supplier guidance describes about two hours of suitable daily sunlight, not guaranteed autonomy. Shade, season, orientation, cable reach and recording activity require review."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "2.4GHz only; test signal at the actual camera location."},
+      "storage": {"strategy": "standalone_micro_sd", "microSdMaxGb": 128, "cardIncluded": false, "builtInStorageGb": null, "homeBaseModels": ["HomeBase S380 (HomeBase 3)", "HomeBase 2"], "subscriptionRequiredForLocalRecording": false, "recording": "motion_events", "notes": "microSD up to 128GB sold separately. Official comparison lists HomeBase S380 and HomeBase 2; verify firmware and exact feature compatibility before choosing a hub instead. No hub is included in this single-camera standard. Do not promise wired-camera 24/7 recording."},
+      "includedAccessories": ["Removable solar panel", "Camera mount", "Solar panel mount", "Screw pack", "3m USB-C solar cable", "0.6m USB-C charging cable"],
+      "requiredMaterialIds": ["camera_micro_sd_128gb", "camera_consumables"],
+      "compatibleEnvironments": ["outdoor_ip65_with_suitable_solar_exposure"],
+      "verification": {
+        "status": "official_specs_site_review_required",
+        "sourceUrls": ["https://www.eufy.com/products/t8171121", "https://service.eufy.com/product-description/a08J1000000YQfyIAG/eufy-solocam-e30", "https://www.manualslib.com/manual/4024431/Eufy-Solocam-E30.html?page=2"],
+        "manualCompatibilityCheckRequired": true,
+        "requirements": ["Confirm single-camera SKU and accessory contents; the illustrated manual also covers HomeBase bundles.", "Survey seasonal sunlight, panel placement, solar cable reach, mounting surface and 2.4GHz signal.", "Confirm recording expectations and compatible separately purchased microSD; assess initial charging needs."],
+        "notes": "Official page verifies 2K, IP65, battery, removable panel, Wi-Fi and storage capacity. Manual-mirror accessory list includes optional HomeBase items, deliberately excluded here. Inadequate sunlight requires review, not mandatory solar selection."
+      }
+    },
+    {
+      "id": "eufy_floodlight_e30",
+      "productId": "T8426121",
+      "modelNumber": "T8426",
+      "brand": "eufy",
+      "name": "eufy Floodlight Camera E30",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "premium_hardwired_lighting",
+      "intendedUse": "Driveways, backyards and other outdoor areas requesting security lighting with compatible existing floodlight power.",
+      "supplier": {"name": "eufy", "itemId": "T8426121", "url": "https://www.eufy.com/products/t8426121", "priceCheckDate": "2026-10-30", "observedPrice": 149.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [
+        {"supplier": "Walmart marketplace", "itemId": "14974516236", "url": "https://www.walmart.com/ip/14974516236", "observedPrice": 119.98, "priceCheckDate": "2026-10-30", "comparison": "same_product_family_verify_sku", "notes": "Listing shows rollback from $149.99. Exact manufacturer SKU, seller and included hardware still require procurement verification. Planning cost remains $149.99."}
+      ],
+      "costAssumption": {"amount": 149.99, "originalPlanningAmount": 149.99, "editable": true, "basis": "proposed_retail", "notes": "Original proposed planning cost retained separately from the editable assumption and retailer rollback; not approved procurement pricing."},
+      "power": {"mode": "hardwired_ac", "dcVolts": null, "adapterAmps": null, "acMinVolts": 100, "acMaxVolts": 240, "frequencyHz": [50, 60], "requirements": "Permanent hardwired AC, 100-240V at 50-60Hz, connected to a UL-listed junction box. USB-C is for setup ONLY, not permanent operation. Verify grounding, circuit, box, weather sealing and applicable licensed-electrician requirements."},
+      "solar": {"supported": false, "panelIncluded": false, "minimumDirectSunHoursPerDay": null, "notes": "No solar or battery operation is standardized; do not substitute a USB adapter for permanent hardwired AC."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "Official connectivity support explicitly excludes 5GHz; Wi-Fi connectivity does not mean wireless power."},
+      "storage": {"strategy": "standalone_micro_sd", "microSdMaxGb": 128, "cardIncluded": false, "builtInStorageGb": null, "homeBaseModels": ["HomeBase S380 (HomeBase 3)"], "subscriptionRequiredForLocalRecording": false, "recording": "continuous_24_7", "notes": "24/7 recording requires a separately purchased microSD up to 128GB or HomeBase S380. No shared hub, disk or cloud subscription is costed in this standard."},
+      "includedAccessories": ["Mounting bracket; verify remaining single-SKU hardware and setup cable contents before procurement"],
+      "requiredMaterialIds": ["camera_micro_sd_128gb", "camera_consumables", "floodlight_electrical_materials"],
+      "compatibleEnvironments": ["outdoor_ip65_wall_or_under_eave_with_ul_listed_junction_box"],
+      "verification": {
+        "status": "official_specs_site_review_required",
+        "sourceUrls": ["https://www.eufy.com/products/t8426121", "https://service.eufy.com/article-description/Floodlight-Cam-E30-Installation", "https://service.eufy.com/article-description/Floodlight-Cam-E30-Connectivity"],
+        "manualCompatibilityCheckRequired": true,
+        "requirements": ["Verify existing floodlight circuit, grounding, UL-listed box, mounting and weather sealing; an outlet is not sufficient.", "Review electrical licensing and installation complexity before quoting a substitution.", "Confirm exact box contents, 2.4GHz signal and separately purchased recording media."],
+        "notes": "Official product/support pages verify 2K, IP65, 2,000 lumens, AC supply, mounting restrictions and storage. This is one camera with lighting, not a two-camera device. A same-price hardware substitution does not establish same installation scope."
+      }
+    },
+    {
+      "id": "eufy_solocam_s220",
+      "productId": "T8134121",
+      "modelNumber": "T8134",
+      "brand": "eufy",
+      "name": "eufy SoloCam S220",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "budget_fixed_solar",
+      "intendedUse": "Affordable fixed-view outdoor coverage; no tracking, zoom-detail or color-night-vision promise.",
+      "supplier": {"name": "eufy", "itemId": "T8134121", "url": "https://www.eufy.com/products/t8134121", "priceCheckDate": "2026-10-30", "observedPrice": 99.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [],
+      "costAssumption": {"amount": 99.99, "originalPlanningAmount": 99.99, "editable": true, "basis": "proposed_retail", "notes": "Initial planning assumption based on the supplied observation, confirmed by official Product/Offer. Not procurement approval."},
+      "power": {"mode": "rechargeable_battery_solar", "dcVolts": null, "adapterAmps": null, "acMinVolts": null, "acMaxVolts": null, "frequencyHz": null, "requirements": "Built-in non-removable 6,500mAh rechargeable battery, integrated 0.9W solar panel. USB-C charging cable included; check initial charging supply and exposure. Do not promise continuous recording."},
+      "solar": {"supported": true, "panelIncluded": true, "minimumDirectSunHoursPerDay": 3, "notes": "Product FAQ specifies three hours; support FAQ says at least two hours under normal use. Use conservative three-hour surveyed guidance and flag this official conflict; no autonomy guarantee."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "Standalone 2.4GHz router Wi-Fi; no Ethernet port."},
+      "storage": {"strategy": "built_in", "microSdMaxGb": null, "cardIncluded": false, "builtInStorageGb": 8, "homeBaseModels": ["HomeBase S380 (HomeBase 3)"], "subscriptionRequiredForLocalRecording": false, "recording": "motion_events", "notes": "Standalone 8GB eMMC, overwrites oldest events; no microSD needed or supported. Product/support FAQ says HomeBase 3 only, while broad compatibility guide lists HB2/Mini too. Initial recommendations use standalone storage only; hub expansion requires review."},
+      "includedAccessories": ["Integrated solar panel", "USB-C charging cable", "Mount", "Screw pack", "Screw positioning sticker", "Quick Start Guide"],
+      "requiredMaterialIds": ["camera_consumables"],
+      "compatibleEnvironments": ["outdoor_ip67_with_suitable_solar_exposure"],
+      "verification": {"status": "official_specs_site_review_required", "sourceUrls": ["https://www.eufy.com/products/t8134121", "https://service.eufy.com/article-description/eufy-S220-SoloCam-FAQ", "https://service.eufy.com/article-description/eufy-Security-Complete-HomeBase-Compatibility-Guide"], "manualCompatibilityCheckRequired": true, "requirements": ["Verify integrated-panel exposure, seasonal conditions, charging supply, 2.4GHz signal and mounting.", "Review conflicting official sunlight and HomeBase claims before any hub-connected installation."], "notes": "Official Product/Offer confirms $99.99 and SKU; FAQ confirms box contents, 2K fixed view, infrared-only night vision, 8GB storage, motion-only recording and IP67."}
+    },
+    {
+      "id": "eufy_solocam_s340",
+      "productId": "T81701W1",
+      "modelNumber": "T8170",
+      "brand": "eufy",
+      "name": "eufy SoloCam S340",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "premium_tracking_solar",
+      "intendedUse": "Larger single coverage positions needing pan/tilt, AI tracking, detail zoom or color night vision; not simultaneous surveillance of separate areas.",
+      "supplier": {"name": "eufy", "itemId": "T81701W1", "url": "https://www.eufy.com/products/t81701w1", "priceCheckDate": "2026-10-30", "observedPrice": 219.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [],
+      "costAssumption": {"amount": 199.99, "originalPlanningAmount": 199.99, "editable": true, "basis": "proposed_retail", "notes": "Preserve the supplied $199.99 initial planning observation. Current official structured Product/Offer is $219.99; quote procurement uses the verified observation and flags the $20 difference."},
+      "power": {"mode": "rechargeable_battery_solar", "dcVolts": null, "adapterAmps": null, "acMinVolts": null, "acMaxVolts": null, "frequencyHz": null, "requirements": "Rechargeable battery with removable adjustable 2.2W solar panel. Verify initial charging adapter and panel/cable placement; not mains-hardwired or an assumed 24/7 recording device."},
+      "solar": {"supported": true, "panelIncluded": true, "minimumDirectSunHoursPerDay": 4, "notes": "Marketing describes two hours, while the current official setup article says three to four. Conservatively require four surveyed hours and flag the conflict. No guaranteed runtime."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "2.4GHz only. Initial recommendations use standalone mode; hub paths require feature/firmware verification."},
+      "storage": {"strategy": "built_in", "microSdMaxGb": null, "cardIncluded": false, "builtInStorageGb": 8, "homeBaseModels": ["HomeBase S380 (HomeBase 3)"], "subscriptionRequiredForLocalRecording": false, "recording": "motion_events", "notes": "Built-in 8GB eMMC; no separate microSD. Product page confirms HomeBase 3, broad guide also lists HB2/Mini, and one setup article specifically targets Professional S1. Do not extrapolate that workflow to a mandatory hub or interchangeable hub features."},
+      "includedAccessories": ["Removable solar panel", "Camera mounting bracket and screw pack; verify exact box", "Solar panel bracket and USB-C extension/charging cables; verify exact lengths and contents"],
+      "requiredMaterialIds": ["camera_consumables"],
+      "compatibleEnvironments": ["outdoor_with_suitable_solar_exposure_and_mounting"],
+      "verification": {"status": "official_specs_site_review_required", "sourceUrls": ["https://www.eufy.com/products/t81701w1", "https://service.eufy.com/article-description/How-do-I-add-the-eufy-SoloCam-S340-Outdoor-Security-Camera-to-my-eufy-App", "https://service.eufy.com/article-description/eufy-Security-Complete-HomeBase-Compatibility-Guide"], "manualCompatibilityCheckRequired": true, "requirements": ["Verify single-camera SKU, panel mount/hardware and USB-C cable contents against linked official user guide.", "Confirm 3K wide/2K telephoto detail, 8x hybrid zoom and tracking meet the actual scene; rotating coverage is not simultaneous multi-area coverage.", "Review sunlight, hub-compatibility and original-versus-current price conflicts."], "notes": "Official specifications verify dual lenses, pan/tilt, tracking, spotlight color night vision, 8GB eMMC and 2.4GHz. Conservative standalone event-recording path avoids unsupported hub assumptions."}
+    },
+    {
+      "id": "eufycam_e40",
+      "productId": "T8144121",
+      "modelNumber": "T8144",
+      "brand": "eufy",
+      "name": "eufyCam E40 add-on camera",
+      "type": "security_camera",
+      "status": "proposed_pending_approval",
+      "installationCategory": "shared_storage_fixed_solar",
+      "intendedUse": "Standardized multiple fixed camera locations with separately verified shared HomeBase storage and radio coverage.",
+      "supplier": {"name": "eufy", "itemId": "T8144121", "url": "https://www.eufy.com/products/t8144121", "priceCheckDate": "2026-10-30", "observedPrice": 149.99, "priceStatus": "supplier_listing_observed"},
+      "retailerListings": [],
+      "costAssumption": {"amount": 149.99, "originalPlanningAmount": 149.99, "editable": true, "basis": "proposed_retail", "notes": "Add-on cost only, not a camera with included HomeBase. Kit and multipack costs are distinct purchasing options."},
+      "power": {"mode": "rechargeable_battery_solar", "dcVolts": null, "adapterAmps": null, "acMinVolts": null, "acMaxVolts": null, "frequencyHz": null, "requirements": "Rechargeable camera with integrated 0.7W solar panel; verify sunlight and initial charging. Official support allows charging via HomeBase USB or 9V/2A, 5V/2A or 5V/1A adapter. Continuous recording additionally requires a sold-separately direct-power cable and compatible installation, not assumed in solar drafts."},
+      "solar": {"supported": true, "panelIncluded": true, "minimumDirectSunHoursPerDay": null, "notes": "Official page verifies integrated SolarPlus 2.0 and external-solar support; exact sufficient sun-hours threshold is not established by reviewed sources. Site sunlight suitability must be confirmed for this model; never infer from an outlet or another model's threshold."},
+      "wifi": {"bandsGhz": [2.4], "siteCoverageVerificationRequired": true, "notes": "Requires compatible HomeBase link plus verified hub/router connection. Router Wi-Fi at the camera alone is insufficient; initial standard requires an independently tested camera-to-hub link."},
+      "storage": {"strategy": "required_homebase", "microSdMaxGb": null, "cardIncluded": false, "builtInStorageGb": null, "homeBaseModels": ["HomeBase 2", "HomeBase S380 (HomeBase 3)"], "subscriptionRequiredForLocalRecording": false, "recording": "motion_events", "notes": "HB2 kit includes 16GB shared storage; S380 kit also has 16GB but different expansion/AI features. No standalone recording or microSD is assumed. Product comparison claims HB2 USB expansion, while older generic HB2 guidance can differ; initial standard uses included 16GB only and requires retention review. HomeKit on HB2 requires firmware v3.3.6.9 or later."},
+      "includedAccessories": ["Integrated solar panel; camera mount, screw pack and USB-C charging cable require exact add-on/kit box verification"],
+      "requiredMaterialIds": ["camera_consumables"],
+      "compatibleEnvironments": ["outdoor_ip66_with_suitable_solar_exposure_and_verified_homebase_link"],
+      "verification": {"status": "official_specs_site_review_required", "sourceUrls": ["https://www.eufy.com/products/t8144121", "https://www.eufy.com/products/e8144121", "https://service.eufy.com/article-description/What-should-I-do-if-I-cannot-charge-my-eufyCam-E40", "https://service.eufy.com/article-description/eufy-Security-Complete-HomeBase-Compatibility-Guide"], "manualCompatibilityCheckRequired": true, "requirements": ["Verify camera-to-HomeBase link, hub model, router connection, free camera slots, storage retention and firmware.", "Confirm kit/add-on box contents including mount/screws and initial charging; separately cost missing supplies.", "Review recording-mode/direct-power requirements and HB2 versus S380 storage/feature differences."], "notes": "Official page identifies 2K 4MP fixed 130-degree lens, MaxColor color night vision, spotlight, IP66, integrated solar, HomeBase 2/S380 compatibility and separate direct-power requirement for continuous recording."}
+    }
+  ],
+  "purchasingOptions": [
+    {"id": "e40_homebase2_kit", "status": "proposed_pending_approval", "productId": "E8144121", "equipmentId": "eufycam_e40", "quantity": 2, "includedHub": "homebase_2", "includedHubStorageGb": 16, "planningCost": 279.99, "observedPrice": 279.99, "priceCheckDate": "2026-10-30", "sourceUrl": "https://www.eufy.com/products/e8144121", "eligibleForOptimization": true, "notes": "Exact official Product/Offer identifies two cameras plus HomeBase 2, not S380. Verify hub adapter, Ethernet cable, camera mounts/screws and charging cable in purchased SKU; additional materials remain uncosted."},
+    {"id": "e40_single", "status": "proposed_pending_approval", "productId": "T8144121", "equipmentId": "eufycam_e40", "quantity": 1, "includedHub": null, "includedHubStorageGb": null, "planningCost": 149.99, "observedPrice": 149.99, "priceCheckDate": "2026-10-30", "sourceUrl": "https://www.eufy.com/products/t8144121", "eligibleForOptimization": true, "notes": "Add-on camera; requires verified compatible HomeBase, not standalone recording."},
+    {"id": "e40_two_addons", "status": "proposed_pending_approval", "productId": "BUNDLE-T8144121-2", "equipmentId": "eufycam_e40", "quantity": 2, "includedHub": null, "includedHubStorageGb": null, "planningCost": 299.98, "observedPrice": 299.98, "priceCheckDate": "2026-10-30", "sourceUrl": "https://www.eufy.com/products/bundle-t8144121-2", "eligibleForOptimization": true, "notes": "Verified official two add-on pack; no HomeBase included. No assumed multipack discount."},
+    {"id": "e40_four_addons", "status": "proposed_pending_approval", "productId": "BUNDLE-T8144121-4", "equipmentId": "eufycam_e40", "quantity": 4, "includedHub": null, "includedHubStorageGb": null, "planningCost": 599.96, "observedPrice": 599.96, "priceCheckDate": "2026-10-30", "sourceUrl": "https://www.eufy.com/products/bundle-t8144121-4", "eligibleForOptimization": true, "notes": "Verified official four add-on pack; no HomeBase included. Compare against kits rather than assuming this is cheaper."},
+    {"id": "e40_s380_kit_reference", "status": "proposed_pending_approval", "productId": "E8144123", "equipmentId": "eufycam_e40", "quantity": 2, "includedHub": "homebase_s380", "includedHubStorageGb": 16, "planningCost": 379.99, "observedPrice": 379.99, "priceCheckDate": "2026-10-30", "sourceUrl": "https://www.eufy.com/products/e8144121", "eligibleForOptimization": false, "notes": "Official comparison/embedded SKU describes S380 kit, but direct E8144123 URL redirects to collection. Reference only until an exact purchasable variant is verified. Never substitute for HomeBase 2 or invent a procurement URL."}
+  ],
+  "costAllowances": [
+    {
+      "id": "extra_tv_consumables",
+      "status": "proposed_pending_approval",
+      "amountPerTv": 3,
+      "editable": true,
+      "basis": "estimate",
+      "notes": "Estimated extra consumables per TV, separate from mount and optional raceway cost; not a customer surcharge or a verified supplier SKU."
+    }
+  ],
+  "customerUpgrades": [
+    {
+      "id": "tilt_mount_upgrade",
+      "status": "proposed_pending_approval",
+      "equipmentId": "onn_tilt_50_86",
+      "replacesEquipmentId": "onn_fixed_32_86",
+      "baselinePriceGroup": null,
+      "additionalPrice": 20,
+      "notes": "Proposed tilt upgrade only; market, base package and replacement basis need approval. Does not authorize adding $20 to installation-only pricing or every TV size."
+    },
+    {
+      "id": "large_full_motion_mount_upgrade",
+      "status": "proposed_pending_approval",
+      "equipmentId": "onn_full_motion_50_86",
+      "replacesEquipmentId": "onn_fixed_32_86",
+      "baselinePriceGroup": null,
+      "additionalPrice": 65,
+      "notes": "Proposed large full-motion upgrade only; market, base package and replacement basis need approval. Not a price for the 19-50 inch variant. Neither upgrade bypasses the baseline's 86+ inch quote requirement."
+    }
+  ]
+}

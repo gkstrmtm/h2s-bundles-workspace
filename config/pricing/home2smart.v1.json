@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "business": "Home2Smart",
+  "status": "proposed_baseline_pending_approval",
+  "currency": "USD",
+  "effectiveDate": null,
+  "scope": ["tv_mounting", "security_camera_installation"],
+  "markets": ["residential", "commercial"],
+  "serviceArea": {"origin": "Greenwood, SC", "maximumOneWayDriveHours": 3, "travelFees": "quote_required_outside_core_zone"},
+  "pricingRules": {
+    "customerSuppliedEquipment": "installation_only",
+    "equipmentIncluded": "specified_eligible_sku_only",
+    "grossMaterialProfitFormula": "sellingPrice - equipmentCost - suppliesCost",
+    "grossMaterialMarginFormula": "grossMaterialProfit / sellingPrice * 100",
+    "excludedCosts": ["owner_labor", "travel", "payment_processing", "taxes", "insurance", "overhead"],
+    "discountPolicy": "promotions_do_not_override_baseline",
+    "quoteRequired": ["nonstandard_mounting", "difficult_cable_runs", "large_commercial_systems", "unverified_equipment_sku"]
+  },
+  "prices": {
+    "tvMounting": {
+      "residentialInstallationOnly": [{"maxInches":43,"price":109},{"minInches":44,"maxInches":55,"price":129},{"minInches":56,"maxInches":65,"price":149},{"minInches":66,"maxInches":75,"price":179},{"minInches":76,"maxInches":85,"price":229},{"minInches":86,"priceFrom":299,"quoteRequired":true}],
+      "residentialWithStandardFixedMount": [{"maxInches":43,"price":139},{"minInches":44,"maxInches":55,"price":159},{"minInches":56,"maxInches":65,"price":179},{"minInches":66,"maxInches":75,"price":219},{"minInches":76,"maxInches":85,"price":279},{"minInches":86,"quoteRequired":true}],
+      "commercialInstallationOnly": [{"maxInches":43,"price":159},{"minInches":44,"maxInches":55,"price":189},{"minInches":56,"maxInches":65,"price":219},{"minInches":66,"maxInches":75,"price":269},{"minInches":76,"maxInches":85,"price":349},{"minInches":86,"priceFrom":449,"quoteRequired":true}],
+      "commercialBundlesInstallationOnlyUpTo65Inches": [{"quantity":2,"price":399},{"quantity":4,"price":749},{"quantity":6,"price":1099},{"quantity":8,"price":1399}]
+    },
+    "cameras": {
+      "residentialWirelessInstallationOnly": [{"quantity":1,"price":129},{"quantity":2,"price":229},{"quantity":4,"price":399}],
+      "residentialEquipmentIncluded": [{"quantity":1,"priceFrom":299},{"quantity":2,"priceFrom":599},{"quantity":4,"price":1099},{"quantity":6,"priceFrom":1599},{"quantity":8,"priceFrom":2099}],
+      "residentialWiredEquipmentIncluded": [{"quantity":4,"priceFrom":1699}],
+      "commercialWirelessInstallationOnly": [{"quantity":1,"price":199},{"quantity":4,"price":599},{"quantity":8,"price":1099}],
+      "commercialWirelessEquipmentIncluded": [{"quantity":2,"priceFrom":749},{"quantity":4,"price":1499},{"quantity":8,"priceFrom":2799}],
+      "commercialWiredEquipmentIncluded": [{"quantity":4,"priceFrom":2499},{"quantity":8,"priceFrom":4499},{"quantity":16,"quoteRequired":true}]
+    }
+  },
+  "costScenarios": [
+    {"id":"residential_eufy_four_camera_example","sellingPrice":1099,"equipmentCost":559.99,"suppliesCostEstimate":30,"equipmentCostStatus":"historical_research_unverified_current","grossMaterialProfit":509.01,"grossMaterialMarginPercent":46.32},
+    {"id":"commercial_eufy_e50_four_camera_example","sellingPrice":2499,"equipmentCost":999.99,"suppliesCostEstimate":175,"equipmentCostStatus":"historical_research_unverified_current","grossMaterialProfit":1324.01,"grossMaterialMarginPercent":52.98}
+  ],
+  "futureServicesNotActive": ["smart_locks", "soundbar_mounting", "smart_home_setup"],
+  "evidenceStatus": "Market ranges discussed in planning; source links and live prices require verification before public claims",
+  "changeControl": "Review changes, run validation, obtain explicit approval before commit/push/deploy"
+}

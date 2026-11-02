@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/proposed-residential-cameras-v1.json",
+  "title": "Offline residential camera selection and draft packages",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "status", "effectiveDate", "currency", "catalogReference", "baselineReference", "storageStrategy", "siteFacts", "reviewRules", "selectionRules", "materialAssumptions", "packages", "notes"],
+  "properties": {
+    "$schema": {"const": "./residential-cameras.schema.json"},
+    "schemaVersion": {"const": "1.0.0"},
+    "status": {"$ref": "#/definitions/status"},
+    "effectiveDate": {"type": "null"},
+    "recommendationPolicy": {"$ref": "https://home2smart.com/schemas/offline-camera-recommendations-v1.json#/definitions/policy"},
+    "currency": {"const": "USD"},
+    "catalogReference": {
+      "type": "object", "additionalProperties": false, "required": ["file", "version"],
+      "properties": {"file": {"const": "equipment.v1.json"}, "version": {"const": "1.0.0"}}
+    },
+    "baselineReference": {
+      "type": "object", "additionalProperties": false, "required": ["file", "version"],
+      "properties": {"file": {"const": "home2smart.v1.json"}, "version": {"const": "1.0.0"}}
+    },
+    "storageStrategy": {"const": "standalone_micro_sd"},
+    "siteFacts": {
+      "type": "object", "minProperties": 9, "maxProperties": 9,
+      "propertyNames": {"$ref": "#/definitions/factName"},
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "reviewRules": {
+      "type": "array", "minItems": 6, "maxItems": 6,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["fact", "expected", "reason"],
+        "properties": {
+          "fact": {"enum": ["outdoor", "suitableSunlight", "wifiCoverageConfirmed", "mountingCompatible", "installationComplexityStandard", "powerAssessmentComplete"]},
+          "expected": {"const": true}, "reason": {"$ref": "#/definitions/id"}
+        }
+      }
+    },
+    "selectionRules": {
+      "type": "array", "minItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "equipmentId", "role", "when", "manualReviewRequired"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"}, "equipmentId": {"$ref": "#/definitions/id"},
+          "role": {"enum": ["premium_lighting_candidate", "initial_preferred_option", "lower_cost_alternative"]},
+          "when": {"type": "object", "minProperties": 2, "propertyNames": {"$ref": "#/definitions/factName"}, "additionalProperties": {"type": "boolean"}},
+          "manualReviewRequired": {"type": "boolean"}
+        }
+      }
+    },
+    "materialAssumptions": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "name", "status", "unitCost", "editable", "notes"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"}, "name": {"type": "string", "minLength": 1},
+          "status": {"$ref": "#/definitions/status"}, "unitCost": {"$ref": "#/definitions/nullableCost"},
+          "editable": {"const": true}, "notes": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "packages": {
+      "type": "array", "minItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "status", "baselinePriceReference", "referenceCostScenarioId", "locations"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"}, "name": {"type": "string", "minLength": 1},
+          "status": {"$ref": "#/definitions/status"},
+          "baselinePriceReference": {
+            "type": "object", "additionalProperties": false, "required": ["group", "quantity"],
+            "properties": {"group": {"const": "residentialEquipmentIncluded"}, "quantity": {"enum": [2, 4]}}
+          },
+          "referenceCostScenarioId": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]+$"},
+          "locations": {"$ref": "#/definitions/locations"}
+        }
+      }
+    },
+    "notes": {"type": "string", "minLength": 1}
+  },
+  "definitions": {
+    "status": {"const": "proposed_pending_approval"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+    "nullableCost": {"type": ["number", "null"], "minimum": 0, "multipleOf": 0.01},
+    "factName": {"enum": ["outdoor", "suitableSunlight", "wifiCoverageConfirmed", "mountingCompatible", "installationComplexityStandard", "powerAssessmentComplete", "c31PowerCompatible", "floodlightPowerCompatible", "lightingRequested"]},
+    "siteAssessment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outdoor", "suitableSunlight", "wifiCoverageConfirmed", "mountingCompatible", "installationComplexityStandard", "powerAssessmentComplete", "c31PowerCompatible", "floodlightPowerCompatible", "lightingRequested"],
+      "properties": {
+        "outdoor": {"type": ["boolean", "null"]}, "suitableSunlight": {"type": ["boolean", "null"]},
+        "wifiCoverageConfirmed": {"type": ["boolean", "null"]}, "mountingCompatible": {"type": ["boolean", "null"]},
+        "installationComplexityStandard": {"type": ["boolean", "null"]}, "powerAssessmentComplete": {"type": ["boolean", "null"]},
+        "c31PowerCompatible": {"type": ["boolean", "null"]}, "floodlightPowerCompatible": {"type": ["boolean", "null"]},
+        "lightingRequested": {"type": ["boolean", "null"]}
+      }
+    },
+    "locations": {
+      "type": "array", "minItems": 2, "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["id", "equipmentId"],
+        "properties": {"id": {"enum": ["front", "back", "left", "right"]}, "equipmentId": {"$ref": "#/definitions/id"}}
+      }
+    },
+    "calculationInputs": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "locations": {"$ref": "#/definitions/locations"},
+        "materialUnitCosts": {
+          "type": "object", "propertyNames": {"$ref": "#/definitions/id"},
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["amount", "notes"],
+            "properties": {"amount": {"$ref": "#/definitions/nullableCost"}, "notes": {"type": "string", "minLength": 1}}
+          }
+        },
+        "siteFactsByLocation": {
+          "type": "object", "propertyNames": {"enum": ["front", "back", "left", "right"]},
+          "additionalProperties": {"$ref": "#/definitions/siteAssessment"}
+        }
+      }
+    }
+  }
+}

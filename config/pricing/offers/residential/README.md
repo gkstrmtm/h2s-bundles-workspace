@@ -1,5 +1,12 @@
 # Residential offer development: offline only
 
+The [2026-11-02 reconciliation](../../reconciliation/README.md) now provides a
+separate [recommended v2 pricing matrix](../../home2smart.v2.json) and reviewed
+shared catalog/selection dependencies. These offer versions remain immutable
+and unapproved: the new recommendation does not silently reprice v1-v5 or make
+their differing cost scopes equivalent. See the reconciliation report for the
+$499 versus $599 comparison and the more conservative TV supply budgets.
+
 This folder owns offer experiments, not catalog specifications, baseline pricing,
 checkout or compensation policy. Nothing here is imported by live applications.
 All scenarios remain `offline_proposal_pending_reconciliation_and_review` with

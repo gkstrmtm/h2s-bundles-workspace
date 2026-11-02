@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/offline-reconciliation-v1.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["$schema","schemaVersion","business","status","currency","effectiveDate","activationAllowed","checkedDate","references","assumptions","costPolicy","residentialTvDiscounts","prices","addOns","sensitivity"],
+  "properties": {
+    "$schema": {"const":"./reconciliation/schema.v1.json"},
+    "schemaVersion": {"const":"2.0.0"},
+    "business": {"const":"Home2Smart"},
+    "status": {"const":"proposed_reconciled_pending_approval"},
+    "currency": {"const":"USD"},
+    "effectiveDate": {"type":"null"},
+    "activationAllowed": {"const":false},
+    "checkedDate": {"type":"string","pattern":"^\\d{4}-\\d{2}-\\d{2}$"},
+    "references": {
+      "type":"object","additionalProperties":false,
+      "required":["baseline","baselineDataSha256","equipment","cameraConfiguration","launchOffer","pdf","published","verification"],
+      "properties": {
+        "baseline":{"const":"home2smart.v1.json"},
+        "baselineDataSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "equipment":{"const":"equipment.v1.json"},
+        "cameraConfiguration":{"const":"residential-cameras.v1.json"},
+        "launchOffer":{"const":"offers/residential/v5-launch-proposed.json"},
+        "pdf":{"const":"reconciliation/source/pdf-pricing.v1.json"},
+        "published":{"const":"reconciliation/source/published-pricing.v1.json"},
+        "verification":{"const":"reconciliation/equipment-verification.v1.json"}
+      }
+    },
+    "assumptions": {
+      "type":"object","additionalProperties":false,
+      "required":["materialsTaxPercent","processingPercent","serviceReservePercent","commissionPercent","commissionScenarios","minimumCompanyMarginPercent","minimumCompanyContribution","ownerInstallationLaborDeduction","approvedCommissionPolicy","notes"],
+      "properties": {
+        "materialsTaxPercent":{"const":8},"processingPercent":{"const":3},"serviceReservePercent":{"const":5},
+        "commissionPercent":{"enum":[50,55,60]},
+        "commissionScenarios":{"type":"array","minItems":3,"maxItems":3,"uniqueItems":true,"items":{"enum":[50,55,60]}},
+        "minimumCompanyMarginPercent":{"type":"number","minimum":18,"maximum":100,"multipleOf":0.01},
+        "minimumCompanyContribution":{"type":"number","minimum":30,"multipleOf":0.01},
+        "ownerInstallationLaborDeduction":{"const":false},"approvedCommissionPolicy":{"type":"null"},
+        "notes":{"$ref":"#/definitions/notes"}
+      }
+    },
+    "costPolicy": {
+      "type":"object","additionalProperties":false,
+      "required":["tvMountEquipmentId","tvRacewayEquipmentId","tvRacewayKitsPerSuppliedMountTv","tvJobAllowance","cameraSuppliesPerCamera","cameraTravelShippingAllowances","poeTravelShippingAllowance","notes"],
+      "properties": {
+        "tvMountEquipmentId":{"const":"onn_fixed_32_86"},"tvRacewayEquipmentId":{"const":"wire_trak_raceway_54"},
+        "tvRacewayKitsPerSuppliedMountTv":{"const":1},
+        "tvJobAllowance":{"$ref":"#/definitions/cost"},"cameraSuppliesPerCamera":{"$ref":"#/definitions/cost"},
+        "cameraTravelShippingAllowances": {
+          "type":"object","additionalProperties":false,"required":["1","2","3","4","6","8","12","16"],
+          "properties":{"1":{"$ref":"#/definitions/cost"},"2":{"$ref":"#/definitions/cost"},"3":{"$ref":"#/definitions/cost"},"4":{"$ref":"#/definitions/cost"},"6":{"$ref":"#/definitions/cost"},"8":{"$ref":"#/definitions/cost"},"12":{"$ref":"#/definitions/cost"},"16":{"$ref":"#/definitions/cost"}}
+        },
+        "poeTravelShippingAllowance":{"$ref":"#/definitions/cost"},"notes":{"$ref":"#/definitions/notes"}
+      }
+    },
+    "residentialTvDiscounts": {
+      "type":"object","additionalProperties":false,"required":["percentsByPosition","basis","fourOrMore","stackWithCommercialBundles"],
+      "properties": {
+        "percentsByPosition":{"const":[0,10,15]},"basis":{"const":"highest_base_price_first_marginal"},
+        "fourOrMore":{"const":"custom_quote"},"stackWithCommercialBundles":{"const":false}
+      }
+    },
+    "prices": {
+      "type":"object","additionalProperties":false,"required":["tvMounting","cameras"],
+      "properties": {
+        "tvMounting": {
+          "type":"object","additionalProperties":false,
+          "required":["residentialInstallationOnly","residentialWithStandardFixedMount","commercialInstallationOnly","commercialBundlesInstallationOnlyUpTo65Inches"],
+          "properties": {
+            "residentialInstallationOnly":{"$ref":"#/definitions/tvTiers"},
+            "residentialWithStandardFixedMount":{"$ref":"#/definitions/tvTiers"},
+            "commercialInstallationOnly":{"$ref":"#/definitions/tvTiers"},
+            "commercialBundlesInstallationOnlyUpTo65Inches":{"$ref":"#/definitions/quantityTiers"}
+          }
+        },
+        "cameras": {
+          "type":"object","additionalProperties":false,
+          "required":["residentialWirelessInstallationOnly","residentialWiredInstallationOnly","residentialEquipmentIncluded","residentialE40EquipmentIncluded","residentialWiredEquipmentIncluded","commercialWirelessInstallationOnly","commercialWiredInstallationOnly","commercialWirelessEquipmentIncluded","commercialWiredEquipmentIncluded"],
+          "properties": {
+            "residentialWirelessInstallationOnly":{"$ref":"#/definitions/quantityTiers"},
+            "residentialWiredInstallationOnly":{"$ref":"#/definitions/quantityTiers"},
+            "residentialEquipmentIncluded":{"$ref":"#/definitions/quantityTiers"},
+            "residentialE40EquipmentIncluded":{"$ref":"#/definitions/quantityTiers"},
+            "residentialWiredEquipmentIncluded":{"$ref":"#/definitions/quantityTiers"},
+            "commercialWirelessInstallationOnly":{"$ref":"#/definitions/quantityTiers"},
+            "commercialWiredInstallationOnly":{"$ref":"#/definitions/quantityTiers"},
+            "commercialWirelessEquipmentIncluded":{"$ref":"#/definitions/quantityTiers"},
+            "commercialWiredEquipmentIncluded":{"$ref":"#/definitions/quantityTiers"}
+          }
+        }
+      }
+    },
+    "addOns": {
+      "type":"array","minItems":1,
+      "items": {
+        "type":"object","additionalProperties":false,"required":["id","equipmentId","replacesEquipmentId","status","notes"],
+        "allOf":[{"$ref":"#/definitions/amountChoice"}],
+        "properties": {
+          "id":{"type":"string","pattern":"^[a-z][a-z0-9_]+$"},
+          "price":{"$ref":"#/definitions/price"},"quoteRequired":{"const":true},
+          "equipmentId":{"type":["string","null"]},"replacesEquipmentId":{"type":["string","null"]},
+          "status":{"const":"proposed_pending_approval"},"notes":{"$ref":"#/definitions/notes"}
+        }
+      }
+    },
+    "sensitivity": {
+      "type":"object","additionalProperties":false,"required":["equipmentIncreasesPercent","extraTaxableMaterials","extendedTripCash","paidTechnicianOrderPercent","notes"],
+      "properties": {
+        "equipmentIncreasesPercent":{"type":"array","minItems":1,"uniqueItems":true,"items":{"type":"number","minimum":0,"maximum":100,"multipleOf":0.01}},
+        "extraTaxableMaterials":{"$ref":"#/definitions/cost"},"extendedTripCash":{"$ref":"#/definitions/cost"},
+        "paidTechnicianOrderPercent":{"type":"number","minimum":0,"maximum":100,"multipleOf":0.01},
+        "notes":{"$ref":"#/definitions/notes"}
+      }
+    }
+  },
+  "definitions": {
+    "notes":{"type":"string","minLength":1},
+    "cost":{"type":"number","minimum":0,"multipleOf":0.01},
+    "price":{"type":"number","exclusiveMinimum":0,"multipleOf":0.01},
+    "selection":{"enum":["pdf","json","v5","recommendation","third_price","unchanged"]},
+    "amountChoice": {
+      "type":"object",
+      "oneOf":[
+        {"required":["price"],"not":{"anyOf":[{"required":["priceFrom"]},{"required":["quoteRequired"]}]}},
+        {"required":["priceFrom"],"not":{"required":["price"]}},
+        {"required":["quoteRequired"],"properties":{"quoteRequired":{"const":true}},"not":{"anyOf":[{"required":["price"]},{"required":["priceFrom"]}]}}
+      ]
+    },
+    "tvTiers": {
+      "type":"array","minItems":6,"maxItems":6,
+      "items": {
+        "type":"object","additionalProperties":false,"required":["selection"],"allOf":[{"$ref":"#/definitions/amountChoice"}],
+        "properties": {
+          "minInches":{"type":"integer","minimum":1},"maxInches":{"type":"integer","minimum":1},
+          "price":{"$ref":"#/definitions/price"},"priceFrom":{"$ref":"#/definitions/price"},"quoteRequired":{"const":true},
+          "selection":{"$ref":"#/definitions/selection"}
+        }
+      }
+    },
+    "quantityTiers": {
+      "type":"array","minItems":1,
+      "items": {
+        "type":"object","additionalProperties":false,"required":["quantity","selection"],"allOf":[{"$ref":"#/definitions/amountChoice"}],
+        "properties": {
+          "quantity":{"type":"integer","minimum":1,"maximum":16},
+          "price":{"$ref":"#/definitions/price"},"priceFrom":{"$ref":"#/definitions/price"},"quoteRequired":{"const":true},
+          "equipmentId":{"type":"string"},"selection":{"$ref":"#/definitions/selection"}
+        }
+      }
+    },
+    "costInput": {
+      "type":"object","additionalProperties":false,"required":["amount","notes"],
+      "properties":{"amount":{"type":["number","null"],"minimum":0,"multipleOf":0.01},"notes":{"$ref":"#/definitions/notes"}}
+    },
+    "options": {
+      "type":"object","additionalProperties":false,
+      "not":{"required":["technicianCash","technicianOrderScenario"]},
+      "properties": {
+        "commissionPercent":{"enum":[50,55,60]},
+        "materialsTax": {
+          "type":"object","additionalProperties":false,"required":["percent","notes"],
+          "properties":{"percent":{"type":"number","minimum":0,"maximum":100,"multipleOf":0.01},"notes":{"$ref":"#/definitions/notes"}}
+        },
+        "mountUpgradeId":{"enum":["tilt_mount","large_full_motion_mount","small_full_motion_mount"]},
+        "sellingPrice":{"$ref":"#/definitions/costInput"},"travelAllowance":{"$ref":"#/definitions/costInput"},
+        "extraMaterials":{"$ref":"#/definitions/costInput"},"technicianCash":{"$ref":"#/definitions/costInput"},
+        "technicianOrderScenario": {
+          "type":"object","additionalProperties":false,"required":["percent","notes"],
+          "properties":{"percent":{"type":"number","minimum":0,"maximum":100,"multipleOf":0.01},"notes":{"$ref":"#/definitions/notes"}}
+        },
+        "equipmentIncreasePercent":{"type":"number","minimum":0,"maximum":100,"multipleOf":0.01},
+        "eligibilityVerified":{"type":"boolean"},"sameLocation":{"type":"boolean"},
+        "tvSizes":{"type":"array","minItems":1,"items":{"type":"integer","minimum":1,"maximum":1000}},
+        "materialCosts":{"type":"object","additionalProperties":{"$ref":"#/definitions/costInput"}}
+      }
+    },
+    "selector": {
+      "type":"object","additionalProperties":false,
+      "properties":{"inches":{"type":"integer","minimum":1,"maximum":1000},"quantity":{"type":"integer","minimum":1,"maximum":1000}},
+      "anyOf":[{"required":["inches"]},{"required":["quantity"]}]
+    },
+    "tvs": {
+      "type":"array","minItems":1,"maxItems":100,
+      "items": {
+        "type":"object","additionalProperties":false,"required":["inches","customerSuppliedMount","compatibilityVerified"],
+        "properties":{"inches":{"type":"integer","minimum":1,"maximum":1000},"customerSuppliedMount":{"type":"boolean"},"compatibilityVerified":{"type":["boolean","null"]},"mountUpgradeId":{"enum":["tilt_mount","large_full_motion_mount","small_full_motion_mount"]}}
+      }
+    }
+  }
+}

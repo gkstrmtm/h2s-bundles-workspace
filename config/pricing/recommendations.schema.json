@@ -1,0 +1,254 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/offline-camera-recommendations-v1.json",
+  "title": "Offline homeowner consultation, policy and quote output",
+  "definitions": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "cost": {"type": "number", "minimum": 0, "multipleOf": 0.01},
+    "nullableCost": {"type": ["number", "null"], "minimum": 0, "multipleOf": 0.01},
+    "features": {"type": "array", "uniqueItems": true, "items": {"enum": ["fixed_view", "pan_tilt", "tracking", "zoom_detail", "color_night_vision", "floodlighting", "continuous_recording"]}},
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "quantityPolicy", "maximumLocations", "priceRules", "financialAssumptions", "profiles", "additionalMaterials", "notes"],
+      "properties": {
+        "status": {"const": "proposed_pending_approval"},
+        "quantityPolicy": {"const": "one_camera_per_independent_coverage_position"},
+        "maximumLocations": {"const": 16},
+        "priceRules": {
+          "type": "array", "minItems": 4, "maxItems": 4,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["quantity", "baselineQuantity", "draftPrice", "kind"],
+            "properties": {
+              "quantity": {"enum": [1, 2, 3, 4]}, "baselineQuantity": {"enum": [null, 1, 2, 4]},
+              "draftPrice": {"$ref": "#/definitions/nullableCost"}, "kind": {"enum": ["starting", "fixed", "unapproved_draft"]}
+            }
+          }
+        },
+        "financialAssumptions": {
+          "type": "object", "additionalProperties": false,
+          "required": ["paymentProcessingPercent", "equipmentSalesTaxPercent", "illustrativeContributionCommissionPercents", "commissionBasis", "status", "notes"],
+          "properties": {
+            "paymentProcessingPercent": {"const": 3},
+            "equipmentSalesTaxPercent": {"type": ["number", "null"], "minimum": 0, "maximum": 100, "multipleOf": 0.01},
+            "illustrativeContributionCommissionPercents": {"const": [40, 50, 60]},
+            "commissionBasis": {"const": "positive_remaining_after_materials_tax_and_processing"},
+            "status": {"const": "illustrative_not_approved_policy"}, "notes": {"type": "string", "minLength": 1}
+          }
+        },
+        "profiles": {
+          "type": "array", "minItems": 6, "maxItems": 6,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["equipmentId", "features", "connectivity", "preference", "reviewFlags"],
+            "properties": {
+              "equipmentId": {"$ref": "#/definitions/id"}, "features": {"$ref": "#/definitions/features"},
+              "connectivity": {"enum": ["router_wifi", "homebase_link"]},
+              "preference": {"enum": ["economical_compatible_wired", "solar_pan_tilt", "existing_floodlight", "budget_solar", "premium_tracking_zoom", "multi_location_shared_storage"]},
+              "reviewFlags": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/definitions/id"}}
+            }
+          }
+        },
+        "additionalMaterials": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "name", "unitCost", "notes"],
+            "properties": {
+              "id": {"$ref": "#/definitions/id"}, "name": {"type": "string", "minLength": 1},
+              "unitCost": {"$ref": "#/definitions/nullableCost"}, "notes": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "notes": {"type": "string", "minLength": 1}
+      }
+    },
+    "consultation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["locations", "preferences", "budget", "existingHub", "hubRouterConnectionConfirmed"],
+      "properties": {
+        "locations": {
+          "type": "array", "minItems": 1, "maxItems": 16,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "coverage", "outdoor", "coveragePositionVerified", "sunlightSuitable", "directSunHours", "batteryMaintenanceAccepted", "c31PowerCompatible", "floodlightPowerCompatible", "wifiConfirmed", "homebaseLinkConfirmed", "mountingCompatible", "standardInstallation", "requiredFeatures", "preferredEquipmentId"],
+            "properties": {
+              "id": {"$ref": "#/definitions/id"},
+              "coverage": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["front_door", "driveway", "backyard", "side_yard", "other"]}},
+              "outdoor": {"type": ["boolean", "null"]}, "coveragePositionVerified": {"type": ["boolean", "null"]},
+              "sunlightSuitable": {"type": ["boolean", "null"]}, "directSunHours": {"type": ["number", "null"], "minimum": 0, "maximum": 24},
+              "batteryMaintenanceAccepted": {"type": ["boolean", "null"]}, "c31PowerCompatible": {"type": ["boolean", "null"]},
+              "floodlightPowerCompatible": {"type": ["boolean", "null"]}, "wifiConfirmed": {"type": ["boolean", "null"]},
+              "homebaseLinkConfirmed": {"type": ["boolean", "null"]}, "mountingCompatible": {"type": ["boolean", "null"]},
+              "standardInstallation": {"type": ["boolean", "null"]}, "requiredFeatures": {"$ref": "#/definitions/features"},
+              "preferredEquipmentId": {"type": ["string", "null"], "pattern": "^[a-z][a-z0-9_]*$"}
+            }
+          }
+        },
+        "preferences": {
+          "type": "object", "additionalProperties": false, "required": ["priority", "storage", "homebaseType"],
+          "properties": {
+            "priority": {"enum": ["balanced", "budget", "premium"]},
+            "storage": {"enum": ["no_preference", "standalone", "shared_homebase"]},
+            "homebaseType": {"enum": ["homebase_2", "homebase_s380"]}
+          }
+        },
+        "budget": {"$ref": "#/definitions/nullableCost"},
+        "existingHub": {
+          "type": "object", "additionalProperties": false, "required": ["type", "compatibilityVerified", "availableCameraSlots"],
+          "properties": {
+            "type": {"enum": ["none", "homebase_2", "homebase_s380"]},
+            "compatibilityVerified": {"type": ["boolean", "null"]},
+            "availableCameraSlots": {"type": ["integer", "null"], "minimum": 0, "maximum": 16}
+          }
+        },
+        "hubRouterConnectionConfirmed": {"type": ["boolean", "null"]},
+        "materialUnitCosts": {
+          "type": "object", "propertyNames": {"$ref": "#/definitions/id"},
+          "additionalProperties": {
+            "type": "object", "additionalProperties": false, "required": ["amount", "notes"],
+            "properties": {"amount": {"$ref": "#/definitions/nullableCost"}, "notes": {"type": "string", "minLength": 1}}
+          }
+        },
+        "salesTax": {
+          "type": "object", "additionalProperties": false, "required": ["percent", "notes"],
+          "properties": {
+            "percent": {"type": ["number", "null"], "minimum": 0, "maximum": 100, "multipleOf": 0.01},
+            "notes": {"type": "string", "minLength": 1}
+          }
+        },
+        "shipping": {
+          "type": "object", "additionalProperties": false, "required": ["amount", "notes"],
+          "properties": {"amount": {"$ref": "#/definitions/nullableCost"}, "notes": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "strings": {"type": "array", "items": {"type": "string"}},
+    "signedNullableCost": {"type": ["number", "null"], "multipleOf": 0.01},
+    "quote": {
+      "type": ["object", "null"], "additionalProperties": false,
+      "required": ["equipment", "purchasing", "storage", "requiredMaterials", "knownMaterialsCost", "estimatedDirectMaterialsCost", "estimatedEquipmentSalesTax", "estimatedMaterialsSalesTax", "taxPercent", "shipping", "assumptionNotes", "totalEstimatedDirectCost", "customerPrice", "paymentProcessingFee", "paymentProcessingPercent", "remainingBeforeCommission", "illustrativeCommissionScenarios", "costingComplete", "missingCosts", "contributionBasis", "excludedExpenses", "reviewFlags"],
+      "properties": {
+        "equipment": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["equipmentId", "productId", "modelNumber", "quantity", "originalPlanningUnitCost", "editablePlanningUnitCost", "observedSingleUnitPrice", "includedAccessories"],
+            "properties": {
+              "equipmentId": {"$ref": "#/definitions/id"}, "productId": {"type": "string"}, "modelNumber": {"type": "string"},
+              "quantity": {"type": "integer", "minimum": 1, "maximum": 16},
+              "originalPlanningUnitCost": {"$ref": "#/definitions/cost"}, "editablePlanningUnitCost": {"$ref": "#/definitions/cost"},
+              "observedSingleUnitPrice": {"$ref": "#/definitions/cost"}, "includedAccessories": {"$ref": "#/definitions/strings"}
+            }
+          }
+        },
+        "purchasing": {
+          "type": "object", "additionalProperties": false,
+          "required": ["optimizedBy", "scope", "lines", "purchasedCameraCount", "surplusCameraCount", "observedEquipmentCost", "planningPurchaseCost"],
+          "properties": {
+            "optimizedBy": {"const": "lowest_observed_catalog_price_covering_selected_camera_counts_and_compatible_hub"},
+            "scope": {"const": "verified_catalog_options_only_before_tax_shipping_and_unknown_materials"},
+            "purchasedCameraCount": {"type": "integer", "minimum": 1}, "surplusCameraCount": {"type": "integer", "minimum": 0},
+            "observedEquipmentCost": {"$ref": "#/definitions/cost"}, "planningPurchaseCost": {"$ref": "#/definitions/cost"},
+            "lines": {
+              "type": "array", "minItems": 1,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["optionId", "productId", "purchaseQuantity", "camerasPerPurchase", "includedHub", "observedUnitPrice", "planningUnitCost", "totalCost", "sourceUrl", "priceCheckDate"],
+                "properties": {
+                  "optionId": {"$ref": "#/definitions/id"}, "productId": {"type": "string"},
+                  "purchaseQuantity": {"type": "integer", "minimum": 1}, "camerasPerPurchase": {"type": "integer", "minimum": 1},
+                  "includedHub": {"enum": [null, "homebase_2", "homebase_s380"]},
+                  "observedUnitPrice": {"$ref": "#/definitions/cost"}, "planningUnitCost": {"$ref": "#/definitions/cost"}, "totalCost": {"$ref": "#/definitions/cost"},
+                  "sourceUrl": {"type": "string", "pattern": "^https://"}, "priceCheckDate": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}
+                }
+              }
+            }
+          }
+        },
+        "storage": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["equipmentId", "strategy", "hub", "storageGb", "existingHubUsed", "storageCost", "costBasis"],
+            "properties": {
+              "equipmentId": {"$ref": "#/definitions/id"}, "strategy": {"enum": ["built_in", "required_homebase", "standalone_micro_sd"]},
+              "hub": {"enum": [null, "homebase_2", "homebase_s380"]}, "storageGb": {"type": ["integer", "null"], "minimum": 0},
+              "existingHubUsed": {"type": "boolean"}, "storageCost": {"$ref": "#/definitions/nullableCost"}, "costBasis": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "requiredMaterials": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["materialId", "name", "quantity", "unitCost", "totalCost", "notes"],
+            "properties": {
+              "materialId": {"$ref": "#/definitions/id"}, "name": {"type": "string"}, "quantity": {"type": "integer", "minimum": 1},
+              "unitCost": {"$ref": "#/definitions/nullableCost"}, "totalCost": {"$ref": "#/definitions/nullableCost"}, "notes": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "knownMaterialsCost": {"$ref": "#/definitions/cost"}, "estimatedDirectMaterialsCost": {"$ref": "#/definitions/nullableCost"},
+        "estimatedEquipmentSalesTax": {"$ref": "#/definitions/nullableCost"}, "estimatedMaterialsSalesTax": {"$ref": "#/definitions/nullableCost"},
+        "taxPercent": {"type": ["number", "null"], "minimum": 0, "maximum": 100}, "shipping": {"$ref": "#/definitions/nullableCost"},
+        "assumptionNotes": {
+          "type": "object", "additionalProperties": false, "required": ["salesTax", "shipping", "taxation"],
+          "properties": {"salesTax": {"type": "string"}, "shipping": {"type": "string"}, "taxation": {"type": "string"}}
+        },
+        "totalEstimatedDirectCost": {"$ref": "#/definitions/nullableCost"},
+        "customerPrice": {
+          "type": "object", "additionalProperties": false, "required": ["amount", "kind", "quantity"],
+          "properties": {
+            "amount": {"$ref": "#/definitions/nullableCost"}, "kind": {"enum": ["starting", "fixed", "unapproved_draft", "custom_quote"]},
+            "quantity": {"type": "integer", "minimum": 1, "maximum": 16}
+          }
+        },
+        "paymentProcessingFee": {"$ref": "#/definitions/nullableCost"}, "paymentProcessingPercent": {"const": 3},
+        "remainingBeforeCommission": {"$ref": "#/definitions/signedNullableCost"},
+        "illustrativeCommissionScenarios": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["percent", "status", "repCommission", "home2SmartContribution"],
+            "properties": {
+              "percent": {"enum": [40, 50, 60]}, "status": {"const": "illustrative_not_approved_policy"},
+              "repCommission": {"$ref": "#/definitions/nullableCost"}, "home2SmartContribution": {"$ref": "#/definitions/signedNullableCost"}
+            }
+          }
+        },
+        "costingComplete": {"type": "boolean"}, "missingCosts": {"$ref": "#/definitions/strings"},
+        "contributionBasis": {"const": "proposed_customer_amount_minus_materials_sales_tax_shipping_and_3_percent_processing"},
+        "excludedExpenses": {"$ref": "#/definitions/strings"}, "reviewFlags": {"$ref": "#/definitions/strings"}
+      }
+    },
+    "output": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "comparisonOnly", "recommendedCameraCount", "requiresManualReview", "requiresCustomQuote", "locations", "quote", "alternatives", "reviewFlags"],
+      "properties": {
+        "status": {"const": "proposed_pending_approval"}, "comparisonOnly": {"const": true},
+        "recommendedCameraCount": {"type": "integer", "minimum": 1, "maximum": 16},
+        "requiresManualReview": {"const": true}, "requiresCustomQuote": {"type": "boolean"},
+        "locations": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["locationId", "coverage", "equipmentId", "reasons", "candidates", "unverifiedConditions"],
+            "properties": {
+              "locationId": {"$ref": "#/definitions/id"}, "coverage": {"type": "array", "items": {"type": "string"}},
+              "equipmentId": {"type": ["string", "null"]}, "reasons": {"type": "array", "items": {"type": "string"}},
+              "candidates": {"type": "array", "items": {"type": "string"}}, "unverifiedConditions": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "quote": {"$ref": "#/definitions/quote"},
+        "alternatives": {
+          "type": "array", "items": {
+            "type": "object", "additionalProperties": false, "required": ["strategy", "locations", "quote"],
+            "properties": {
+              "strategy": {"enum": ["configured_preferences", "lowest_known_single_camera_cost"]},
+              "locations": {"$ref": "#/definitions/output/properties/locations"}, "quote": {"$ref": "#/definitions/quote"}
+            }
+          }
+        },
+        "reviewFlags": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+source/* -text
+reconciliation/source/*.pdf binary
+home2smart.v2.json text eol=lf
+reconciliation/*.json text eol=lf
+reconciliation/REPORT-*.md text eol=lf

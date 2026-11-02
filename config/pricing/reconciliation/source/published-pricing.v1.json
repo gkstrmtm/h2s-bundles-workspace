@@ -1,0 +1,47 @@
+{
+  "checkedDate": "2026-11-02",
+  "site": "https://shop.home2smart.com/",
+  "catalogUrl": "https://h2s-backend.vercel.app/api/bundles-data",
+  "httpStatus": 200,
+  "method": "GET_only_no_checkout_or_purchase",
+  "equipmentScope": "Website FAQ says customers supply TVs/cameras; brackets, hardware and materials included. Residential inquiry page can quote supplied equipment separately.",
+  "catalog": [
+    {"id":"tv_single","price":249,"quantity":1,"name":"Single TV Mount","active":true},
+    {"id":"tv_2pack","price":449,"quantity":2,"name":"2-TV Package","active":true},
+    {"id":"tv_multi","price":699,"quantity":3,"name":"Multi-Room TV Mounting (3-4 TVs)","active":true},
+    {"id":"cam_basic","price":599,"quantity":2,"name":"Basic Coverage (2 Cams + Doorbell)","active":true},
+    {"id":"cam_standard","price":1199,"quantity":4,"name":"Standard Coverage (4 Cams + Doorbell)","active":true},
+    {"id":"cam_premium","price":2199,"quantity":8,"name":"Premium Coverage (8 Cams + Doorbell + NVR)","active":true}
+  ],
+  "observedCards": {"tv_single":249,"tv_2pack":428,"tv_multiFrom":699,"cam_basic":599,"cam_standard":1199,"cam_premium":2199},
+  "localCalculator": {
+    "source": "frontend/bundles.js",
+    "tvQuantityPrices": {"1":249,"2":428,"3":699,"4":899},
+    "mountUpgrades": {"fixed":0,"tilt":25,"full_motion":75},
+    "customTvEstimate": "149 + 183 * quantity; high estimate 15% above low",
+    "customCameraEstimate": "250 * quantity; high estimate 15% above low",
+    "brickSurchargePerItem": 50,
+    "status": "local_code_candidate_not_verified_checkout_amount"
+  },
+  "contradictions": [
+    "Two-TV public card/calculator $428 versus catalog $449.",
+    "Camera cards describe coverage outcomes; catalog names 2/4/8 cameras plus doorbell, and NVR for premium. They are not the S220 equipment-inclusive packages.",
+    "TV catalog up-to-65-inch description versus larger selectable modal sizes.",
+    "Brick/stone/concrete FAQ says flat-rate included; local estimator adds $50/item.",
+    "Catalog, static cards, configuration modal and manual estimate are distinct price surfaces.",
+    "No published numeric commercial catalog or verified live supplier-to-package mapping."
+  ],
+  "promotions": [
+    {"id":"NEWYEAR50","description":"Local messaging: $50 off plus Roku for 2+ TV mounts.","providerStatus":"not_verified_do_not_stack_or_activate"}
+  ],
+  "technicianEvidence": {
+    "source": "backend/backfill-orders-payout.js:18-38",
+    "secondarySource": "backfill-job-metadata.js:19-27",
+    "percentOfOrder": 35,
+    "standardMinimum": 35,
+    "tvMinimum": 45,
+    "maximumPercent": 45,
+    "status": "backfill_implementation_not_verified_current_payroll_policy",
+    "treatment": "Optional sensitivity only; no new compensation policy. PDF retained amounts are before technician payroll."
+  }
+}

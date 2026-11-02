@@ -1,0 +1,15 @@
+{
+  "name": "home2smart-pricing-validation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline validation of proposed business pricing; not an application price feed",
+  "scripts": {
+    "validate": "node validate.cjs",
+    "test": "node --test tests/pricing.test.cjs tests/cameras.test.cjs tests/recommendations.test.cjs reconciliation/reconcile.test.cjs",
+    "compare": "node reconciliation/report.cjs compare",
+    "validate:reconciled": "node reconciliation/report.cjs validate"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1"
+  }
+}

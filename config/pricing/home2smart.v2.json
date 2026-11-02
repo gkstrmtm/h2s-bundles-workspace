@@ -1,0 +1,168 @@
+{
+  "$schema": "./reconciliation/schema.v1.json",
+  "schemaVersion": "2.0.0",
+  "business": "Home2Smart",
+  "status": "proposed_reconciled_pending_approval",
+  "currency": "USD",
+  "effectiveDate": null,
+  "activationAllowed": false,
+  "checkedDate": "2026-11-02",
+  "references": {
+    "baseline": "home2smart.v1.json",
+    "baselineDataSha256": "e976cb48076c37e76d54e86125e41ea28b64bad9dc288aa43a71ada7bb33bf28",
+    "equipment": "equipment.v1.json",
+    "cameraConfiguration": "residential-cameras.v1.json",
+    "launchOffer": "offers/residential/v5-launch-proposed.json",
+    "pdf": "reconciliation/source/pdf-pricing.v1.json",
+    "published": "reconciliation/source/published-pricing.v1.json",
+    "verification": "reconciliation/equipment-verification.v1.json"
+  },
+  "assumptions": {
+    "materialsTaxPercent": 8,
+    "processingPercent": 3,
+    "serviceReservePercent": 5,
+    "commissionPercent": 55,
+    "commissionScenarios": [50,55,60],
+    "minimumCompanyMarginPercent": 18,
+    "minimumCompanyContribution": 30,
+    "ownerInstallationLaborDeduction": false,
+    "approvedCommissionPolicy": null,
+    "notes": "Offline estimates, not actual profit or approved commissions. Tax jurisdiction/taxability and payment fixed charges need confirmation. Reserve is retained, not cash spent. Commission is modeled on positive contribution AFTER reserve, unlike the PDF. Other paid technicians are separate explicit inputs, deducted from retained contribution after the modeled rep commission."
+  },
+  "costPolicy": {
+    "tvMountEquipmentId": "onn_fixed_32_86",
+    "tvRacewayEquipmentId": "wire_trak_raceway_54",
+    "tvRacewayKitsPerSuppliedMountTv": 1,
+    "tvJobAllowance": 10,
+    "cameraSuppliesPerCamera": 10,
+    "cameraTravelShippingAllowances": {"1":20,"2":25,"3":30,"4":35,"6":45,"8":55,"12":75,"16":95},
+    "poeTravelShippingAllowance": 40,
+    "notes": "TV supplies use the PDF size-specific budgets, not the legacy $3 estimate. One external raceway KIT is a new proposed inclusion, not a PDF inclusion. Camera $10/camera is a combined supplementary-material BUDGET; exact fasteners/weatherproofing/charging contents and costs remain unverified. Camera travel/shipping budgets are NEW separate estimates, NOT the v5 combined incidentals that may already cover supplies. Never sum these into historical v5 calculations. Quantities beyond4 have newly proposed travel budgets. PoE cable lengths/connectors/contingency use PDF aggregate budgets until a surveyed BOM replaces them."
+  },
+  "residentialTvDiscounts": {
+    "percentsByPosition": [0,10,15],
+    "basis": "highest_base_price_first_marginal",
+    "fourOrMore": "custom_quote",
+    "stackWithCommercialBundles": false
+  },
+  "prices": {
+    "tvMounting": {
+      "residentialInstallationOnly": [
+        {"maxInches":43,"price":135,"selection":"pdf"},
+        {"minInches":44,"maxInches":55,"price":145,"selection":"pdf"},
+        {"minInches":56,"maxInches":65,"price":155,"selection":"pdf"},
+        {"minInches":66,"maxInches":75,"price":180,"selection":"pdf"},
+        {"minInches":76,"maxInches":85,"price":229,"selection":"json"},
+        {"minInches":86,"priceFrom":300,"quoteRequired":true,"selection":"pdf"}
+      ],
+      "residentialWithStandardFixedMount": [
+        {"maxInches":43,"price":160,"selection":"pdf"},
+        {"minInches":44,"maxInches":55,"price":170,"selection":"pdf"},
+        {"minInches":56,"maxInches":65,"price":199,"selection":"v5"},
+        {"minInches":66,"maxInches":75,"price":230,"selection":"pdf"},
+        {"minInches":76,"maxInches":85,"price":285,"selection":"pdf"},
+        {"minInches":86,"quoteRequired":true,"selection":"unchanged"}
+      ],
+      "commercialInstallationOnly": [
+        {"maxInches":43,"price":159,"selection":"unchanged"},
+        {"minInches":44,"maxInches":55,"price":189,"selection":"unchanged"},
+        {"minInches":56,"maxInches":65,"price":219,"selection":"unchanged"},
+        {"minInches":66,"maxInches":75,"price":269,"selection":"unchanged"},
+        {"minInches":76,"maxInches":85,"price":349,"selection":"unchanged"},
+        {"minInches":86,"priceFrom":449,"quoteRequired":true,"selection":"unchanged"}
+      ],
+      "commercialBundlesInstallationOnlyUpTo65Inches": [
+        {"quantity":2,"price":399,"selection":"unchanged"},
+        {"quantity":4,"price":749,"selection":"unchanged"},
+        {"quantity":6,"price":1099,"selection":"unchanged"},
+        {"quantity":8,"price":1399,"selection":"unchanged"}
+      ]
+    },
+    "cameras": {
+      "residentialWirelessInstallationOnly": [
+        {"quantity":1,"price":139,"selection":"pdf"},
+        {"quantity":2,"price":249,"selection":"pdf"},
+        {"quantity":3,"price":329,"selection":"pdf"},
+        {"quantity":4,"price":449,"selection":"pdf"},
+        {"quantity":6,"price":579,"selection":"pdf"},
+        {"quantity":8,"price":799,"selection":"pdf"},
+        {"quantity":12,"price":1099,"selection":"pdf"},
+        {"quantity":16,"price":1449,"selection":"pdf"}
+      ],
+      "residentialWiredInstallationOnly": [
+        {"quantity":1,"priceFrom":249,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":2,"priceFrom":449,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":3,"priceFrom":649,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":4,"priceFrom":849,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":6,"priceFrom":1249,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":8,"priceFrom":1649,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":12,"priceFrom":2449,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":16,"priceFrom":3249,"quoteRequired":true,"selection":"pdf"}
+      ],
+      "residentialEquipmentIncluded": [
+        {"quantity":1,"priceFrom":299,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":2,"priceFrom":599,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":3,"price":849,"equipmentId":"eufy_solocam_s220","selection":"recommendation"},
+        {"quantity":4,"price":1099,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":6,"priceFrom":1599,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":8,"priceFrom":2099,"equipmentId":"eufy_solocam_s220","selection":"unchanged"}
+      ],
+      "residentialE40EquipmentIncluded": [
+        {"quantity":2,"priceFrom":799,"quoteRequired":true,"equipmentId":"eufycam_e40","selection":"third_price"},
+        {"quantity":3,"priceFrom":1199,"quoteRequired":true,"equipmentId":"eufycam_e40","selection":"third_price"},
+        {"quantity":4,"priceFrom":1599,"quoteRequired":true,"equipmentId":"eufycam_e40","selection":"third_price"}
+      ],
+      "residentialWiredEquipmentIncluded": [
+        {"quantity":4,"priceFrom":3299,"quoteRequired":true,"equipmentId":"eufy_nvr_e50_4_kit","selection":"third_price"}
+      ],
+      "commercialWirelessInstallationOnly": [
+        {"quantity":1,"price":199,"selection":"unchanged"},
+        {"quantity":2,"price":349,"selection":"pdf"},
+        {"quantity":3,"price":479,"selection":"pdf"},
+        {"quantity":4,"price":649,"selection":"pdf"},
+        {"quantity":6,"price":849,"selection":"pdf"},
+        {"quantity":8,"price":1199,"selection":"pdf"},
+        {"quantity":12,"price":1599,"selection":"pdf"},
+        {"quantity":16,"price":2099,"selection":"pdf"}
+      ],
+      "commercialWiredInstallationOnly": [
+        {"quantity":1,"priceFrom":449,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":2,"priceFrom":849,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":3,"priceFrom":1249,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":4,"priceFrom":1599,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":6,"priceFrom":2299,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":8,"priceFrom":2999,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":12,"priceFrom":4399,"quoteRequired":true,"selection":"pdf"},
+        {"quantity":16,"priceFrom":5799,"quoteRequired":true,"selection":"pdf"}
+      ],
+      "commercialWirelessEquipmentIncluded": [
+        {"quantity":2,"priceFrom":749,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":4,"price":1499,"equipmentId":"eufy_solocam_s220","selection":"unchanged"},
+        {"quantity":8,"priceFrom":2799,"equipmentId":"eufy_solocam_s220","selection":"unchanged"}
+      ],
+      "commercialWiredEquipmentIncluded": [
+        {"quantity":4,"priceFrom":3299,"quoteRequired":true,"equipmentId":"eufy_nvr_e50_4_kit","selection":"third_price"},
+        {"quantity":8,"priceFrom":4499,"quoteRequired":true,"selection":"unchanged"},
+        {"quantity":16,"quoteRequired":true,"selection":"unchanged"}
+      ]
+    }
+  },
+  "addOns": [
+    {"id":"tilt_mount","price":25,"equipmentId":"onn_tilt_50_86","replacesEquipmentId":"onn_fixed_32_86","status":"proposed_pending_approval","notes":"Per compatible supplied-mount TV;published local upgrade25 versus catalog proposed20. Exact VESA/hardware and extra work need review."},
+    {"id":"large_full_motion_mount","price":75,"equipmentId":"onn_full_motion_50_86","replacesEquipmentId":"onn_fixed_32_86","status":"proposed_pending_approval","notes":"Per compatible supplied-mount TV;published local75 versus proposed65. Preserve54-dollar planning cost;articulation/wall/hardware review."},
+    {"id":"small_full_motion_mount","quoteRequired":true,"equipmentId":"onn_full_motion_19_50","replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"No customer price established;do not apply a fixed-mount price to19-31-inch TVs."},
+    {"id":"masonry_high_ceiling_special_mounting","quoteRequired":true,"equipmentId":null,"replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"Published flat-rate versus50-dollar estimator conflict;no automatic surcharge. Survey anchors,height,access and any paid technician."},
+    {"id":"extra_raceway_or_in_wall_cabling","quoteRequired":true,"equipmentId":"wire_trak_raceway_54","replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"Count kits,run length,fittings and code-compliant power separately;no in-wall mains cords."},
+    {"id":"camera_storage_power_network_electrical","quoteRequired":true,"equipmentId":null,"replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"microSD,HomeBase,PoE switches,UPS,new circuits,Wi-Fi upgrades and floodlight work need exact SKU/quantity/cost review."},
+    {"id":"commercial_supplied_tv_mount_or_custom_quantity","quoteRequired":true,"equipmentId":null,"replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"No PDF/JSON commercial supplied-bracket selling tier. Bundle quantities outside2/4/6/8,or TVs over65 inches,cannot be interpolated."},
+    {"id":"doorbell_nvr_other_camera_models","quoteRequired":true,"equipmentId":null,"replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"Published packages add doorbell/NVR with no exact procurement mapping. C31,E30,Floodlight E30,S340,mixed systems and continuous-recording requests are not S220 package substitutions."},
+    {"id":"out_of_core_zone_travel","quoteRequired":true,"equipmentId":null,"replacesEquipmentId":null,"status":"proposed_pending_approval","notes":"Three-hour historical service radius is not covered by10-dollar TV travel budget. Core-zone definition and actual trip expenses must be approved."}
+  ],
+  "sensitivity": {
+    "equipmentIncreasesPercent": [10,20],
+    "extraTaxableMaterials": 15,
+    "extendedTripCash": 50,
+    "paidTechnicianOrderPercent": 35,
+    "notes": "Stress cases only;35% payout is backfill evidence,not proof of current policy. Do not deduct owner labor. Reprice/custom-quote when retained floors fail."
+  }
+}

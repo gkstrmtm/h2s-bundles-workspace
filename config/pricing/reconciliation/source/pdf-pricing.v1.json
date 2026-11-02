@@ -1,0 +1,138 @@
+{
+  "source": "Home2Smart_Complete_Service_Pricing.pdf",
+  "sha256": "f7c8e510f69421949cd6e89279d215aefbceff66eabc36a5f377b6c8fbb05edd",
+  "retrievedDate": "2026-11-02",
+  "pages": 3,
+  "approvalStatus": "not_established",
+  "costStatus": "all_equipment_and_material_costs_estimates",
+  "commission": "First-month: 55% after equipment, materials and Stripe; before technician hourly payroll and overhead. Not evidence of approved policy.",
+  "processingInference": "Displayed amounts are consistent with 2.9% plus $0.30, not the JSON 3% assumption.",
+  "tvColumns": ["maximum_inches_or_null_for_86_plus", "price_or_null", "equipment_estimate", "supplies_estimate", "stripe", "rep", "h2s", "margin_percent"],
+  "cameraColumns": ["quantity", "price_or_null", "equipment_estimate_or_null", "supplies_estimate_or_null", "stripe", "rep", "h2s", "margin_percent"],
+  "groups": {
+    "residentialInstallationOnly": {
+      "section": 1, "pages": [1], "scope": "Customer supplies bracket; bolts, lag screws, washers, spacers and appropriate anchors.",
+      "rows": [
+        [43,135,0,7,4.21,68.08,55.71,41.3],
+        [55,145,0,8,4.50,72.88,59.62,41.1],
+        [65,155,0,10,4.79,77.12,63.09,40.7],
+        [75,180,0,12,5.52,89.36,73.12,40.6],
+        [85,220,0,15,6.68,109.08,89.24,40.6],
+        [null,300,0,20,9,149.05,121.95,40.7]
+      ], "startingQuantities": [], "finalTvTierStarting": true
+    },
+    "residentialWithStandardFixedMount": {
+      "section": 2, "pages": [1], "scope": "Fixed wall mount, bolts, lag screws, washers, spacers and appropriate anchors. No raceway specified.",
+      "rows": [
+        [43,160,25,7,4.94,67.68,55.38,34.6],
+        [55,170,25,8,5.23,72.47,59.30,34.9],
+        [65,190,25,10,5.81,82.05,67.14,35.3],
+        [75,230,31,12,6.97,99.02,81.01,35.2],
+        [85,285,43,15,8.57,120.14,98.29,34.5],
+        [null,null,null,null,null,null,null,null]
+      ], "startingQuantities": [], "finalTvTierStarting": false
+    },
+    "residentialWirelessInstallationOnly": {
+      "section": 3, "pages": [1], "scope": "Customer supplies cameras; screws, anchors, accessories, clips and weatherproofing; $8/camera estimated.",
+      "rows": [
+        [1,139,0,8,4.33,69.67,57,41.0],
+        [2,249,0,16,7.52,124.01,101.47,40.8],
+        [3,329,0,24,9.84,162.34,132.82,40.4],
+        [4,449,0,32,13.32,222.02,181.66,40.5],
+        [6,579,0,48,17.09,282.65,231.26,39.9],
+        [8,799,0,64,23.47,391.34,320.19,40.1],
+        [12,1099,0,96,32.17,533.96,436.87,39.8],
+        [16,1449,0,128,42.32,703.27,575.41,39.7]
+      ], "startingQuantities": []
+    },
+    "residentialWiredInstallationOnly": {
+      "section": 4, "pages": [1,2], "scope": "Customer supplies PoE cameras and compatible recorder; Cat6, connectors, fasteners, clips and weatherproofing. Run lengths unspecified.",
+      "rows": [
+        [1,249,0,45,7.52,108.06,88.42,35.5],
+        [2,449,0,65,13.32,203.87,166.81,37.2],
+        [3,649,0,85,19.12,299.68,245.20,37.8],
+        [4,849,0,105,24.92,395.49,323.59,38.1],
+        [6,1249,0,145,36.52,587.11,480.37,38.5],
+        [8,1649,0,185,48.12,778.73,637.15,38.6],
+        [12,2449,0,265,71.32,1161.97,950.71,38.8],
+        [16,3249,0,345,94.52,1545.21,1264.27,38.9]
+      ], "startingQuantities": []
+    },
+    "residentialEquipmentIncluded": {
+      "section": 5, "pages": [2], "scope": "Solar Wi-Fi eufy S220 approximately $100 each, plus $10/camera supplementary mounting/weatherproofing. Not generic E30/E40/PoE scope.",
+      "rows": [
+        [1,299,100,10,8.97,99.02,81.01,27.1],
+        [2,599,200,20,17.67,198.73,162.60,27.1],
+        [4,1099,400,40,32.17,344.76,282.07,25.7],
+        [6,1599,600,60,46.67,490.78,401.55,25.1],
+        [8,2099,800,80,61.17,636.81,521.02,24.8]
+      ], "startingQuantities": []
+    },
+    "residentialWiredEquipmentIncluded": {
+      "section": 5, "pages": [2], "scope": "Unspecified four-camera PoE kit $800 + cable $120 + contingency $80, all estimates.",
+      "rows": [[4,1699,800,200,49.57,357.19,292.24,17.2]], "startingQuantities": [4]
+    },
+    "commercialInstallationOnly": {
+      "section": 6, "pages": [2], "scope": "Customer supplies TV and bracket; fasteners and appropriate anchors.",
+      "rows": [
+        [43,159,0,8,4.91,80.35,65.74,41.3],
+        [55,189,0,10,5.78,95.27,77.95,41.2],
+        [65,219,0,12,6.65,110.19,90.16,41.2],
+        [75,269,0,15,8.10,135.25,110.65,41.1],
+        [85,349,0,18,10.42,176.32,144.26,41.3],
+        [null,449,0,25,13.32,225.87,184.81,41.2]
+      ], "startingQuantities": [], "finalTvTierStarting": true
+    },
+    "commercialBundlesInstallationOnlyUpTo65Inches": {
+      "section": 6, "pages": [2], "scope": "Same location; every TV at most 65 inches; customer supplies TVs and brackets.",
+      "rows": [
+        [2,399,0,24,11.87,199.72,163.41,41.0],
+        [4,749,0,48,22.02,373.44,305.54,40.8],
+        [6,1099,0,72,32.17,547.16,447.67,40.7],
+        [8,1399,0,96,40.87,694.17,567.96,40.6]
+      ], "startingQuantities": []
+    },
+    "commercialWirelessInstallationOnly": {
+      "section": 7, "pages": [2,3], "scope": "Customer supplies cameras; screws, anchors, accessories, clips, weatherproofing.",
+      "rows": [
+        [1,199,0,8,6.07,101.71,83.22,41.8],
+        [2,349,0,16,10.42,177.42,145.16,41.6],
+        [3,479,0,24,14.19,242.45,198.36,41.4],
+        [4,649,0,32,19.12,328.83,269.05,41.5],
+        [6,849,0,48,24.92,426.84,349.24,41.1],
+        [8,1199,0,64,35.07,604.96,494.97,41.3],
+        [12,1599,0,96,46.67,800.98,655.35,41.0],
+        [16,2099,0,128,61.17,1050.41,859.42,40.9]
+      ], "startingQuantities": []
+    },
+    "commercialWiredInstallationOnly": {
+      "section": 8, "pages": [3], "scope": "Customer supplies PoE cameras and compatible recorder; Cat6, connectors, fasteners, clips and weatherproofing. Run lengths unspecified.",
+      "rows": [
+        [1,449,0,45,13.32,214.87,175.81,39.2],
+        [2,849,0,65,24.92,417.49,341.59,40.2],
+        [3,1249,0,85,36.52,620.11,507.37,40.6],
+        [4,1599,0,105,46.67,796.03,651.30,40.7],
+        [6,2299,0,145,66.97,1147.87,939.16,40.9],
+        [8,2999,0,185,87.27,1499.70,1227.03,40.9],
+        [12,4399,0,265,127.87,2203.37,1802.76,41.0],
+        [16,5799,0,345,168.47,2907.04,2378.49,41.0]
+      ], "startingQuantities": []
+    },
+    "commercialWirelessEquipmentIncluded": {
+      "section": 9, "pages": [3], "scope": "S220 solar Wi-Fi $100/camera planning + supplementary mounting/weatherproofing. Commercial suitability needs site review.",
+      "rows": [
+        [2,749,200,20,22.02,278.84,228.14,30.5],
+        [4,1499,400,40,43.77,558.38,456.85,30.5],
+        [8,2799,800,80,81.47,1010.64,826.89,29.5]
+      ], "startingQuantities": [2,8]
+    },
+    "commercialWiredEquipmentIncluded": {
+      "section": 9, "pages": [3], "scope": "Four-camera unspecified PoE kit $800 + cable $120 + contingency $80; 8/16 site-specific equipment/materials.",
+      "rows": [
+        [4,2499,800,200,72.77,784.43,641.80,25.7],
+        [8,4499,null,null,null,null,null,null],
+        [16,null,null,null,null,null,null,null]
+      ], "startingQuantities": [4,8]
+    }
+  }
+}

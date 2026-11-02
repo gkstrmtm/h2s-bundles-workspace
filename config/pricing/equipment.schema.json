@@ -1,0 +1,275 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/proposed-equipment-v1.json",
+  "title": "Proposed offline equipment costs and customer upgrades",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "business", "status", "currency", "effectiveDate", "baselineReference", "costPolicy", "items", "costAllowances", "customerUpgrades"],
+  "properties": {
+    "$schema": {"const": "./equipment.schema.json"},
+    "schemaVersion": {"const": "1.0.0"},
+    "business": {"const": "Home2Smart"},
+    "status": {"$ref": "#/definitions/status"},
+    "currency": {"const": "USD"},
+    "effectiveDate": {"type": "null"},
+    "cameraConfiguration": {
+      "type": "object", "additionalProperties": false, "required": ["file", "version"],
+      "properties": {"file": {"const": "residential-cameras.v1.json"}, "version": {"const": "1.0.0"}}
+    },
+    "cameraItems": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/camera"}},
+    "purchasingOptions": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/purchasingOption"}},
+    "baselineReference": {
+      "type": "object", "additionalProperties": false, "required": ["file", "version"],
+      "properties": {"file": {"const": "home2smart.v1.json"}, "version": {"type": "string", "minLength": 1}}
+    },
+    "costPolicy": {
+      "type": "object", "additionalProperties": false, "required": ["excludedCosts", "notes"],
+      "properties": {
+        "excludedCosts": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["sales_tax", "shipping"]}},
+        "notes": {"$ref": "#/definitions/notes"}
+      }
+    },
+    "items": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "type", "status", "modelNumber", "supplier", "costAssumption", "dimensionsInches", "tvCompatibility", "verification"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "name": {"$ref": "#/definitions/notes"},
+          "type": {"enum": ["mount_fixed", "mount_tilt", "mount_full_motion", "raceway"]},
+          "status": {"$ref": "#/definitions/status"},
+          "modelNumber": {"type": ["string", "null"], "minLength": 1},
+          "supplier": {
+            "type": "object", "additionalProperties": false,
+            "required": ["name", "itemId", "url", "priceCheckDate", "observedPrice", "priceStatus"],
+            "properties": {
+              "name": {"const": "Walmart"},
+              "itemId": {"type": "string", "pattern": "^[0-9]+$"},
+              "url": {"$ref": "#/definitions/supplierUrl"},
+              "priceCheckDate": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+              "observedPrice": {"$ref": "#/definitions/money"},
+              "priceStatus": {"const": "supplier_listing_observed"}
+            }
+          },
+          "costAssumption": {
+            "type": "object", "additionalProperties": false, "required": ["amount", "editable", "basis", "notes"],
+            "properties": {
+              "amount": {"$ref": "#/definitions/money"},
+              "editable": {"const": true},
+              "basis": {"const": "proposed_retail"},
+              "notes": {"$ref": "#/definitions/notes"}
+            }
+          },
+          "dimensionsInches": {
+            "type": "object", "additionalProperties": false, "required": ["width", "height", "depth", "totalLength", "wallDistance"],
+            "properties": {
+              "width": {"$ref": "#/definitions/nullableMeasurement"},
+              "height": {"$ref": "#/definitions/nullableMeasurement"},
+              "depth": {"$ref": "#/definitions/nullableMeasurement"},
+              "totalLength": {"$ref": "#/definitions/nullableMeasurement"},
+              "wallDistance": {
+                "type": ["object", "null"], "additionalProperties": false, "required": ["minimum", "maximum"],
+                "properties": {"minimum": {"type": "number", "exclusiveMinimum": 0}, "maximum": {"type": "number", "exclusiveMinimum": 0}}
+              }
+            }
+          },
+          "tvCompatibility": {
+            "type": ["object", "null"], "additionalProperties": false,
+            "required": ["minInches", "maxInches", "maxWeightLb", "vesaMm", "studSpacingInches"],
+            "properties": {
+              "minInches": {"type": "integer", "minimum": 1},
+              "maxInches": {"type": "integer", "minimum": 1},
+              "maxWeightLb": {"$ref": "#/definitions/nullableMeasurement"},
+              "vesaMm": {
+                "type": ["object", "null"], "additionalProperties": false,
+                "required": ["minimumWidth", "minimumHeight", "maximumWidth", "maximumHeight", "supportedPatterns"],
+                "properties": {
+                  "minimumWidth": {"type": "integer", "minimum": 1},
+                  "minimumHeight": {"type": "integer", "minimum": 1},
+                  "maximumWidth": {"type": "integer", "minimum": 1},
+                  "maximumHeight": {"type": "integer", "minimum": 1},
+                  "supportedPatterns": {
+                    "type": ["array", "null"], "minItems": 1, "uniqueItems": true,
+                    "items": {
+                      "type": "object", "additionalProperties": false, "required": ["width", "height"],
+                      "properties": {"width": {"type": "integer", "minimum": 1}, "height": {"type": "integer", "minimum": 1}}
+                    }
+                  }
+                }
+              },
+              "studSpacingInches": {"type": ["array", "null"], "minItems": 1, "uniqueItems": true, "items": {"type": "number", "exclusiveMinimum": 0}}
+            }
+          },
+          "verification": {
+            "type": "object", "additionalProperties": false,
+            "required": ["status", "sourceUrl", "manualCompatibilityCheckRequired", "notes"],
+            "properties": {
+              "status": {"const": "supplier_listing_pending_manual_verification"},
+              "sourceUrl": {"$ref": "#/definitions/supplierUrl"},
+              "manualCompatibilityCheckRequired": {"const": true},
+              "notes": {"$ref": "#/definitions/notes"}
+            }
+          }
+        }
+      }
+    },
+    "costAllowances": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "amountPerTv", "editable", "basis", "notes"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "status": {"$ref": "#/definitions/status"},
+          "amountPerTv": {"$ref": "#/definitions/money"},
+          "editable": {"const": true},
+          "basis": {"const": "estimate"},
+          "notes": {"$ref": "#/definitions/notes"}
+        }
+      }
+    },
+    "customerUpgrades": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "status", "equipmentId", "replacesEquipmentId", "baselinePriceGroup", "additionalPrice", "notes"],
+        "properties": {
+          "id": {"$ref": "#/definitions/id"},
+          "status": {"$ref": "#/definitions/status"},
+          "equipmentId": {"$ref": "#/definitions/id"},
+          "replacesEquipmentId": {"$ref": "#/definitions/id"},
+          "baselinePriceGroup": {"type": ["string", "null"], "pattern": "^/prices/tvMounting/[A-Za-z]+$"},
+          "additionalPrice": {"type": "number", "exclusiveMinimum": 0, "multipleOf": 0.01},
+          "notes": {"$ref": "#/definitions/notes"}
+        }
+      }
+    }
+  },
+  "definitions": {
+    "camera": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "productId", "modelNumber", "brand", "name", "type", "status", "installationCategory", "intendedUse", "supplier", "retailerListings", "costAssumption", "power", "solar", "wifi", "storage", "includedAccessories", "requiredMaterialIds", "compatibleEnvironments", "verification"],
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "productId": {"type": "string", "pattern": "^T[A-Z0-9]+$"},
+        "modelNumber": {"type": "string", "pattern": "^T[A-Z0-9]+$"},
+        "brand": {"const": "eufy"},
+        "name": {"$ref": "#/definitions/notes"},
+        "type": {"const": "security_camera"},
+        "status": {"$ref": "#/definitions/status"},
+        "installationCategory": {"enum": ["standard_wired_power", "default_residential_outdoor_solar", "premium_hardwired_lighting", "budget_fixed_solar", "premium_tracking_solar", "shared_storage_fixed_solar"]},
+        "intendedUse": {"$ref": "#/definitions/notes"},
+        "supplier": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "itemId", "url", "priceCheckDate", "observedPrice", "priceStatus"],
+          "properties": {
+            "name": {"const": "eufy"},
+            "itemId": {"type": "string", "pattern": "^T[A-Z0-9]+$"},
+            "url": {"type": "string", "pattern": "^https://www\\.eufy\\.com/products/t[a-z0-9]+$"},
+            "priceCheckDate": {"$ref": "#/definitions/checkDate"},
+            "observedPrice": {"$ref": "#/definitions/money"},
+            "priceStatus": {"const": "supplier_listing_observed"}
+          }
+        },
+        "retailerListings": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["supplier", "itemId", "url", "observedPrice", "priceCheckDate", "comparison", "notes"],
+            "properties": {
+              "supplier": {"$ref": "#/definitions/notes"},
+              "itemId": {"type": "string", "pattern": "^[0-9]+$"},
+              "url": {"$ref": "#/definitions/supplierUrl"},
+              "observedPrice": {"$ref": "#/definitions/money"},
+              "priceCheckDate": {"$ref": "#/definitions/checkDate"},
+              "comparison": {"enum": ["color_variant_requires_verification", "different_bundle_not_comparable", "same_product_family_verify_sku"]},
+              "notes": {"$ref": "#/definitions/notes"}
+            }
+          }
+        },
+        "costAssumption": {
+          "type": "object", "additionalProperties": false, "required": ["amount", "originalPlanningAmount", "editable", "basis", "notes"],
+          "properties": {"amount": {"$ref": "#/definitions/money"}, "originalPlanningAmount": {"$ref": "#/definitions/money"}, "editable": {"const": true}, "basis": {"const": "proposed_retail"}, "notes": {"$ref": "#/definitions/notes"}}
+        },
+        "power": {
+          "type": "object", "additionalProperties": false,
+          "required": ["mode", "dcVolts", "adapterAmps", "acMinVolts", "acMaxVolts", "frequencyHz", "requirements"],
+          "properties": {
+            "mode": {"enum": ["continuous_usb_c_dc", "rechargeable_battery_solar", "hardwired_ac"]},
+            "dcVolts": {"$ref": "#/definitions/nullableMeasurement"},
+            "adapterAmps": {"$ref": "#/definitions/nullableMeasurement"},
+            "acMinVolts": {"$ref": "#/definitions/nullableMeasurement"},
+            "acMaxVolts": {"$ref": "#/definitions/nullableMeasurement"},
+            "frequencyHz": {"type": ["array", "null"], "minItems": 1, "uniqueItems": true, "items": {"type": "number", "exclusiveMinimum": 0}},
+            "requirements": {"$ref": "#/definitions/notes"}
+          }
+        },
+        "solar": {
+          "type": "object", "additionalProperties": false, "required": ["supported", "panelIncluded", "minimumDirectSunHoursPerDay", "notes"],
+          "properties": {
+            "supported": {"type": "boolean"}, "panelIncluded": {"type": "boolean"},
+            "minimumDirectSunHoursPerDay": {"type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 24},
+            "notes": {"$ref": "#/definitions/notes"}
+          }
+        },
+        "wifi": {
+          "type": "object", "additionalProperties": false, "required": ["bandsGhz", "siteCoverageVerificationRequired", "notes"],
+          "properties": {
+            "bandsGhz": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"const": 2.4}},
+            "siteCoverageVerificationRequired": {"const": true}, "notes": {"$ref": "#/definitions/notes"}
+          }
+        },
+        "storage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["strategy", "microSdMaxGb", "cardIncluded", "builtInStorageGb", "homeBaseModels", "subscriptionRequiredForLocalRecording", "recording", "notes"],
+          "properties": {
+            "strategy": {"enum": ["standalone_micro_sd", "built_in", "required_homebase"]},
+            "microSdMaxGb": {"type": ["integer", "null"], "minimum": 128},
+            "cardIncluded": {"const": false},
+            "builtInStorageGb": {"type": ["number", "null"], "minimum": 0},
+            "homeBaseModels": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/notes"}},
+            "subscriptionRequiredForLocalRecording": {"const": false},
+            "recording": {"enum": ["continuous_24_7", "motion_events"]}, "notes": {"$ref": "#/definitions/notes"}
+          }
+        },
+        "includedAccessories": {"$ref": "#/definitions/stringList"},
+        "requiredMaterialIds": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/id"}},
+        "compatibleEnvironments": {"$ref": "#/definitions/stringList"},
+        "verification": {
+          "type": "object", "additionalProperties": false,
+          "required": ["status", "sourceUrls", "manualCompatibilityCheckRequired", "requirements", "notes"],
+          "properties": {
+            "status": {"const": "official_specs_site_review_required"},
+            "sourceUrls": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^https://[^\\s]+$"}},
+            "manualCompatibilityCheckRequired": {"const": true},
+            "requirements": {"$ref": "#/definitions/stringList"}, "notes": {"$ref": "#/definitions/notes"}
+          }
+        }
+      }
+    },
+    "purchasingOption": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "status", "productId", "equipmentId", "quantity", "includedHub", "includedHubStorageGb", "planningCost", "observedPrice", "priceCheckDate", "sourceUrl", "eligibleForOptimization", "notes"],
+      "properties": {
+        "id": {"$ref": "#/definitions/id"}, "status": {"$ref": "#/definitions/status"},
+        "productId": {"type": "string", "pattern": "^[A-Z0-9-]+$"}, "equipmentId": {"$ref": "#/definitions/id"},
+        "quantity": {"type": "integer", "minimum": 1, "maximum": 16},
+        "includedHub": {"enum": [null, "homebase_2", "homebase_s380"]},
+        "includedHubStorageGb": {"type": ["integer", "null"], "minimum": 1},
+        "planningCost": {"$ref": "#/definitions/money"}, "observedPrice": {"$ref": "#/definitions/money"},
+        "priceCheckDate": {"$ref": "#/definitions/checkDate"},
+        "sourceUrl": {"type": "string", "pattern": "^https://www\\.eufy\\.com/products/[a-z0-9-]+$"},
+        "eligibleForOptimization": {"type": "boolean"}, "notes": {"$ref": "#/definitions/notes"}
+      }
+    },
+    "checkDate": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "stringList": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/definitions/notes"}},
+    "status": {"const": "proposed_pending_approval"},
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+    "notes": {"type": "string", "minLength": 1},
+    "money": {"type": "number", "minimum": 0, "multipleOf": 0.01},
+    "nullableMeasurement": {"type": ["number", "null"], "exclusiveMinimum": 0},
+    "supplierUrl": {"type": "string", "pattern": "^https://www\\.walmart\\.com/ip/[0-9]+$"}
+  }
+}

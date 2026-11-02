@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "baselineVersion": "1.0.0",
+  "currency": "USD",
+  "offers": [
+    {
+      "id": "new_home_setup_bundle_discount",
+      "status": "proposed_not_active",
+      "discount": {"type": "fixed_amount", "amount": 50},
+      "eligibility": null,
+      "sourceField": "offers.newHomeSetupBundleDiscount"
+    }
+  ]
+}

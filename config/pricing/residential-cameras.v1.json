@@ -1,0 +1,123 @@
+{
+  "$schema": "./residential-cameras.schema.json",
+  "schemaVersion": "1.0.0",
+  "status": "proposed_pending_approval",
+  "effectiveDate": null,
+  "currency": "USD",
+  "catalogReference": {"file": "equipment.v1.json", "version": "1.0.0"},
+  "baselineReference": {"file": "home2smart.v1.json", "version": "1.0.0"},
+  "storageStrategy": "standalone_micro_sd",
+  "siteFacts": {
+    "outdoor": "Surveyed outdoor camera location.",
+    "suitableSunlight": "Solar exposure, season, orientation and panel cable reach checked against SoloCam E30 guidance.",
+    "wifiCoverageConfirmed": "Usable 2.4GHz connection tested at the camera location.",
+    "mountingCompatible": "Surface, hardware, position and cable routes verified for the proposed model.",
+    "installationComplexityStandard": "No unresolved height, access, routing or special installation requirements.",
+    "powerAssessmentComplete": "Applicable model-specific power or solar requirements assessed; an outlet alone is not verification.",
+    "c31PowerCompatible": "Camera's correct USB-C adapter supply, cable reach and weather protection confirmed, not merely an outlet present.",
+    "floodlightPowerCompatible": "Existing 100-240V AC floodlight circuit, grounding and UL-listed junction box verified.",
+    "lightingRequested": "Customer explicitly requests security lighting."
+  },
+  "reviewRules": [
+    {"fact": "outdoor", "expected": true, "reason": "outdoor_location_unconfirmed"},
+    {"fact": "suitableSunlight", "expected": true, "reason": "sunlight_insufficient_or_uncertain"},
+    {"fact": "wifiCoverageConfirmed", "expected": true, "reason": "wifi_coverage_unconfirmed"},
+    {"fact": "mountingCompatible", "expected": true, "reason": "mounting_compatibility_unconfirmed"},
+    {"fact": "installationComplexityStandard", "expected": true, "reason": "installation_complexity_requires_review"},
+    {"fact": "powerAssessmentComplete", "expected": true, "reason": "power_requirements_unconfirmed"}
+  ],
+  "selectionRules": [
+    {"id": "requested_lighting", "equipmentId": "eufy_floodlight_e30", "role": "premium_lighting_candidate", "when": {"outdoor": true, "lightingRequested": true, "floodlightPowerCompatible": true}, "manualReviewRequired": true},
+    {"id": "preferred_solar", "equipmentId": "eufy_solocam_e30", "role": "initial_preferred_option", "when": {"outdoor": true, "suitableSunlight": true}, "manualReviewRequired": false},
+    {"id": "compatible_wired_alternative", "equipmentId": "eufy_wired_cam_c31", "role": "lower_cost_alternative", "when": {"outdoor": true, "c31PowerCompatible": true}, "manualReviewRequired": false}
+  ],
+  "materialAssumptions": [
+    {"id": "camera_micro_sd_128gb", "name": "Compatible 128GB local-recording microSD per camera", "status": "proposed_pending_approval", "unitCost": null, "editable": true, "notes": "Select an exact compatible recording-rated card after vendor verification. No SKU or price supplied; not included with these cameras. One per camera in this standalone-storage draft."},
+    {"id": "camera_consumables", "name": "Camera installation consumables per camera", "status": "proposed_pending_approval", "unitCost": null, "editable": true, "notes": "Site-specific fasteners, anchors and weatherproofing beyond verified included hardware. No approved camera allowance exists; do not reuse the $3 TV allowance."},
+    {"id": "c31_power_weather_protection", "name": "C31 power routing and outdoor supply protection per C31", "status": "proposed_pending_approval", "unitCost": null, "editable": true, "notes": "Assess compatible adapter placement, existing protection and cable route. Enter zero only with documented confirmation that no additional materials are needed."},
+    {"id": "floodlight_electrical_materials", "name": "Floodlight electrical/mounting materials per floodlight", "status": "proposed_pending_approval", "unitCost": null, "editable": true, "notes": "Assess box, grounding, weather seal and any circuit work separately. Unknown materials and electrical labor/scope cannot be treated as included by a camera-only substitution."}
+  ],
+  "packages": [
+    {
+      "id": "front_back_solar",
+      "name": "Standard front-and-back solar coverage",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 2},
+      "referenceCostScenarioId": null,
+      "locations": [{"id": "front", "equipmentId": "eufy_solocam_e30"}, {"id": "back", "equipmentId": "eufy_solocam_e30"}]
+    },
+    {
+      "id": "front_back_mixed",
+      "name": "Front-and-back with compatible wired-power alternative",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 2},
+      "referenceCostScenarioId": null,
+      "locations": [{"id": "front", "equipmentId": "eufy_solocam_e30"}, {"id": "back", "equipmentId": "eufy_wired_cam_c31"}]
+    },
+    {
+      "id": "front_back_floodlight",
+      "name": "Front-and-back with optional premium floodlight substitution",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 2},
+      "referenceCostScenarioId": null,
+      "locations": [{"id": "front", "equipmentId": "eufy_floodlight_e30"}, {"id": "back", "equipmentId": "eufy_solocam_e30"}]
+    },
+    {
+      "id": "perimeter_solar",
+      "name": "Expanded four-camera solar perimeter",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 4},
+      "referenceCostScenarioId": "residential_eufy_four_camera_example",
+      "locations": [{"id": "front", "equipmentId": "eufy_solocam_e30"}, {"id": "back", "equipmentId": "eufy_solocam_e30"}, {"id": "left", "equipmentId": "eufy_solocam_e30"}, {"id": "right", "equipmentId": "eufy_solocam_e30"}]
+    },
+    {
+      "id": "perimeter_mixed",
+      "name": "Expanded perimeter with two compatible wired-power alternatives",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 4},
+      "referenceCostScenarioId": "residential_eufy_four_camera_example",
+      "locations": [{"id": "front", "equipmentId": "eufy_solocam_e30"}, {"id": "back", "equipmentId": "eufy_solocam_e30"}, {"id": "left", "equipmentId": "eufy_wired_cam_c31"}, {"id": "right", "equipmentId": "eufy_wired_cam_c31"}]
+    },
+    {
+      "id": "perimeter_floodlight",
+      "name": "Expanded perimeter with optional premium floodlight substitution",
+      "status": "proposed_pending_approval",
+      "baselinePriceReference": {"group": "residentialEquipmentIncluded", "quantity": 4},
+      "referenceCostScenarioId": "residential_eufy_four_camera_example",
+      "locations": [{"id": "front", "equipmentId": "eufy_floodlight_e30"}, {"id": "back", "equipmentId": "eufy_solocam_e30"}, {"id": "left", "equipmentId": "eufy_solocam_e30"}, {"id": "right", "equipmentId": "eufy_solocam_e30"}]
+    }
+  ],
+  "recommendationPolicy": {
+    "status": "proposed_pending_approval",
+    "quantityPolicy": "one_camera_per_independent_coverage_position",
+    "maximumLocations": 16,
+    "priceRules": [
+      {"quantity": 1, "baselineQuantity": 1, "draftPrice": null, "kind": "starting"},
+      {"quantity": 2, "baselineQuantity": 2, "draftPrice": null, "kind": "starting"},
+      {"quantity": 3, "baselineQuantity": null, "draftPrice": 849, "kind": "unapproved_draft"},
+      {"quantity": 4, "baselineQuantity": 4, "draftPrice": null, "kind": "fixed"}
+    ],
+    "financialAssumptions": {
+      "paymentProcessingPercent": 3,
+      "equipmentSalesTaxPercent": null,
+      "illustrativeContributionCommissionPercents": [40, 50, 60],
+      "commissionBasis": "positive_remaining_after_materials_tax_and_processing",
+      "status": "illustrative_not_approved_policy",
+      "notes": "Offline scenarios only, not payroll or approved commissions. Supply a documented local sales-tax percentage; never default unknown tax/materials to zero. Tax applies to equipment plus separately purchased materials in this estimate. No owner labor or technician payroll is deducted. Shipping is a required cost input."
+    },
+    "profiles": [
+      {"equipmentId": "eufy_wired_cam_c31", "features": ["pan_tilt", "tracking", "color_night_vision", "continuous_recording"], "connectivity": "router_wifi", "preference": "economical_compatible_wired", "reviewFlags": ["verify_adapter_and_outdoor_power_protection"]},
+      {"equipmentId": "eufy_solocam_e30", "features": ["pan_tilt", "tracking"], "connectivity": "router_wifi", "preference": "solar_pan_tilt", "reviewFlags": []},
+      {"equipmentId": "eufy_floodlight_e30", "features": ["pan_tilt", "tracking", "color_night_vision", "floodlighting", "continuous_recording"], "connectivity": "router_wifi", "preference": "existing_floodlight", "reviewFlags": ["electrical_scope_and_licensing_review"]},
+      {"equipmentId": "eufy_solocam_s220", "features": ["fixed_view"], "connectivity": "router_wifi", "preference": "budget_solar", "reviewFlags": ["official_sunlight_claims_conflict_2_vs_3_hours", "official_homebase_compatibility_conflict_use_standalone"]},
+      {"equipmentId": "eufy_solocam_s340", "features": ["pan_tilt", "tracking", "zoom_detail", "color_night_vision"], "connectivity": "router_wifi", "preference": "premium_tracking_zoom", "reviewFlags": ["official_sunlight_claims_conflict_use_4_hours", "official_homebase_workflows_differ_use_standalone", "planning_199_99_vs_observed_219_99"]},
+      {"equipmentId": "eufycam_e40", "features": ["fixed_view", "color_night_vision"], "connectivity": "homebase_link", "preference": "multi_location_shared_storage", "reviewFlags": ["verify_homebase_firmware_capacity_and_retention", "verify_exact_kit_mounting_and_charging_contents"]}
+    ],
+    "additionalMaterials": [
+      {"id": "solar_initial_charging_materials", "name": "Compatible initial charging supply and cable extras per solar camera", "unitCost": null, "notes": "Verify SKU-included USB-C charging cable and a model-compatible charging supply before installation. Price missing supplies separately; documented zero requires verified included or available compatible supplies."},
+      {"id": "homebase_installation_materials", "name": "HomeBase placement, cabling and supply materials per installed hub", "unitCost": null, "notes": "Verify included hub adapter/Ethernet cable, safe power location and cable reach. Enter documented zero only when all required supplies are already included/available."}
+    ],
+    "notes": "Legacy three-model selection and six package drafts remain unchanged. This homeowner path uses all six models, built-in/microSD/shared storage as appropriate, solar only after model-specific verification, and separate coverage positions even for rotating cameras. Prefer E40 for multiple suitable fixed locations in balanced mode; offer lower-cost S220 as an alternative. Budget mode compares known equipment costs only until materials are priced. Not a claim of market-wide cheapest procurement."
+  },
+  "notes": "Offline draft configurations only, not active offers or approved combinations. Location assignments are hypotheses, never site verification. Customer amounts resolve from unchanged baseline tiers; $599 is a starting price. Historical four-camera costs are an unverified comparison, not an approved budget. Null required costs make total materials and contribution incomplete. Labor, commissions, fees, tax, shipping, travel and overhead are not calculated."
+}

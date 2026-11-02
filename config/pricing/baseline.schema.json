@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://home2smart.com/schemas/proposed-pricing-v1.json",
+  "title": "Home2Smart proposed baseline pricing v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "business", "status", "currency", "effectiveDate", "scope", "markets", "serviceArea", "pricingRules", "prices", "costScenarios", "futureServicesNotActive", "evidenceStatus", "changeControl"],
+  "properties": {
+    "schemaVersion": {"const": "1.0.0"},
+    "business": {"const": "Home2Smart"},
+    "status": {"const": "proposed_baseline_pending_approval"},
+    "currency": {"const": "USD"},
+    "effectiveDate": {"type": "null"},
+    "scope": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["tv_mounting", "security_camera_installation"]}},
+    "markets": {"type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["residential", "commercial"]}},
+    "serviceArea": {
+      "type": "object", "additionalProperties": false,
+      "required": ["origin", "maximumOneWayDriveHours", "travelFees"],
+      "properties": {
+        "origin": {"const": "Greenwood, SC"},
+        "maximumOneWayDriveHours": {"type": "number", "exclusiveMinimum": 0},
+        "travelFees": {"const": "quote_required_outside_core_zone"}
+      }
+    },
+    "pricingRules": {
+      "type": "object", "additionalProperties": false,
+      "required": ["customerSuppliedEquipment", "equipmentIncluded", "grossMaterialProfitFormula", "grossMaterialMarginFormula", "excludedCosts", "discountPolicy", "quoteRequired"],
+      "properties": {
+        "customerSuppliedEquipment": {"const": "installation_only"},
+        "equipmentIncluded": {"const": "specified_eligible_sku_only"},
+        "grossMaterialProfitFormula": {"const": "sellingPrice - equipmentCost - suppliesCost"},
+        "grossMaterialMarginFormula": {"const": "grossMaterialProfit / sellingPrice * 100"},
+        "excludedCosts": {
+          "type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true,
+          "items": {"enum": ["owner_labor", "travel", "payment_processing", "taxes", "insurance", "overhead"]}
+        },
+        "discountPolicy": {"const": "promotions_do_not_override_baseline"},
+        "quoteRequired": {
+          "type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true,
+          "items": {"enum": ["nonstandard_mounting", "difficult_cable_runs", "large_commercial_systems", "unverified_equipment_sku"]}
+        }
+      }
+    },
+    "prices": {
+      "type": "object", "additionalProperties": false, "required": ["tvMounting", "cameras"],
+      "properties": {
+        "tvMounting": {
+          "type": "object", "additionalProperties": false,
+          "required": ["residentialInstallationOnly", "residentialWithStandardFixedMount", "commercialInstallationOnly", "commercialBundlesInstallationOnlyUpTo65Inches"],
+          "properties": {
+            "residentialInstallationOnly": {"$ref": "#/definitions/tvTiers"},
+            "residentialWithStandardFixedMount": {"$ref": "#/definitions/tvTiers"},
+            "commercialInstallationOnly": {"$ref": "#/definitions/tvTiers"},
+            "commercialBundlesInstallationOnlyUpTo65Inches": {"$ref": "#/definitions/quantityTiers"}
+          }
+        },
+        "cameras": {
+          "type": "object", "additionalProperties": false,
+          "required": ["residentialWirelessInstallationOnly", "residentialEquipmentIncluded", "residentialWiredEquipmentIncluded", "commercialWirelessInstallationOnly", "commercialWirelessEquipmentIncluded", "commercialWiredEquipmentIncluded"],
+          "properties": {
+            "residentialWirelessInstallationOnly": {"$ref": "#/definitions/quantityTiers"},
+            "residentialEquipmentIncluded": {"$ref": "#/definitions/quantityTiers"},
+            "residentialWiredEquipmentIncluded": {"$ref": "#/definitions/quantityTiers"},
+            "commercialWirelessInstallationOnly": {"$ref": "#/definitions/quantityTiers"},
+            "commercialWirelessEquipmentIncluded": {"$ref": "#/definitions/quantityTiers"},
+            "commercialWiredEquipmentIncluded": {"$ref": "#/definitions/quantityTiers"}
+          }
+        }
+      }
+    },
+    "costScenarios": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "sellingPrice", "equipmentCost", "suppliesCostEstimate", "equipmentCostStatus", "grossMaterialProfit", "grossMaterialMarginPercent"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+          "sellingPrice": {"$ref": "#/definitions/price"},
+          "equipmentCost": {"$ref": "#/definitions/cost"},
+          "suppliesCostEstimate": {"$ref": "#/definitions/cost"},
+          "equipmentCostStatus": {"const": "historical_research_unverified_current"},
+          "grossMaterialProfit": {"type": "number", "multipleOf": 0.01},
+          "grossMaterialMarginPercent": {"type": "number", "maximum": 100, "multipleOf": 0.01}
+        }
+      }
+    },
+    "futureServicesNotActive": {
+      "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+      "items": {"enum": ["smart_locks", "soundbar_mounting", "smart_home_setup"]}
+    },
+    "evidenceStatus": {"type": "string", "minLength": 1},
+    "changeControl": {"type": "string", "minLength": 1}
+  },
+  "definitions": {
+    "price": {"type": "number", "exclusiveMinimum": 0, "multipleOf": 0.01},
+    "cost": {"type": "number", "minimum": 0, "multipleOf": 0.01},
+    "amountChoice": {
+      "type": "object",
+      "oneOf": [
+        {"required": ["price"], "not": {"required": ["priceFrom"]}, "properties": {"quoteRequired": {"const": false}}},
+        {"required": ["priceFrom"], "not": {"required": ["price"]}},
+        {"required": ["quoteRequired"], "properties": {"quoteRequired": {"const": true}}, "not": {"anyOf": [{"required": ["price"]}, {"required": ["priceFrom"]}]}}
+      ]
+    },
+    "tvTiers": {
+      "type": "array", "minItems": 2, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false, "allOf": [{"$ref": "#/definitions/amountChoice"}],
+        "properties": {
+          "minInches": {"type": "integer", "minimum": 1},
+          "maxInches": {"type": "integer", "minimum": 1},
+          "price": {"$ref": "#/definitions/price"},
+          "priceFrom": {"$ref": "#/definitions/price"},
+          "quoteRequired": {"type": "boolean"}
+        }
+      }
+    },
+    "quantityTiers": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["quantity"],
+        "allOf": [{"$ref": "#/definitions/amountChoice"}],
+        "properties": {
+          "quantity": {"type": "integer", "minimum": 1},
+          "price": {"$ref": "#/definitions/price"},
+          "priceFrom": {"$ref": "#/definitions/price"},
+          "quoteRequired": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}
