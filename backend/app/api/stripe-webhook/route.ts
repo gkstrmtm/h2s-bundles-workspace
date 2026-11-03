@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { getSupabase, getSupabaseDispatch } from '../../../lib/supabase';
+import { isFieldSalesStripeObject } from '@/lib/fieldStripeRouting';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-12-15.clover',
@@ -28,6 +29,10 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error('[Webhook] Signature verification failed:', err.message);
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
+  }
+
+  if (isFieldSalesStripeObject(event.data.object)) {
+    return NextResponse.json({ received: true, routed: 'field-sales-stripe-webhook' });
   }
 
   // Initialize Supabase client

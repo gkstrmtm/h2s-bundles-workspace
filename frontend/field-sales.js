@@ -21,6 +21,7 @@
     const instant = value => value ? new Date(value).toISOString() : null;
     function release() { for (const url of urls) global.URL.revokeObjectURL(url); urls.clear(); }
     function reset() {
+        global.H2SFieldCommerce?.reset();
         ++version; controller?.abort(); release(); data = detail = attempt = null; busy = preparing = false; token = ''; root.replaceChildren(); nav.hidden = true;
         delete document.getElementById('h2s-app').dataset.fieldSales;
         for (const [element, hidden] of hiddenNav) element.hidden = hidden; hiddenNav.clear();
@@ -61,16 +62,20 @@
         }).join('');
     }
     function render() {
+        global.H2SFieldCommerce?.reset();
         release();
         root.innerHTML = `<header><h2>Field Sales</h2><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</header>
-            <p>Assessment and follow-up only. Service interest is not an approved price, offer, agreement or appointment.</p>
-            <nav aria-label="Field Sales views">${[['dashboard', 'My Dashboard'], ['new', 'New Prospect'], ['opportunities', 'My Opportunities'], ...(admin() ? [['representatives', 'Representatives']] : [])]
+            <p>Service interest is not an approved price, agreement or appointment. Transactions require separately approved pricing, legal configuration and feature gates.</p>
+            <nav aria-label="Field Sales views">${[['dashboard', 'My Dashboard'], ['new', 'New Prospect'], ['opportunities', 'My Opportunities'], ...(admin() ? [['representatives', 'Representatives'], ['transactions', 'Quotes & Payments']] : [])]
                 .map(([id, label]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${mode === id}">${label}</button>`).join('')}</nav>
             <p data-sales-status role="status" aria-live="polite"></p><div data-sales-content></div>`;
         if (!data) return;
         if (!data.enabled) { status('Field Sales is disabled. No accounts or customer records can be changed.'); return; }
         const content = root.querySelector('[data-sales-content]');
-        if (mode === 'new') {
+        if (mode === 'transactions' && admin()) {
+            content.innerHTML = '<div data-sales-commerce></div>';
+            commerce(content.querySelector('[data-sales-commerce]'), null);
+        } else if (mode === 'new') {
             content.innerHTML = `<h3>New prospect</h3><form data-sales-form="create" class="field-sales__form">
                 <label>Customer name<input name="fullName" required maxlength="120" autocomplete="name"></label>
                 <label>Phone<input name="phone" type="tel" required maxlength="40" autocomplete="tel"></label>
@@ -122,9 +127,10 @@
                 <label>Review reason<textarea name="note" required maxlength="2000"></textarea></label><button type="submit">Record management review</button></form>
                 <form data-sales-form="assign" class="field-sales__form"><label>Reassign representative<select name="ownerId" required data-custom-select="off">${representatives(op.owner_user_id)}</select></label>
                 <label>Reassignment reason<textarea name="note" required maxlength="2000"></textarea></label><button type="submit">Confirm reassignment</button></form>` : ''}
-                <h3>Prospect history</h3>${detail.history.map(event => `<article>${esc(date(event.created_at))} / ${esc(event.actor_name)} / ${esc(event.action)}
+                <div data-sales-commerce data-market="${esc(detail.lead.attribution?.market || 'commercial')}"></div><h3>Prospect history</h3>${detail.history.map(event => `<article>${esc(date(event.created_at))} / ${esc(event.actor_name)} / ${esc(event.action)}
                     <pre>${esc(JSON.stringify(event.payload, null, 2))}</pre></article>`).join('') || '<p>No recorded activity.</p>'}`;
             questions(); photoLabels();
+            commerce(content.querySelector('[data-sales-commerce]'), op.lead_id);
             if (!admin() && op.status === 'closed') {
                 content.querySelectorAll('form :is(input,select,textarea,button)').forEach(control => { control.disabled = true; });
                 status('Closed opportunity. Contact management before changing this assessment.');
@@ -144,6 +150,11 @@
                 <p>Follow-up: ${esc(date(row.follow_up_at))}</p></article>`).join('') || '<p>No assigned prospects. Management can assign an existing inquiry or you can create a prospect.</p>'}</div>`;
         }
         global.h2sInitDateInputs?.();
+    }
+    function commerce(target, leadId) {
+        if (!global.H2SFieldCommerce) { target.textContent = 'Quote/payment module unavailable. Assessment remains available.'; return; }
+        global.H2SFieldCommerce.mount(target, { apiBase: options.apiBase, getSession: session, leadId,
+            openLead: id => load(id), onSessionEnded: () => reset() });
     }
     function questions() {
         const target = root.querySelector('[data-sales-questions]'); if (!target) return;

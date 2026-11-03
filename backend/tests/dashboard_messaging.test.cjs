@@ -120,7 +120,7 @@ function mount(t, { flicker = true } = {}) {
   } };
 }
 
-const requiredScriptNames = ['management-operations.js', 'field-sales.js', ...Array.from(
+const requiredScriptNames = ['management-operations.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
   html.match(/for \(const filename of \[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g), match => match[1])];
 
 test('required scripts load serially and login stays disabled until all dependencies are ready', async t => {

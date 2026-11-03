@@ -1,0 +1,180 @@
+(function (global) {
+    'use strict';
+    let active, generation = 0;
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const money = value => value === null || value === undefined ? 'Pricing required' : new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(Number(value)/100);
+    function reset() { generation++; active?.controller.abort(); if (active) active.root.replaceChildren(); active = null; }
+    function mount(root, options) {
+        reset(); const id = generation, started = options.getSession()?.token;
+        const state = { root, options, controller: new AbortController(), data: null, current: null, busy: false, attempt: null, rows: 1 };
+        active = state;
+        const valid = () => id === generation && active === state && options.getSession()?.token === started && ['ADMIN','SALES'].includes(options.getSession()?.role);
+        const admin = () => options.getSession()?.role === 'ADMIN';
+        function status(message, error = false) {
+            const target = root.querySelector('[data-commerce-status]'); if (!target || !valid()) return;
+            target.textContent = message; target.setAttribute('role', error ? 'alert' : 'status');
+        }
+        async function api(body) {
+            if (!valid()) throw Error('Session changed; private transaction response discarded.');
+            const response = await global.fetch(`${options.apiBase}/api/field-sales-transactions${body || !options.leadId ? '' : '?leadId='+encodeURIComponent(options.leadId)}`,
+                { method: body ? 'POST' : 'GET', cache: 'no-store', signal: state.controller.signal,
+                    headers: { Authorization: `Bearer ${started}`, ...(body ? {'Content-Type':'application/json'} : {}) },
+                    ...(body ? {body:JSON.stringify(body)} : {}) });
+            if (!valid()) throw Error('Session changed; private transaction response discarded.');
+            if (response.status === 401 || response.status === 403) { options.onSessionEnded(); throw Error('Transaction access ended. Sign in again or contact management.'); }
+            const result = await response.json();
+            if (!valid()) throw Error('Session changed; private transaction response discarded.');
+            if (!response.ok || !result.ok) throw Error(result.error || 'Transaction request failed; no success is implied.');
+            return result;
+        }
+        async function load() {
+            if (!valid()) return;
+            root.innerHTML = '<h3>Quotes, agreements & payments</h3><p data-commerce-status role="status">Loading transaction visibility...</p>';
+            try { const data = await api(); if (!valid()) return; state.data = data; render(); }
+            catch (error) { console.error('Field transaction read failed.'); status(error.message, true); }
+        }
+        function render() {
+            const d = state.data;
+            root.innerHTML = '<h3>Quotes, agreements & payments</h3><p data-commerce-status role="status" aria-live="polite"></p>';
+            if (!d.enabled) { status('Transactions are disabled. No quote, agreement or payment can be activated.'); return; }
+            root.insertAdjacentHTML('beforeend', '<p>TEST-ONLY foundation. Published pricing and approved agreement language are required. No card details are entered here.</p><button type="button" data-commerce-refresh>Refresh records</button>');
+            if (!options.leadId) {
+                root.insertAdjacentHTML('beforeend', `<h4>Management quote and payment review</h4><p>${d.quotes.length} quote revisions loaded. Historical revisions are not separate sales.</p>
+                    ${d.quotes.map(q => `<article><button type="button" data-commerce-lead="${esc(q.lead_id)}">${esc(q.snapshot.customer.name)} / revision ${q.revision}</button>
+                    <p>${esc(q.state)} / ${money(q.snapshot.totalCents)} / ${esc(q.snapshot.customer.market)} / attributed to ${esc(q.attributed_user_id)}</p>
+                    <p>${d.agreements.some(a=>a.quote_id===q.quote_id&&a.accepted_at) ? 'Agreement accepted' : 'No accepted agreement'}</p>
+                    ${payments(q)}</article>`).join('') || '<p>No quote revisions.</p>'}`);
+                return;
+            }
+            const catalogs = d.catalogs.filter(c=>c.status!=='retired').sort((a,b)=>Number(b.status==='published')-Number(a.status==='published'));
+            if (!catalogs.length) root.insertAdjacentHTML('beforeend', '<p>No quoting catalog is configured. Management must reconcile and formally publish pricing; proposed v2 and the $599 solar proposal are not payment authority.</p>');
+            else {
+                root.insertAdjacentHTML('beforeend', `<h4>Create Quote</h4><form data-commerce-create class="field-sales__form">
+                    <label class="field-sales__wide">Pricing version<select name="catalogId" data-commerce-catalog data-custom-select="off">${catalogs.map(c=>`<option value="${esc(c.catalog_id)}">${esc(c.version)} / ${esc(c.status)}${c.status==='draft'?' - not payable':''}</option>`).join('')}</select></label>
+                    <div class="field-sales__wide" data-commerce-lines></div><button type="button" data-commerce-add>Add service line</button>
+                    <button type="submit">Calculate & save immutable draft</button></form>`);
+                rows();
+            }
+            root.insertAdjacentHTML('beforeend', `<h4>Review Quote</h4><div>${d.quotes.map(q=>`<button type="button" data-commerce-quote="${esc(q.quote_id)}">Revision ${q.revision} / ${esc(q.state)} / ${money(q.snapshot.totalCents)}</button>`).join('') || '<p>No saved quotes.</p>'}</div><div data-commerce-review></div>`);
+            state.current = d.quotes.find(q=>q.quote_id===state.current?.quote_id) || d.quotes[0];
+            review();
+        }
+        function catalog() { return state.data.catalogs.find(c=>c.catalog_id===root.querySelector('[data-commerce-catalog]').value); }
+        function rows() {
+            const target = root.querySelector('[data-commerce-lines]'); if (!target) return;
+            const c = catalog(), market = state.data.quotes[0]?.snapshot.customer.market || root.closest('[data-market]')?.dataset.market;
+            const offers = c.definition.services.filter(s=>!market||s.markets.includes(market)).flatMap(s=>s.offers.filter(o=>o.enabled).map(o=>({s,o})));
+            const start = target.children.length;
+            target.insertAdjacentHTML('beforeend', Array.from({length:state.rows-start},(_,n)=>{ const i=start+n; return `<fieldset data-commerce-line><legend>Service line ${i+1}</legend>
+                <label>Service / equipment / installation<select data-commerce-offer data-custom-select="off">${offers.map(({s,o})=>`<option value="${esc(s.id+':'+o.id)}">${esc(s.label)} / ${esc(o.label)}</option>`).join('')}</select></label>
+                <div data-commerce-inputs></div><button type="button" data-commerce-remove>Remove service line</button></fieldset>`; }).join(''));
+            for (const row of [...target.children].slice(start)) inputs(row);
+        }
+        function inputs(row) {
+            const [sid,oid] = row.querySelector('[data-commerce-offer]').value.split(':'), s = catalog().definition.services.find(s=>s.id===sid), o=s?.offers.find(o=>o.id===oid);
+            const target=row.querySelector('[data-commerce-inputs]');
+            if (!o) { target.textContent='No eligible offers in this version.'; return; }
+            target.innerHTML=`<p>${esc(o.scope.join('; '))}</p><p>Equipment: ${esc(o.equipment.join('; ')||'No included equipment specified')}</p>
+                <label>Quantity<input name="quantity" type="number" step="1" min="${o.minimum}" max="${o.maximum}" value="${o.minimum}" required></label>
+                ${o.questions.map(q=>`<label>${esc(q.label)}${q.required?' (qualification required)':''}${q.type==='select'
+                    ?`<select data-q="${esc(q.id)}" data-custom-select="off"><option value="">Not yet qualified</option>${q.options.map(v=>`<option>${esc(v)}</option>`).join('')}</select>`
+                    :`<input data-q="${esc(q.id)}" type="${q.type==='number'?'number':'text'}"${q.type==='number'?` step="any" min="${q.min??0}" max="${q.max??100000}"`:' maxlength="2000"'}>`}</label>`).join('')}
+                ${o.options.map(opt=>`<label class="field-sales__check"><input type="checkbox" data-option value="${esc(opt.id)}">${esc(opt.label)} / ${money(opt.amountCents)} ${opt.perUnit?'per unit':'per line'}</label>`).join('')}
+                <label>Unusual conditions requiring review<textarea name="exceptionNote" maxlength="2000"></textarea></label>`;
+        }
+        function payments(q) {
+            const rows=state.data.payments.filter(p=>p.quote_id===q.quote_id), net=rows.reduce((s,p)=>s+Number(p.captured_cents)-Number(p.refunded_cents),0);
+            return `<p>Net verified collected: ${money(net)} / outstanding: ${q.snapshot.totalCents===null?'Unpriced':money(Math.max(0,q.snapshot.totalCents-net))}</p>
+                ${rows.map(p=>`<p>${esc(p.kind)} / ${esc(p.state)}${p.provider_state?' / Stripe '+esc(p.provider_state):''} / reserved ${money(p.amount_cents)} / refunded ${money(p.refunded_cents)}
+                ${options.leadId&&p.session_id?`<button type="button" data-commerce-verify="${esc(p.checkout_id)}">Verify with Stripe</button>`:''}</p>`).join('')}`;
+        }
+        function review() {
+            const target=root.querySelector('[data-commerce-review]'),q=state.current;if(!target||!q)return;
+            const a=state.data.agreements.find(a=>a.quote_id===q.quote_id),p=state.data.payments.filter(p=>p.quote_id===q.quote_id),
+                net=p.reduce((sum,row)=>sum+Number(row.captured_cents)-Number(row.refunded_cents),0),exception=p.some(p=>Number(p.refunded_cents)>0||p.disputed||p.state==='payment_exception'),
+                depositReady=Number(a?.policy_snapshot?.paymentPlan?.depositCents)>0;
+            target.innerHTML=`<article><h4>Quote revision ${q.revision} / ${esc(q.state)}</h4><p class="field-sales__id">${esc(q.quote_id)} / ${esc(q.quote_hash)}</p>
+                <p>${esc(q.snapshot.customer.name)} / ${esc(q.snapshot.customer.address)} / ${esc(q.snapshot.customer.city)} / ${esc(q.snapshot.customer.phone)}</p>
+                ${q.snapshot.lines.map(line=>`<section><h4>${esc(line.service)} / ${esc(line.description)}</h4><p>Quantity ${line.quantity}; base ${money(line.baseCents)}</p>
+                    <p>Equipment/materials: ${esc(line.equipment.join('; '))}</p><p>Scope: ${esc(line.scope.join('; '))}</p>
+                    ${Object.entries(line.answers||{}).map(([id,value])=>`<p>${esc(line.answerLabels?.[id]||id)}: ${esc(value)}</p>`).join('')}
+                    ${line.addOns.map(a=>`<p>${esc(a.label)}: ${money(a.amountCents)}</p>`).join('')}<p>Line total: ${money(line.totalCents)}</p>
+                    <p>Exclusions/conditions: ${esc(line.exclusions.join('; '))}</p></section>`).join('')}
+                ${q.snapshot.managementAdjustmentCents!==undefined?`<p>Audited management adjustment: ${money(q.snapshot.managementAdjustmentCents)} / ${esc(q.snapshot.managementReview.reason)}</p>`:''}
+                ${q.snapshot.managementReview?`<p>Management decision: ${esc(q.snapshot.managementReview.decision)} / final scope confirmation: ${esc(q.snapshot.managementReview.scopeConfirmation)}</p>`:''}
+                <strong>Total customer price: ${money(q.snapshot.totalCents)}</strong><p>Valid until: ${q.expires_at?esc(new Date(q.expires_at).toLocaleString()):'Not payable / validity pending approval'}</p>
+                <p>Pricing authority: ${esc(q.snapshot.catalogVersion)} / ${esc(q.snapshot.pricingStatus)}</p>
+                <p>Approval requirements: ${esc(q.snapshot.approvalReasons.join('; ')||'No exceptional qualification flags')}</p>
+                ${q.state==='draft'?'<button type="button" data-commerce-submit>Submit quote / request management approval</button>':''}
+                ${admin()&&q.state==='pending_approval'?`<form data-commerce-approve class="field-sales__form"><label>Approved final total (optional adjustment, USD)<input name="amount" inputmode="decimal"></label>
+                    <label>Reason<textarea name="reason" required maxlength="2000"></textarea></label><label class="field-sales__wide">Final scope confirmation<textarea name="scopeConfirmation" maxlength="6000"></textarea></label>
+                    <button type="submit" value="approve">Approve as new immutable revision</button><button type="submit" value="reject">Reject revision</button></form>`:''}
+                <h4>Customer agreement</h4><p>${a?.accepted_at?'Customer acceptance recorded '+esc(new Date(a.accepted_at).toLocaleString()):'No accepted customer agreement.'}</p>
+                ${a?.policy_snapshot?`<details><summary>Saved agreement version ${esc(a.policy_snapshot.version)}</summary><pre>${esc(a.policy_snapshot.terms)}</pre><h4>Payment terms</h4><pre>${esc(a.policy_snapshot.payment_terms)}</pre><h4>Cancellation information</h4><pre>${esc(a.policy_snapshot.cancellation_information)}</pre><h4>Electronic delivery</h4><pre>${esc(a.policy_snapshot.electronic_delivery)}</pre></details>`:''}
+                ${q.state==='approved'?`<button type="button" data-commerce-agreement ${a||state.data.policyReady?'':'disabled'}>${a?'Present existing agreement':'Prepare exact-quote agreement'}</button>`:''}
+                ${!state.data.policyReady?'<p>Agreement language, cancellation and electronic delivery approval is missing.</p>':''}<div data-commerce-handoff></div>
+                <h4>Secure payment & order</h4>${payments(q)}
+                ${a?.accepted_at&&!exception&&net<q.snapshot.totalCents?`<button type="button" data-commerce-checkout="${net>0?'balance':'full'}">Start secure ${net>0?'remaining balance':'full-payment'} checkout</button>
+                    ${net===0?`<button type="button" data-commerce-checkout="deposit"${depositReady?'':' disabled'}>Start approved deposit checkout</button>`:''}`:''}
+                ${!state.data.depositConfigured&&!depositReady?'<p>Deposit policy unset. No nonrefundable terms are implied.</p>':''}
+                ${depositReady?`<p>Exact agreement deposit: ${money(a.policy_snapshot.paymentPlan.depositCents)}; remaining balance: ${money(a.policy_snapshot.paymentPlan.remainingAfterDepositCents)}. Later policy changes do not alter these accepted amounts.</p>`:''}<div data-commerce-checkout-link></div>
+                ${a&&!depositReady&&state.data.depositConfigured?'<p>This exact agreement does not authorize a deposit. Later policy changes do not alter accepted terms.</p>':''}
+                ${state.data.orders.filter(o=>o.quote_id===q.quote_id).map(o=>`<p>Customer order: <span class="field-sales__id">${esc(o.order_reference)}</span> / ${esc(o.status)} / scheduling requires management review. No automatic technician assignment.</p>`).join('')}
+                </article>`;
+        }
+        async function write(body) {
+            if(state.busy||!valid())return;state.busy=true;
+            if(state.attempt&&(body.action!==state.attempt.action||body.quoteId!==state.attempt.quoteId||body.checkoutId!==state.attempt.checkoutId)){
+                state.busy=false;status('An interrupted action must be retried or refreshed before choosing a different operation.',true);return;
+            }
+            if(!state.attempt)state.attempt={...body,leadId:options.leadId,operationId:global.crypto.randomUUID()};
+            status('Saving/verifying on the server. An interrupted action retains its exact retry key.');
+            try {
+                const action=state.attempt.action,result=await api(state.attempt);if(!valid())return;state.attempt=null;
+                if(result.id&&['quote','submit','approve','reject'].includes(action))state.current={quote_id:result.id};
+                if(result.agreementUrl){const target=root.querySelector('[data-commerce-handoff]');target.replaceChildren();const a=document.createElement('a');a.href=result.agreementUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open/share secure customer agreement';target.append(a);root.querySelector('[data-commerce-agreement]').disabled=true;status('Agreement prepared. The customer must review and accept the exact approved terms. Refresh records after acceptance.');}
+                else if(result.checkoutUrl){if(result.payment){state.data.payments=[...state.data.payments.filter(p=>p.checkout_id!==result.payment.checkout_id),result.payment];review();}const target=root.querySelector('[data-commerce-checkout-link]');target.replaceChildren();const a=document.createElement('a');a.href=result.checkoutUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open secure Stripe Checkout (test mode)';target.append(a);status('Checkout created, not paid. After the customer returns, use Verify with Stripe to check payment and order status.');}
+                else await load();
+            }catch(error){console.error('Field transaction action failed.');status(error.message+' Retry retains the identical action; Refresh re-reads current records.',true);}
+            finally{state.busy=false;}
+        }
+        root.addEventListener('change',event=>{
+            if(!valid()||state.busy)return;
+            if(event.target.matches('[data-commerce-catalog]')){state.rows=1;root.querySelector('[data-commerce-lines]').replaceChildren();rows();}
+            if(event.target.matches('[data-commerce-offer]'))inputs(event.target.closest('[data-commerce-line]'));
+        });
+        root.addEventListener('click',event=>{
+            if(!valid()||state.busy)return;const b=event.target.closest('button');if(!b)return;
+            if(b.hasAttribute('data-commerce-refresh')){state.attempt=null;load();}
+            if(b.hasAttribute('data-commerce-add')){if(state.rows>=30){status('Maximum 30 service lines.',true);return;}state.rows++;rows();}
+            if(b.hasAttribute('data-commerce-remove')){if(state.rows===1){status('At least one service line is required.',true);return;}b.closest('[data-commerce-line]').remove();state.rows--;[...root.querySelectorAll('[data-commerce-line] legend')].forEach((el,i)=>el.textContent='Service line '+(i+1));}
+            if(b.dataset.commerceQuote){state.current=state.data.quotes.find(q=>q.quote_id===b.dataset.commerceQuote);review();}
+            if(b.dataset.commerceLead)options.openLead(b.dataset.commerceLead);
+            if(b.hasAttribute('data-commerce-submit'))write({action:'submit',quoteId:state.current.quote_id});
+            if(b.hasAttribute('data-commerce-agreement'))write({action:state.data.agreements.some(a=>a.quote_id===state.current.quote_id)?'agreement_link':'agreement',quoteId:state.current.quote_id});
+            if(b.dataset.commerceCheckout)write({action:'checkout',quoteId:state.current.quote_id,kind:b.dataset.commerceCheckout});
+            if(b.dataset.commerceVerify)write({action:'refresh_payment',checkoutId:b.dataset.commerceVerify});
+        });
+        root.addEventListener('submit',event=>{
+            const form=event.target.closest('[data-commerce-create],[data-commerce-approve]');if(!form||!valid())return;event.preventDefault();event.stopPropagation();
+            if(state.busy)return;
+            try {
+                if(form.matches('[data-commerce-create]')){
+                    const lines=[...form.querySelectorAll('[data-commerce-line]')].map(row=>{
+                        const [serviceId,offerId]=row.querySelector('[data-commerce-offer]').value.split(':');
+                        return {serviceId,offerId,quantity:Number(row.querySelector('[name="quantity"]').value),options:[...row.querySelectorAll('[data-option]:checked')].map(el=>el.value),
+                            answers:Object.fromEntries([...row.querySelectorAll('[data-q]')].map(el=>[el.dataset.q,el.type==='number'&&el.value!==''?Number(el.value):el.value])),
+                            exceptionNote:row.querySelector('[name="exceptionNote"]').value};
+                    });write({action:'quote',catalogId:form.elements.catalogId.value,lines});
+                }else{
+                    const action=event.submitter?.value||'approve',body={action,quoteId:state.current.quote_id,reason:form.elements.reason.value};
+                    if(action==='approve'){body.scopeConfirmation=form.elements.scopeConfirmation.value;const value=form.elements.amount.value.trim();
+                        if(value){if(!/^\d+(?:\.\d{1,2})?$/.test(value))throw Error('Use USD with at most two decimal places.');const [whole,fraction='']=value.split('.');body.amountCents=Number(whole)*100+Number(fraction.padEnd(2,'0'));}}
+                    write(body);
+                }
+            }catch(error){status(error.message,true);}
+        });
+        load();
+    }
+    global.H2SFieldCommerce={mount,reset};
+})(window);

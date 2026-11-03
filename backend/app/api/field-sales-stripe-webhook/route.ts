@@ -1,0 +1,51 @@
+import Stripe from 'stripe';
+import { getSupabase } from '@/lib/supabase';
+import { fieldStripe, requireTransactions, recordSession, paymentRecord, salesChecked, flow, identifier, BusinessError } from '@/lib/fieldCommerce';
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+const supported = new Set(['checkout.session.completed','checkout.session.async_payment_succeeded','checkout.session.async_payment_failed',
+  'checkout.session.expired','payment_intent.succeeded','payment_intent.payment_failed','payment_intent.canceled',
+  'charge.refunded','charge.dispute.created','charge.dispute.updated','charge.dispute.closed','refund.updated','refund.failed']);
+export async function POST(request: Request) {
+  try {
+    requireTransactions();
+    const secret = process.env.H2S_FIELD_STRIPE_TEST_WEBHOOK_SECRET, signature = request.headers.get('stripe-signature');
+    if (!secret) throw new BusinessError('Field payment reconciliation is not configured; event must retry.', 503);
+    if (!signature) throw new BusinessError('Stripe signature required.', 400);
+    const stripe = fieldStripe();
+    let event: Stripe.Event;
+    try { event = stripe.webhooks.constructEvent(await request.text(), signature, secret); }
+    catch { throw new BusinessError('Invalid Stripe signature.', 400); }
+    if (event.livemode !== false) throw new BusinessError('Live Stripe events are not accepted by this phase.', 400);
+    if (!supported.has(event.type)) return Response.json({ received: true, ignored: true });
+    const object = event.data.object;
+    if (!('id' in object) || typeof object.id !== 'string') throw new BusinessError('Stripe event object identity is missing.', 400);
+    const metadata = 'metadata' in object ? object.metadata : null;
+    let checkoutId = metadata && 'h2s_flow' in metadata && metadata.h2s_flow === flow ? identifier(metadata.checkout_id) : null;
+    if (!checkoutId) {
+      const intentId = event.type.startsWith('payment_intent.') ? object.id :
+        'payment_intent' in object ? (typeof object.payment_intent === 'string' ? object.payment_intent : object.payment_intent?.id) : null;
+      if (intentId) {
+        const payment = salesChecked(await getSupabase().from('field_sales_checkouts').select('checkout_id').eq('payment_intent_id', intentId).maybeSingle());
+        checkoutId = payment?.checkout_id || null;
+      }
+    }
+    if (!checkoutId) return Response.json({ received: true, ignored: true });
+    const { payment } = await paymentRecord(checkoutId);
+    let sessionId = event.type.startsWith('checkout.session.') ? object.id : payment.session_id;
+    if (!sessionId) {
+      const intentId = event.type.startsWith('payment_intent.') ? object.id : null;
+      if (!intentId) throw new BusinessError('Checkout binding requires management reconciliation.', 409);
+      const sessions = await stripe.checkout.sessions.list({ payment_intent: intentId, limit: 2 });
+      if (sessions.data.length !== 1) throw new BusinessError('Stripe checkout relationship is ambiguous.', 409);
+      sessionId = sessions.data[0].id;
+    }
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    await recordSession(stripe, checkoutId, 'stripe:' + event.id, session, event.type);
+    return Response.json({ received: true });
+  } catch (error) {
+    console.error('Field Stripe reconciliation failed', { type: error instanceof Error ? error.name : 'Unknown' });
+    return Response.json({ ok: false, error: error instanceof BusinessError ? error.message : 'Stripe reconciliation failed; retry required.' },
+      { status: error instanceof BusinessError ? error.status : 503, headers: { 'Cache-Control': 'no-store' } });
+  }
+}

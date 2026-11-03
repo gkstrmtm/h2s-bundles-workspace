@@ -129,6 +129,7 @@ test('commercial API: authorized persistence, explicit installation linkage, Str
       '@supabase/supabase-js':{createClient:()=>f.client},
       crypto:require('node:crypto'),
       '../../../lib/supabase':{getSupabase:()=>f.client,getSupabaseDispatch:()=>f.client},
+      '@/lib/fieldStripeRouting':evaluate('lib\\fieldStripeRouting.ts',{}),
     },{fetch:async (url,options)=>{
       assert.match(url,/\/api\/notify-management$/);
       notifications.add(JSON.parse(options.body).idempotency_key);

@@ -21,6 +21,7 @@ async function fixture(t) {
     '@supabase/supabase-js':{createClient:()=>f.client},
     crypto:require('node:crypto'),
     '../../../lib/supabase':{getSupabase:()=>f.client,getSupabaseDispatch:()=>f.client},
+    '@/lib/fieldStripeRouting':evaluate('lib\\fieldStripeRouting.ts',{}),
   },{fetch:async (url,options)=>{
     assert.match(url,/\/api\/notify-management$/);
     notices.push(JSON.parse(options.body));

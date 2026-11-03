@@ -30,4 +30,9 @@
 #h2s-app .field-sales__id { font: 12px/1.5 'JetBrains Mono', monospace; }
 #h2s-app .field-sales pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 #h2s-app .field-sales img { display: block; max-width: 100%; max-height: 420px; margin-top: 8px; }
+#h2s-app .field-sales [data-sales-commerce] { margin-block: 24px; padding-block: 16px; border-block: 1px solid var(--border); }
+#h2s-app .field-sales [data-commerce-status] { padding-block: 8px; }
+#h2s-app .field-sales [data-commerce-review] button { margin: 4px; max-width: 100%; white-space: normal; }
+#h2s-app .field-sales a { color: var(--azure); overflow-wrap: anywhere; }
+#h2s-app .field-sales--agreement { box-sizing: border-box; max-width: 960px; margin-inline: auto; padding: 16px; }
 @media(max-width:680px) { #h2s-app .field-sales__form { grid-template-columns: minmax(0,1fr); } #h2s-app .field-sales :is(input,select,textarea) { font-size: 16px; } #h2s-app .field-sales button { min-height: 44px; } }
