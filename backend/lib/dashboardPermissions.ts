@@ -1,13 +1,13 @@
 import { getDashboardAuthUserFromSession, type DashboardAuthUser } from '@/lib/dashboardAuth';
 import type { ProposedStaffRole } from '@/lib/operationsFoundation';
 
-export type DashboardCapability = 'operations.read' | 'customers.owned.read' | 'quotes.owned.read';
+export type DashboardCapability = 'operations.read' | 'operations.assign' | 'customers.owned.read' | 'quotes.owned.read';
 
 // These capabilities govern new adapters only, not existing VA workflows.
 export const dashboardRolePolicies: Readonly<Record<ProposedStaffRole, {
   active: boolean; capabilities: readonly DashboardCapability[];
 }>> = {
-  ADMIN: { active: true, capabilities: ['operations.read', 'customers.owned.read', 'quotes.owned.read'] },
+  ADMIN: { active: true, capabilities: ['operations.read', 'operations.assign', 'customers.owned.read', 'quotes.owned.read'] },
   VA: { active: true, capabilities: [] },
   OPERATIONS: { active: false, capabilities: ['operations.read'] },
   SALES: { active: false, capabilities: ['customers.owned.read', 'quotes.owned.read'] },

@@ -201,6 +201,12 @@ test('read-only adapter verifies sparse dispatch/order/assignment/payout relatio
         update h2s_dispatch_jobs set status='completed'`);
       assert.equal((await f.read()).jobs[0].payouts.value[0].pro_id, id(500));
     });
+    await t.test('pending offers remain visible but are not accepted payout attribution', async () => {
+      await f.seed(); await f.db.exec("update h2s_dispatch_job_assignments set state='pending'");
+      const job = (await f.read()).jobs[0];
+      assert.equal(job.assignments.value[0].rawState, 'pending');
+      assert.equal(job.payouts.status, 'needs_review');
+    });
     await t.test('consultations never masquerade as paid installations or run installation preparation', async () => {
       await f.seed(); const before = f.paymentCalls();
       await f.db.exec(`update h2s_orders set commercial_request_id='${id(201)}'`);

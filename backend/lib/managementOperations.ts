@@ -125,7 +125,7 @@ export async function readManagementOperations(
       const kind = order.status !== 'available' ? 'unresolved' : consultation ? 'consultation' : 'installation';
       const assigned = assignments.status !== 'available' ? assignments : !pros
         ? { status: 'unavailable' as const, detail: 'Technician identities could not be verified.' } : available(assignments.value
-        .filter(row => row.job_id === job.job_id && (activeStates.includes(row.state)
+        .filter(row => row.job_id === job.job_id && (!['declined', 'expired', 'cancelled', 'canceled', 'completed', 'done', 'rejected'].includes(row.state)
           || ['completed', 'done'].includes(job.status) && ['completed', 'done'].includes(row.state))).map(row => {
           const matches = pros ? Array.from(new Map(pros.filter(pro => pro.pro_id === row.pro_id
             || pro.email === row.pro_id).map(pro => [pro.pro_id, pro])).values()) : [];
@@ -152,6 +152,7 @@ export async function readManagementOperations(
       const bridge = legacyLinks.get(job.job_id)!;
       let payout: Evidence<Payout[]> = bridge.status !== 'available' ? bridge : payouts.status !== 'available' ? payouts
         : assigned.status !== 'available' ? assigned : assigned.value.length !== 1 || !assigned.value[0].proId
+          || ![...activeStates, 'completed', 'done'].includes(assigned.value[0].rawState)
           ? review('A single verified technician assignment is required to attribute payouts.')
           : available(payouts.value.filter(row => row.job_id === bridge.value));
       if (payout.status === 'available' && assigned.status === 'available'

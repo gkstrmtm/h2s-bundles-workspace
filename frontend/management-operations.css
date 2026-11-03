@@ -21,3 +21,10 @@
 .management-operations__footer > div { display: flex; gap: 8px; }
 .management-operations__empty { padding: 16px 0; }
 @media (max-width: 820px) { .management-operations dl { grid-template-columns: minmax(0, 1fr); } }
+.management-assignment { width: min(620px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); box-sizing: border-box; padding: 16px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); overflow: auto; }
+.management-assignment::backdrop { background: var(--modal-backdrop, rgba(0, 0, 0, .45)); }
+.management-assignment fieldset { margin: 12px 0; padding: 12px; border: 1px solid var(--border); max-height: 220px; overflow: auto; }
+.management-assignment label { display: block; margin: 8px 0; }
+.management-assignment input[type="radio"] { accent-color: var(--azure); }
+.management-assignment textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px; border: 1px solid var(--border); color: var(--text); background: var(--surface); font: inherit; }
+.management-assignment footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
