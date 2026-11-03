@@ -3,7 +3,8 @@
     const models = new WeakMap();
     const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const date = value => new Date(value).toLocaleString(undefined,{
+    const timeZoneLabel = () => new Intl.DateTimeFormat(undefined, {timeZoneName:'longGeneric'}).formatToParts(new Date()).find(part => part.type === 'timeZoneName').value;
+    const date = value => !value ? 'Not recorded' : !Number.isFinite(new Date(value).getTime()) ? 'Date needs review' : new Date(value).toLocaleString(undefined,{
         month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'
     });
     const stateLabels = {all:'All states',active:'Blocking time',confirmed:'Confirmed',tentative:'Holds',completed:'Completed',cancelled:'Cancelled',expired:'Expired'};
@@ -148,27 +149,38 @@
     function renderLead(model) {
         const booking = model.data.booking, state = booking?.effective_state;
         const active = state === 'tentative' || state === 'confirmed';
-        const actions = !active ? [['hold', 'Hold time'], ['confirm', 'Confirm agreed booking']]
+        const actions = !active ? [['hold', 'Hold time'], ['confirm', 'Confirm booking']]
             : state === 'confirmed' ? [['reschedule', 'Reschedule'], ['cancel', 'Cancel booking']]
-                : [['confirm', 'Confirm agreed booking'], ['reschedule', 'Reschedule hold'], ['cancel', 'Release hold']];
-        const history = `<ul class="commercial-operations-history">${model.data.history.map(event =>
-            `<li><strong>${escape(event.action)}</strong><time>${escape(date(event.created_at))} &middot; ${escape(event.actor_name)}</time>
-            <span>${escape(event.after_state.reason)}</span></li>`).join('') || '<li>No calendar changes recorded.</li>'}</ul>`;
+                : [['confirm', 'Confirm booking'], ['reschedule', 'Reschedule hold'], ['cancel', 'Release hold']];
+        const actionLabels = {hold:'Time held',confirm:'Booking confirmed',reschedule:'Time changed',cancel:'Booking cancelled',expire:'Hold expired'};
+        const historyItem = event => `<li><strong>${escape(actionLabels[event.action] || String(event.action || 'Calendar updated').replace(/_/g, ' '))}</strong>
+            <time>${escape(date(event.created_at))} &middot; ${escape(event.actor_name || 'System')}</time>
+            <span>${escape(event.after_state?.reason || 'No note recorded.')}</span></li>`;
+        const history = `<ol class="commercial-operations-timeline">${model.data.history.map(historyItem).join('') || '<li>No calendar changes recorded.</li>'}</ol>`;
         if (model.options.historyRoot) model.options.historyRoot.innerHTML = history;
         model.root.querySelector('[data-calendar-editor]').innerHTML = `
-            ${model.options.focused ? '' : `<p>${booking ? `<strong>${escape(state)}</strong>: ${escape(date(booking.starts_at))} - ${escape(date(booking.ends_at))}
-                ${state === 'tentative' ? ` &middot; expires ${escape(date(booking.expires_at))}` : ''}` : 'No installation time reserved.'}</p>`}
+            ${model.options.focused ? '' : `<div class="commercial-calendar-current" data-state="${escape(state || 'unbooked')}">
+                <strong>${escape(state === 'confirmed' ? 'Confirmed installation' : state === 'tentative' ? 'Tentative hold · needs confirmation' : 'No installation time reserved')}</strong>
+                ${booking ? `<span>${active ? '' : `${escape(stateLabels[state] || state)} window: `}${escape(date(booking.starts_at))} &ndash; ${escape(date(booking.ends_at))}</span>
+                ${state === 'tentative' ? `<span>Hold expires ${escape(date(booking.expires_at))}</span>` : ''}` : ''}
+            </div>`}
             <form class="commercial-operations-form" data-calendar-form>
-                <label>Calendar action<select name="calendarAction" class="form-select">${actions.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select></label>
-                ${model.options.dateInput('calendarStart', `Start (${timeZone()})`, active ? booking.starts_at : '', 'required')}
-                ${model.options.dateInput('calendarEnd', `End (${timeZone()})`, active ? booking.ends_at : '', 'required')}
-                ${model.options.dateInput('calendarExpiry', `Hold expiry (${timeZone()})`, state === 'tentative' ? booking.expires_at : '')}
+                <div class="commercial-operations-wide commercial-calendar-actions" role="group" aria-label="Calendar action">
+                    ${actions.map(([value, text]) => `<button type="button" class="commercial-workload-btn" data-calendar-action="${value}" aria-pressed="false">${text}</button>`).join('')}
+                </div>
+                <select name="calendarAction" hidden data-custom-select="off" aria-label="Calendar action">${actions.map(([value, text]) => `<option value="${value}">${text}</option>`).join('')}</select>
+                <p class="commercial-operations-wide commercial-calendar-zone">Times shown in ${escape(timeZoneLabel())}.</p>
+                ${model.options.dateInput('calendarStart', 'Start', active ? booking.starts_at : '', 'required')}
+                ${model.options.dateInput('calendarEnd', 'End', active ? booking.ends_at : '', 'required')}
+                ${model.options.dateInput('calendarExpiry', 'Hold expires', state === 'tentative' ? booking.expires_at : '')}
                 <label class="commercial-operations-wide commercial-operations-check"><input type="checkbox" name="customerAgreed"> Customer agreed to this installation window</label>
-                <label class="commercial-operations-wide">Reason / agreement notes<input name="calendarReason" required maxlength="1000"></label>
-                <button type="submit" class="commercial-workload-btn" ${model.options.focused ? 'hidden' : ''}>Save calendar action</button>
-                <button type="button" class="commercial-workload-btn" data-calendar-discard ${model.options.focused ? 'hidden' : ''}>Discard calendar draft</button>
+                <label class="commercial-operations-wide">Reason / agreement notes<textarea name="calendarReason" required maxlength="1000" rows="2"></textarea></label>
+                <div class="commercial-form-actions"${model.options.focused ? ' hidden' : ''}>
+                    <button type="submit" class="commercial-workload-btn commercial-action-primary" ${model.options.focused ? 'hidden' : ''}>Save calendar action</button>
+                    <button type="button" class="commercial-workload-btn" data-calendar-discard aria-label="Discard unsaved calendar changes" ${model.options.focused ? 'hidden' : ''}>Cancel changes</button>
+                </div>
             </form>
-            ${model.options.historyRoot ? '' : `<details><summary>Calendar history</summary>${history}</details>`}`;
+            ${model.options.historyRoot ? '' : `<section class="commercial-calendar-activity" aria-label="Calendar activity"><h5>Calendar activity</h5>${history}</section>`}`;
         const form = model.root.querySelector('[data-calendar-form]');
         if (model.options.defaultAction && [...form.elements.calendarAction.options].some(option => option.value === model.options.defaultAction)) {
             form.elements.calendarAction.value = model.options.defaultAction;
@@ -180,19 +192,28 @@
         }
         const sync = () => {
             const action = form.elements.calendarAction.value, cancel = action === 'cancel';
-            for (const name of ['calendarStart', 'calendarEnd']) form.elements[name].disabled = cancel;
+            for (const name of ['calendarStart', 'calendarEnd']) {
+                form.elements[name].disabled = cancel;
+                form.elements[name].closest('label').hidden = cancel;
+            }
             const expiryRequired = !cancel && (action === 'hold' || action === 'reschedule' && state === 'tentative');
             form.elements.calendarExpiry.disabled = !expiryRequired;
             form.elements.calendarExpiry.required = expiryRequired;
             form.elements.customerAgreed.disabled = cancel || expiryRequired;
             form.elements.customerAgreed.required = !cancel && !expiryRequired;
-            if (model.options.focused) {
-                form.elements.calendarExpiry.closest('label').hidden = !expiryRequired;
-                form.elements.customerAgreed.closest('label').hidden = cancel || expiryRequired;
-            }
+            form.elements.calendarExpiry.closest('label').hidden = !expiryRequired;
+            form.elements.customerAgreed.closest('label').hidden = cancel || expiryRequired;
+            form.querySelectorAll('[data-calendar-action]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.calendarAction === action)));
+            form.querySelector('[type=submit]').textContent = {hold:'Save hold',confirm:'Confirm booking',reschedule:'Save changed time',cancel:state === 'tentative' ? 'Release hold' : 'Cancel booking'}[action];
         };
         sync();
         form.oninput = form.onchange = () => { model.dirty = true; model.options.onDirty(true); sync(); };
+        form.querySelectorAll('[data-calendar-action]').forEach(button => {
+            button.onclick = () => {
+                form.elements.calendarAction.value = button.dataset.calendarAction;
+                form.elements.calendarAction.dispatchEvent(new Event('change', {bubbles:true}));
+            };
+        });
         form.onsubmit = event => { event.preventDefault(); save(model, form); };
         model.root.querySelector('[data-calendar-discard]').onclick = () => {
             if (model.saving) return;
@@ -208,10 +229,16 @@
             if (models.get(model.root) !== model || model.authFailed || model.token !== model.options.getToken() || model.dirty || day !== model.day || view!==model.view) return;
             model.data = result.calendar;
             if (model.leadId) renderLead(model); else renderAgenda(model);
+            model.snapshot = { available:true, data:model.data };
+            model.options.onSnapshot?.(model.snapshot);
             status(model, !model.leadId && !model.root.querySelector('[name=day]').value
                 ? 'Choose a calendar day. The previously selected calendar is still shown.' : '');
             return true;
-        } catch (error) { status(model, `${error.message} ${model.data ? 'Previously loaded calendar retained.' : 'Calendar not loaded.'}`); }
+        } catch (error) {
+            status(model, `${error.message} ${model.data ? 'Previously loaded calendar retained.' : 'Calendar not loaded.'}`);
+            model.snapshot = { available:false, data:model.data || null, error:error.message };
+            model.options.onSnapshot?.(model.snapshot);
+        }
         finally { model.loading = false; model.options.onStateChange?.(); if ((day !== model.day || view!==model.view) && model.root.isConnected) load(model); }
     }
     async function save(model, form) {
@@ -262,6 +289,7 @@
         const old = models.get(root);
         if (old && !old.authFailed && old.token === options.getToken()) {
             old.options = options;
+            if (old.snapshot) options.onSnapshot?.(old.snapshot);
             if (!leadId && options.market !== undefined && old.market !== options.market) {
                 old.market = options.market;syncControls(old);
                 if (old.data && !old.loading) renderAgenda(old);
@@ -273,7 +301,7 @@
         root.classList.add('commercial-calendar');
         root.classList.toggle('commercial-calendar--editor',!!leadId);
         root.innerHTML = `${options.focused ? '' : `<h4 class="commercial-queue-detail__section-title">${leadId ? 'Installation reservation' : 'Company calendar'}</h4>`}
-            <p class="commercial-operations-note">${leadId?'Confirm only a time agreed with the customer. Holds are tentative.':'Saved reservations across residential and commercial.'} &middot; ${escape(timeZone())}</p>
+            <p class="commercial-operations-note">${leadId?'Confirm only a time agreed with the customer. Holds are tentative.':`Saved reservations across residential and commercial. Times shown in ${escape(timeZoneLabel())}.`}</p>
             <p role="status" aria-live="polite" data-calendar-status>Loading calendar...</p>
             ${leadId ? '<div data-calendar-editor></div>' : `<form class="commercial-operations-form" data-agenda-day>
                 <label>Go to date<input type="date" name="day" required value="${model.day}"></label>
@@ -283,7 +311,7 @@
                   <button type="button" class="commercial-workload-btn" data-calendar-view="month">Month</button>
                   <button type="button" class="commercial-workload-btn" data-calendar-view="agenda">Day agenda</button>
                 </div>
-                <details class="commercial-calendar-filters"><summary data-calendar-filter-summary></summary>
+                <section class="commercial-calendar-filters" aria-label="Visible calendar filters"><p class="commercial-operations-note" data-calendar-filter-summary></p>
                 <select data-calendar-state data-custom-select="off" hidden aria-hidden="true" tabindex="-1">${Object.entries(stateLabels).map(([value,label])=>`<option value="${value}">${label}</option>`).join('')}</select>
                 <div class="commercial-calendar-controls" role="group" aria-label="Reservation status filter">
                   ${Object.entries(stateLabels).map(([value,label])=>`<button type="button" class="commercial-workload-btn" data-calendar-state-choice="${value}">${label}</button>`).join('')}
@@ -292,12 +320,12 @@
                   <button type="button" class="commercial-workload-btn" data-calendar-market="all">Both markets</button>
                   <button type="button" class="commercial-workload-btn" data-calendar-market="residential">Residential</button>
                   <button type="button" class="commercial-workload-btn" data-calendar-market="commercial">Commercial</button>
-                </div></details>
+                </div></section>
                 <p class="commercial-calendar-mobile-hint commercial-operations-note">Tap a date. Its reservations appear below the month.</p>
                 <div data-calendar-entries></div>`}`;
-        if (!options.focused) root.insertAdjacentHTML('beforeend',`<details class="commercial-calendar-help"><summary>How this calendar works</summary>
+        if (!options.focused && !leadId) root.insertAdjacentHTML('beforeend',`<div class="commercial-calendar-help">
             <p class="commercial-operations-note">Holds block time until expiry. Confirmed bookings reserve time until rescheduled or cancelled. Expired and cancelled entries do not block time.
-            Filters change visibility, not capacity. Customer preferences, business hours, travel buffers and personal availability are not inferred.</p></details>`);
+            Filters change visibility, not capacity. Travel, business hours and availability are not inferred.</p></div>`);
         if (!leadId) {
             const form = root.querySelector('[data-agenda-day]'), dayInput = form.elements.day;
             const changeDay = () => {
@@ -342,6 +370,7 @@
     global.H2SCommercialCalendar = {
         mountDashboard(root, options) { mount(root, options); },
         mountLead(root, leadId, options) { mount(root, options, leadId); },
+        refreshLead(root) { const model = models.get(root); return model ? load(model) : Promise.resolve(); },
         leadState(root) {
             const model = models.get(root);
             return { ready: !!model?.data && !model.authFailed, saving: !!model?.saving, retry: !!model?.retry };

@@ -353,9 +353,45 @@ test('rail replacement includes the candidate and excludes the original in one a
   assert.equal(db.calls.some(call => ['update', 'upsert'].includes(call.method)), false, 'source assets are never written');
 });
 
+for (const [surface, area] of [
+  ['residential', 'residential_tv_proof'], ['residential', 'residential_camera_proof'],
+  ['bundles', 'hero'], ['commercial_intake', 'commercial_hero'],
+  ['commercial_intake', 'commercial_security_rail'], ['commercial_intake', 'commercial_display_rail'],
+]) {
+  test(`${surface}/${area} replacement reaches the real handler's atomic write and confirms both assets`, async () => {
+    const service = library.getMediaPage(surface).areas.find(entry => entry.key === area).service || 'tv_mounting';
+    const db = dbMock([{ asset_id: assetId, is_visible: true, service, media_kind: 'photo' }]);
+    const writes = [];
+    const from = db.client.from;
+    db.client.from = table => table !== 'media_placements' ? from(table) : {
+      select() { return this; }, eq() { return this; },
+      async maybeSingle() { return { data: null, error: null }; },
+      upsert(rows) {
+        writes.push(rows);
+        return { select: async () => ({ error: null, data: rows.map(row => ({ ...row,
+          asset_source: row.proof_asset_id ? 'proof_asset' : 'owner_media', asset_id: row.proof_asset_id || row.owner_asset_id,
+        })) }) };
+      },
+    };
+    const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, db.client);
+    const response = await route.PUT(new Request('http://localhost/api/admin/media-placements', {
+      method: 'PUT', body: JSON.stringify(placement({ surface, area,
+        replace: { asset_source: 'owner_media', asset_id: 'owner-original' } })),
+    }));
+    assert.equal(response.status, 200);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].length, 2);
+    assert.equal(response.body.placement.asset_id, assetId);
+    assert.equal(response.body.placement.enabled, true);
+    assert.equal(response.body.replaced.asset_id, 'owner-original');
+    assert.equal(response.body.replaced.enabled, false);
+    assert.equal(writes[0].every(row => row.surface === surface && row.area === area), true);
+  });
+}
+
 test('replacement rejects invalid scopes, the same asset and excluded candidates before any write', async () => {
   for (const patch of [
-    { surface: 'bundles', area: 'hero' }, { enabled: false },
+    { surface: 'residential', area: 'commercial_hero' }, { enabled: false },
     { replace: { asset_source: 'proof_asset', asset_id: assetId } },
   ]) {
     const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, null);
@@ -365,6 +401,103 @@ test('replacement rejects invalid scopes, the same asset and excluded candidates
     }));
     assert.equal(response.status, 400);
   }
+});
+
+test('residential replacement still rejects wrong-service, video and unpublished candidates without writing', async () => {
+  for (const candidate of [
+    { service: 'cameras', media_kind: 'photo', is_visible: true },
+    { service: 'tv_mounting', media_kind: 'video', is_visible: true },
+    { service: 'tv_mounting', media_kind: 'photo', is_visible: false },
+  ]) {
+    const db = dbMock([{ asset_id: assetId, ...candidate }]);
+    const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, db.client);
+    const response = await route.PUT(new Request('http://localhost/api/admin/media-placements', {
+      method: 'PUT', body: JSON.stringify(placement({ surface: 'residential', area: 'residential_tv_proof',
+        replace: { asset_source: 'owner_media', asset_id: 'owner-original' } })),
+    }));
+    assert.equal(response.status, 409);
+    assert.equal(db.calls.some(call => call.method === 'upsert'), false);
+  }
+});
+
+test('actual placement schema persists residential replacement atomically and rolls back a failed exclusion', async t => {
+  const { PGlite } = require('@electric-sql/pglite');
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`
+    create role anon; create role authenticated; create role service_role;
+    create table proof_assets(asset_id uuid primary key, is_visible boolean, service text, media_kind text);
+    create table owner_media_uploads(asset_id text primary key);
+  `);
+  await db.exec(fs.readFileSync(path.join(root, 'backend', 'migrations', '029_create_media_placements.sql'), 'utf8'));
+  await db.query("insert into proof_assets values ($1, true, 'tv_mounting', 'photo')", [assetId]);
+  await db.exec("insert into owner_media_uploads values ('owner-original')");
+  const client = {
+    from(table) {
+      assert.ok(['proof_assets', 'owner_media_uploads', 'media_placements'].includes(table));
+      let rows, single = false;
+      const filters = [];
+      const builder = {
+        select() { return builder; },
+        eq(key, value) { assert.match(key, /^[a-z_]+$/); filters.push([key, value]); return builder; },
+        maybeSingle() { single = true; return builder; },
+        upsert(value, options) {
+          assert.equal(options.onConflict, 'asset_source,asset_id,surface,area');
+          rows = value;
+          return builder;
+        },
+        async then(resolve, reject) {
+          try {
+            let result;
+            if (rows) {
+              const keys = Object.keys(rows[0]);
+              keys.forEach(key => assert.match(key, /^[a-z_]+$/));
+              const args = [];
+              const values = rows.map(row => '(' + keys.map(key => {
+                args.push(row[key]); return '$' + args.length;
+              }).join(',') + ')').join(',');
+              result = await db.query(`with saved as (
+                insert into media_placements (${keys.join(',')}) values ${values}
+                on conflict (asset_source,asset_id,surface,area)
+                do update set ${keys.map(key => `${key}=excluded.${key}`).join(',')}
+                returning *
+              ) select to_jsonb(saved) value from saved`, args);
+            } else {
+              result = await db.query(`select to_jsonb(item) value from ${table} item
+                ${filters.length ? 'where ' + filters.map(([key], index) => `${key}=$${index + 1}`).join(' and ') : ''}`,
+              filters.map(([, value]) => value));
+            }
+            const data = result.rows.map(row => row.value);
+            return resolve({ data: single ? data[0] || null : data, error: null });
+          } catch (error) {
+            if (error instanceof assert.AssertionError) return reject(error);
+            return resolve({ data: null, error: { message: error.message, code: error.code } });
+          }
+        },
+      };
+      return builder;
+    },
+  };
+  const route = adminRoute({ role: 'ADMIN', userId: 'admin-one' }, client);
+  const settings = placement({ surface: 'residential', area: 'residential_tv_proof', focal_x: 37, zoom: 1.8 });
+  const send = original => route.PUT(new Request('http://localhost/api/admin/media-placements', {
+    method: 'PUT', body: JSON.stringify({ ...settings, replace: { asset_source: 'owner_media', asset_id: original } }),
+  }));
+  assert.equal((await send('missing-owner')).status, 500);
+  assert.equal((await db.query('select count(*)::integer count from media_placements')).rows[0].count, 0);
+  const response = await send('owner-original');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.placement.focal_x, 37);
+  assert.equal(response.body.placement.zoom, 1.8);
+  assert.equal(response.body.replaced.enabled, false);
+  const persisted = (await db.query('select to_jsonb(item) value from media_placements item')).rows.map(row => row.value);
+  assert.equal(persisted.length, 2);
+  assert.equal(persisted.every(row => row.surface === 'residential' && row.area === 'residential_tv_proof'), true);
+  const otherArea = [{ ...settings, area: 'residential_camera_proof', enabled: true }];
+  const pool = [{ asset_id: 'owner-original', source: 'owner_media' }, { asset_id: assetId, source: 'proof_asset' }];
+  assert.equal(library.mergeMediaPlacements(pool, [], persisted, settings.area, 1)[0].asset_id, assetId);
+  assert.equal(library.mergeMediaPlacements(pool, [], otherArea, 'residential_camera_proof', 2).length, 2);
+  assert.equal((await db.query('select is_visible from proof_assets')).rows[0].is_visible, true);
 });
 
 test('placement API restores only the exact source/asset/page/area key', async () => {
@@ -388,6 +521,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   window.console = { ...console, error: () => {} };
   const stored = [];
   const requests = [];
+  const previews = [];
   let failSave = false;
   let unconfirmedSave = false;
   let saveGate = null;
@@ -414,8 +548,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   const methods = window.eval(`({${dash.slice(start, end)}})`);
   const proof = {
     ...methods, state: {}, escapeHtml: (value) => String(value),
-    refreshLivePreview() {},
-    invalidatePageMediaInventory() { this.inventoryInvalidations = (this.inventoryInvalidations || 0) + 1; },
+    refreshLivePreview() { this.previewRefreshes = (this.previewRefreshes || 0) + 1; },
     cancelEdit() {
       this._placementEditor.destroy();
       window.document.getElementById('ppLibraryEditor').classList.add('is-hidden');
@@ -430,7 +563,8 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
       mediaKind === 'video', window.document.getElementById('ppLibraryEditorBody'), null, null,
       {
         asset: { asset_id: assetId, media_kind: mediaKind }, source: 'proof_asset', base: '', token: 'test-session', initialPlacement, replacement,
-        previewFactory({ onState, viewport }) {
+        previewFactory({ onState, viewport, config }) {
+          previews.push({ viewport, config });
           onState({ ready: true, width: 1440, height: 610, viewport });
           return { ready: Promise.resolve(), update() {}, destroy() {} };
         },
@@ -452,7 +586,7 @@ async function editor({ failLoad = false, pages = library.MEDIA_PAGES, mediaKind
   window.document.getElementById('origin').focus();
   await reopen();
   return {
-    dom, window, stored, requests, proof, reopen, fail: () => { failSave = true; }, recover: () => { failSave = false; },
+    dom, window, stored, requests, previews, proof, reopen, fail: () => { failSave = true; }, recover: () => { failSave = false; },
     holdSave: () => {
       let release;
       saveGate = new Promise((resolve) => { release = resolve; });
@@ -573,7 +707,7 @@ test('candidate framing, saved override and actual customer selection are labele
   e.find('[name="enabled"]').dispatchEvent(new e.window.Event('input', { bubbles: true }));
   await e.proof._placementEditor.save();
   assert.match(e.find('#ppEditStatus').textContent, /Saved for this area:.*excluded/);
-  assert.equal(e.proof.inventoryInvalidations, 2);
+  assert.equal(e.proof.previewRefreshes, 2);
   e.dom.window.close();
 });
 
@@ -769,6 +903,81 @@ test('cache-busting initial and post-save URLs preserves query parameters and fr
   }
   assert.ok(dash.includes('const url = this.getCacheBustedUrl(baseUrl);'));
 });
+
+for (const area of ['residential_tv_proof', 'residential_camera_proof']) {
+  test(`${area} connects desktop/mobile previews and saves only its own placement`, async t => {
+    const e = await editor({ initialPlacement: { surface: 'residential', area } });
+    t.after(() => e.dom.window.close());
+    assert.equal(e.previews[0].config.page, 'residential.html');
+    assert.equal(e.previews[0].config.frame, '#residential-proof-media');
+    assert.equal(e.previews[0].config.residentialArea, area);
+    assert.equal(e.previews[0].viewport.width, 1440);
+    assert.equal(e.find('#ppApplyEdits').disabled, false);
+    e.find('[data-device="mobile"]').click();
+    assert.equal(e.previews.at(-1).viewport.width, 390);
+    const focus = e.find('[name="focal_x"]');
+    focus.value = '31';
+    focus.dispatchEvent(new e.window.Event('input', { bubbles: true }));
+    focus.dispatchEvent(new e.window.Event('change', { bubbles: true }));
+    assert.equal(await e.proof._placementEditor.save(), true);
+    const writes = e.requests.filter(request => request.method !== 'GET');
+    assert.equal(writes.length, 1);
+    assert.match(writes[0].url, /\/api\/admin\/media-placements$/);
+    const saved = JSON.parse(writes[0].body);
+    assert.equal(saved.surface, 'residential');
+    assert.equal(saved.area, area);
+    assert.equal(saved.asset_id, assetId);
+    assert.equal(saved.focal_x, 31);
+    await e.reopen();
+    assert.equal(e.find('[name="focal_x"]').value, '31');
+  });
+
+  test(`${area} allows a confirmed scoped image replacement`, async t => {
+    const replacedId = '22222222-2222-4222-8222-222222222222';
+    const e = await editor({ initialPlacement: { surface: 'residential', area },
+      replacement: { asset_source: 'proof_asset', asset_id: replacedId, name: 'Previous photo', display_order: 0 } });
+    t.after(() => e.dom.window.close());
+    assert.equal(e.find('#ppApplyEdits').disabled, false);
+    assert.equal(e.find('#ppApplyEdits').textContent, 'Save replacement');
+    assert.equal(await e.proof._placementEditor.save(), true);
+    const saved = JSON.parse(e.requests.find(request => request.method === 'PUT').body);
+    assert.equal(saved.surface, 'residential');
+    assert.equal(saved.area, area);
+    assert.deepEqual(saved.replace, { asset_source: 'proof_asset', asset_id: replacedId });
+  });
+
+  test(`${area} preview uses the identical customer photo frame without running page scripts`, () => {
+    const dom = new JSDOM('', { url: 'https://shop.home2smart.com/dash', runScripts: 'outside-only' });
+    try {
+      dom.window.eval(editorSource);
+      dom.window.eval(fs.readFileSync(path.join(root, 'frontend', 'residential-media.js'), 'utf8'));
+      const helper = dom.window.H2SMediaPlacements;
+      const html = helper.inertDestination(fs.readFileSync(path.join(root, 'frontend', 'residential.html'), 'utf8'),
+        'https://shop.home2smart.com/residential.html');
+      const doc = new dom.window.DOMParser().parseFromString(html, 'text/html');
+      const settings = placement({ surface: 'residential', area, focal_x: 21, zoom: 1.6 });
+      const original = JSON.stringify(settings);
+      const preview = helper.destinationFrame(doc, { frame: '#residential-proof-media', residentialArea: area },
+        '/fixture.svg', false, settings);
+      const expected = dom.window.H2SResidentialMedia.createFrame(area, {
+        media_url: '/fixture.svg', media_placement: settings,
+        service: area === 'residential_camera_proof' ? 'cameras' : 'tv_mounting',
+      }, doc);
+      assert.equal(preview.frame.parentElement.outerHTML, expected.figure.outerHTML);
+      const commonJS = require('../../frontend/media-placements.js').destinationFrame(doc,
+        { frame: '#residential-proof-media', residentialArea: area }, '/fixture.svg', false, settings);
+      assert.equal(commonJS.frame.parentElement.outerHTML, expected.figure.outerHTML);
+      assert.equal(preview.frame.className, 'residential-proof-frame');
+      assert.equal(preview.media.style.transform, 'scale(1.6)');
+      assert.equal(doc.querySelector('#residential-proof-media').getAttribute('aria-busy'), 'false');
+      assert.equal(doc.querySelector('#residential-proof-status').textContent, '');
+      assert.equal(doc.querySelector('script'), null);
+      assert.equal(JSON.stringify(settings), original);
+      assert.throws(() => helper.destinationFrame(doc,
+        { frame: '#residential-proof-media', residentialArea: area }, '/movie.mp4', true, settings), /requires a photo/);
+    } finally { dom.window.close(); }
+  });
+}
 
 test('removed Bundles destinations stay unavailable without deleting or reassigning saved settings', async () => {
   const e = await editor();

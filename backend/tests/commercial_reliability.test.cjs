@@ -87,7 +87,7 @@ test('no technician response preserves reminder progression then management esca
   const maintain = () => f.route('commercial-consultation-maintenance').GET(new Request('http://localhost/api/commercial-consultation-maintenance', {
     headers: { Authorization: 'Bearer fixture-only-cron-secret' },
   }));
-  assert.match((await f.queue()).queue[0].followUp.nextAction, /Awaiting technician YES\/NO/);
+  assert.match((await f.queue()).queue[0].followUp.nextAction, /request-specific review link/);
   for (let reminder = 1; reminder <= f.runtime.getMaxReminderCount(); reminder++) {
     row.next_reminder_at = '2000-01-01T00:00:00.000Z';
     assert.equal((await maintain()).status, 200);
@@ -108,6 +108,7 @@ test('no technician response preserves reminder progression then management esca
 test('commercial maintenance is scheduled without replacing the existing owner-media reminder', () => {
   const config = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../vercel.json'), 'utf8'));
   assert.deepEqual(config.crons, [
+    { path: '/api/residential-maintenance', schedule: '* * * * *' },
     { path: '/api/owner-media-reminder', schedule: '0 15 * * *' },
     { path: '/api/commercial-consultation-maintenance', schedule: '*/15 * * * *' },
   ]);
@@ -357,7 +358,7 @@ async function frontend(f, options = {}) {
   const source = fs.readFileSync(path.join(root, 'commercial.js'), 'utf8');
   w.eval(fs.readFileSync(path.join(root, 'commercial-labels.js'), 'utf8'));
   w.eval(fs.readFileSync(path.join(root, 'media-page-heroes.js'), 'utf8'));
-  w.eval(source.replace(/\}\)\(\);\s*$/, 'window.fixture = {state,saveLead,requestConsultation,persistDraft,hydrateForm,showStep};})();'));
+  w.eval(source.replace(/\}\)\(\);\s*$/, 'window.fixture = {state,saveLead,requestConsultation,persistDraft,hydrateForm,showStep,moveToStep};})();'));
   await new Promise(resolve => setImmediate(resolve));
   return dom;
 }
@@ -370,6 +371,71 @@ function storageSnapshot(w) {
   return Object.fromEntries(Array.from({ length: w.localStorage.length }, (_, i) => w.localStorage.key(i))
     .map(key => [key, w.localStorage.getItem(key)]));
 }
+
+test('wizard navigation clears the measured sticky header after layout, including Back and reduced motion', async () => {
+  for (const reducedMotion of [false, true]) {
+    const f = createFixture();
+    const dom = await frontend(f);
+    try {
+      const w = dom.window;
+      const frames = [];
+      const scrolls = [];
+      let scrollY = 420;
+      let headerBottom = 58;
+      Object.defineProperty(w, 'scrollY', { get: () => scrollY });
+      w.matchMedia = () => ({ matches: reducedMotion });
+      w.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+      w.scrollTo = options => { scrolls.push(options); scrollY = options.top; };
+      w.document.querySelector('.site-header').getBoundingClientRect = () => ({ bottom: headerBottom });
+      for (const step of [3, 4]) {
+        w.document.querySelector(`.wizard-card[data-step="${step}"]`).getBoundingClientRect = () => ({ top: 1400 - scrollY });
+      }
+      w.fixture.showStep(3);
+      for (const step of [4, 3, 4]) {
+        w.fixture.moveToStep(step);
+        assert.equal(w.document.querySelector(`.wizard-card[data-step="${step}"]`).classList.contains('hidden'), false);
+        const before = scrolls.length;
+        frames.splice(0).forEach(callback => callback());
+        assert.equal(scrolls.length, before, 'Wait for the newly visible card layout');
+        headerBottom += 18;
+        frames.splice(0).forEach(callback => callback());
+        assert.equal(scrolls.length, before + 1);
+        assert.equal(scrollY, 1400 - headerBottom - 16);
+        assert.equal(scrolls.at(-1).behavior, reducedMotion ? 'instant' : 'smooth');
+      }
+      assert.equal(f.tables.commercial_leads.length, 0, 'Step navigation must not submit or autosave a lead');
+      assert.equal(f.sms.length, 0);
+    } finally { dom.window.close(); }
+  }
+});
+
+test('submitted receipt uses the same header-safe scroll and preserves the request and duplicate guard', async () => {
+  const f = createFixture();
+  const dom = await frontend(f);
+  try {
+    const w = dom.window;
+    const frames = [];
+    let scroll;
+    w.matchMedia = () => ({ matches: true });
+    w.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+    Object.defineProperty(w, 'scrollY', { value: 500 });
+    w.document.querySelector('.site-header').getBoundingClientRect = () => ({ bottom: 92 });
+    w.document.getElementById('consultationSuccessPanel').getBoundingClientRect = () => ({ top: 900 });
+    w.scrollTo = options => { scroll = options; };
+    w.fixture.hydrateForm(contact);
+    w.fixture.state.selectedSlotStart = windowInput().selectedSlotStart;
+    await w.fixture.requestConsultation({ preventDefault() {} });
+    while (frames.length) frames.shift()();
+    assert.equal(scroll.top, 500 + 900 - 92 - 16);
+    assert.equal(scroll.behavior, 'instant');
+    assert.equal(w.document.getElementById('fullName').value, contact.fullName);
+    assert.equal(w.document.getElementById('requestConsultationBtn').disabled, true);
+    await w.fixture.requestConsultation({ preventDefault() {} });
+    assert.equal(f.tables.commercial_consultation_requests.length, 1);
+    assert.equal(f.sms.length, 2, 'Only the original fixture submission notifications');
+  } finally { dom.window.close(); }
+});
+
 test('full frontend serializes delayed saves and flushes newer edits without duplicates', async () => {
   const f = createFixture();
   let release;

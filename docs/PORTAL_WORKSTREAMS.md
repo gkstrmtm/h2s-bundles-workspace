@@ -6,21 +6,38 @@ Portal development is happening in parallel across different product ideas. This
 
 ## Current Workstreams
 
-### 1. Foundational media engine
+### 1. Owner Uploads content lane
 
 Primary branch: `retro-dev`
 
 Purpose:
 
-- build the Owner Uploads / media engine
-- stabilize upload intake
-- attach media to real jobs or sessions
-- add review and approval flow
-- expose a VA-safe approved media feed
+- keep Owner Uploads as a simple manual content source
+- stabilize owner/admin upload intake
+- add lightweight review and approval flow
+- expose a VA-safe approved media feed for social content
+- avoid overfitting this surface to future technician-proof requirements
 
-This lane is about long-term content infrastructure, not just a standalone uploader.
+This lane is about making the current content workflow useful now, without prematurely collapsing it into the technician job-media system.
 
-### 2. Portal operating-model changes
+### 2. Future technician job-media system
+
+Primary branch: later scoped feature work off `retro-dev` or a dedicated branch when started
+
+Purpose:
+
+- tie uploads to exact job IDs
+- capture technician, service type, city, and completion-date context
+- use media as job proof first
+- review proof media before any downstream social use
+- route approved technician media into Owner Uploads later when appropriate
+- preserve a path to a future technician-facing iOS and Android app
+
+This is a more structured, higher-volume system and should stay conceptually separate from the current Owner Uploads surface.
+
+This lane should be designed so the same job-completion workflow can eventually be submitted from a mobile app, not just from a browser.
+
+### 3. Portal operating-model changes
 
 Primary branch style:
 
@@ -35,7 +52,7 @@ Purpose:
 
 This is the right lane for large product-shape changes that affect how the portal behaves day to day.
 
-### 3. Stable production line
+### 4. Stable production line
 
 Primary branch: `main`
 
@@ -60,15 +77,18 @@ The rule is:
 Before making a change, ask:
 
 1. Is this a stable production fix?
-2. Is this foundational Owner Uploads/media-engine work?
-3. Is this a separate portal operating-model feature?
+2. Is this current Owner Uploads content-lane work?
+3. Is this future technician job-media work?
+4. Is this a separate portal operating-model feature?
+
+If the answer is technician job-media work, decisions should also be checked against the future mobile-app flow in `docs/TECHNICIAN_APP_ROADMAP.md`.
 
 The answer should determine the branch lane before code is changed.
 
 ## Current Priority
 
-Right now the highest-leverage foundational lane is:
+Right now the highest-leverage active lane is:
 
 `Upload -> Review -> Approve -> Owner Uploads -> Social post`
 
-That work should remain legible and protected from unrelated portal drift.
+That work should remain legible, light, and protected from unrelated portal drift or premature technician-proof complexity.

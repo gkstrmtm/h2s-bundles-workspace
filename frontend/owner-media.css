@@ -134,31 +134,21 @@ button {
 .owner-main {
   max-width: 640px;
   margin: 0 auto;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 .owner-stage {
   position: relative;
-  min-height: clamp(520px, 72vh, 860px);
+  min-height: 0;
 }
 
 .owner-stage-panel {
+  display: none;
   width: 100%;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  transform: translateY(4px);
-  transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 140ms;
 }
 
 .owner-stage-panel.is-active {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  position: relative;
-  transform: translateY(0);
-  transition: opacity 140ms ease, transform 140ms ease, visibility 0s linear 0s;
+  display: block;
 }
 
 .owner-sync-strip {
@@ -319,7 +309,20 @@ button {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
+}
+
+.owner-inline-status[data-tone='success'] {
+  color: var(--success);
+}
+
+.owner-inline-status[data-tone='warn'] {
+  color: var(--warning);
+}
+
+.owner-inline-status[data-tone='error'] {
+  color: var(--danger);
 }
 
 .owner-boot-shell {
@@ -374,7 +377,7 @@ button {
 }
 
 .owner-panel--stage {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .owner-panel__header--status {
@@ -623,6 +626,7 @@ button {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .owner-gallery-footer__meta {

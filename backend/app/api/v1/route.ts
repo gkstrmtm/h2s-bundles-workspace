@@ -2476,6 +2476,7 @@ async function loadCommercialQueueSnapshot(limitValue: URLSearchParams | number 
       projectCity: safeTrim(lead?.project_city),
       projectState: safeTrim(lead?.project_state),
       projectPostalCode: safeTrim(lead?.project_postal_code),
+      addressSource: residential ? safeTrim(lead?.assessment_answers?.installationAddress?.source) || 'manual' : null,
       scopeSummary: safeTrim(lead?.scope_summary),
       timeline: safeTrim(lead?.timeline),
       budgetBand: safeTrim(lead?.budget_band),

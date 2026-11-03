@@ -11,7 +11,9 @@ const review=(f,token,action='approve')=>f.post('residential-review',{token,acti
 test('homeowner inquiry uses real 031/037 PostgreSQL functions, isolated routing, and link-only non-booking acceptance',async t=>{
   const f=await createResidentialFixture();
   try {
-    const body=input();
+    const campaign={utm_source:'flyer',utm_medium:'qr',utm_campaign:'residential_2026_11',
+      utm_content:'camera_flyer',visitor_id:crypto.randomUUID(),session_id:crypto.randomUUID()};
+    const body=input({attribution:campaign});
     await t.test('submission is atomic, records broad preferences, and sends only separate residential routing',async()=>{
       const responses=await Promise.all([f.post('residential-intake',body),f.post('residential-intake',body)]);
       for(const response of responses)assert.ok([200,201].includes(response.status),await response.clone().text());
@@ -34,6 +36,17 @@ test('homeowner inquiry uses real 031/037 PostgreSQL functions, isolated routing
       assert.equal(responseBody.bookingConfirmed,false);
       assert.equal(JSON.stringify(responseBody).includes('+15550000007'),false);
       assert.equal(lead.attribution.market,'residential');
+      for(const [key,value] of Object.entries(campaign))assert.equal(lead.attribution[key],value);
+      assert.equal(lead.attribution.communicationConsent.smsOptIn,true);
+      const changedCampaign=await f.post('residential-intake',{...body,attribution:{...campaign,utm_content:'tv_flyer',session_id:crypto.randomUUID()}});
+      assert.equal(changedCampaign.status,200,'Campaign changes must not turn retries into duplicate inquiries.');
+      assert.equal((await rows(f,'commercial_leads')).length,1);
+      assert.equal((await rows(f,'commercial_leads'))[0].attribution.utm_content,'camera_flyer');
+      const report=await f.db.query(`select attribution->>'utm_campaign' as campaign, attribution->>'utm_content' as creative, count(*) as inquiries
+        from commercial_leads where attribution->>'market'='residential' and attribution->>'utm_source'='flyer' and attribution->>'utm_medium'='qr'
+        group by attribution->>'utm_campaign',attribution->>'utm_content'`);
+      assert.equal(report.rows.length,1);assert.equal(Number(report.rows[0].inquiries),1);
+      assert.equal(report.rows[0].creative,'camera_flyer');
       assert.deepEqual(lead.assessment_answers.availabilityPreferences,body.availabilityPreferences);
       for(const field of ['selected_slot_start','selected_slot_end','related_order_id','next_reminder_at'])assert.equal(request[field],null);
       assert.equal((await rows(f,'h2s_orders')).length,0);
@@ -99,7 +112,10 @@ test('validation, feature gate, consent, disabled routing and provider failures 
       if(name==='invalid inputs'){
         for(const patch of [{phone:'invalid'},{serviceNeeds:[]},{serviceNeeds:['Wiring']},{smsOptIn:'true'},
           {availabilityPreferences:[{date:'2099-02-30',period:'morning'}]},{availabilityPreferences:[{date:'2000-01-01',period:'morning'}]},
-          {availabilityPreferences:[{date:'2099-01-01',period:'night'}]},{phone:'+15550000007'}]){
+          {availabilityPreferences:[{date:'2099-01-01',period:'night'}]},{phone:'+15550000007'},
+          {attribution:null},{attribution:[]},{attribution:{market:'commercial'}},
+          {attribution:{communicationConsent:{smsOptIn:true}}},{attribution:{utm_content:'<script>'}},
+          {attribution:{utm_campaign:'x'.repeat(101)}},{attribution:{visitor_id:'not-a-uuid'}}]){
           assert.equal((await f.post('residential-intake',{...body,...patch})).status,400);
         }
         assert.equal((await rows(f,'commercial_leads')).length,0);return;

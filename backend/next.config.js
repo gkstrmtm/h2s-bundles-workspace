@@ -15,6 +15,7 @@ const nextConfig = {
     const ignoredList = Array.isArray(ignored) ? ignored.slice() : ignored ? [ignored] : [];
 
     ignoredList.push(
+      /[\\/]artifacts[\\/]/,
       /[\\/]\.logs[\\/]/,
       /[\\/]public[\\/]dash\.html$/,
       /[\\/]public[\\/]dash\.PORTAL_BUILD_[^\\/]+\.(js|css)$/,

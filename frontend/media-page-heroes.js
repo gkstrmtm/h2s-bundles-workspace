@@ -68,20 +68,24 @@
     return { local: local.href, deployed: deployed.href };
   }
 
-  function describeUse(asset, source, surface, area, selections, inspection) {
-    const selected = usesForAsset(selections, source, asset.asset_id).some(use => use.surface === surface && use.area === area);
-    const alternative = area === pages[surface]?.area && (selections?.[surface]?.heroCandidates || []).slice(1)
-      .some(item => item.asset_id === asset.asset_id && (item.source || item.media_placement?.asset_source || 'proof_asset') === source);
-    const placement = inspection?.placements?.find(row => row.surface === surface && row.area === area);
+  function placementEligibility(asset, source, surface, area) {
     const service = ['commercial_security_rail', 'residential_camera_proof'].includes(area) ? 'cameras'
       : ['commercial_display_rail', 'residential_tv_proof'].includes(area) ? 'tv_mounting' : null;
     const assetService = asset.service || asset.service_type;
     const serviceEligible = ['cameras', 'tv_mounting'].includes(assetService) && (!service || assetService === service)
       && (surface !== 'residential' || asset.media_kind === 'photo');
-    const eligible = source === 'proof_asset' && typeof asset.is_visible === 'boolean' ? asset.is_visible && serviceEligible
+    return source === 'proof_asset' && typeof asset.is_visible === 'boolean' ? asset.is_visible && serviceEligible
       : source === 'owner_media' && typeof asset.qa_hold === 'boolean' && asset.review_state && asset.usage_rights_status
         ? asset.review_state === 'published' && asset.usage_rights_status === 'social_allowed' && !asset.qa_hold
           && asset.customer_media_opt_in !== 'declined' && serviceEligible : null;
+  }
+
+  function describeUse(asset, source, surface, area, selections, inspection) {
+    const selected = usesForAsset(selections, source, asset.asset_id).some(use => use.surface === surface && use.area === area);
+    const alternative = area === pages[surface]?.area && (selections?.[surface]?.heroCandidates || []).slice(1)
+      .some(item => item.asset_id === asset.asset_id && (item.source || item.media_placement?.asset_source || 'proof_asset') === source);
+    const placement = inspection?.placements?.find(row => row.surface === surface && row.area === area);
+    const eligible = placementEligibility(asset, source, surface, area);
     return {
       selected,
       selection: !selections?.[surface] || selections[surface].mode === 'unavailable' ? 'Selection unverified'
@@ -134,7 +138,7 @@
     return { ...commercialSelection(sections), reason };
   }
 
-  const api = { pages, bundlesFallbackAssetId, bundlesSelection, commercialCandidates, commercialSelection, selectedUses, usesForAsset, destinationLinks, describeUse, read };
+  const api = { pages, bundlesFallbackAssetId, bundlesSelection, commercialCandidates, commercialSelection, selectedUses, usesForAsset, destinationLinks, placementEligibility, describeUse, read };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.H2SPageHeroes = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

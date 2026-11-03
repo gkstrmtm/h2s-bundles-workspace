@@ -15,6 +15,65 @@ async function rpc(f, name, args) {
 const book = (f, lead, revision, action, payload = window, key = id(++sequence)) =>
   rpc(f, 'commercial_record_reservation', { p_lead_id: id(lead), p_revision: revision, p_operation_id: key,
     p_actor: actor, p_action: action, p_payload: payload });
+
+test('calendar choices expose only relevant fields, readable activity and retained drafts without writes', async t => {
+  const {JSDOM} = require('jsdom'), fs = require('node:fs'), path = require('node:path');
+  for (const state of [null,'tentative','confirmed']) await t.test(state || 'unbooked', async () => {
+    const dom = new JSDOM('<div id="editor"></div>', {runScripts:'outside-only',url:'http://fixture.invalid'});
+    try {
+      const w = dom.window, root = w.document.getElementById('editor'), calls = [], dirty = [], snapshots = [];
+      const booking = state ? {effective_state:state,starts_at:window.start,ends_at:window.end,expires_at:window.expiresAt,revision:1} : null;
+      const history = Array.from({length:5}, (_, index) => ({action:index ? 'confirm' : 'hold',created_at:'2026-10-29T17:08:09Z',actor_name:'Fixture Admin',after_state:{reason:'Fixture agreement'}}));
+      w.fetch = async (url, options) => {
+        calls.push(options.method);
+        assert.equal(options.method,'GET','Presentation changes must not save anything');
+        return Response.json({ok:true,calendar:{booking,history}});
+      };
+      w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-calendar.js'),'utf8'));
+      w.H2SCommercialCalendar.mountLead(root,id(1),{apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin',
+        dateInput:(name,title,value)=>`<label>${title}<input type="datetime-local" name="${name}" value="${value ? value.slice(0,16) : ''}"></label>`,
+        instantValue:()=>{throw new Error('No save expected');},onDirty:value=>dirty.push(value),onActivity:()=>{},
+        onSnapshot:value=>snapshots.push(value)});
+      for (let attempt=0;!root.querySelector('[data-calendar-form]') && attempt<30;attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+      const form = root.querySelector('form');
+      assert.ok(form);
+      assert.equal(snapshots.at(-1).available,true);
+      assert.equal(snapshots.at(-1).data.booking?.effective_state || null,state);
+      assert.match(root.querySelector('.commercial-calendar-current').textContent,state === 'confirmed' ? /Confirmed installation/
+        : state === 'tentative' ? /Tentative hold.*needs confirmation/ : /No installation time reserved/);
+      assert.equal(form.elements.calendarAction.hidden,true);
+      assert.equal(form.querySelectorAll('[data-calendar-action]').length,state === 'tentative' ? 3 : 2);
+      const choose = action => root.querySelector(`[data-calendar-action="${action}"]`).click();
+      choose(state === 'confirmed' ? 'reschedule' : 'confirm');
+      assert.equal(form.elements.calendarExpiry.closest('label').hidden,true);
+      assert.equal(form.elements.customerAgreed.closest('label').hidden,false);
+      assert.equal(form.elements.customerAgreed.required,true);
+      assert.equal(form.querySelector('[data-calendar-action][aria-pressed=true]').dataset.calendarAction,form.elements.calendarAction.value);
+      if (state) {
+        choose('cancel');
+        assert.equal(form.elements.calendarStart.closest('label').hidden,true);
+        assert.equal(form.elements.calendarEnd.closest('label').hidden,true);
+        assert.equal(form.elements.customerAgreed.closest('label').hidden,true);
+      } else {
+        choose('hold');
+        assert.equal(form.elements.calendarExpiry.closest('label').hidden,false);
+        assert.equal(form.elements.calendarExpiry.required,true);
+      }
+      assert.match(root.querySelector('.commercial-calendar-activity').textContent,/Time held/);
+      assert.equal(root.querySelector('.commercial-calendar-activity > ol').children.length,5);
+      assert.equal(root.querySelectorAll('details').length,0);
+      assert.doesNotMatch(root.textContent,/Calendar history|America\/|2026-10-29T17:/);
+      form.elements.calendarReason.value='Unsaved fixture note';
+      form.elements.calendarReason.dispatchEvent(new w.Event('input',{bubbles:true}));
+      assert.ok(dirty.includes(true));
+      await w.H2SCommercialCalendar.refreshLead(root);
+      assert.equal(form.elements.calendarReason.value,'Unsaved fixture note');
+      assert.equal(calls.length,1);
+      assert.equal(w.H2SCommercialCalendar.discardLead(root),true);
+      assert.equal(root.querySelector('[name=calendarReason]').value,'');
+    } finally { dom.window.close(); }
+  });
+});
 const workload = (f, revision, intent, extra = {}, key = id(++sequence)) => ({
   leadId: id(1), revision, operationId: key, action: 'workload',
   payload: { intent, responsibleId: id(10), nextFollowUpAt: '2099-01-02T15:00:00Z',

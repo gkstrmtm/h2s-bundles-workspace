@@ -16,16 +16,17 @@ This repository is carrying active portal work, production fixes, and fast itera
 ### `retro-dev`
 
 - Primary development branch for ongoing portal work.
-- Use this branch for Owner Uploads, media review flow, VA-facing media tools, and related portal wiring.
+- Use this branch for Owner Uploads, lightweight media review flow, VA-facing media tools, and related portal wiring.
 - New work should branch from `retro-dev`, not from `main`, unless the change is a production hotfix.
 
 ## Workstream Ownership
 
 ### `retro-dev` = foundational / media engine lane
 
-- This branch is the active foundational lane for the owner-facing media system.
-- Use it for Owner Uploads, upload intake, review-and-approval flow, VA-safe content surfacing, and related portal architecture that supports the content engine.
-- Treat this as the branch where foundational ideas can evolve before they are polished into `main`.
+- This branch is the active lane for the current owner-facing media workflow.
+- Use it for Owner Uploads, manual upload intake, lightweight review-and-approval flow, VA-safe content surfacing, and related portal architecture.
+- Do not assume Owner Uploads is already the full technician proof system.
+- Treat this as the branch where the current content workflow can evolve cleanly before it is polished into `main`.
 
 ### Other active portal work
 
@@ -54,10 +55,11 @@ This repository is carrying active portal work, production fixes, and fast itera
 
 - Merge `retro-dev` into `main` only when a feature slice is end-to-end coherent.
 - Preferred merge slices for this portal:
-  - upload intake
+  - owner/admin upload intake
   - review and approval controls
   - VA-safe owner uploads feed
   - media metadata and caption helpers
+- Build future technician job-media slices separately instead of forcing them into the current Owner Uploads surface too early.
 - Avoid mixing unrelated portal UI work into the same merge when possible.
 - When another developer is changing the portal operating model in parallel, merge by workstream, not by convenience.
 
@@ -72,4 +74,6 @@ If you open this repository and are not explicitly working on the Owner Uploads 
 
 ## Current Direction
 
-The highest-priority development track in `retro-dev` is the Owner Uploads / media engine. That system should be treated as a first-class portal workflow, not just a standalone uploader.
+The highest-priority development track in `retro-dev` is the current Owner Uploads workflow: a simple manual content pool that supports review, approval, and VA social usage now.
+
+The more structured Technician Job Media system should be treated as a separate later build that can eventually feed approved content into Owner Uploads.

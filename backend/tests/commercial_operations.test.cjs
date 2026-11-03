@@ -258,10 +258,14 @@ test('full detail module preserves drafts, focus, failures and stale-read protec
   w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
   const host = w.document.querySelector('section'), options = {apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'};
   await w.H2SCommercialOperations.mount(host,id(1),options);
-  assert.match(host.textContent,/Review quote\/payment records below/);
-  assert.match(host.textContent,/Manual collection records below/);
+  assert.match(host.textContent,/Review Records/);
+  assert.match(host.textContent,/Inspect payments in the native payment platform/);
   assert.match(host.textContent,/Business tools are unavailable\. Reload the dashboard/);
+  const retainedBusiness = host.querySelector('[data-business-tools]');
+  retainedBusiness.innerHTML = '<button type="button">Attachments</button><input type="file"><input name="unavailable" disabled>';
+  w.H2SCommercialBusiness = { mount(next) { if(next !== retainedBusiness) next.replaceWith(retainedBusiness); } };
   const note = host.querySelector('[name=note]');
+  host.querySelector('[name=recordContact]').click();
   note.value = 'Draft that must survive';
   note.focus();
   note.dispatchEvent(new w.Event('input',{bubbles:true}));
@@ -293,10 +297,222 @@ test('full detail module preserves drafts, focus, failures and stale-read protec
   for(let attempts=0;attempts<100 && !host.textContent.includes('Saved.');attempts++) await tick();
   assert.match(host.textContent,/Fixture Staff/);
   assert.match(host.textContent,/Saved\./);
+  assert.equal(host.querySelector('[data-business-tools]'),retainedBusiness);
+  assert.equal(retainedBusiness.querySelector('button').disabled,false,'A successful lead save must unlock retained business controls');
+  assert.equal(retainedBusiness.querySelector('[type=file]').disabled,false);
+  assert.equal(retainedBusiness.querySelector('[name=unavailable]').disabled,true,'Originally unavailable controls remain disabled');
   const persisted = await (await f.request('GET')).json();
   assert.equal(persisted.state.revision,1);
   assert.equal(persisted.history.length,1);
   assert.equal(host.querySelector('img'),null);
+});
+
+test('workspace modes keep one task visible and preserve draft DOM, selected mode and external context across remounts', async t => {
+  const f = await createOperationsFixture();
+  const dom = new JSDOM('<div class="commercial-queue-detail"><section id="host"></section><section data-record-context="followup">Scope</section><section data-record-context="activity" hidden>Diagnostics</section></div>',{url:'http://fixture.invalid',runScripts:'outside-only'});
+  t.after(async()=>{dom.window.close();await f.db.close();});
+  const w=dom.window, root=w.document.getElementById('host'), calls=[];
+  w.fetch=async(url,options)=>{
+    calls.push(options.method);
+    assert.equal(options.method,'GET','Mode changes cannot mutate records');
+    return f.route.GET(new Request(url,options));
+  };
+  w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
+  const options={apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'};
+  await w.H2SCommercialOperations.mount(root,id(1),options);
+  assert.deepEqual([...root.querySelectorAll('[data-operations-view-choice]')].map(button=>button.textContent),['Overview','Follow-up','Schedule','Installation','Records','Activity']);
+  assert.equal(root.querySelector('[data-operations-view]:not([hidden])').dataset.operationsView,'overview');
+  assert.equal(root.querySelector('form').closest('[data-operations-view]').hidden,true);
+  assert.equal(root.querySelectorAll('details').length,0);
+  const form=root.querySelector('[data-action=follow_up]'), note=form.elements.note;
+  const hold=root.querySelector('[data-workload-intent="hold"]'),workload=root.querySelector('[data-action="workload"]');
+  hold.click();
+  assert.equal(root.querySelector('[data-section="followup"]').hidden,true,'A lead action does not compete with a second editor');
+  assert.equal(workload.hidden,false);
+  assert.equal(workload.querySelector('[data-workload-title]').textContent,'Hold until');
+  assert.equal(hold.getAttribute('aria-pressed'),'true');
+  assert.equal(hold.getAttribute('aria-controls'),workload.id);
+  workload.querySelector('[data-workload-cancel]').click();
+  assert.equal(root.querySelector('[data-section="followup"]').hidden,false);
+  assert.equal(workload.hidden,true);
+  assert.equal(w.document.activeElement,hold,'Cancel returns focus to the action that opened the editor');
+  assert.equal(form.elements.note,note);
+  assert.equal(note.closest('label').hidden,true);
+  form.elements.recordContact.click();
+  assert.equal(note.closest('label').hidden,false);
+  note.value='Keep this unsaved contact note';
+  note.dispatchEvent(new w.Event('input',{bubbles:true}));
+  for(const view of ['schedule','installation','records','activity','followup','overview']) {
+    root.querySelector(`[data-operations-view-choice="${view}"]`).click();
+    assert.equal(root.querySelectorAll('[data-operations-view]:not([hidden])').length,1);
+    assert.equal(root.querySelector('[data-operations-view]:not([hidden])').dataset.operationsView,view);
+    assert.equal(root.querySelector('[data-operations-view-choice][aria-pressed=true]').dataset.operationsViewChoice,view);
+    assert.equal(w.document.querySelector('[data-record-context="followup"]').hidden,!['followup','overview'].includes(view));
+    assert.equal(w.document.querySelector('[data-record-context="activity"]').hidden,view!=='activity');
+    assert.equal(form.elements.note,note);
+    assert.equal(note.value,'Keep this unsaved contact note');
+  }
+  root.querySelector('[data-operations-view-choice="activity"]').click();
+  const host=w.document.createElement('section');
+  root.parentElement.append(host);
+  await w.H2SCommercialOperations.mount(host,id(1),options);
+  assert.equal(root.isConnected,true);
+  assert.equal(root.querySelector('[data-operations-view-choice][aria-pressed=true]').dataset.operationsViewChoice,'activity');
+  assert.equal(form.elements.note,note);
+  assert.deepEqual(calls,['GET','GET']);
+  assert.equal(f.calls.resolver,0);
+  assert.deepEqual(f.calls.mail,[]);
+});
+
+test('state-first overview derives the next action from saved facts without writes or inferred bookings', async t => {
+  const f = await createOperationsFixture();
+  t.after(() => f.db.close());
+  const base = await (await f.request('GET')).json();
+  const linkedResponse = await f.request('POST',action('link',0,{orderId:id(100),jobId:id(101)}));
+  assert.equal(linkedResponse.status,200);
+  const linked = await linkedResponse.json();
+  const calendar = booking => ({available:true,data:{booking}});
+  const confirmed = {effective_state:'confirmed',starts_at:'2099-01-02T12:00:00Z',ends_at:'2099-01-02T14:00:00Z'};
+  const business = quote => ({available:true,data:{quote}});
+  const accepted = {amountCents:120000,status:'accepted'};
+  const cases = [
+    {name:'new inquiry',expected:'Review request and contact customer'},
+    {name:'contact recorded',edit:data=>{data.history=[{payload:{contact:{outcome:'reached',note:'Scope clarified'}}}];},expected:'Review scope and prepare quote'},
+    {name:'quote draft',records:business({...accepted,status:'draft'}),expected:'Review quote and customer approval'},
+    {name:'accepted quote without job',records:business(accepted),expected:'Link the agreed installation'},
+    {name:'linked job without reservation',linked:true,expected:'Arrange installation time'},
+    {name:'confirmed reservation without job',booking:confirmed,expected:'Link the booked installation'},
+    {name:'confirmed job blocked',linked:true,booking:confirmed,edit:data=>{data.installation.preparation.ready=false;data.installation.preparation.blockers=['Materials need review'];},expected:'Resolve installation blockers'},
+    {name:'confirmed job ready',linked:true,booking:confirmed,edit:data=>{data.installation.preparation.ready=true;data.installation.preparation.blockers=[];},expected:'Review installation readiness'},
+    {name:'conflicting assignments',linked:true,booking:confirmed,edit:data=>{data.installation.assignments.push({pro_id:id(501),state:'assigned'});},expected:'Reconcile installer assignments'},
+    {name:'missing installer',linked:true,booking:confirmed,edit:data=>{data.installation.preparation.ready=true;data.installation.assignments=[];},expected:'Assign an installer'},
+    {name:'unverified payment',linked:true,booking:confirmed,edit:data=>{data.installation.preparation.ready=true;data.installation.payment={status:'unverified',detail:'Payment verification needs review'};},expected:'Review payment evidence'},
+    {name:'tentative hold',booking:{...confirmed,effective_state:'tentative'},expected:'Review tentative hold'},
+    {name:'calendar unavailable',calendar:{available:false,error:'Unavailable',data:{booking:confirmed}},expected:'Review installation timing'},
+    {name:'records unavailable',records:{available:false,error:'Unavailable',data:{quote:accepted}},expected:'Review saved quote'},
+    {name:'completed job',linked:true,edit:data=>{data.installation.job.status='completed';},expected:'Review completed work'},
+    {name:'work in progress',linked:true,edit:data=>{data.installation.job.status='in_progress';},expected:'Review work in progress'},
+    {name:'cancelled job',linked:true,edit:data=>{data.installation.job.status='cancelled';},expected:'Review cancelled installation'},
+    {name:'closed lead with booking',booking:confirmed,edit:data=>{data.state.disposition='closed';},expected:'Review closed customer record'},
+    {name:'held lead',edit:data=>{data.state.hold_until='2099-02-01T12:00:00Z';},expected:'Review customer hold'},
+    {name:'paused sales chasing',edit:data=>{data.state.sales_chasing_paused=true;},expected:'Review paused follow-up'},
+    {name:'future callback',edit:data=>{data.state.next_follow_up_at='2099-01-01T12:00:00Z';data.followUp.mode='customer_callback';},expected:'Review scheduled follow-up'},
+    {name:'overdue follow-up',edit:data=>{data.state.next_follow_up_at='2000-01-01T12:00:00Z';},expected:'Complete the due follow-up'},
+  ];
+  for (const scenario of cases) await t.test(scenario.name,async () => {
+    const data=structuredClone(scenario.linked ? linked : base);
+    scenario.edit?.(data);
+    const dom=new JSDOM('<div class="commercial-queue-detail"><section id="host"></section></div>',{url:'http://fixture.invalid',runScripts:'outside-only'});
+    try {
+      const w=dom.window, root=w.document.getElementById('host'), calls=[];
+      w.fetch=async (_url,options)=>{calls.push(options.method);assert.equal(options.method,'GET');return Response.json(data);};
+      w.H2SCommercialCalendar={mountLead(_root,_id,options){options.onSnapshot(scenario.calendar || calendar(scenario.booking || null));}};
+      w.H2SCommercialBusiness={mount(_root,_id,options){options.onSnapshot(scenario.records || business(null));}};
+      w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
+      await w.H2SCommercialOperations.mount(root,id(1),{apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin',intake:{scopeSummary:'Customer requested two cameras <script>not executable</script>'}});
+      const overview=root.querySelector('[data-customer-overview]');
+      assert.equal(root.querySelector('[data-operations-view]:not([hidden])').dataset.operationsView,'overview');
+      assert.equal(overview.querySelector('h5').textContent,scenario.expected);
+      assert.equal(overview.querySelector('form'),null);
+      assert.equal(overview.querySelector('script'),null);
+      assert.match(overview.textContent,/Customer requested two cameras/);
+      overview.querySelector('[data-workspace-next]').click();
+      assert.notEqual(root.querySelector('[data-operations-view]:not([hidden])').dataset.operationsView,'overview');
+      assert.deepEqual(calls,['GET'],'Opening the overview or suggested action never saves or sends');
+      if(scenario.name==='calendar unavailable') {
+        assert.match(overview.textContent,/Unavailable — review Schedule/);
+        assert.doesNotMatch(overview.textContent,/No installation time reserved/);
+      }
+      if(scenario.name==='records unavailable') {
+        assert.match(overview.textContent,/Unavailable — review Records/);
+        assert.doesNotMatch(overview.textContent,/No quote recorded/);
+      }
+    } finally {dom.window.close();}
+  });
+});
+
+test('overview updates from saved child snapshots without replacing drafts and recovers after read errors', async t => {
+  const f=await createOperationsFixture();
+  t.after(()=>f.db.close());
+  const data=await(await f.request('GET')).json();
+  const dom=new JSDOM('<section id="host"></section>',{url:'http://fixture.invalid',runScripts:'outside-only'});
+  t.after(()=>dom.window.close());
+  const w=dom.window,root=w.document.getElementById('host');
+  let calendarOptions,businessOptions,fail=false;
+  w.fetch=async (_url,options)=>{
+    assert.equal(options.method,'GET');
+    return fail ? Response.json({ok:false,error:'Temporary read failure'},{status:500}) : Response.json(data);
+  };
+  w.H2SCommercialCalendar={mountLead(_root,_id,options){calendarOptions=options;options.onSnapshot({available:true,data:{booking:null}});}};
+  w.H2SCommercialBusiness={mount(_root,_id,options){businessOptions=options;options.onSnapshot({available:true,data:{quote:null}});}};
+  w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-operations.js'),'utf8'));
+  await w.H2SCommercialOperations.mount(root,id(1),{apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'});
+  const note=root.querySelector('[data-action=follow_up] [name=reason]');
+  note.value='Do not discard this draft';
+  note.dispatchEvent(new w.Event('input',{bubbles:true}));
+  businessOptions.onSnapshot({available:true,data:{quote:{amountCents:59900,status:'accepted'}}});
+  assert.match(root.querySelector('[data-customer-overview]').textContent,/\$599\.00.*accepted/s);
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Link the agreed installation');
+  calendarOptions.onSnapshot({available:true,data:{booking:{effective_state:'confirmed',starts_at:'2099-01-01T12:00:00Z',ends_at:'2099-01-01T14:00:00Z'}}});
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Link the booked installation');
+  assert.equal(root.querySelector('[data-action=follow_up] [name=reason]'),note);
+  assert.equal(note.value,'Do not discard this draft');
+  fail=true;
+  await w.H2SCommercialOperations.refresh(id(1));
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Verify customer state');
+  fail=false;
+  await new Promise(resolve=>setTimeout(resolve,2100));
+  await w.H2SCommercialOperations.refresh(id(1));
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Link the booked installation');
+  assert.equal(root.querySelector('[data-action=follow_up] [name=reason]'),note);
+  assert.equal(note.value,'Do not discard this draft');
+});
+
+test('real calendar and business controllers feed overview, report failures and refresh without mutations', async t => {
+  const {createBusinessFixture}=require('./helpers/commercial_business_fixture.cjs');
+  const f=await createBusinessFixture({COMMERCIAL_EMAIL_ENABLED:'false'});
+  const dom=new JSDOM('<section id="host"></section>',{url:'http://fixture.invalid',runScripts:'outside-only'});
+  t.after(async()=>{dom.window.close();await f.db.close();});
+  const w=dom.window,root=w.document.getElementById('host'),calls=[];
+  let calendarFailure=false,businessFailure=false;
+  const records=await(await f.businessRequest('commercial-business')).json();
+  w.fetch=async (url,options)=>{
+    calls.push(options.method);
+    assert.equal(options.method,'GET','Overview integration must never save, send or create work');
+    if(url.includes('/api/commercial-calendar')) return calendarFailure
+      ? Response.json({ok:false,error:'Fixture calendar failure'},{status:503})
+      : Response.json({ok:true,calendar:{booking:null,history:[]}});
+    if(url.includes('/api/commercial-business')) return businessFailure
+      ? Response.json({ok:false,error:'Fixture business failure'},{status:503}) : Response.json(records);
+    return f.route.GET(new Request(url,options));
+  };
+  for(const name of ['commercial-business.js','commercial-calendar.js','commercial-operations.js']) {
+    w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend',name),'utf8'));
+  }
+  await w.H2SCommercialOperations.mount(root,id(1),{apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin'});
+  for(let i=0;i<50 && /Loading saved/.test(root.querySelector('[data-customer-overview]').textContent);i++) await tick();
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Review request and contact customer');
+  const note=root.querySelector('[data-action=follow_up] [name=reason]');
+  note.value='Retain staff draft';
+  note.dispatchEvent(new w.Event('input',{bubbles:true}));
+  const calendarRoot=root.querySelector('[data-installation-reservation]');
+  calendarFailure=true;
+  await w.H2SCommercialCalendar.refreshLead(calendarRoot);
+  assert.match(root.querySelector('[data-customer-overview]').textContent,/Unavailable — review Schedule/);
+  calendarFailure=false;
+  await w.H2SCommercialCalendar.refreshLead(calendarRoot);
+  businessFailure=true;
+  await w.H2SCommercialBusiness.refresh(id(1));
+  assert.match(root.querySelector('[data-customer-overview]').textContent,/Unavailable — review Records/);
+  businessFailure=false;
+  await w.H2SCommercialBusiness.refresh(id(1));
+  assert.equal(root.querySelector('[data-customer-overview] h5').textContent,'Review request and contact customer');
+  assert.equal(root.querySelector('[data-action=follow_up] [name=reason]'),note);
+  assert.equal(note.value,'Retain staff draft');
+  assert.ok(calls.length>=7);
+  assert.ok(calls.every(method=>method==='GET'));
+  assert.equal((await f.db.query('select count(*)::int n from commercial_lead_activity')).rows[0].n,0);
+  assert.equal(f.attempts.length,0);
 });
 
 test('lost responses replay once; completion survives unavailable response reads without downstream effects', async t => {

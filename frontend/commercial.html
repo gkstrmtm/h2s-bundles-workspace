@@ -286,10 +286,19 @@
                 <p class="submit-copy" id="contactMethodHint">Choose text updates or a call from Home2Smart. A phone number is required, and text updates require your consent.</p>
                 <p class="submit-copy" id="emailUseHint">Providing an optional email does not subscribe you to marketing. Email follow-up is not currently offered.</p>
               </div>
+              <div class="field">
+                <span>Find site address (optional)</span>
+                <div id="commercial-address-search"></div>
+                <p id="commercial-address-status" class="submit-copy" role="status">Search or enter the details below. Street address remains optional.</p>
+              </div>
               <div class="form-grid form-grid--two">
                 <label class="field">
                   <span>Street address</span>
                   <input id="projectAddress" name="projectAddress" type="text" autocomplete="street-address" placeholder="Site address if known">
+                </label>
+                <label class="field">
+                  <span>Apartment, unit or suite (optional)</span>
+                  <input id="projectUnit" name="projectUnit" type="text" autocomplete="address-line2" maxlength="40">
                 </label>
                 <label class="field">
                   <span>City</span>
@@ -530,6 +539,7 @@
   <script defer src="/media-placement-style.js?v=PAGE_PLACEMENTS_V1"></script>
   <script defer src="/media-page-heroes.js?v=PAGE_HEROES_V1"></script>
   <script defer src="/commercial-labels.js"></script>
+  <script defer src="/address-autocomplete.js"></script>
   <script defer src="/commercial.js"></script>
 </body>
 </html>

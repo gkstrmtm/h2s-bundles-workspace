@@ -207,11 +207,10 @@ textarea {
   display: grid;
   align-content: start;
   justify-items: center;
-  gap: 8px;
+  gap: 12px;
   text-align: center;
 }
 
-.hero-kicker,
 .schedule-guide__kicker,
 .review-stage__kicker,
 .hero-start-card__eyebrow,
@@ -224,15 +223,14 @@ textarea {
   text-transform: uppercase;
 }
 
-.hero-kicker,
 .hero-start-card__eyebrow {
   color: rgba(255, 255, 255, 0.72);
 }
 
 .hero h1 {
-  max-width: 8ch;
+  max-width: 13ch;
   margin: 0;
-  font-size: clamp(34px, 4.6vw, 46px);
+  font-size: clamp(32px, 4vw, 42px);
   font-weight: 900;
   line-height: 0.98;
 }
@@ -261,6 +259,7 @@ textarea {
 .hero-capability {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   min-height: 32px;
   padding: 0 12px;
@@ -273,6 +272,22 @@ textarea {
   line-height: 1;
 }
 
+.hero-capability--primary {
+  min-height: 42px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.34);
+  color: #fff;
+}
+
+.hero-capability--secondary {
+  min-height: 30px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.74);
+}
+
 .hero-capability svg {
   width: 14px;
   height: 14px;
@@ -280,11 +295,11 @@ textarea {
 }
 
 .hero-subcopy {
-  max-width: 24ch;
+  max-width: 30ch;
   margin: 0 auto;
   color: rgba(255, 255, 255, 0.84);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .hero-trust {
@@ -325,6 +340,8 @@ textarea {
 }
 
 .hero-start-card__copy,
+.hero-start-card__queue,
+.hero-start-card__check,
 .hero-start-card__note {
   margin: 0;
   font-size: 13px;
@@ -333,6 +350,50 @@ textarea {
 
 .hero-start-card__copy {
   color: rgba(255, 255, 255, 0.92);
+}
+
+.hero-start-card__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.hero-start-card__queue {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.hero-start-card__checklist {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.hero-start-card__check {
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.hero-start-card__check strong {
+  color: #fff;
+}
+
+.hero-start-card__helper {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
 }
 
 .hero-start-card__note {
@@ -353,32 +414,26 @@ textarea {
 
   .hero-copy-block {
     justify-items: start;
-    gap: 12px;
+    gap: 14px;
     text-align: left;
   }
 
   .hero h1 {
-    max-width: 7ch;
-    font-size: clamp(54px, 5.4vw, 78px);
+    max-width: 13ch;
+    font-size: clamp(44px, 4.6vw, 62px);
+    line-height: 0.96;
   }
 
   .hero-capabilities {
     justify-content: flex-start;
-    max-width: 520px;
+    max-width: 480px;
   }
 
   .hero-subcopy {
-    max-width: 28ch;
+    max-width: 32ch;
     margin: 0;
-    font-size: 17px;
+    font-size: 18px;
     line-height: 1.5;
-  }
-
-  .hero-trust {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    max-width: 520px;
   }
 
   .hero-start-card {
@@ -388,6 +443,10 @@ textarea {
   .hero-start-card h2 {
     max-width: 7ch;
     font-size: clamp(32px, 3vw, 38px);
+  }
+
+  .hero-start-card__actions {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -555,10 +614,19 @@ textarea {
 }
 
 .review-stage__header h2 {
-  max-width: 12ch;
+  width: fit-content;
+  max-width: 100%;
   font-size: clamp(32px, 4.1vw, 42px);
   font-weight: 900;
   text-wrap: balance;
+  margin-inline: auto;
+  display: grid;
+  gap: 2px;
+}
+
+.review-stage__header h2 span {
+  display: block;
+  white-space: nowrap;
 }
 
 .review-stage__stats {
@@ -837,7 +905,7 @@ body.talk-modal-open {
 
 @media (max-width: 720px) {
   .header {
-    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    padding-top: calc(8px + env(safe-area-inset-top, 0px));
   }
 
   .header-inner,
@@ -847,9 +915,10 @@ body.talk-modal-open {
   }
 
   .header-inner {
-    min-height: 58px;
-    padding: 7px 9px;
-    border-radius: 15px;
+    min-height: 52px;
+    padding: 6px 8px;
+    border-radius: 14px;
+    gap: 6px;
   }
 
   .btn,
@@ -877,83 +946,186 @@ body.talk-modal-open {
   }
 
   .logo-copy strong {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .header-phone {
-    min-height: auto;
-    padding: 7px 10px;
-    font-size: 13px;
-    border-radius: 13px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0 11px;
+    font-size: 12.5px;
+    border-radius: 12px;
+    min-width: 0;
+    gap: 0;
   }
 
   .header-phone-label {
-    font-size: 9px;
+    display: none;
   }
 
   .hero {
-    padding: calc(98px + env(safe-area-inset-top, 0px)) 0 36px;
+    padding: calc(88px + env(safe-area-inset-top, 0px)) 0 12px;
   }
 
   .hero-layout {
     width: 100%;
-    gap: 12px;
+    gap: 10px;
   }
 
   .hero-copy-block {
-    gap: 8px;
+    width: 100%;
+    justify-items: center;
+    text-align: center;
+    gap: 10px;
   }
 
   .hero h1 {
-    max-width: 7.8ch;
-    font-size: clamp(26px, 7.2vw, 32px);
+    max-width: 12ch;
+    font-size: clamp(25px, 6.2vw, 30px);
     line-height: 0.98;
     text-wrap: balance;
   }
 
   .hero-capabilities {
+    width: 100%;
     max-width: 300px;
+    justify-content: center;
     gap: 6px;
   }
 
   .hero-capability {
     min-height: 28px;
+    padding: 0 8px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .hero-capability--primary {
+    max-width: none;
+    min-height: 30px;
     padding: 0 10px;
-    font-size: 11px;
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  .hero-capability--secondary {
+    min-width: 0;
+    color: rgba(255, 255, 255, 0.66);
   }
 
   .hero-capability svg {
-    width: 13px;
-    height: 13px;
+    width: 12px;
+    height: 12px;
   }
 
   .hero-subcopy {
-    max-width: 19ch;
-    margin: 0 auto;
+    max-width: 26ch;
+    margin: 0;
     font-size: 13px;
-    line-height: 1.45;
+    line-height: 1.42;
     text-wrap: pretty;
-  }
-
-  .hero-kicker {
-    margin-inline: auto;
+    text-align: center;
   }
 
   .hero-start-card {
-    max-width: 380px;
+    width: 100%;
+    max-width: 100%;
     margin: 0 auto;
-    padding: 14px;
-    gap: 9px;
-    border-radius: 18px;
+    padding: 14px 14px 12px;
+    gap: 8px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.98);
+    border-color: rgba(219, 228, 238, 0.72);
+    justify-items: center;
+    text-align: center;
+  }
+
+  .hero-start-card__eyebrow {
+    display: none;
   }
 
   .hero-start-card h2 {
+    color: var(--cobalt);
     max-width: 7.6ch;
-    font-size: clamp(20px, 6.8vw, 27px);
+    font-size: clamp(19px, 6vw, 24px);
+  }
+
+  .hero-start-card .btn {
+    max-width: 320px;
+  }
+
+  .hero-start-card__actions {
+    width: 100%;
+    gap: 8px;
+    justify-items: center;
+  }
+
+  .hero-start-card .btn-primary {
+    width: 100%;
+    max-width: none;
+    min-height: 48px;
+  }
+
+  .hero-start-card .btn-ghost-surface {
+    width: auto;
+    min-height: auto;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--cobalt);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
+    box-shadow: none;
   }
 
   .hero-start-card__copy,
+  .hero-start-card__queue,
+  .hero-start-card__check,
+  .hero-start-card__helper {
+    color: var(--ink);
+  }
+
+  .hero-start-card__queue {
+    margin-top: 2px;
+    max-width: 24ch;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .hero-start-card__check strong,
+  .hero-start-card__helper {
+    color: var(--cobalt);
+  }
+
+  .hero-start-card__checklist,
+  .hero-start-card__helper,
   .hero-start-card__note {
+    display: none;
+  }
+
+  .hero-start-card__copy {
+    color: var(--ink);
+    max-width: 28ch;
+  }
+
+  .hero-start-card__note {
+    color: var(--muted);
+  }
+
+  .hero-start-card__copy,
+  .hero-start-card__queue {
     font-size: 12.5px;
   }
 
@@ -969,9 +1141,8 @@ body.talk-modal-open {
 
   .review-stage--footer {
     gap: 14px;
-    padding: 24px 0 0;
+    padding: 8px 0 0;
     border: 0;
-    border-top: 1px solid color-mix(in srgb, var(--azure) 14%, var(--border));
     border-radius: 0;
     background: transparent;
   }
@@ -986,9 +1157,10 @@ body.talk-modal-open {
   }
 
   .review-stage__header h2 {
-    max-width: 8.2ch;
-    font-size: clamp(30px, 8.2vw, 36px);
-    line-height: 0.98;
+    width: fit-content;
+    max-width: 100%;
+    font-size: clamp(28px, 7.2vw, 34px);
+    line-height: 1.02;
   }
 
   .review-stage__stats {
@@ -1006,7 +1178,7 @@ body.talk-modal-open {
     width: min(100%, 340px);
     min-height: 164px;
     padding: 16px 14px 14px;
-    border-radius: 20px;
+    border-radius: 18px;
   }
 
   .review-stage--footer .hero-review-text {
@@ -1044,14 +1216,14 @@ body.talk-modal-open {
   }
 
   .section {
-    padding: 52px 0;
+    padding: 34px 0;
   }
 
   .section-soft {
-    margin-top: -24px;
-    padding-top: 32px;
-    border-top-left-radius: 26px;
-    border-top-right-radius: 26px;
+    margin-top: -18px;
+    padding-top: 36px;
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
   }
 
   .schedule-guide,
@@ -1061,27 +1233,38 @@ body.talk-modal-open {
   }
 
   .schedule-guide {
-    gap: 16px;
+    gap: 12px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .schedule-guide__intro {
-    justify-items: center;
-    text-align: center;
+    justify-items: start;
+    text-align: left;
+    gap: 5px;
+    padding-top: 2px;
+  }
+
+  .schedule-guide__kicker {
+    font-size: 11px;
   }
 
   .schedule-guide__intro > p:last-child {
-    max-width: 28ch;
-    font-size: 14px;
-    line-height: 1.6;
+    max-width: none;
+    font-size: 13px;
+    line-height: 1.5;
   }
 
   .schedule-guide__items {
-    gap: 10px;
+    gap: 8px;
   }
 
   .schedule-guide__item {
-    padding: 14px;
-    border-radius: 16px;
+    gap: 6px;
+    padding: 12px 13px;
+    border-radius: 14px;
   }
 
   .schedule-guide__marker {
@@ -1092,17 +1275,17 @@ body.talk-modal-open {
   }
 
   .schedule-guide__item h3 {
-    font-size: 15px;
-    margin-bottom: 6px;
+    font-size: 14px;
+    margin-bottom: 2px;
   }
 
   .schedule-guide__item p {
-    font-size: 13px;
-    line-height: 1.55;
+    font-size: 12.5px;
+    line-height: 1.45;
   }
 
   .review-support {
-    padding: 12px 0 18px;
+    padding: 8px 0 18px;
   }
 
   .page-footer {
@@ -1116,7 +1299,7 @@ body.talk-modal-open {
   .schedule-guide__intro h2,
   .review-stage__header h2,
   .talk-modal h2 {
-    font-size: clamp(28px, 7vw, 36px);
+    font-size: clamp(24px, 6.4vw, 30px);
   }
 
   .page-footer {

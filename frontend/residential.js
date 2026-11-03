@@ -4,6 +4,9 @@
   const submit = document.getElementById('residential-submit'), add = document.getElementById('residential-add-day');
   const separate = document.getElementById('residential-separate'), note = form.elements.notes;
   const receiptKey = 'h2s:residential:submission:v1';
+  const tracking = window.H2SResidentialTracking?.create(window);
+  if (tracking) tracking.pageView();
+  else console.warn('[Residential tracking] Tracking script did not load; inquiries can still be submitted.');
   let sequence = 0, sending = false, completed = false, pending = null, enabled = false, formIdentity = null, pendingDigest = null, separateProject = false;
   const serviceError = document.getElementById('residential-service-error');
   const preferenceStatus = document.getElementById('residential-preferences-status');
@@ -155,12 +158,13 @@
         }
         formIdentity ||= !separateProject && matching
           ? {publicToken:receipt.publicToken,submissionKey:receipt.submissionKey} : identity();
-        pending={...formIdentity,...input};
+        pending={...formIdentity,...input,...(tracking?{attribution:tracking.attribution()}:{})};
       }
       try { remember(); }
       catch (error) { console.error('[Residential receipt]',error);throw new Error('Your browser must allow site storage so a retry does not create a duplicate. Allow site storage and try again.'); }
       status.textContent='Sending your request...';posted=true;
       const result=await request('POST',pending);
+      if (tracking) tracking.lead(pending.publicToken);
       const delivery=result.notifications;
       const issue=delivery?.enabled && [delivery.staff,delivery.customer].some(value=>value?.needsReview);
       finish(`Request received: ${result.reference}. ${nextContact(pending.smsOptIn)} No installation is booked.${issue?' A notification needs staff review. Your request is saved; please do not submit again.':''}`);

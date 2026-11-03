@@ -165,6 +165,7 @@ async function createOperationsFixture(env = {}) {
     } },
     '@/lib/adminAuth': { corsHeaders: () => ({}) },
     '@/lib/commercial_communications': communications,
+    '@/lib/commercial_consultation.js': require('../../lib/commercial_consultation.js'),
     '@/lib/commercial_follow_up': followUp,
     '@/lib/commercial_consultation_runtime': {
       CommercialConfigurationError,

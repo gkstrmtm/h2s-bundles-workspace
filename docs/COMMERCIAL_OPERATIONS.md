@@ -88,6 +88,162 @@ separately authorized 039 application and
 read-only verification, intended staff login, deployed origin/route/media checks,
 cron execution and provider/handset acceptance without duplicate sends.
 
+## Residential follow-up validation handoff (2026-10-28; not deployed)
+
+The current working tree reuses Commercial's recorded SMS transport/effect
+ledger, contact-consent checks, Customer Queue and installation calendar.
+Residential intake and review remain separate routes and market identities:
+
+1. A short inquiry saves a Residential lead/request and sends the configured
+   owner a customer-specific review link when residential SMS is enabled.
+   The customer receipt requires text-first preference and current SMS consent.
+2. Opening the link is read-only. Accept follow-up records responsibility and
+   may send one consent-gated acceptance notice; it does not reserve time,
+   create a consultation appointment, dispatch an installer or take payment.
+3. Staff use the existing ADMIN dashboard session in the same-link workspace.
+   Save a callback, or explicitly agree and confirm an installation through
+   the shared calendar. Recorded reservations block capacity across markets.
+4. The owner callback reminder is due 15 minutes before; confirmed/rescheduled
+   installation confirmation is due when saved; owner/customer installation
+   reminders are due 60 minutes before. Customer messages remain consent-gated.
+   Cancellation/rescheduling supersedes obsolete notices. Dispatch depends on
+   server maintenance, not an open browser or guaranteed minute delivery.
+
+This is not Commercial consultation auto-approval or its technician reminder/
+escalation sequence. Residential decisions use links, not SMS YES/NO. A declined
+follow-up requires staff routing review; no new recipient or chasing policy was
+introduced. Provider acceptance is not handset delivery.
+
+Corrections made during validation: scope mobile proof/form ordering to intake
+so the owner workspace stays customer-first; replace Residential Queue's
+Commercial approval/appointment wording with the correct follow-up boundary and
+direction to the saved installation/text status. Commercial wording is unchanged.
+The routing-reminder fixture now supplies the later-stage installation address
+before booking, rather than weakening the separately drafted address guard.
+
+Staff controls in canonical `frontend/dash.html`:
+- **Customer Queue** -> market **Residential**, **Commercial** or both; **Calendar**
+  uses the same market context and shared reservations. Load the homeowner
+  review link from the selected Residential lead; lookup itself sends no SMS.
+- **Website Media** -> **Page media & previews** -> **Residential**; destinations
+  are **TV installation proof** and **Camera installation proof**. Inclusion,
+  order and placement framing use the existing editor/renderer, independently
+  of Commercial/Bundles. No live asset assignment or framing was saved.
+- The ADMIN notification-routing controls choose the residential owner phone;
+  Commercial technician and management routing remain separate.
+
+Validation: residential suites 107 passed; shared Queue/calendar/operations/media
+suites 167 passed, one independent native-PostgreSQL concurrency check skipped
+without `H2S_CALENDAR_TEST_DATABASE_URL`; notification routing suites 17 passed.
+After final corrections, Queue/intake/UI suites were rerun: 77 passed. The
+current backend production build passed using non-live placeholder credentials
+and disabled residential feature flags. This validates the working tree, not
+an as-yet-unselected release snapshot. Physical iOS and real handset delivery
+were not tested.
+
+The local 57896 server now serves canonical `/residential.html`, `/residential`,
+and generated `/residential-review` links with the current isolated backend,
+staff login, callback and calendar routes. `/_preview/queue` hosts the canonical
+Queue widget in an explicitly labeled fixture shell, not the complete dashboard
+or a live Supabase session. `/_preview` lists fixture examples and the local-only
+staff account. Browser checks at 1440/390/320px covered actual fixture submission,
+SMS/decision/booking replay protection, ADMIN access, callback reload, confirmed
+installation, market filtering, review-link lookup and shared calendar. Public
+intake/proof layout was separately rechecked. Fake SMS only; no live operational
+writes or production migrations occurred.
+
+Release gate: the presentation-only changes need no new schema, but do not
+approve a full backend rollout from this dirty tree. Verify existing 036-038
+readiness and 039 notification routing on the explicit target. The registered
+production target still marks 039 review-only, and this terminal lacks
+`DATABASE_URL_DIRECT`; remote migration status was not verified. Configure that
+connection outside Git for authorized read-only status/verification, with
+`MIGRATION_CA_CERT_PATH`. Do not silently include/apply review-only, unregistered
+040 address guards. Current workspace fixtures include 040; its SQL booking
+guard must be separately reconciled before claiming that production enforces
+the same address requirement. Verify Vercel minute-cron support, `CRON_SECRET`,
+the three `RESIDENTIAL_*_ENABLED` flags, canonical
+`COMMERCIAL_PUBLIC_BASE_URL`, configured owner routing and existing Twilio
+credentials/webhooks outside Git. Live delivery remains a separately authorized
+acceptance check. Select and validate the release snapshot before commit or
+deployment; `retro-dev` automatic deployments remain disabled.
+
+## Residential proof hierarchy refinement (2026-10-28; uncommitted)
+
+Unselected service tiles use a quiet 1px neutral border; only selected tiles use
+the 2px brand border and tint. Compensating padding preserves the text area and
+native full-label checkbox interaction. Mobile places the existing side-by-side
+4:3 proof photos after the introduction and before the request. Desktop keeps
+proof beside the form. No copy, consent, submission logic or containers changed.
+TV framing is reviewed through residential destination metadata in the isolated
+preview only, not a hardcoded renderer crop or a live Website Media save.
+The preview-only proposal for `residential / residential_tv_proof` is `cover`,
+focal X 50%, focal Y 45%, zoom 1.8 in the existing 4:3 frame. The camera preview,
+shared original and Commercial/Bundles placements are unchanged. Applying this
+crop outside the fixture requires a separately authorized destination save.
+Validation: 40 focused residential UI/closeout checks passed, including consent,
+duplicate protection, Queue persistence and framing isolation. Chrome checked the
+canonical page at 1440/390/320px, full-label and keyboard multi-selection, no
+selection layout shift, calendar selection and reduced-height field access.
+The phone proof strips measured 205/178px high and the form began at 550/524px;
+both service choices were visible within the tested 844px-high phone viewports.
+All existing control-state browser regressions also passed. Physical iOS was not
+tested. No production placement, original image, review feed or database changed.
+
+### Separate follow-up: review eligibility verification (not this increment)
+
+Source inspection of `backend/app/api/reviews/route.ts` found that GET reads
+`h2s_public_reviews` while the `onlyVerified` query filter is commented out and no
+visibility predicate is applied to that query. The debug output describes filters
+which the GET query does not enforce. The Bundles aggregate separately reads
+visible rows from `h2s_reviews`. Before reusing either feed for Residential,
+confirm the deployed endpoint, table/view definitions, moderation and verification
+meaning, actual eligible rows and service matching; test hidden/unverified rows.
+Remote schema and live eligibility have not been verified. This is a separate
+correctness follow-up, not permission to change the endpoint, publish reviews or
+label any review verified. No reviews are added by this increment.
+
+## Residential control styling review (2026-10-28; uncommitted)
+
+The intake-only rules in `frontend/residential.css` refine real service checkboxes
+as compact selected tiles, use consistent 48px input heights/8px corners, neutral
+token borders and visible keyboard outlines, and preserve the expanding note.
+The existing preferred-day action has a decorative 16px calendar SVG; selected
+dates use the same control styling. `residential.js` adds only the existing
+`form-input` class to the generated date input, without changing its behavior.
+Consent, copy, submission identities, intake layout and media framing are unchanged.
+Native checkboxes are retained with a forced-colors native-appearance fallback.
+Residential calendar arrows are suppressed because the bottom arrow extended
+the scroll area beyond the complete month. Genuine viewport-constrained popup
+scrolling remains enabled; scrollbars are not cosmetically hidden.
+Validation: 37 focused fixtures passed. Actual Chrome renders were inspected at
+1440/390/320px in default, selected/focused, input focus, error, selected-date,
+loading/disabled and confirmation states. Controls have 48px input heights,
+at least 44px action targets, a 72px growing initial note, no horizontal overflow
+and no validation button shift. Both Call/Text fixture submissions, Queue data and
+reload duplicate protection were rechecked. Physical iOS was not tested; no
+commit, deployment or live mutation is authorized by this styling pass.
+
+## Residential copy review (2026-10-28; uncommitted, not release approval)
+
+Canonical intake copy now names TV mounting and camera installation, explains
+customer-owned versus separately quoted supplied equipment, and reuses the
+committed Bundles coverage: Greenville, Spartanburg and surrounding Upstate
+South Carolina. City entry requests location review, not guaranteed eligibility.
+The CTA requests a call or text; confirmation names the selected contact method
+without claiming delivery. The approved SMS disclosure and unchecked default
+are unchanged. Preferred days remain optional installation preferences, not
+reservations. No intake fields, styling, routing, media assignments or schema
+were added. Copy still needs business review; no response time, specific equipment
+availability, pricing, warranty or expanded travel boundary is asserted.
+Validation: 52 selected fixture checks passed. Chrome checked the full page and
+Call/Text confirmations at desktop, 390px and 320px, optional dates, readable
+errors, Queue contact preferences and reload duplicate protection. Inline city
+guidance was shortened to avoid moving the submit area. Physical iOS was not
+tested. The local 57896 preview serves canonical working-tree frontend copy with
+the reviewed isolated backend; its photo assignments and all mutations remain
+fixtures. This is copy-review evidence, not release approval.
+
 ## Residential presentation closeout (2026-10-27; not deployed)
 
 The production sources are `frontend/residential.html`, `residential.css`,
@@ -129,17 +285,215 @@ paths, calendar, validation, growing note, loading/failure states, Queue data,
 confirmed duplicate blocking and uncertain-response replay after reload.
 Physical iOS Safari/keyboard and Lighthouse were not tested.
 
+## Residential funnel refinement (local; not released)
+
+Canonical sources: `frontend/residential.html`, `residential.css`,
+`residential.js`, `address-autocomplete.js` and `residential-media.js`.
+The original headline/fonts and short inquiry remain. The approved logo sits
+beside the brand name, with a quiet Commercial navigation link. Desktop retains
+the proof/form columns; on phones the request precedes the compact installation
+photos and next-steps explanation.
+No prices, availability promises or inclusions were added. Consent is unchanged;
+submission remains follow-up, not a reservation or payment.
+
+Website Media now registers `residential / residential_tv_proof` and
+`residential / residential_camera_proof`, one approved service-matching photo
+each at 4:3. Existing approval rules and automatic visible-proof fallback apply.
+Commercial/Bundles placement rows are never copied. Explicit order, exclusions
+and framing use existing `media_placements` rows/editor. The customer and
+dashboard preview use the same residential photo renderer. No media-table
+migration or live assignments are included.
+
+Initial residential intake collects service, name, phone and manually entered
+city only. There is no address disclosure or Google selection requirement.
+A visible optional note and separate preferred-day calendar action remain;
+blank/cancelled date selections do not block contact. Consent stays unchecked,
+with the approved disclosure intact and call handling unchanged. Inline field
+errors have reserved space; saving/error/confirmation status sits below the
+request button. No intake draft/identity storage or new scheduling step is added.
+
+Later installation-address collection uses shared Google `PlaceAutocompleteElement`,
+its built-in autocomplete session handling and `PlacePrediction.toPlace()`.
+Only `id` and `addressComponents` are requested; no coordinates are collected.
+Suggestions are softly biased around Greenville/Upstate SC, not restricted to
+a service boundary. The widget owns suggestions/keyboard interaction; it is
+not wrapped in the dashboard's custom selects. Street/city/state/postal edits
+invalidate the selected place ID; the separate unit can be corrected without
+changing the selected street. Late selections cannot overwrite edits or a
+locked retry. Missing/failed lookup leaves manual fields and city-only contact
+usable, with a visible status.
+
+Configure **`GOOGLE_MAPS_BROWSER_API_KEY` outside Git** in the backend deployment
+and local preview environment. This is intentionally a public browser key, NOT
+the existing private server-side `GOOGLE_MAPS_API_KEY` used for geocoding.
+Enable Maps JavaScript API and Places API (New), enable billing, restrict the
+key to those APIs and exact approved website/local-preview HTTP referrers.
+Use a separate restricted development key. No key is committed or copied from
+the server geocoding configuration. Without it, manual inquiry still works;
+real Google suggestions and physical iOS Safari require separate validation.
+
+Existing `commercial_leads.project_*` fields hold the address; unit is included
+in the street line for downstream compatibility. `assessment_answers` retains
+the structured address and declared entry source, not validation/eligibility.
+Queue and the customer-specific review/workspace display the saved location.
+Existing Customer Queue location editing remains the staff correction surface.
+Lead edits do not implicitly update an existing linked order/job address.
+
+The same `H2SAddressAutocomplete` implementation serves commercial intake and
+Customer Queue location editing for either market, remaining available for
+customer-specific scheduling integration rather than initial residential contact.
+Commercial intake keeps the existing optional location fields; staff search is
+lazy-loaded when Edit lead location opens. Missing suggestion components never
+erase saved manual components or units. Selection emits the existing form input
+event so autosave/dirty tracking captures it. Commercial drafts retain structured
+unit/source data in `assessment_answers.installationAddress`; older combined
+street lines are preserved, with canonical unit suffixes split only for editing.
+Staff saves continue through the existing authorized, revision-checked location
+operation. The separate unit rejoins the saved street line for compatibility;
+staff corrections are recorded as manual, not verified Google locations.
+Updating a linked job/order still requires the existing explicit opt-in.
+Release the shared script, its frontend consumers and backend unit normalization
+together; this work has not been deployed.
+
+Review-only migration `040_residential_address_guards.sql` depends on 038.
+It adds no tables/columns and performs no data backfill. Its location metadata
+guard covers both markets, retaining newly supplied address metadata but clearing
+unchanged stale Places metadata after staff/legacy location edits. It requires street, city,
+state and postal code before a new/changed confirmed residential reservation.
+City-only inquiries, callbacks, tentative holds, cancellation and Commercial
+rules are unchanged. Existing incomplete reservations are not modified; staff
+must complete their location before changing a confirmed window. Review/apply
+040 only with explicit release authorization before releasing this increment.
+It does not authorize applying routing migration 039.
+040 is prepared for review but is not yet enrolled in `apply_migration_pg.js`;
+remote-runner registration, schema inspection and explicit target authorization
+are release prerequisites, not actions performed by this local increment.
+
+## Dashboard mobile loading and recovery (local; not released)
+
+Website Media library reads have a 15-second per-request timeout and a
+20-second total library-update deadline. A slow-load message appears after
+five seconds. Asset tiles do not wait for destination-preview checks;
+usage filters stay paused until those selections are verified. Failed
+refreshes retain existing tiles and drafts, with an explicit Retry action.
+A failed first load is shown as unavailable, never as an empty library.
+These automatic deadlines apply to reads, not uploads or saved edits.
+
+The mobile Menu control uses the existing sidebar and focus behavior.
+Candidate details remain hidden until opened and are contained inside the
+dashboard so drawer styling also applies on phones. Queue/media recovery
+actions use compact wrapping messages and 44px touch targets. These changes
+do not alter authentication, recipients, scheduling or persistence.
+Page media previews start collapsed on phones and expanded on desktop.
+Opening the disclosure retains the same page-area controls; tapping a selected
+photo opens the existing placement editor, not another editing surface.
+Upload copy and optimization controls wrap within the dropzone on narrow phones.
+The optimization hint is centered across the whole upload prompt. Mobile header,
+summary and filter spacing is compact; library thumbnails remain visible below
+the filters, independently of the collapsed page-placement previews.
+Grid placement actions use a quiet 44px Use on page footer row rather than
+repeated prominent buttons. Photos themselves are keyboard-accessible edit
+targets. Video play and duration remain separate controls. Internal priority
+stars and classification labels are omitted from this compact grid; the saved
+priority/classification and their existing editor controls are unchanged.
+On phones, Open gallery opens the existing library in a full-screen photo grid.
+Search stays in one row with a Filters button; filter/sort controls use a focused
+view rather than pushing thumbnails down the page. Active filter counts stay
+visible. Closing/reopening preserves search, filters and gallery scroll; returning
+restores overview scroll and focus. Desktop keeps the inline library. Asset and
+placement editing still use the same editor with its existing save/cancel rules.
+The gallery entry is a flat navigation row with readable count text. Choose media
+on phones opens that same gallery with the destination named in its header and
+Use here actions. Closing cancels the unsaved choice. The explicit upload button
+opens the existing file input; upload settings no longer activate the file picker.
+The obsolete Advanced media tools asset-ID/storage-URL panel and duplicate
+bulk-optimization buttons are removed on both desktop and mobile. The normal
+upload/dropzone path still optimizes images before uploading by default, using
+the existing format, quality and resize settings. Asset IDs/storage references
+remain internal identifiers; operators choose media visually.
+The local preview's test-data notice is injected by its fixture server in normal
+document flow; it is not shipped in the canonical dashboard or fixed over content.
+A separate session-local real-media preview uses an existing authenticated
+dashboard session and an allowlist of production media, customer queue and shared
+calendar GET endpoints. Its local
+gateway blocks operational writes; it does not deploy frontend/backend changes
+or grant additional permissions. Its sign-in bridge expires after one hour.
+The local dashboard's existing Customer Queue shows both markets and supports
+market filtering; this is not a second leads interface. Queue/calendar saves,
+messages and all other operational writes remain blocked by the local gateway.
+The residential customer entry is `/residential`, backed by
+`/api/residential-intake`. It is currently a text-only inquiry page with no image
+or media-placement integration, not the commercial landing page's visual
+equivalent. The existing residential fixture supports isolated form submission
+and owner scheduling validation without changing production.
+
 ## Notification routing settings (local; not released)
 
-Canonical dashboard location: **My Summary > Owner notifications**, in
+Canonical dashboard location for this local cleanup: **Customer Queue >
+Owner alert number > Edit**, in
 `frontend/dash.html`. The existing ADMIN username/email + PIN session is required
 for both reading and saving `/api/notification-routing`; neither a public review
 token nor a VA account can read/change these settings.
 The compact overview leads with the residential owner number and Edit.
 Commercial technician requests and management escalation remain under
-**Other routes (unchanged)**; recipient-change cautions appear beside Save,
+**Other routes · read-only**; recipient-change cautions appear beside Save,
 not as repeated overview paragraphs. It is part of the existing full dashboard,
 not a separate settings application.
+The Queue header action opens a plain settings section, initially closed; both
+the action and settings are hidden from non-ADMIN sessions.
+Returning to Queue or reopening routing retains an active edit draft.
+
+The local Page Media cleanup shows one page/display area at a time, remembering
+the selected area for each page during the current dashboard session. Residential
+has TV/camera choices; Commercial retains hero/security/display choices; Bundles
+retains its hero. Existing choose, replace, inclusion/exclusion, ordering and
+placement-framing operations are unchanged. Switching destinations cancels an
+unfinished library chooser; it never saves media. Selection diagnostics remain
+under **Selection & saved settings**.
+
+Queue next-action guidance formats embedded absolute database timestamps for
+display (Eastern time), without rewriting the saved guidance or scheduling data.
+Operations, business records and calendar times show the viewer's time zone,
+without seconds or fractional timestamps; date inputs retain
+their canonical local values and unchanged original instants. Calendar actions
+use explicit choices and show only relevant fields. Calendar activity uses
+the existing operational timeline without a history disclosure. Detached
+Flatpickr instances are destroyed and cleared, moved inputs stay live, and stale
+destroyed references no longer suppress reinitialization.
+
+The local lead workspace opens to **Overview**, followed by **Follow-up**, **Schedule**,
+**Installation**, **Records** and **Activity**. Overview is read-only and derives
+the next relevant action from saved intake, follow-up, quote, calendar reservation,
+linked job, installer and preparation state. Calendar and business snapshots feed
+the overview without replacing mounted drafts; unavailable sources are labeled
+unavailable, never interpreted as an absent quote or booking. New requests lead
+to scope/contact review, while tentative/confirmed bookings, accepted quotes,
+blocked jobs and completed work lead to different existing task views. An accepted
+follow-up or consultation is not described as an installation reservation.
+Existing saved facts are refreshed through the same authenticated read endpoints;
+this adds no automatic quote, linkage, booking, assignment, payment or completion.
+Forms remain available on demand for the decisions the system cannot infer.
+Changing views preserves mounted
+form controls and unsaved drafts; it does not save, send or link anything.
+Follow-up contains workload and contact logging. Schedule contains explicit
+hold/confirm/reschedule/cancel actions. Installation contains address, existing
+order lookup/linking and guarded work actions; address search loads only when
+the address editor is opened. Records switches between quote, payments, attachments and
+feature-gated email. Payment correction remains an explicit guarded action.
+Activity contains communication evidence, read-only Commercial notification
+routes, calendar/preparation/business history and technical processing details.
+Delivery caveats are shared rather than repeated in every communication row;
+individual errors and processing issues remain visible.
+
+The local visual pass gives the customer workspace the majority of desktop
+width, with a narrower queue. Task choices use quiet underline navigation;
+custom selects, text/date inputs and buttons share a consistent control geometry.
+The current lead state is compact context above the editor, not another table
+of equally weighted controls. Filled actions identify the active form's save.
+Choosing Set next action / Hold until / Close lead temporarily replaces the
+follow-up editor rather than opening a second competing form; Cancel restores
+it and returns keyboard focus. Owner-number editing appears before the
+secondary read-only routes. These are local changes, not a deployment.
 
 Only **Residential owner alerts** are editable: new inquiry review texts,
 callback reminders and installation owner reminders. Commercial technician
@@ -673,11 +1027,18 @@ disabled, and no new outbound chase sequence or payment/scheduling gate exists.
   or deposit/balance terms, and explicit evidence for staff-recorded approval.
   There is no price/tax calculator, customer approval portal, automatic checkout
   or charge. Collect money using the existing business process.
-- Manual payment facts distinguish reported from staff-checked receipt.
-  Remaining balance uses staff-confirmed entries only, not reported amounts.
-  These entries are never called Stripe verification. Corrections retain the
-  original audit record and do not issue refunds. A quote with active payment
-  records cannot be silently repriced.
+- The dashboard no longer offers manual payment entry or correction controls.
+  Staff inspect current payments in the native payment platform. Previously
+  recorded payment evidence remains read-only in Customer workspace > Activity;
+  it is not Stripe verification. Historical data, processing and the existing
+  restriction against silently repricing quotes with active payments are unchanged.
+- ADMINs can find **Residential owner-alert number** in the Customer Queue
+  header. Its editor affects Residential owner alerts only; Commercial technician
+  and management routes are explicitly read-only. Recipient-bound links and
+  reminders retain their existing safeguards.
+- Page Media keeps page/area choices visible at desktop and phone widths.
+  Only the selected destination is shown; saved placement framing, inclusion,
+  ordering and connections remain unchanged. Selection diagnostics are secondary.
 - Admin-only contact-note attachments, quote/payment documents and installation
   proof use a private Storage bucket with five-minute signed viewing links.
   A contact attachment can reference the actual recorded contact attempt.

@@ -4,6 +4,107 @@ const leadId=id(1), op=()=>crypto.randomUUID();
 async function post(f,body) {return f.businessRequest('commercial-business','POST',{leadId,operationId:op(),...body});}
 async function snapshot(f) {const r=await f.businessRequest('commercial-business');assert.equal(r.status,200);return r.json();}
 
+test('business views retain quote drafts, expose historical payments read-only in activity and gate email without sending',async t=>{
+  const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path');
+  const f=await createBusinessFixture();t.after(()=>f.db.close());
+  const source=fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-business.js'),'utf8');
+  for(const enabled of [false,true]) await t.test(enabled?'email enabled':'email paused',async()=>{
+    const data=await snapshot(f),calls=[],snapshots=[];
+    data.emailConfiguration={enabled,configured:true};
+    data.history=[{action:'quote',created_at:'2026-10-25T03:41:16.172+00:00',actor:{id:id(9),name:'Fixture Admin'},payload:{note:'Fixture business activity'}},
+      {action:'quote',created_at:'invalid-fixture-date',actor:{id:id(9),name:'Fixture Admin'},payload:{}}];
+    data.payments=[{id:id(700),state:'recorded',amountCents:500,method:'cash',receivedAt:'2026-10-25T03:41:16.172+00:00',reference:'Fixture receipt',note:'',evidenceFileId:null}];
+    const dom=new JSDOM('<section id="records"></section><div id="activity"></div>',{runScripts:'outside-only',url:'http://fixture.invalid'});
+    try {
+      const w=dom.window,root=w.document.getElementById('records'),activity=w.document.getElementById('activity');
+      w.matchMedia=()=>({matches:true});w.Element.prototype.scrollIntoView=()=>{};
+      w.fetch=async(url,options)=>{
+        calls.push(options.method);
+        assert.equal(options.method,'GET','Inspecting record views must never send or save');
+        return Response.json(data);
+      };
+      let opened=0;
+      const options={apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin',activityRoot:activity,
+        dateInput:(name,title)=>`<label>${title}<input type="datetime-local" name="${name}"></label>`,
+        instantValue:()=>{throw new Error('No save expected');},onDirty:()=>{},onActivity:()=>{},onOpen:()=>opened++,
+        onSnapshot:value=>snapshots.push(value)};
+      w.eval(source);
+      w.H2SCommercialBusiness.mount(root,leadId,options);
+      for(let attempt=0;!root.querySelector('[data-business-view]')&&attempt<50;attempt++) await new Promise(resolve=>setTimeout(resolve,5));
+      assert.deepEqual([...root.querySelectorAll('[data-business-view]')].map(button=>button.textContent),['Quote','Attachments',...(enabled?['Email']:[])],root.textContent);
+      assert.equal(snapshots.at(-1).available,true);
+      assert.equal(snapshots.at(-1).data.revision,data.revision);
+      assert.equal(root.querySelector('[data-business-action="payment"]'),null);
+      assert.equal(root.querySelector('[data-business-action="payment_void"]'),null);
+      assert.equal(root.querySelector('[data-payment-correction]'),null);
+      assert.match(activity.textContent,/Historical payment records.*read-only/);
+      assert.match(activity.textContent,/Fixture receipt/);
+      assert.equal(root.querySelectorAll('details').length,0);
+      assert.equal(activity.querySelectorAll('details').length,0);
+      assert.match(activity.textContent,/Fixture business activity/);
+      assert.match(activity.textContent,/Date needs review/);
+      assert.doesNotMatch(activity.textContent,/2026-10-25T|\.172|\+00:00/);
+      const amount=root.querySelector('[name=amount]');
+      amount.value='1200.00';amount.dispatchEvent(new w.Event('input',{bubbles:true}));
+      for(const view of ['files','quote']) {
+        root.querySelector(`[data-business-view="${view}"]`).click();
+        assert.equal(root.querySelectorAll(':scope > [data-business-section]:not([hidden])').length,1);
+        assert.equal(root.querySelector('[data-business-view][aria-pressed=true]').dataset.businessView,view);
+        assert.equal(root.querySelector('[name=amount]'),amount);
+        assert.equal(amount.value,'1200.00');
+      }
+      if(enabled) {
+        w.H2SCommercialBusiness.compose(leadId);
+        assert.equal(opened,1);
+        assert.equal(root.querySelector('[data-business-view][aria-pressed=true]').dataset.businessView,'email');
+        assert.equal(w.document.activeElement.name,'body');
+      } else assert.equal(root.querySelector('[data-business-action="email"]'),null);
+      const originalHistory=activity.firstElementChild,nextActivity=w.document.createElement('div'),nextHost=w.document.createElement('section');
+      w.document.body.append(nextHost,nextActivity);
+      w.H2SCommercialBusiness.mount(nextHost,leadId,{...options,activityRoot:nextActivity});
+      assert.equal(root.isConnected,true);
+      assert.equal(nextActivity.firstElementChild,originalHistory);
+      assert.equal(amount.value,'1200.00');
+      await w.H2SCommercialBusiness.refresh(leadId);
+      assert.equal(amount.value,'1200.00','Automatic saved-record reads must not replace a quote draft');
+      assert.deepEqual(calls,['GET']);
+      assert.equal(f.attempts.length,0);
+    } finally {dom.window.close();}
+  });
+});
+
+test('a background record read cannot replace a quote edited while the response is pending',async t=>{
+  const {JSDOM}=require('jsdom'),fs=require('node:fs'),path=require('node:path');
+  const f=await createBusinessFixture();
+  const data=await snapshot(f),snapshots=[],requests=[];
+  const dom=new JSDOM('<section id="records"></section>',{runScripts:'outside-only',url:'http://fixture.invalid'});
+  t.after(async()=>{dom.window.close();await f.db.close();});
+  const w=dom.window,root=w.document.querySelector('section');
+  let release;
+  w.fetch=async (_url,options)=>{
+    requests.push(options.method);
+    assert.equal(options.method,'GET');
+    if(requests.length>1) await new Promise(resolve=>{release=resolve;});
+    return Response.json(data);
+  };
+  w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','commercial-business.js'),'utf8'));
+  w.H2SCommercialBusiness.mount(root,leadId,{
+    apiBase:'http://fixture.invalid',getToken:()=> 'fixture-admin',onDirty:()=>{},onActivity:()=>{},
+    dateInput:()=>'',onSnapshot:value=>snapshots.push(value),
+  });
+  for(let i=0;!root.querySelector('[name=amount]')&&i<50;i++) await new Promise(resolve=>setTimeout(resolve,5));
+  const amount=root.querySelector('[name=amount]'),pending=w.H2SCommercialBusiness.refresh(leadId);
+  amount.value='777.25';
+  amount.dispatchEvent(new w.Event('input',{bubbles:true}));
+  release();
+  await pending;
+  assert.equal(root.querySelector('[name=amount]'),amount);
+  assert.equal(amount.value,'777.25');
+  assert.match(root.querySelector('[data-business-status]').textContent,/draft is retained/);
+  assert.equal(snapshots.at(-1).available,true);
+  assert.deepEqual(requests,['GET','GET']);
+});
+
 test('035 removes inherited service-role writes and the schema guard rejects a subsequent write grant',async t=>{
   const f=await createBusinessFixture();
   t.after(()=>f.db.close());

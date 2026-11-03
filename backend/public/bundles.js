@@ -2372,34 +2372,8 @@ function updateQuantity(idx, delta){
 // === HERO REVIEW CAROUSEL ===
 let heroReviewInterval;
 let currentHeroReviewIndex = 0;
-// Initialize with fallback data IMMEDIATELY so LCP is fast
-heroReviews = [
-    {
-      text: "Professional, on-time, and clean installation.",
-      author: "Recent Customer",
-      stars: 5
-    },
-    {
-      text: "Had 4 cameras installed. The app setup was seamless and now I have total peace of mind.",
-      author: "Mike T.",
-      stars: 5
-    },
-    {
-      text: "Quick, clean, professional. They hid all the wires perfectly. Looks like it came with the house!",
-      author: "Jennifer L.",
-      stars: 5
-    },
-    {
-      text: "Same-day service saved me! TV mounted and streaming setup done in under an hour.",
-      author: "David R.",
-      stars: 5
-    },
-    {
-      text: "The whole-home security package was a game changer. Professional install, great support.",
-      author: "Amanda K.",
-      stars: 5
-    }
-];
+// Start empty so the hero never shows fabricated reviews.
+heroReviews = [];
 
 // Fetch real reviews from Vercel endpoint (Background)
 async function loadHeroReviews() {
@@ -2529,13 +2503,13 @@ function renderReviews() {
   const track = byId('reviewTrack');
   const nav = byId('reviewNav');
   
-  if (!track || !nav) {
-    // logger.error('[Reviews] Carousel DOM elements not found');
+  if (!track) {
     return;
   }
   
   if (allReviews.length === 0) {
-    track.innerHTML = '<p style="text-align: center; color: var(--muted); padding: 40px;">No reviews available</p>';
+    track.innerHTML = '<p style="text-align: center; color: var(--muted); padding: 40px;">Recent verified reviews will appear here shortly.</p>';
+    if (nav) nav.innerHTML = '';
     return;
   }
   
@@ -2595,9 +2569,11 @@ function renderReviews() {
   const slidesPerView = window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1;
   const totalPages = Math.ceil(allReviews.length / slidesPerView);
   
-  nav.innerHTML = Array.from({length: totalPages}, (_, i) => 
-    `<div class="review-dot ${i === 0 ? 'active' : ''}" onclick="goToReview(${i})" aria-label="Go to page ${i + 1}"></div>`
-  ).join('');
+  if (nav) {
+    nav.innerHTML = Array.from({length: totalPages}, (_, i) => 
+      `<div class="review-dot ${i === 0 ? 'active' : ''}" onclick="goToReview(${i})" aria-label="Go to page ${i + 1}"></div>`
+    ).join('');
+  }
   
   // (reviews rendered log stripped)
 }

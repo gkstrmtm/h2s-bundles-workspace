@@ -46,6 +46,19 @@ function requiredText(value: unknown, label: string, max: number): string {
   if (!result) throw new BusinessError(`${label} is required.`);
   return result;
 }
+function normalizeAttribution(value: unknown): Record<string,string> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new BusinessError('Review campaign attribution.');
+  const fields = new Set(['utm_source','utm_medium','utm_campaign','utm_content','utm_term','visitor_id','session_id']);
+  const result: Record<string,string> = {};
+  for (const [field, entry] of Object.entries(value)) {
+    const pattern = field.endsWith('_id')
+      ? /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i : /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,99}$/;
+    if (!fields.has(field) || typeof entry !== 'string' || !pattern.test(entry)) throw new BusinessError('Review campaign attribution.');
+    result[field] = entry;
+  }
+  return result;
+}
 export function normalizeResidential(body: Record<string, unknown>, now = new Date()) {
   const fullName = requiredText(body.fullName,'Name',120);
   const city = requiredText(body.city,'City',120);
@@ -70,10 +83,25 @@ export function normalizeResidential(body: Record<string, unknown>, now = new Da
     if (availability.some(value=>value.date===row.date)) throw new BusinessError('Choose each preferred day once.');
     availability.push({date:row.date,period:row.period as Availability['period']});
   }
+  let installationAddress;
+  if (body.installationAddress != null) {
+    if (typeof body.installationAddress !== 'object' || Array.isArray(body.installationAddress)) throw new BusinessError('Review the installation address.');
+    const address = body.installationAddress as Record<string, unknown>;
+    const street=text(address.street ?? '',240,false), unit=text(address.unit ?? '',40,false);
+    const state=text(address.state ?? '',100,false), postalCode=text(address.postalCode ?? '',20,false);
+    if (!['manual','google_places'].includes(String(address.source))) throw new BusinessError('Review the address entry method.');
+    const placeId=address.source==='google_places' ? requiredText(address.placeId,'Selected address',255) : null;
+    if ([street,unit,state,postalCode].some(Boolean)) installationAddress = {
+      street,unit,city,state,postalCode,source:String(address.source),placeId,
+      addressLine:utils.formatAddressLine(street,unit),
+    };
+  }
   const normalized = {
     fullName, phone:utils.normalizePhone(phone), city,
     serviceNeeds:body.serviceNeeds as string[], smsOptIn:body.smsOptIn,
     notes:text(body.notes ?? '',1000,false), availabilityPreferences:availability,
+    ...(installationAddress ? {installationAddress} : {}),
+    ...(body.attribution === undefined ? {} : {attribution:normalizeAttribution(body.attribution)}),
   };
   return normalized;
 }
@@ -103,22 +131,26 @@ export async function submitResidential(request: Request) {
   }
   const publicToken = body.publicToken as string, submissionKey = body.submissionKey as string;
   const routing = await residentialSetup();
-  const fingerprint = createHash('sha256').update(JSON.stringify(input)).digest('hex');
+  // Campaign/session changes are not changes to the customer's project on a retry.
+  const {attribution, ...businessInput} = input;
+  const fingerprint = createHash('sha256').update(JSON.stringify(businessInput)).digest('hex');
   if (routing.phone===input.phone) throw new BusinessError('Customer and residential reviewer must be different phone numbers.');
   const consent = { smsOptIn:input.smsOptIn, smsOptInSource:'residential-inquiry-form',
     smsOptInText:'I agree to project texts from Home2Smart, including automated updates. Consent is not a condition of purchase. Message and data rates may apply. Reply STOP to opt out.',
     ...(input.smsOptIn ? {smsOptInAt:new Date().toISOString()} : {}) };
   const normalized = utils.normalizeCommercialLeadInput({...input, projectCity:input.city,
-    contactPreference:input.smsOptIn?'sms':'call', attribution:{market:'residential',communicationConsent:consent},
+    contactPreference:input.smsOptIn?'sms':'call', attribution:{...attribution,market:'residential',communicationConsent:consent},
     assessmentAnswers:{availabilityPreferences:input.availabilityPreferences}});
   const submitted = checked(await getSupabase().rpc('h2s_submit_residential_inquiry',{
     p_token:publicToken,p_key:submissionKey,
     p_lead_patch:{
       public_token:publicToken,full_name:input.fullName,company_name:null,email:null,
       phone:input.phone,contact_preference:normalized.contactPreference,business_type:null,
-      project_city:input.city,project_state:null,project_address:null,project_postal_code:null,
+      project_city:input.city,project_state:input.installationAddress?.state || null,
+      project_address:input.installationAddress?.addressLine || null,project_postal_code:input.installationAddress?.postalCode || null,
       service_needs:input.serviceNeeds,scope_summary:input.notes || null,notes:input.notes || null,
-      site_count:1,project_photo_urls:[],assessment_answers:{availabilityPreferences:input.availabilityPreferences},
+      site_count:1,project_photo_urls:[],assessment_answers:{availabilityPreferences:input.availabilityPreferences,
+        ...(input.installationAddress ? {installationAddress:input.installationAddress} : {})},
       attribution:{...normalized.attribution,market:'residential',communicationConsent:consent},
       completeness_score:0,completeness_bucket:'contact_only',priority_tier:'normal',
       created_at:new Date().toISOString(),updated_at:new Date().toISOString(),last_submitted_at:new Date().toISOString(),

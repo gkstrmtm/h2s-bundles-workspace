@@ -5,7 +5,8 @@ const uuid=()=>crypto.randomUUID(),at=offset=>new Date(Date.now()+offset).toISOS
 async function fixture(env={},input={}){
   const f=await createResidentialFixture({RESIDENTIAL_WORKSPACE_ENABLED:'true',CRON_SECRET:'fixture-cron',...env},{workspace:true});
   const response=await f.post('residential-intake',{publicToken:uuid(),submissionKey:uuid(),fullName:'Jordan Fixture',
-    phone:'+15550000005',city:'Fixture City',serviceNeeds:['TV Mounting'],smsOptIn:true,...input});
+    phone:'+15550000005',city:'Fixture City',serviceNeeds:['TV Mounting'],smsOptIn:true,
+    installationAddress:{street:'100 Fixture Lane',unit:'2',state:'SC',postalCode:'29601',source:'manual'},...input});
   assert.equal(response.status,201,await response.clone().text());
   const request=(await f.db.query('select * from commercial_consultation_requests')).rows[0];
   f.inquiry=request;f.leadId=request.lead_id;

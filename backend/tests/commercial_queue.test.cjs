@@ -350,6 +350,31 @@ async function mount(fixture, { calendarEntries } = {}) {
   return { dom, ui, calls, media, interval: () => interval(), errors };
 }
 
+test('next-action display formats ISO and PostgreSQL instants without changing saved guidance or echoing invalid dates', async () => {
+  const fixture = createFixture();
+  seed(fixture,1);
+  const {dom,ui} = await mount(fixture);
+  try {
+    const iso='Staff action due 2026-10-29T17:08:09.123456Z: Follow up.';
+    const sql='On hold until 2026-10-29 17:08:09.123456+00. Sales chasing is paused.';
+    assert.match(ui.formatActionText(iso),/Oct 29, 2026, 1:08 PM EDT: Follow up/);
+    assert.match(ui.formatActionText(sql),/Oct 29, 2026, 1:08 PM EDT\. Sales chasing/);
+    assert.match(ui.formatActionText('Follow up 2026-10-25T03:41:16.172+00:00'),/Oct 24, 2026, 11:41 PM EDT/);
+    assert.doesNotMatch(ui.formatActionText('Follow up 2026-10-25T03:41:16.172+00:00'),/03:41:16|\.172|\+00:00/);
+    assert.equal(iso,'Staff action due 2026-10-29T17:08:09.123456Z: Follow up.');
+    assert.equal(ui.formatDateTime('invalid-raw-value'),'Date needs review');
+    assert.equal(ui.formatRelativeTime('invalid-raw-value'),'Date needs review');
+    assert.equal(ui.formatActionText('<img src=x> Call customer'),'<img src=x> Call customer','Escaping remains at the rendering boundary');
+    ui.state.items[0].followUp.nextAction=iso+' <img src=x>';
+    ui.renderDetail();
+    const detail=dom.window.document.getElementById('commercialQueueDetail');
+    assert.match(detail.textContent,/Oct 29, 2026, 1:08 PM EDT: Follow up/);
+    assert.doesNotMatch(detail.textContent,/2026-10-29T17:/);
+    assert.equal(detail.querySelector('img[src=x]'),null);
+    assert.equal(ui.state.items[0].followUp.nextAction,iso+' <img src=x>','Presentation does not rewrite saved guidance');
+  } finally { dom.window.close(); }
+});
+
 test('Queue / Calendar views are exclusive, lazy, and preserve Queue controls, position and draft DOM', async () => {
   const fixture = createFixture();
   seed(fixture, 30);
@@ -643,7 +668,7 @@ test('detail hierarchy is action then Requested work then supporting rows, with 
   const { dom, ui } = await mount(fixture);
   try {
     const detail = dom.window.document.getElementById('commercialQueueDetail');
-    assert.deepEqual(Array.from(detail.querySelectorAll('h4'), element => element.textContent), ['Requested work', 'Details']);
+    assert.deepEqual(Array.from(detail.querySelectorAll('h4'), element => element.textContent), ['Requested work', 'Details','Technical processing details']);
     const next = detail.querySelector('.commercial-queue-next');
     assert.match(next.textContent, /Next action/);
     assert.ok(next.compareDocumentPosition(detail.querySelector('[aria-label="Requested work"]')) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
@@ -655,9 +680,10 @@ test('detail hierarchy is action then Requested work then supporting rows, with 
     assert.match(detail.querySelector('[aria-label="Requested work"]').textContent, /Scope 1.*Additional notes.*Additional note 1/s);
     assert.equal(detail.querySelectorAll('.commercial-queue-detail__card,.commercial-queue-detail__grid').length, 0);
     assert.ok(detail.querySelector('dl .commercial-queue-detail__field dt'));
-    assert.equal(detail.querySelector('details').open, false);
+    assert.equal(detail.querySelectorAll('details').length,0);
+    assert.equal(detail.querySelector('[data-record-context="activity"]').hidden,true);
     assert.notEqual(dom.window.document.getElementById('commercialQueueFilter').dataset.customSelect, 'off');
-    assert.match(detail.querySelector('details').textContent, /Contact routing.*Email first \(manual\)/s);
+    assert.match(detail.querySelector('[data-record-context="activity"]').textContent, /Contact routing.*Email first \(manual\)/s);
     assert.match(detail.querySelector('[aria-label="Supporting information"]').textContent, /Viewing unavailable/);
     assert.equal(detail.querySelectorAll('input,textarea,[contenteditable]').length, 0);
     leads[0].notes = '';
@@ -761,14 +787,13 @@ test('failed refresh keeps last good results and focus; Retry restores freshness
     const document = dom.window.document;
     const detail = document.getElementById('commercialQueueDetail');
     const link = detail.querySelector('a');
-    const diagnostics = detail.querySelector('details');
-    diagnostics.open = true;
+    const diagnostics = detail.querySelector('[data-record-context="activity"]');
     link.focus();
     const transport = dom.window.fetch;
     dom.window.fetch = async () => { throw new Error('Fixture offline'); };
     await ui.refresh({ silent: true });
     assert.equal(document.activeElement, link);
-    assert.equal(detail.querySelector('details'), diagnostics);
+    assert.equal(detail.querySelector('[data-record-context="activity"]'), diagnostics);
     assert.equal(ui.state.items.length, 2);
     assert.match(document.getElementById('commercialQueueStatus').textContent, /Update failed; showing earlier data.*Fixture offline/);
     dom.window.fetch = transport;
@@ -776,10 +801,10 @@ test('failed refresh keeps last good results and focus; Retry restores freshness
     await ui.inFlight.promise;
     assert.equal(document.getElementById('commercialQueueStatus').hidden, true);
     assert.equal(document.activeElement, link);
-    assert.equal(diagnostics.open, true);
+    assert.equal(diagnostics.hidden, true);
     fixture.tables.commercial_leads[0].notes = 'Updated note';
     await ui.refresh();
-    assert.equal(detail.querySelector('details').open, true);
+    assert.equal(detail.querySelector('[data-record-context="activity"]').hidden, true);
     assert.equal(document.activeElement.getAttribute('href'), link.getAttribute('href'));
     assert.match(detail.textContent, /Updated note/);
   } finally { dom.window.close(); }

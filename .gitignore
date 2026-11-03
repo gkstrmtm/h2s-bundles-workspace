@@ -103,6 +103,7 @@ find*.js
 inject*.js
 read*.js
 *view.js
+!frontend/residential-review.js
 checl_*.js
 tools/print-live-dash-assets.ps1
 tools/verify-live-training-marker.ps1
@@ -157,6 +158,10 @@ backend/public/dash.js
 !backend/migrations/032_commercial_operations.sql
 !backend/migrations/034_commercial_followup_delivery.sql
 !backend/migrations/035_commercial_business_tools.sql
+!backend/migrations/037_residential_inquiries.sql
+!backend/migrations/038_residential_workspace.sql
+!backend/migrations/039_notification_routing.sql
+!backend/migrations/040_residential_address_guards.sql
 
 # Backup files
 *.backup
@@ -253,8 +258,3 @@ frontend/_target_dash.*
 # Backend envs (ensure these are ignored)
 backend/.env.production.vercel
 backend/.env.production
-
-!frontend/residential-review.js
-!backend/migrations/037_residential_inquiries.sql
-!backend/migrations/038_residential_workspace.sql
-!backend/migrations/039_notification_routing.sql

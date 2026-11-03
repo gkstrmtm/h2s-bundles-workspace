@@ -7,7 +7,7 @@ const start=html.indexOf('<section id="notificationRouting"');
 const markup=html.slice(start,html.indexOf('</section>',start)+10);
 const declaration=source.slice(source.indexOf('const notificationRoutingUI = {'),source.indexOf('window.notificationRoutingUI = notificationRoutingUI;'));
 function fixture(){
-  const dom=new JSDOM(markup,{runScripts:'outside-only',url:'http://fixture.invalid/dash'});
+  const dom=new JSDOM('<button id="notificationRoutingToggle" hidden aria-expanded="false"></button><section id="notificationRoutingPanel" hidden>'+markup+'</section>',{runScripts:'outside-only',url:'http://fixture.invalid/dash'});
   const w=dom.window,state={role:'ADMIN',token:'fixture-admin',posts:[],failure:null,pending:null,confirm:true};
   const routing={owner:{phone:'+15550000007',revision:0,source:'environment',updatedAt:null,updatedBy:null},
     commercialTechnicians:['+15550000001'],managementEscalation:['+15550000002']};
@@ -36,19 +36,28 @@ function fixture(){
 test('routing appears only for ADMIN and shows explicit scope, fallback, unchanged routes and unverified status',async t=>{
   const f=fixture();t.after(()=>f.dom.window.close());
   f.state.role='VA';await f.ui.load();assert.equal(f.el('').hidden,true);
+  assert.equal(f.el('Panel').hidden,true);
   f.state.role='ADMIN';f.state.token='';await f.ui.load();assert.equal(f.el('').hidden,true);
   f.state.token='fixture-admin';await f.ui.load();
   assert.equal(f.el('').hidden,false);assert.equal(f.el('Owner').textContent,'+15550000007');
+  assert.equal(f.el('Toggle').hidden,false);
+  assert.equal(f.el('Panel').hidden,true,'Settings do not open automatically');
+  f.ui.toggle();assert.equal(f.el('Panel').hidden,false);
+  assert.equal(f.el('Toggle').getAttribute('aria-expanded'),'true');
   assert.match(f.el('Source').textContent,/environment default/);assert.match(f.el('Source').textContent,/not verified/i);
   assert.equal(f.el('Technicians').textContent,'+15550000001');assert.equal(f.el('Escalation').textContent,'+15550000002');
   assert.equal(f.el('Form').hidden,true);assert.match(f.el('').textContent,/media-upload reminders/);
-  assert.equal(f.el('Title').textContent,'Owner notifications');
-  assert.equal(f.el('').querySelector('details').open,false,'Secondary routes do not dominate the overview');
+  assert.equal(f.el('Title').textContent,'Residential owner-alert number · ADMIN setting');
+  assert.equal(f.el('').querySelectorAll('details').length,0);
+  f.ui.toggle();assert.equal(f.el('Panel').hidden,true);
+  f.state.role='VA';await f.ui.load();assert.equal(f.el('Toggle').hidden,true);
 });
 test('cancel has no POST and refreshes the current saved value; editing/reopening preserve task state',async t=>{
   const f=fixture();t.after(()=>f.dom.window.close());await f.ui.load();
-  f.ui.edit();f.el('Phone').value='+15550000008';await f.ui.load();
+  await f.ui.toggle();f.ui.edit();f.el('Phone').value='+15550000008';await f.ui.load();
   assert.equal(f.el('Phone').value,'+15550000008','Navigating back does not replace an active draft');
+  f.ui.toggle();await f.ui.toggle();assert.equal(f.el('Phone').value,'+15550000008','Closing settings does not discard an edit');
+  assert.equal(f.state.posts.length,0);
   f.routing.owner.phone='+15550000009';await f.ui.cancel();
   assert.equal(f.state.posts.length,0);assert.equal(f.el('Form').hidden,true);
   assert.equal(f.el('Owner').textContent,'+15550000009');f.ui.edit();assert.equal(f.el('Phone').value,'+15550000009');
@@ -88,13 +97,17 @@ test('uncertain save and read failures remain explicit; no duplicate save while 
   await f.ui.reload();assert.equal(f.el('Owner').textContent,'Unavailable');
   assert.equal(f.el('Edit').disabled,true);assert.equal(f.el('').dataset.state,'error');
 });
-test('saved actor names render as text, not markup, and the panel stays scoped to the canonical workspace',async t=>{
+test('saved actor names render as text, not markup, and routing lives only in Customer Queue',async t=>{
   const f=fixture();t.after(()=>f.dom.window.close());
   f.routing.owner={...f.routing.owner,source:'saved',revision:1,updatedAt:'2026-10-26T18:00:00Z',updatedBy:{name:'<img src=x onerror=alert(1)>'}};
   await f.ui.load();assert.equal(f.el('').querySelector('img'),null);assert.match(f.el('Source').textContent,/<img/);
-  assert.ok(html.indexOf('id="workspace-pane"')<start);
+  const doc=new JSDOM(html).window.document;
+  assert.equal(doc.querySelectorAll('#notificationRouting').length,1);
+  assert.ok(doc.querySelector('#commercialqueue-pane #notificationRoutingPanel #notificationRouting'));
+  assert.equal(doc.querySelector('#workspace-pane #notificationRouting'),null);
+  doc.defaultView.close();
   assert.match(source,/notificationRoutingUI\.load\(\)/);
   const css=fs.readFileSync(path.join(frontend,'dash.css'),'utf8');
-  assert.match(css,/\.notification-routing \.btn \{ min-height: 44px;/);
+  assert.match(css,/\.notification-routing \.commercial-workload-btn \{ min-height: 44px;/);
   assert.match(css,/\.notification-routing__rows \{ grid-template-columns: 1fr;/);
 });

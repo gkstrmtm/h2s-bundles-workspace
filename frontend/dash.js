@@ -3839,6 +3839,7 @@ function smsStartNewMessage(prefillPhone) {
                 libraryPacks: { tv_mounting: [], cameras: [] },
                 coverage: { loading: false, pack_id: null, videos: 0, photos: 0, targetVideos: 0, targetPhotos: 0 },
                 assets: { loading: false, pack_id: null, items: [], scopeNote: '' },
+                pageMediaUsageComplete: false,
                 _optimisticThumbUrlsByAssetId: {},
                 supabase: { loading: false, ok: false, url: '', anonKey: '' },
             },
@@ -5560,21 +5561,37 @@ function smsStartNewMessage(prefillPhone) {
                 // Don't send x-admin-key header to avoid CORS preflight issues
                 // if (adminKey) headers.set('x-admin-key', adminKey);
 
-                const res = await fetch(`${base}${path}`, {
-                    ...options,
-                    // Avoid Cache-Control request headers (they trigger CORS preflight on some previews).
-                    cache: options.cache || 'no-store',
-                    headers,
-                });
-                const contentType = res.headers.get('content-type') || '';
-                const body = contentType.includes('application/json') ? await res.json() : await res.text();
-                if (!res.ok) {
-                    const msg = typeof body === 'string' ? body : (body?.error || 'Request failed');
-                    const err = new Error(msg);
-                    err.status = res.status;
-                    throw err;
+                const read = String(options.method || 'GET').toUpperCase() === 'GET';
+                const controller = read ? new AbortController() : null;
+                let timedOut = false;
+                const cancel = () => controller.abort();
+                if (controller && options.signal) {
+                    if (options.signal.aborted) cancel();
+                    else options.signal.addEventListener('abort', cancel, { once: true });
                 }
-                return body;
+                const timeout = controller ? setTimeout(() => { timedOut = true; controller.abort(); }, 15000) : null;
+                try {
+                    const res = await fetch(`${base}${path}`, {
+                        ...options,
+                        cache: options.cache || 'no-store',
+                        headers,
+                        ...(controller ? { signal: controller.signal } : {}),
+                    });
+                    const contentType = res.headers.get('content-type') || '';
+                    const body = contentType.includes('application/json') ? await res.json() : null;
+                    if (!res.ok || body === null) {
+                        const err = new Error(body?.error || `Media service returned an unexpected response (HTTP ${res.status}). Check the backend connection.`);
+                        err.status = res.status;
+                        throw err;
+                    }
+                    return body;
+                } catch (error) {
+                    if (timedOut) throw new Error('Media request timed out. Check your connection and retry.');
+                    throw error;
+                } finally {
+                    if (timeout !== null) clearTimeout(timeout);
+                    if (controller && options.signal) options.signal.removeEventListener('abort', cancel);
+                }
             },
 
             async refreshBackendIdentity({ silent } = {}) {
@@ -5781,11 +5798,145 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
+            bindMobileGallery() {
+                const gallery = document.getElementById('ppMediaGallery');
+                if (!gallery || gallery.dataset.bound) return;
+                gallery.dataset.bound = 'true';
+                const sync = () => {
+                    if (window.matchMedia('(max-width: 820px)').matches) {
+                        if (!gallery.classList.contains('is-open')) {
+                            if (gallery.contains(document.activeElement)) document.getElementById('ppOpenMediaGallery').focus({ preventScroll: true });
+                            gallery.inert = true;
+                            gallery.setAttribute('aria-hidden', 'true');
+                        }
+                        return;
+                    }
+                    this.closeMobileGallery();
+                    gallery.inert = false;
+                    gallery.removeAttribute('aria-hidden');
+                    if (this._galleryDesktopView) {
+                        const mode = this._galleryDesktopView;
+                        this._galleryDesktopView = null;
+                        this.setViewMode(mode, document.querySelector(`.pp-view-btn[data-view="${mode}"]`));
+                    }
+                };
+                window.addEventListener('resize', sync);
+                gallery.addEventListener('focusin', event => { this._galleryLastFocus = event.target; });
+                const editor = document.getElementById('ppLibraryEditor');
+                if (editor) {
+                    new MutationObserver(() => {
+                        if (!gallery.classList.contains('is-open')) return;
+                        const editing = !editor.classList.contains('is-hidden');
+                        gallery.inert = editing;
+                        if (editing) gallery.removeAttribute('aria-modal');
+                        else gallery.setAttribute('aria-modal', 'true');
+                        if (!editing) {
+                            const previous = this._galleryLastFocus;
+                            const assetId = previous?.closest('[data-asset-id]')?.dataset.assetId;
+                            this.renderGridView();
+                            const tile = Array.from(gallery.querySelectorAll('.pp-grid-item')).find(item => item.dataset.assetId === assetId);
+                            const target = previous?.isConnected ? previous : tile?.querySelector(previous?.classList.contains('pp-grid-open') ? '.pp-grid-open' : '.pp-placement-action');
+                            target?.focus({ preventScroll: true });
+                        }
+                    }).observe(editor, { attributes: true, attributeFilter: ['class'] });
+                }
+                document.addEventListener('keydown', event => {
+                    if (!gallery.classList.contains('is-open') || document.querySelector('dialog[open]') || (editor && !editor.classList.contains('is-hidden'))) return;
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (gallery.classList.contains('is-filtering')) this.setMobileGalleryFilters(false);
+                        else this.closeMobileGallery();
+                    } else if (event.key === 'Tab') {
+                        const root = gallery.classList.contains('is-filtering') ? document.getElementById('ppGalleryFilterPanel') : gallery;
+                        const targets = Array.from(root.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]'))
+                            .filter(el => el.getClientRects().length && !el.closest('[hidden]'));
+                        const first = targets[0], last = targets[targets.length - 1];
+                        if (first && ((!targets.includes(document.activeElement)) || (event.shiftKey ? document.activeElement === first : document.activeElement === last))) {
+                            event.preventDefault();
+                            (event.shiftKey ? last : first).focus();
+                        }
+                    }
+                }, true);
+                sync();
+                this.updateMobileGallerySummary();
+            },
+
+            openMobileGallery() {
+                const gallery = document.getElementById('ppMediaGallery');
+                if (!gallery || gallery.classList.contains('is-open') || !window.matchMedia('(max-width: 820px)').matches) return;
+                this._galleryReturnFocus = document.activeElement;
+                if (!this._galleryDesktopView) this._galleryDesktopView = document.querySelector('.pp-view-btn.active')?.dataset.view || 'list';
+                gallery.classList.add('is-open');
+                document.getElementById('proofpacks-pane')?.classList.add('has-media-gallery');
+                gallery.inert = false;
+                gallery.setAttribute('role', 'dialog');
+                gallery.setAttribute('aria-modal', 'true');
+                gallery.setAttribute('aria-labelledby', 'ppMediaGalleryTitle');
+                gallery.setAttribute('aria-hidden', 'false');
+                document.getElementById('ppOpenMediaGallery').setAttribute('aria-expanded', 'true');
+                lockBodyScroll();
+                if (this.state.assets?.items?.length > Number(this.state.assets.renderLimit || 30)) {
+                    this.state.assets.renderLimit = this.state.assets.items.length;
+                    this.setAssetsUi(this.state.assets);
+                }
+                this.setViewMode('grid', document.querySelector('.pp-view-btn[data-view="grid"]'));
+                this.updateMobileGallerySummary();
+                gallery.scrollTop = this._galleryScrollTop || 0;
+                document.getElementById('ppCloseMediaGallery').focus({ preventScroll: true });
+            },
+
+            closeMobileGallery() {
+                const gallery = document.getElementById('ppMediaGallery');
+                if (!gallery?.classList.contains('is-open')) return;
+                this._galleryScrollTop = gallery.scrollTop;
+                if (this.state.placementTarget) this.cancelHeroSelection();
+                this.setMobileGalleryFilters(false);
+                gallery.classList.remove('is-open');
+                document.getElementById('proofpacks-pane')?.classList.remove('has-media-gallery');
+                gallery.removeAttribute('role');
+                gallery.removeAttribute('aria-modal');
+                gallery.removeAttribute('aria-labelledby');
+                gallery.inert = window.matchMedia('(max-width: 820px)').matches;
+                document.getElementById('ppOpenMediaGallery').setAttribute('aria-expanded', 'false');
+                unlockBodyScroll();
+                if (this._galleryReturnFocus?.isConnected) this._galleryReturnFocus.focus({ preventScroll: true });
+                gallery.setAttribute('aria-hidden', String(gallery.inert));
+            },
+
+            setMobileGalleryFilters(open) {
+                const gallery = document.getElementById('ppMediaGallery');
+                const panel = document.getElementById('ppGalleryFilterPanel');
+                if (!gallery || !panel) return;
+                gallery.classList.toggle('is-filtering', open);
+                gallery.setAttribute('aria-labelledby', open ? 'ppGalleryFilterTitle' : 'ppMediaGalleryTitle');
+                document.getElementById('ppOpenGalleryFilters').setAttribute('aria-expanded', String(open));
+                const toolbar = document.getElementById('ppLibraryFilters');
+                [...gallery.children, ...toolbar.children].filter(el => el !== toolbar && el !== panel).forEach(el => { el.inert = open; });
+                if (gallery.classList.contains('is-open')) {
+                    (open ? panel.querySelector('button') : document.getElementById('ppOpenGalleryFilters')).focus({ preventScroll: true });
+                }
+            },
+
+            updateMobileGallerySummary(model = this.state.assets) {
+                const count = document.getElementById('ppMediaGalleryCount');
+                if (count) count.textContent = model?.error && !model.items?.length ? 'Unavailable' : model?.refreshing && !model.items?.length ? 'Loading...' : `${model?.items?.length || 0} loaded`;
+                const visible = document.getElementById('ppGalleryVisibleCount');
+                const target = this.state.placementTarget;
+                const page = target && window.H2SPageHeroes?.pages[target.surface];
+                const title = document.getElementById('ppMediaGalleryTitle');
+                if (title) title.textContent = target ? 'Choose media' : 'Media gallery';
+                if (visible) visible.textContent = page ? `${page.title} / ${page.areas[target.area]}` : document.getElementById('ppFilterCount')?.textContent || '';
+                const filters = document.getElementById('ppOpenGalleryFilters');
+                const active = Object.entries(this.libraryFilters || {}).filter(([key, value]) => key !== 'search' && value !== null && value !== '').length;
+                if (filters) filters.textContent = active ? `Filters (${active})` : 'Filters';
+            },
+
             init() {
                 const pane = document.getElementById('proofpacks-pane');
                 if (!pane) return;
 
-                // Auto-load library immediately - always visible
+                this.bindMobileGallery();
                 this.refreshAssets();
                 this.refreshLivePreview();
 
@@ -6077,15 +6228,8 @@ function smsStartNewMessage(prefillPhone) {
                 const dz = document.getElementById('ppDropzone');
                 if (dz && !dz.dataset.bound) {
                     dz.addEventListener('click', (e) => {
-                        // Ignore clicks on the explicit action chips (labels)
-                        if (e?.target?.closest && e.target.closest('.pp-mobile-capture-actions')) return;
+                        if (e.target.closest('button,input,select,textarea,label,details,a,[role="combobox"],.pp-mobile-capture-actions')) return;
                         fileInput?.click();
-                    });
-                    dz.addEventListener('keydown', (e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            fileInput?.click();
-                        }
                     });
                     dz.addEventListener('dragover', (e) => {
                         e.preventDefault();
@@ -6426,15 +6570,20 @@ function smsStartNewMessage(prefillPhone) {
             setAssetsUi(model) {
                 const listEl = document.getElementById('ppAssetsList');
                 if (!listEl) return;
+                this.updateMobileGallerySummary(model);
                 const statusEl = document.getElementById('ppAssetsStatus');
                 if (statusEl) {
                     if (!statusEl.querySelector('[data-library-status]')) {
-                        statusEl.innerHTML = '<span data-library-status role="status" aria-live="polite"></span> <button type="button" class="media-placement-secondary" data-library-retry hidden>Retry library update</button>';
+                        statusEl.innerHTML = '<span data-library-status role="status" aria-live="polite"></span><button type="button" class="ui-retry" data-library-retry hidden>Retry library update</button>';
                         statusEl.querySelector('[data-library-retry]').addEventListener('click', () => this.refreshAssets());
                     }
+                    statusEl.dataset.state = model?.error ? 'error' : model?.refreshing ? 'loading' : 'ready';
+                    listEl.setAttribute('aria-busy', String(!!model?.refreshing));
                     statusEl.querySelector('[data-library-status]').textContent = model?.error
                         ? `${model.error}${model.items?.length ? ' Showing retained library.' : ''}`
-                        : model?.refreshing ? 'Updating library...'
+                        : model?.refreshing ? model?.slow
+                            ? 'Still loading media. Waiting for the media service...'
+                            : model.items?.length ? 'Updating library...' : 'Loading media library...'
                         : `${model?.scopeNote || 'Library up to date'}${model?.lastFetchedAt ? ` · ${this.formatAge(model.lastFetchedAt)}` : ''}`;
                     const retry = statusEl.querySelector('[data-library-retry]');
                     const restoreStatusFocus = !model?.error && document.activeElement === retry;
@@ -6456,14 +6605,6 @@ function smsStartNewMessage(prefillPhone) {
                     bar.innerHTML = `
                         <span class="bulk-count" id="ppBulkCount">0 selected</span>
                         <div style="display:flex; gap:12px;">
-                            <button class="bulk-btn bulk-btn-secondary" onclick="proofPacks.bulkOptimizeSelected()" title="Convert selected image assets to WebP/AVIF and replace in-place">
-                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0Zm3.5 8.5H8.5V12a.5.5 0 0 1-1 0V8.5H4a.5.5 0 0 1 0-1h3.5V4a.5.5 0 0 1 1 0v3.5h3a.5.5 0 0 1 0 1Z"/></svg>
-                                Optimize Selected
-                            </button>
-                            <button class="bulk-btn bulk-btn-secondary" onclick="proofPacks.bulkOptimizeAllLoaded()" title="Convert all currently loaded image assets to WebP/AVIF and replace in-place">
-                                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M4.5 8a.5.5 0 0 1 .5-.5h6.5V5.354a.5.5 0 0 1 .854-.353l3 3a.5.5 0 0 1 0 .707l-3 3A.5.5 0 0 1 11.5 11.646V8.5H5A.5.5 0 0 1 4.5 8z"/><path d="M1 4a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1a.5.5 0 0 1-1 0V4a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1a.5.5 0 0 1 1 0v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V4z"/></svg>
-                                Optimize All Loaded
-                            </button>
                             <button class="bulk-btn" onclick="proofPacks.bulkSetLive()">
                                 <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/></svg>
                                 Set Live
@@ -6495,6 +6636,10 @@ function smsStartNewMessage(prefillPhone) {
                 }
 
                 // --- Empty State ---
+                if (!items.length && model?.error) {
+                    listEl.innerHTML = '<div class="ui-state ui-state--error"><div class="ui-state__icon" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 2 21h20L12 3Z"/><path d="M12 9v5m0 3v1"/></svg></div><div class="ui-state__title">Media library unavailable</div><div class="ui-state__copy">Use Retry library update above. No media was changed.</div></div>';
+                    return;
+                }
                 if (!items.length) {
                     listEl.innerHTML = `
                         <div class="gallery-container">
@@ -6622,7 +6767,10 @@ function smsStartNewMessage(prefillPhone) {
                             <div class="tile-meta">
                                 <div class="tile-meta-title">${this.escapeHtml(titleLabel)}</div>
                                 <div class="tile-meta-sub">${this.escapeHtml(subLabel)}</div>
-                                <button type="button" class="media-placement-secondary" aria-label="Page placement for ${this.escapeHtml(titleLabel)}" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Page placement</button>
+                                <div class="pp-library-actions">
+                                    <button type="button" class="media-placement-secondary pp-placement-action" aria-label="Use ${this.escapeHtml(titleLabel)} on a page" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Use on page</button>
+                                    <button type="button" class="media-placement-secondary pp-download-action" aria-label="Download original ${this.escapeHtml(titleLabel)}" onclick="event.stopPropagation(); proofPacks.downloadOriginalAsset('${this.escapeHtml(assetId)}')">Download original</button>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -6651,6 +6799,11 @@ function smsStartNewMessage(prefillPhone) {
                     document.querySelectorAll('[data-filter="live:yes"],[data-filter="live:no"]').forEach(button => {
                         button.disabled = !this.state.pageMediaUsageComplete;
                     });
+                }
+                if (!this.state.pageHeroes && this.state.pageMediaUsageComplete === false) {
+                    const status = document.getElementById('ppPageMediaStatus');
+                    if (status) status.textContent = 'Checking page selections. Usage filters are paused until verified.';
+                    document.querySelectorAll('[data-filter="live:yes"],[data-filter="live:no"]').forEach(button => { button.disabled = true; });
                 }
                 document.querySelectorAll('#ppAssetsList .gallery-tile').forEach(tile => {
                     const uses = window.H2SPageHeroes?.usesForAsset?.(this.state.pageHeroes, 'proof_asset', tile.dataset.assetId) || [];
@@ -7252,126 +7405,6 @@ function smsStartNewMessage(prefillPhone) {
                 }
             },
 
-            pageMediaInventoryAssets() {
-                const assets = new Map();
-                for (const asset of (this.state.assets?.items || []).slice(0, 100)) assets.set(`proof_asset:${asset.asset_id}`, { ...asset, source: 'proof_asset' });
-                for (const selected of Object.values(this.state.pageHeroes || {})) {
-                    const items = Object.values(selected.areas || {}).flat().concat(selected.heroCandidates || []);
-                    for (const asset of items) {
-                        const source = asset.source || asset.media_placement?.asset_source || 'proof_asset';
-                        const key = `${source}:${asset.asset_id}`;
-                        const library = assets.get(key);
-                        assets.set(key, { ...library, ...asset, source, original_filename: asset.original_filename || library?.original_filename });
-                    }
-                }
-                return assets;
-            },
-
-            loadPageMediaInventory() {
-                if (this._pageMediaInventoryRequest) return this._pageMediaInventoryRequest;
-                const token = getDashboardSessionToken();
-                const status = document.getElementById('ppPageMediaInventoryStatus');
-                if (!token) {
-                    if (status) status.textContent = 'Sign in as an administrator to inspect saved settings.';
-                    return Promise.resolve();
-                }
-                const base = this.getConfig().base, assets = this.pageMediaInventoryAssets();
-                const revision = this._pageMediaInventoryRevision || 0;
-                const queue = [...assets.entries()], total = queue.length, records = {};
-                const button = document.getElementById('ppInspectSavedMedia');
-                if (button) button.disabled = true;
-                if (status) status.textContent = `Reading saved settings for ${total} loaded assets; no writes.`;
-                let stopped = false, failed = 0;
-                const worker = async () => {
-                    while (queue.length) {
-                        const [key, asset] = queue.shift();
-                        if (stopped) { records[key] = null; failed++; continue; }
-                        const controller = new AbortController();
-                        const timeout = setTimeout(() => controller.abort(), 15000);
-                        try {
-                            const result = await this.fetchJson(`/api/admin/media-placements?asset_source=${encodeURIComponent(asset.source)}&asset_id=${encodeURIComponent(asset.asset_id)}`, {
-                                headers: { Authorization: `Bearer ${token}` }, signal: controller.signal,
-                            });
-                            if (!result?.ok || !Array.isArray(result.placements)) {
-                                stopped = true;
-                                throw new Error('Saved placement inspection response is unavailable.');
-                            }
-                            records[key] = { placements: result.placements };
-                        } catch (error) {
-                            console.error('[Page media inspection]', error);
-                            if (controller.signal.aborted || [400, 401, 403, 404, 503].includes(error.status)) stopped = true;
-                            records[key] = null; failed++;
-                        } finally { clearTimeout(timeout); }
-                    }
-                };
-                this._pageMediaInventoryRequest = Promise.all([worker(), worker(), worker()]).then(() => {
-                    if (base !== this.getConfig().base || token !== getDashboardSessionToken() || revision !== (this._pageMediaInventoryRevision || 0)) {
-                        if (status) status.textContent = 'Connection, session or saved settings changed; inspect saved settings again.';
-                        return;
-                    }
-                    this.state.pageMediaInventory = { base, records, assets, checkedAt: new Date().toISOString() };
-                    if (status) status.textContent = `Saved settings checked ${new Date().toLocaleString()}. ${total - failed}/${total} loaded assets verified${failed ? '; other saved settings unverified' : ''}. Scope: first 100 loaded Shared library assets plus selected media; not an audit of every Owner Upload.`;
-                    this.renderPageMediaInventory();
-                }).finally(() => {
-                    this._pageMediaInventoryRequest = null;
-                    if (button) button.disabled = false;
-                });
-                return this._pageMediaInventoryRequest;
-            },
-
-            invalidatePageMediaInventory() {
-                this._pageMediaInventoryRevision = (this._pageMediaInventoryRevision || 0) + 1;
-                this.state.pageMediaInventory = null;
-                const status = document.getElementById('ppPageMediaInventoryStatus');
-                if (status) status.textContent = 'Placement changed. Inspect saved settings again to refresh inclusion and exclusions.';
-                this.renderPageMediaInventory();
-            },
-
-            renderPageMediaInventory() {
-                const inventory = this.state.pageMediaInventory;
-                const verified = inventory?.base === this.getConfig().base;
-                const assets = this.pageMediaInventoryAssets();
-                document.querySelectorAll('[data-media-inventory]').forEach(container => {
-                    const { surface, area } = container.dataset;
-                    const details = container.closest('details');
-                    details.ontoggle = () => this.renderPageMediaInventory();
-                    if (!details.open) {
-                        container.textContent = 'Expand to inspect other loaded media.';
-                        return;
-                    }
-                    if (!inventory || !verified) {
-                        container.textContent = 'Use Inspect saved settings to distinguish exclusions and inclusion from selection. Only loaded library and selected media are inspected.';
-                        return;
-                    }
-                    const html = [...assets.entries()].map(([key, asset]) => {
-                        const state = window.H2SPageHeroes.describeUse(asset, asset.source, surface, area, this.state.pageHeroes, inventory.records[key]);
-                        if (state.selected) return '';
-                        const service = area === 'commercial_security_rail' ? 'cameras' : area === 'commercial_display_rail' ? 'tv_mounting' : null;
-                        if (service && (asset.service || asset.service_type) !== service && !state.placement) return '';
-                        const name = asset.original_filename || asset.label || asset.display_name || (asset.media_kind === 'video' ? 'Video' : 'Photo');
-                        const url = asset.media_url || asset.public_url || this.buildAssetUrl(asset);
-                        const media = asset.media_kind === 'video'
-                            ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${this.escapeHtml(asset.video_thumbnail_url)}"` : ''}`
-                            : `<img loading="lazy" alt="${this.escapeHtml(name)}"`;
-                        return `<div class="pp-media-inventory-row" data-inventory-key="${this.escapeHtml(key)}">
-                            <span class="pp-media-inventory-thumb">${url ? `${media} src="${this.escapeHtml(url)}">${asset.media_kind === 'video' ? '</video>' : ''}` : ''}</span>
-                            <div><strong>${this.escapeHtml(name)}</strong><p>${this.escapeHtml(state.selection)}</p><p>${this.escapeHtml(state.setting)} · ${this.escapeHtml(state.eligibility)}</p></div>
-                            <button type="button" class="media-placement-secondary" data-inspect-open="${this.escapeHtml(key)}">Page placement</button>
-                        </div>`;
-                    }).join('');
-                    this.patchMediaTiles(container, html || '<p>No other matching media in this inspection scope.</p>', 'inventoryKey');
-                    container.querySelectorAll('[data-inspect-open]').forEach(button => {
-                        button.onclick = () => {
-                            const asset = this.pageMediaInventoryAssets().get(button.dataset.inspectOpen);
-                            if (!asset) { showToast('This asset is no longer loaded. Refresh the media list.', 'error'); return; }
-                            return this.beginPlacementEdit({ asset, source: asset.source, base: this.getConfig().base,
-                                token: getDashboardSessionToken(), url: asset.media_url || asset.public_url || this.buildAssetUrl(asset),
-                                initialPlacement: { surface, area } });
-                        };
-                    });
-                });
-            },
-
             refreshLivePreview() {
                 const base = this.getConfig().base;
                 if (this._livePreviewRequest?.base === base) return this._livePreviewRequest.promise;
@@ -7382,6 +7415,51 @@ function smsStartNewMessage(prefillPhone) {
                     if (this._livePreviewRequest === request) this._livePreviewRequest = null;
                 });
                 return request.promise;
+            },
+
+            syncPageMediaDestination() {
+                const pages = window.H2SPageHeroes.pages;
+                const surface = pages[this.state.pageMediaSurface] ? this.state.pageMediaSurface : Object.keys(pages)[0];
+                this.state.pageMediaSurface = surface;
+                this.state.pageMediaAreas ||= {};
+                const page = pages[surface];
+                const area = page.areas[this.state.pageMediaAreas[surface]] ? this.state.pageMediaAreas[surface] : page.area;
+                this.state.pageMediaAreas[surface] = area;
+                const renderChoices = (id, entries, attribute, selected) => {
+                    const root = document.getElementById(id);
+                    if (!root) return;
+                    const signature = JSON.stringify(entries);
+                    if (root.dataset.choices !== signature) {
+                        root.innerHTML = entries.map(([key, title]) => `<button type="button" class="pp-media-control" ${attribute}="${this.escapeHtml(key)}" aria-controls="ppPageHeroesContent">${this.escapeHtml(title)}</button>`).join('');
+                        root.dataset.choices = signature;
+                    }
+                    root.querySelectorAll('button').forEach(button => {
+                        const key = button.getAttribute(attribute);
+                        button.setAttribute('aria-pressed', String(key === selected));
+                        button.onclick = () => this.setPageMediaDestination(attribute === 'data-media-page-choice' ? key : surface,
+                            attribute === 'data-media-area-choice' ? key : undefined);
+                    });
+                    root.hidden = entries.length < 2;
+                };
+                renderChoices('ppPageMediaPages', Object.entries(pages).map(([key, item]) => [key, item.title]), 'data-media-page-choice', surface);
+                renderChoices('ppPageMediaAreas', Object.entries(page.areas), 'data-media-area-choice', area);
+                document.querySelectorAll('#ppPageHeroesContent [data-page-media-key]').forEach(panel => {
+                    panel.hidden = panel.dataset.pageHero !== surface || panel.dataset.pageArea !== area;
+                });
+            },
+
+            setPageMediaDestination(surface, area) {
+                const page = window.H2SPageHeroes.pages[surface];
+                if (!page || area && !page.areas[area]) {
+                    showToast('This page area is not supported.', 'error');
+                    return;
+                }
+                const nextArea = area || this.state.pageMediaAreas?.[surface] || page.area;
+                if (surface !== this.state.pageMediaSurface || nextArea !== this.state.pageMediaAreas?.[surface]) this.cancelHeroSelection();
+                this.state.pageMediaSurface = surface;
+                this.state.pageMediaAreas ||= {};
+                if (area) this.state.pageMediaAreas[surface] = area;
+                this.syncPageMediaDestination();
             },
 
             async loadLivePreview(request = { base: this.getConfig().base, sequence: this._pageHeroSequence }) {
@@ -7408,17 +7486,13 @@ function smsStartNewMessage(prefillPhone) {
                 }));
                 if (request.sequence !== this._pageHeroSequence || request.base !== this.getConfig().base) return;
                 this.state.pageHeroes = Object.fromEntries(entries);
-                this.state.pageMediaCheckedAt = new Date().toISOString();
-                const context = document.getElementById('ppPageMediaContext');
-                if (context) {
-                    const origin = new URL(request.base || location.origin, location.href).origin;
-                    const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
-                    context.textContent = `${local ? 'Local customer rules' : 'This frontend build'} at ${location.origin} · Media feed: ${origin} · Checked ${new Date(this.state.pageMediaCheckedAt).toLocaleString()} · Customer rendering unverified. Public-page code may differ.`;
-                }
+                const summary = document.getElementById('ppPageMediaSummary');
+                if (summary) summary.textContent = entries.some(([, selected]) => selected.mode === 'unavailable')
+                    ? 'Some previews unavailable. Retry the affected selection below.' : 'Choose a page and area; select media to edit its placement.';
                 this.syncPageMediaUsage();
                 this.applyAllFilters();
                 const snapshot = JSON.stringify(entries);
-                if (container.dataset.snapshot === snapshot) { this.renderPageMediaInventory(); return; }
+                if (container.dataset.snapshot === snapshot) { this.syncPageMediaDestination(); return; }
                 const html = entries.flatMap(([surface, selected]) => {
                     const page = heroes.pages[surface];
                     return Object.entries(page.areas).map(([area, title]) => {
@@ -7431,17 +7505,19 @@ function smsStartNewMessage(prefillPhone) {
                         : `${items.length} selected by these rules · up to 4 photos or videos, in display order`;
                     const links = heroes.destinationLinks(surface, area, location.href);
                     const assetButton = (asset, index, alternative = false) => {
-                        const url = asset.media_url || asset.public_url || this.buildAssetUrl(asset);
                         const source = asset.source || asset.media_placement?.asset_source || 'proof_asset';
                         const library = source === 'proof_asset' ? this.state.assets?.items?.find(item => item.asset_id === asset.asset_id) : null;
+                        const poster = asset.media_kind === 'video' ? asset.video_thumbnail_url || library?.video_thumbnail_url : '';
+                        const url = poster || asset.media_url || asset.public_url || this.buildAssetUrl(asset);
                         const name = asset.original_filename || library?.original_filename || asset.label || asset.display_name || (asset.media_kind === 'video' ? 'Video' : 'Photo');
                         const mode = asset.media_placement ? 'Chosen for this area' : 'Automatic selection';
-                        const media = asset.media_kind === 'video'
-                            ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${this.escapeHtml(asset.video_thumbnail_url)}"` : ''}`
+                        const previewVideo = asset.media_kind === 'video' && !poster;
+                        const media = previewVideo
+                            ? '<video muted playsinline preload="metadata"'
                             : `<img alt="${this.escapeHtml(name)}"`;
-                        const canReplace = !alternative && surface === 'commercial_intake' && area !== page.area;
+                        const canReplace = !alternative;
                         return `<div class="pp-destination-item"><button type="button" class="pp-destination-asset" data-hero-edit="${surface}" data-media-area="${area}" data-media-index="${index}" data-media-alternative="${alternative}" ${unavailable ? 'disabled' : ''} aria-label="${this.escapeHtml(`Edit placement: ${name}, ${page.title} / ${title}${alternative ? ', load-error alternative' : ''}`)}">
-                            <span class="pp-hero-thumbnail">${url ? `${media} src="${this.escapeHtml(url)}" style="${this.escapeHtml(window.H2SMediaPlacements.style(asset.media_placement))}">${asset.media_kind === 'video' ? '</video>' : ''}` : ''}<span data-thumbnail-error hidden>Preview unavailable</span></span>
+                            <span class="pp-hero-thumbnail">${url ? `${media} src="${this.escapeHtml(url)}" style="${this.escapeHtml(window.H2SMediaPlacements.style(asset.media_placement))}">${previewVideo ? '</video>' : ''}` : ''}<span data-thumbnail-error hidden>Preview unavailable</span></span>
                             <span class="pp-destination-name">${this.escapeHtml(name)}</span>
                             <span>${unavailable ? 'Last known selection' : `${mode}${alternative ? ' · load-error alternative' : ''}`}</span>
                             <span class="pp-destination-edit">Page placement</span>
@@ -7453,18 +7529,18 @@ function smsStartNewMessage(prefillPhone) {
                             ${area === page.area && (selected.error || selected.reason) ? `<p role="${selected.error ? 'alert' : 'status'}">${this.escapeHtml(selected.error || selected.reason)}</p>` : ''}
                         </div>
                         <div class="pp-page-hero-actions">
-                            <a class="media-placement-secondary" href="${this.escapeHtml(links.local)}" target="_blank" rel="noopener">Open this frontend's page</a>
-                            <a class="media-placement-secondary" href="${this.escapeHtml(links.deployed)}" target="_blank" rel="noopener">Open deployed page</a>
-                            <button type="button" class="btn btn-tonal" data-hero-choose="${surface}" data-media-area="${area}">Choose media</button>
-                            ${selected.error ? '<button type="button" class="media-placement-secondary" data-hero-retry>Retry</button>' : ''}
+                            <a class="media-placement-secondary" href="${this.escapeHtml(links.local)}" target="_blank" rel="noopener">Preview this build</a>
+                            <a class="media-placement-secondary" href="${this.escapeHtml(links.deployed)}" target="_blank" rel="noopener">Live page</a>
+                            <button type="button" class="pp-media-control" data-hero-choose="${surface}" data-media-area="${area}">${items.length === 1 ? 'Replace image' : items.length ? 'Add media' : 'Choose image'}</button>
+                            ${selected.error ? '<button type="button" class="ui-retry" data-hero-retry>Retry</button>' : ''}
                         </div>
                         <div class="pp-destination-assets">${items.map((asset, index) => assetButton(asset, index)).join('')}</div>
                         ${alternatives.length ? `<details class="pp-destination-alternatives"><summary>${alternatives.length} load-error alternative${alternatives.length === 1 ? '' : 's'} · not selected while the primary loads successfully</summary><div class="pp-destination-assets">${alternatives.map((asset, index) => assetButton(asset, index + 1, true)).join('')}</div></details>` : ''}
-                        <details class="pp-destination-alternatives"><summary>Other loaded media · saved inclusion, exclusions and eligibility</summary><div data-media-inventory data-surface="${surface}" data-area="${area}"></div></details>
                     </div>`;
                     });
                 }).join('');
                 this.patchMediaTiles(container, html, 'pageMediaKey');
+                this.syncPageMediaDestination();
                 container.querySelectorAll('[data-hero-edit="residential"]').forEach(button => {
                     const asset = this.state.pageHeroes.residential.areas?.[button.dataset.mediaArea]?.[Number(button.dataset.mediaIndex)];
                     if (!asset) return;
@@ -7487,7 +7563,7 @@ function smsStartNewMessage(prefillPhone) {
                     const row = media.closest('[data-page-area]');
                     if (row.querySelector('[data-preview-retry]')) return;
                     const retry = document.createElement('button');
-                    retry.type = 'button'; retry.className = 'media-placement-secondary'; retry.textContent = 'Retry previews';
+                    retry.type = 'button'; retry.className = 'ui-retry'; retry.textContent = 'Retry previews';
                     retry.dataset.previewRetry = '';
                     retry.onclick = () => {
                         row.querySelectorAll('.pp-hero-thumbnail img[hidden],.pp-hero-thumbnail video[hidden]').forEach(failed => {
@@ -7500,7 +7576,6 @@ function smsStartNewMessage(prefillPhone) {
                     row.querySelector('.pp-page-hero-actions').appendChild(retry);
                 }; });
                 container.dataset.snapshot = snapshot;
-                this.renderPageMediaInventory();
             },
 
             choosePageHero(surface, area) {
@@ -7508,52 +7583,53 @@ function smsStartNewMessage(prefillPhone) {
                 area = area || page?.area;
                 if (!page?.areas[area]) { showToast('This page area is not supported.', 'error'); return; }
                 this.cancelHeroSelection();
-                this.state.placementTarget = { surface, area };
-                const notice = document.getElementById('ppPlacementSelection');
-                notice.hidden = false;
-                notice.innerHTML = `Choose media for <strong>${this.escapeHtml(page.title)} / ${this.escapeHtml(page.areas[area])}</strong> using its existing Page placement action. <button type="button" class="media-placement-secondary">Cancel choice</button>`;
-                notice.querySelector('button').addEventListener('click', () => this.cancelHeroSelection());
-                notice.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                notice.focus({ preventScroll: true });
+                const selected = window.H2SPageHeroes.selectedUses(this.state.pageHeroes)
+                    .filter(use => use.surface === surface && use.area === area);
+                return this.replacePageMedia(surface, area, selected.length === 1 ? 0 : null);
             },
 
             cancelHeroSelection() {
                 this.state.placementTarget = null;
                 const notice = document.getElementById('ppPlacementSelection');
                 if (notice) { notice.hidden = true; notice.replaceChildren(); }
+                this.updateMobileGallerySummary();
             },
 
             replacePageMedia(surface, area, index) {
-                const current = this.state.pageHeroes?.[surface], asset = current?.areas?.[area]?.[index];
-                const service = area === 'commercial_security_rail' ? 'cameras' : area === 'commercial_display_rail' ? 'tv_mounting' : null;
-                if (surface !== 'commercial_intake' || !service || !asset || current.mode === 'unavailable') {
+                const current = this.state.pageHeroes?.[surface];
+                const selectedInArea = () => window.H2SPageHeroes.selectedUses(this.state.pageHeroes)
+                    .filter(use => use.surface === surface && use.area === area).map(use => use.asset);
+                const items = selectedInArea(), asset = items[index];
+                const title = window.H2SPageHeroes.pages[surface];
+                if (!title?.areas[area] || !current || current.mode === 'unavailable' || index !== null && !asset) {
                     showToast('Reload this destination before replacing its media.', 'error'); return;
                 }
                 if (!window.H2SMediaPlacements?.chooseReplacement) {
                     showToast('The media picker did not load. Refresh the dashboard.', 'error'); return;
                 }
-                const replacement = {
+                const replacement = asset ? {
                     asset_source: asset.source || asset.media_placement?.asset_source || 'proof_asset', asset_id: asset.asset_id,
                     name: asset.original_filename || asset.label || (asset.media_kind === 'video' ? 'this video' : 'this photo'),
                     display_order: asset.media_placement?.display_order ?? 100,
-                };
+                } : null;
                 const preview = item => ({ ...item, media_url: item.media_url || item.public_url || this.buildAssetUrl(item) });
-                const title = window.H2SPageHeroes.pages[surface];
                 return window.H2SMediaPlacements.chooseReplacement({
-                    title: `${title.title} / ${title.areas[area]}`, current: preview(asset),
-                    assets: (this.state.assets?.items || []).filter(item => item.service === service && item.is_visible === true
-                        && ['photo', 'video'].includes(item.media_kind)).map(preview),
-                    selectedIds: current.areas[area].filter(item => (item.source || item.media_placement?.asset_source || 'proof_asset') === 'proof_asset').map(item => item.asset_id),
+                    title: `${title.title} / ${title.areas[area]}`, current: asset ? preview(asset) : null, photoOnly: surface === 'residential',
+                    assets: (this.state.assets?.items || []).filter(item => ['photo', 'video'].includes(item.media_kind)
+                        && window.H2SPageHeroes.placementEligibility(item, 'proof_asset', surface, area) === true).map(preview),
+                    selectedIds: items.filter(item => (item.source || item.media_placement?.asset_source || 'proof_asset') === 'proof_asset').map(item => item.asset_id),
                     onSelect: candidate => {
                         const latest = this.state.pageHeroes?.[surface];
-                        const selected = latest?.areas?.[area] || [];
-                        if (latest?.mode === 'unavailable' || !selected.some(item => item.asset_id === replacement.asset_id
+                        const selected = selectedInArea();
+                        const libraryAsset = this.state.assets?.items?.find(item => item.asset_id === candidate.asset_id);
+                        if (!latest || latest.mode === 'unavailable' || replacement && !selected.some(item => item.asset_id === replacement.asset_id
                             && (item.source || item.media_placement?.asset_source || 'proof_asset') === replacement.asset_source)
+                            || !libraryAsset || window.H2SPageHeroes.placementEligibility(libraryAsset, 'proof_asset', surface, area) !== true
                             || selected.some(item => item.asset_id === candidate.asset_id && (item.source || item.media_placement?.asset_source || 'proof_asset') === 'proof_asset')) {
                             showToast('This area changed. Reopen Replace to choose from its current media.', 'error'); return;
                         }
-                        return this.beginPlacementEdit({ asset: candidate, source: 'proof_asset',
-                            base: this.getConfig().base, token: getDashboardSessionToken(), url: candidate.media_url,
+                        return this.beginPlacementEdit({ asset: libraryAsset, source: 'proof_asset',
+                            base: this.getConfig().base, token: getDashboardSessionToken(), url: preview(libraryAsset).media_url,
                             initialPlacement: { surface, area }, replacement });
                     },
                 });
@@ -7794,6 +7870,37 @@ function smsStartNewMessage(prefillPhone) {
                 } catch {
                     const t = String(asset?.updated_at || asset?.created_at || '').trim();
                     return t ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}t=${encodeURIComponent(t)}` : baseUrl;
+                }
+            },
+
+            async downloadOriginalAsset(assetId) {
+                const asset = (this.state.assets?.items || []).find(item => String(item?.asset_id || '') === String(assetId || ''));
+                const url = this.buildAssetUrl(asset);
+                if (!asset || !url) {
+                    showToast('The original media file is unavailable.', 'error');
+                    return false;
+                }
+                const storedName = String(asset.original_filename || asset.storage_path || `${asset.asset_id}.${asset.media_kind === 'video' ? 'mp4' : 'webp'}`)
+                    .split(/[\\/]/).pop().replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-');
+                try {
+                    const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+                    if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+                    const blob = await response.blob();
+                    const objectUrl = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = objectUrl;
+                    link.download = storedName || `home2smart-media-${asset.asset_id}`;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+                    showToast('Original media download started.', 'success');
+                    return true;
+                } catch (error) {
+                    console.error('[Website Media] Original download failed; opening media directly.', error);
+                    window.open(url, '_blank', 'noopener');
+                    showToast('The browser blocked the download, so the original opened in a new tab.', 'warning');
+                    return false;
                 }
             },
 
@@ -8649,11 +8756,19 @@ function smsStartNewMessage(prefillPhone) {
                 const retained = previous.items?.length ? previous.items : (Array.isArray(cached?.items) ? cached.items : []);
                 this.state.assets = {
                     ...previous, items: retained, pack_id: 'merged', surface,
-                    loading: !retained.length, refreshing: true, error: '',
+                    loading: !retained.length, refreshing: true, slow: false, error: '',
                     renderLimit: previous.renderLimit || 30,
                     lastFetchedAt: previous.lastFetchedAt || Number(cached?.ts || 0),
                 };
                 this.setAssetsUi(this.state.assets);
+                let timedOut = false;
+                const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
+                const slow = setTimeout(() => {
+                    if (current()) {
+                        this.state.assets.slow = true;
+                        this.setAssetsUi(this.state.assets);
+                    }
+                }, 5000);
                 try {
                     const packs = await this.ensureLibraryPacksLoaded(surface, { signal: controller.signal, commit: false });
                     if (!current()) return;
@@ -8667,10 +8782,9 @@ function smsStartNewMessage(prefillPhone) {
                         }
                         return result;
                     };
-                    const [tv, cameras, liveData] = await Promise.all([
+                    const [tv, cameras] = await Promise.all([
                         fetchFirstNonEmpty(this.getPackIdCandidates(packs.tv_mounting)),
                         fetchFirstNonEmpty(this.getPackIdCandidates(packs.cameras)),
-                        this.fetchLiveAssetIds(surface),
                     ]);
                     if (!current()) return;
                     const unique = new Map([...tv.items, ...cameras.items].map(asset => [String(asset.asset_id), asset]));
@@ -8678,8 +8792,6 @@ function smsStartNewMessage(prefillPhone) {
                     const packIds = [tv.id, cameras.id].filter(Boolean);
                     const scopeNote = packIds.length ? 'Shared library: TV Mounting + Cameras' : 'No media packs yet';
                     this.state.libraryPacks = packs;
-                    this.state.liveAssetIds = liveData.ids;
-                    this.state.assetUsageCounts = liveData.counts;
                     this.state.assets = {
                         ...this.state.assets, loading: false, refreshing: false, error: '',
                         items, scopeNote, lastFetchedAt: Date.now(), sourcePackIds: packIds,
@@ -8691,13 +8803,17 @@ function smsStartNewMessage(prefillPhone) {
                     this.safeWriteJson(this.getAssetsCacheKey('merged', 'merged'), { ts: Date.now(), items, scopeNote });
                     this.setAssetsUi(this.state.assets);
                 } catch (error) {
-                    if (!current()) return;
+                    if (this._assetsRequest !== request || (controller.signal.aborted && !timedOut)) return;
                     console.error('[Website Media refresh]', error);
                     if (!this._libraryAuto) this._libraryAuto = { lastAttemptAt: 0, failCount: 0, nextAttemptAt: 0 };
                     this._libraryAuto.failCount = Math.min(6, this._libraryAuto.failCount + 1);
                     this._libraryAuto.nextAttemptAt = Date.now() + Math.min(300_000, 5_000 * 2 ** this._libraryAuto.failCount);
-                    this.state.assets = { ...this.state.assets, loading: false, refreshing: false, error: `Library update failed: ${error.message}` };
+                    this.state.assets = { ...this.state.assets, loading: false, refreshing: false,
+                        error: timedOut ? 'Library update timed out. Check your connection and retry.' : `Library update failed: ${error.message}` };
                     this.setAssetsUi(this.state.assets);
+                } finally {
+                    clearTimeout(timeout);
+                    clearTimeout(slow);
                 }
             },
 
@@ -9590,7 +9706,7 @@ function smsStartNewMessage(prefillPhone) {
                 if (placementOptions) {
                     this._placementEditor = window.H2SMediaPlacements.mount({
                         ...placementOptions, host: editorBody, onClose: () => this.cancelEdit(true),
-                        onSaved: () => { this.invalidatePageMediaInventory(); return this.refreshLivePreview(); },
+                        onSaved: () => this.refreshLivePreview(),
                     });
                     await this._placementEditor.ready;
                     return;
@@ -10569,6 +10685,7 @@ function smsStartNewMessage(prefillPhone) {
                 });
                 
                 this.updateFilterDisplay(visibleCount, items.length);
+                this.updateMobileGallerySummary();
 
                 // Keep Grid view in sync: filters operate on list items; grid is derived from list visibility.
                 const gridEl = document.getElementById('ppAssetsGrid');
@@ -10720,49 +10837,39 @@ function smsStartNewMessage(prefillPhone) {
                     const mediaKind = String(a?.media_kind || '').trim();
                     const path = String(a?.storage_path || '').trim();
                     const bucket = String(a?.storage_bucket || 'proof').trim();
-                    const intentLabel = String(a?.customer_intent || '').trim();
                     const duration = Number(a?.duration_seconds || 0);
                     
                     const previewUrl = path ? this.publicStorageUrl(bucket, path) : '';
                     const transformStyle = this.buildAssetPreviewStyle(a);
                     const poster = a.video_thumbnail_url ? ` poster="${this.escapeHtml(a.video_thumbnail_url)}"` : '';
                     
-                    const intentDisplayMap = {
-                        'working_shot': 'Working Shot',
-                        'action_proof': 'Action Proof',
-                        'result_proof': 'Result Proof'
-                    };
-                    const intentDisplay = intentDisplayMap[intentLabel] || ''; // Hide if unknown
-                    
-                    // Duration or Type Badge
-                    let durationDisplay = '-';
-                    if (mediaKind === 'video') {
-                        durationDisplay = duration ? this.formatTimeSec(duration) : '0:00';
-                    } else {
-                        durationDisplay = 'PHOTO'; // Clearer than dash
-                    }
+                    const mediaName = a.original_filename || (mediaKind === 'video' ? 'video' : 'photo');
+                    const actionLabel = this.state.placementTarget ? 'Use here' : 'Use on page';
+                    const mediaAction = this.state.placementTarget ? 'openPagePlacement' : 'beginEditAssetMedia';
+                    const mediaLabel = this.state.placementTarget ? `Use ${mediaName} here` : `Edit ${mediaName}`;
                     
                     return `
                         <div class="pp-grid-item" data-asset-id="${this.escapeHtml(assetId)}">
                             <div class="pp-grid-thumbnail">
+                                <button type="button" class="pp-grid-open" aria-label="${this.escapeHtml(mediaLabel)}" onclick="event.stopPropagation(); proofPacks.${mediaAction}('${this.escapeHtml(assetId)}')">
                                 ${mediaKind === 'video' 
                                     ? `<video src="${this.escapeHtml(previewUrl)}"${poster} muted loop playsinline preload="metadata" style="${transformStyle}" onerror="proofPacks.onPreviewMediaError(this, 'video')"></video>`
-                                    : `<img src="${this.escapeHtml(previewUrl)}" style="${transformStyle}" />`}
+                                    : `<img src="${this.escapeHtml(previewUrl)}" alt="" loading="lazy" decoding="async" style="${transformStyle}" />`}
+                                </button>
                                 <div class="pp-grid-overlay">
                                     ${mediaKind === 'video' ? '<button type="button" class="pp-grid-play" onclick="proofPacks.toggleThumbPlayback(this, event)" aria-label="Play"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display:block;"><path d="M8 5v14l11-7z"/></svg></button>' : ''}
-                                    ${Number(a?.psychological_weight || 0) > 40 ? '<span class="pp-featured-star">*</span>' : ''}
                                 </div>
+                                ${mediaKind === 'video' ? `<span class="pp-grid-kind">${this.escapeHtml(duration ? this.formatTimeSec(duration) : 'Video')}</span>` : ''}
                             </div>
                             <div class="pp-grid-info">
-                                <span class="pp-grid-intent" style="${!intentDisplay ? 'display:none;' : ''}">${this.escapeHtml(intentDisplay)}</span>
-                                <span class="pp-grid-duration">${this.escapeHtml(durationDisplay)}</span>
-                                <button type="button" class="btn btn-tonal" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">Page placement</button>
+                                <button type="button" class="pp-placement-action" aria-label="${actionLabel} for ${this.escapeHtml(mediaName)}" onclick="event.stopPropagation(); proofPacks.openPagePlacement('${this.escapeHtml(assetId)}')">${actionLabel}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+                                <button type="button" class="pp-download-action" aria-label="Download original ${this.escapeHtml(mediaName)}" title="Download original" onclick="event.stopPropagation(); proofPacks.downloadOriginalAsset('${this.escapeHtml(assetId)}')"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3.5v8"></path><path d="m6.75 8.5 3.25 3.25 3.25-3.25"></path><path d="M4 15.5h12"></path></svg><span class="pp-download-label">Download</span></button>
                             </div>
                         </div>
                     `;
                 }).join('');
                 
-                this.patchMediaTiles(gridEl, gridItems);
+                this.patchMediaTiles(gridEl, gridItems || '<p class="pp-gallery-empty" role="status">No media matches your search or filters.</p>');
                 
                 if (!gridEl.dataset.editBound) {
                     gridEl.dataset.editBound = 'true';
@@ -14794,12 +14901,21 @@ function smsStartNewMessage(prefillPhone) {
         }
 
         // Detail Drawer Functions
+        let detailDrawerReturnFocus = null;
         function openDetailDrawer() {
-            document.getElementById('detailDrawer').classList.add('open');
+            const drawer = document.getElementById('detailDrawer');
+            if (drawer.hidden) detailDrawerReturnFocus = document.activeElement;
+            drawer.hidden = false;
+            drawer.classList.add('open');
+            drawer.querySelector('.detail-drawer-close').focus();
         }
 
         function closeDetailDrawer() {
-            document.getElementById('detailDrawer').classList.remove('open');
+            const drawer = document.getElementById('detailDrawer');
+            const restoreFocus = drawer.contains(document.activeElement);
+            drawer.classList.remove('open');
+            drawer.hidden = true;
+            if (restoreFocus && detailDrawerReturnFocus?.isConnected) detailDrawerReturnFocus.focus();
         }
 
         function viewCandidate(candidateId) {
@@ -20296,25 +20412,7 @@ function deliverablesBrowserRender(mode) {
                 disableMobile: true,
                 monthSelectorType: 'static',
                 minuteIncrement: 1,
-                position: function(instance, anchor) {
-                    const field = (anchor || instance.altInput).getBoundingClientRect();
-                    const popup = instance.calendarContainer;
-                    const viewport = window.visualViewport;
-                    const leftEdge = viewport ? viewport.offsetLeft : 0;
-                    const topEdge = viewport ? viewport.offsetTop : 0;
-                    const width = viewport ? viewport.width : window.innerWidth;
-                    const height = viewport ? viewport.height : window.innerHeight;
-                    const above = field.bottom + popup.offsetHeight + 8 > topEdge + height
-                        && field.top - popup.offsetHeight - 8 >= topEdge;
-                    const left = Math.max(leftEdge + 8, Math.min(field.left, leftEdge + width - popup.offsetWidth - 8));
-                    const desiredTop = above ? field.top - popup.offsetHeight - 8 : field.bottom + 8;
-                    const top = Math.max(topEdge + 8, Math.min(desiredTop, topEdge + height - popup.offsetHeight - 8));
-                    popup.style.left = `${window.scrollX + left}px`;
-                    popup.style.right = 'auto';
-                    popup.style.top = `${window.scrollY + top}px`;
-                    popup.classList.toggle('arrowTop', !above);
-                    popup.classList.toggle('arrowBottom', above);
-                },
+                ...window.h2sDatePopupOptions,
                 altInput: true,
                 altInputClass: 'form-input h2s-flatpickr-alt-input',
                 onReady: function(_, __, instance) {
@@ -20351,10 +20449,12 @@ function deliverablesBrowserRender(mode) {
                     alt.addEventListener('focus', () => h2sSyncDateInput(inputEl));
                 },
                 onOpen: function(_, __, instance) {
+                    window.h2sDatePopupOptions.onOpen(_, __, instance);
                     h2sSyncDateInput(inputEl);
                     instance.altInput.setAttribute('aria-expanded', 'true');
                 },
                 onClose: function(_, __, instance) {
+                    window.h2sDatePopupOptions.onClose(_, __, instance);
                     instance.altInput.setAttribute('aria-expanded', 'false');
                 }
             };
@@ -20411,20 +20511,39 @@ function deliverablesBrowserRender(mode) {
 
             inputs.forEach((inputEl) => {
                 if (!inputEl) return;
-                if (inputEl._flatpickr) {
+                if (inputEl._flatpickr?.config && inputEl._flatpickr.altInput?.isConnected) {
                     inputEl.dataset.h2sDateBound = '1';
                     h2sSyncDateInput(inputEl);
                     return;
                 }
 
-                inputEl.dataset.h2sDateType = inputEl.type;
+                if (inputEl._flatpickr) {
+                    if (inputEl._flatpickr.config) inputEl._flatpickr.destroy();
+                    delete inputEl._flatpickr;
+                }
+                inputEl.dataset.h2sDateType = inputEl.dataset.h2sDateType || inputEl.type;
+                delete inputEl.__h2sDateConstraints;
                 window.flatpickr(inputEl, h2sBuildDateInputOptions(inputEl));
                 inputEl.dataset.h2sDateBound = '1';
                 h2sSyncDateInput(inputEl);
-                inputEl.addEventListener('change', () => h2sSyncDateInput(inputEl));
+                if (!inputEl.__h2sDateChangeBound) {
+                    inputEl.addEventListener('change', () => h2sSyncDateInput(inputEl));
+                    inputEl.__h2sDateChangeBound = true;
+                }
             });
 
             return true;
+        }
+
+        function h2sDestroyDetachedDateInputs(node) {
+            if (node.isConnected || !node.querySelectorAll) return;
+            const removed = Array.from(node.querySelectorAll('input[data-h2s-date-bound]'));
+            if (node.matches && node.matches('input[data-h2s-date-bound]')) removed.push(node);
+            removed.forEach(input => {
+                if (input._flatpickr?.config) input._flatpickr.destroy();
+                delete input._flatpickr;
+                delete input.__h2sDateConstraints;
+            });
         }
 
         try { window.h2sInitDateInputs = h2sInitDateInputs; } catch (_) {}
@@ -21537,12 +21656,7 @@ function deliverablesBrowserRender(mode) {
 
             if (window.MutationObserver && document.body && !__dashboardCustomSelectObserver) {
                 __dashboardCustomSelectObserver = new MutationObserver(records => {
-                    records.forEach(record => record.removedNodes.forEach(node => {
-                        if (node.isConnected || !node.querySelectorAll) return;
-                        const removed = Array.from(node.querySelectorAll('input[data-h2s-date-bound]'));
-                        if (node.matches && node.matches('input[data-h2s-date-bound]')) removed.push(node);
-                        removed.forEach(input => { if (input._flatpickr) input._flatpickr.destroy(); });
-                    }));
+                    records.forEach(record => record.removedNodes.forEach(h2sDestroyDetachedDateInputs));
                     dashboardQueueCustomSelectSync();
                 });
                 __dashboardCustomSelectObserver.observe(document.body, {
@@ -22687,6 +22801,13 @@ function deliverablesBrowserRender(mode) {
             session: '',
             loading: false,
             element(name) { return document.getElementById('notificationRouting' + name); },
+            toggle() {
+                if (!isAdminRole() || !getDashboardSessionToken()) { this.load(); return; }
+                const panel = this.element('Panel');
+                panel.hidden = !panel.hidden;
+                this.element('Toggle')?.setAttribute('aria-expanded',String(!panel.hidden));
+                if (!panel.hidden) return this.load();
+            },
             status(message, state = '') {
                 this.element('').dataset.state = state;
                 this.element('Status').textContent = message;
@@ -22724,6 +22845,15 @@ function deliverablesBrowserRender(mode) {
                 if (!root) return;
                 const token = getDashboardSessionToken();
                 root.hidden = !isAdminRole() || !token;
+                const panel = document.getElementById('notificationRoutingPanel');
+                const toggle = this.element('Toggle');
+                if (toggle) toggle.hidden = root.hidden;
+                if (panel) {
+                    if (root.hidden) {
+                        panel.hidden = true;
+                        toggle?.setAttribute('aria-expanded','false');
+                    }
+                }
                 if (root.hidden) {
                     this.snapshot = null;
                     this.editing = false;
@@ -49653,7 +49783,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     : warning;
                 if (status) {
                     status.hidden = !message;
-                    status.innerHTML = `${escapeHtml(message)}${this.state.error ? `<button type="button" class="btn btn-tonal" onclick="window.commercialQueueUI.refresh()"${this.state.loading ? ' disabled' : ''}>Retry</button>` : ''}`;
+                    status.classList.add('ui-recovery');
+                    status.innerHTML = `<span>${escapeHtml(message)}</span>${this.state.error ? `<button type="button" class="ui-retry" onclick="window.commercialQueueUI.refresh()"${this.state.loading ? ' disabled' : ''}>${this.state.loading ? 'Retrying...' : 'Retry'}</button>` : ''}`;
                 }
                 ['commercialQueueSearch', 'commercialQueueFilter', 'commercialQueueMarket'].forEach(id => {
                     const control = document.getElementById(id);
@@ -49804,7 +49935,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (this.detailSignature === signature) return;
                 const sameLead = this.detailLeadId === (item && item.leadId);
                 const retainedOperations = sameLead && detailEl.querySelector('[data-commercial-operations]');
-                const diagnosticsOpen = sameLead && detailEl.querySelector('.commercial-queue-detail__stack > details[open]');
                 const active = detailEl.contains(document.activeElement) ? document.activeElement : null;
                 const activeHref = active && active.getAttribute('href');
                 const activeTag = active && active.tagName;
@@ -49846,14 +49976,14 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     </div>
 
                     <section class="commercial-queue-next" aria-label="Next follow-up action">
-                        <div class="commercial-queue-detail__section-note"><strong>Next action</strong> · ${escapeHtml(methodLabel)} · ${escapeHtml(item.followUp && item.followUp.nextAction || 'Review saved contact preference before contacting the customer.')}</div>
+                        <div class="commercial-queue-detail__section-note"><strong>Next action</strong> · ${escapeHtml(methodLabel)} · ${escapeHtml(this.formatActionText(item.followUp && item.followUp.nextAction || 'Review saved contact preference before contacting the customer.'))}</div>
                         <div class="commercial-queue-detail__section-note">${item.market === 'residential' ? 'Accepting follow-up does not book an installation.' : 'Technician approval does not complete customer follow-up.'}</div>
                         ${this.renderContactDetails(item)}
                     </section>
 
                     <div class="commercial-queue-detail__stack">
                         <section data-commercial-operations></section>
-                        <section class="commercial-queue-detail__section" aria-label="Requested work">
+                        <section class="commercial-queue-detail__section" data-record-context="followup" aria-label="Requested work">
                             <h4 class="commercial-queue-detail__section-title">Requested work</h4>
                             ${item.market === 'residential' && item.consultation ? `<button type="button" class="commercial-workload-btn"
                                 onclick="window.commercialQueueUI.loadHomeownerReviewLink('${escapeHtml(item.leadId)}',this)">Load homeowner review link</button>` : ''}
@@ -49869,10 +49999,12 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             </div>` : ''}
                         </section>
 
-                        <section class="commercial-queue-detail__section" aria-label="Supporting information">
+                        <section class="commercial-queue-detail__section" data-record-context="followup" aria-label="Supporting information">
                             <h4 class="commercial-queue-detail__section-title">Details</h4>
                             <dl class="commercial-queue-detail__fields">
-                                ${this.renderDetailRow('Location', projectLocation || 'Not provided', item.businessType || '')}
+                                ${this.renderDetailRow('Location', projectLocation || 'Not provided', item.market === 'residential'
+                                    ? item.addressSource === 'google_places' ? 'Google suggestion (not verified)' : 'Manual entry (not verified)'
+                                    : item.businessType || '')}
                                 ${this.renderDetailRow('Timing', window.H2SCommercialLabels.timeline(item.timeline), item.budgetBand ? `Budget: ${window.H2SCommercialLabels.budget(item.budgetBand)}` : '')}
                                 ${this.renderDetailRow('Sites', item.siteCount ? String(item.siteCount) : 'Not provided', '')}
                                 ${this.renderDetailRow('Attachments', `${Number(item.projectPhotoCount || 0)} uploaded`, 'Viewing unavailable in this queue.')}
@@ -49882,8 +50014,8 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                 ${this.renderDetailRow('Customer confirmation', this.confirmationForItem(item), '')}
                             </dl>
                         </section>
-                        <details class="commercial-queue-detail__section">
-                            <summary>Technical processing details</summary>
+                        <section class="commercial-queue-detail__section" data-record-context="activity" hidden>
+                            <h4 class="commercial-queue-detail__section-title">Technical processing details</h4>
                             <dl class="commercial-queue-detail__fields">
                                 ${this.renderDetailRow('Contact routing', routingLabel, '')}
                                 ${this.renderDetailRow('Request', item.consultation && item.consultation.referenceCode || 'Not submitted', item.followUp && item.followUp.statusLabel || '')}
@@ -49892,19 +50024,18 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                                 ${this.renderDetailRow('Appointment reference', item.consultation && item.consultation.relatedOrderId || 'Not created', '')}
                             </dl>
                             ${item.followUp && item.followUp.recoveryAllowed && item.consultation ? `<button type="button" class="btn btn-secondary" onclick="window.commercialQueueUI.retryProcessing('${escapeHtml(item.consultation.requestId)}')"${this.recoveryPending ? ' disabled' : ''}>${this.recoveryPending ? 'Processing...' : 'Retry failed processing'}</button>` : ''}
-                        </details>
+                        </section>
                     </div>
                 `;
                 const operationsHost = detailEl.querySelector('[data-commercial-operations]');
                 if (retainedOperations && operationsHost) operationsHost.replaceWith(retainedOperations);
                 if (window.H2SCommercialOperations) window.H2SCommercialOperations.mount(
                     retainedOperations || operationsHost, item.leadId,
-                    { apiBase: API_BASE, getToken: getDashboardSessionToken, onActivity: () => {
+                    { apiBase: API_BASE, getToken: getDashboardSessionToken, intake:item, onActivity: () => {
                         window.H2SCommercialCalendar?.refreshDashboard();
                         return this.refresh();
                     } }
                 );
-                if (diagnosticsOpen) detailEl.querySelector('.commercial-queue-detail__stack > details').open = true;
                 if (active && sameLead) {
                     const target = retainedOperations && retainedOperations.contains(active) ? active : activeHref
                         ? Array.from(detailEl.querySelectorAll('a[href]')).find(link => link.getAttribute('href') === activeHref)
@@ -50022,18 +50153,25 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 return raw.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
             },
 
+            formatActionText(value) {
+                return String(value || '').replace(/\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)\b/g,
+                    instant => this.formatDateTime(instant));
+            },
+
             formatDateTime(value) {
                 const raw = String(value || '').trim();
                 if (!raw) return '';
-                const date = new Date(raw);
-                if (Number.isNaN(date.getTime())) return raw;
+                const date = new Date(raw.replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00').replace(/(\.\d{3})\d+/, '$1'));
+                if (Number.isNaN(date.getTime())) return 'Date needs review';
                 return new Intl.DateTimeFormat('en-US', {
                     timeZone: 'America/New_York',
                     month: 'short',
                     day: 'numeric',
+                    year: 'numeric',
                     hour: 'numeric',
-                    minute: '2-digit'
-                }).format(date) + ' Eastern Time';
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                }).format(date);
             },
 
             formatRelativeTime(value) {
@@ -50041,7 +50179,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 if (!raw) return 'just now';
                 const date = new Date(raw);
                 const time = date.getTime();
-                if (Number.isNaN(time)) return raw;
+                if (Number.isNaN(time)) return 'Date needs review';
                 const diffMs = Date.now() - time;
                 const diffMinutes = Math.round(diffMs / 60000);
                 if (diffMinutes < 1) return 'just now';
@@ -50069,7 +50207,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 const pane = document.getElementById('workspace-pane');
                 if (pane && pane.classList.contains('active')) {
                     bindWorkspaceSummaryAutoRefresh();
-                    notificationRoutingUI.load();
                     loadWorkspaceSummary(pane.dataset.initialized === 'true');
                     pane.dataset.initialized = 'true';
                 }
@@ -50088,6 +50225,7 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
             } else if (tabName === 'commercialqueue') {
                 const pane = document.getElementById('commercialqueue-pane');
                 if (pane && pane.classList.contains('active')) {
+                    notificationRoutingUI.load();
                     commercialQueueUI.refresh({ silent: pane.dataset.initialized === 'true' });
                 }
             } else if (tabName === 'owneruploads') {

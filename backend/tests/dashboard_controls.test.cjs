@@ -5,6 +5,36 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const source = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.js'), 'utf8');
 
+test('candidate and task overlays stay inside the canonical styled dashboard and the drawer starts hidden', () => {
+  const dom = new JSDOM(fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.html'), 'utf8'));
+  try {
+    const doc = dom.window.document, app = doc.getElementById('h2s-app');
+    for (const id of ['taskModal', 'adFrameworkModal', 'detailDrawer']) assert.ok(app.contains(doc.getElementById(id)), id);
+    const drawer = doc.getElementById('detailDrawer');
+    assert.equal(drawer.hidden, true);
+    assert.equal(drawer.getAttribute('aria-labelledby'), 'drawerTitle');
+    assert.equal(drawer.querySelector('button').getAttribute('aria-label'), 'Close candidate details');
+    assert.equal(doc.getElementById('appNavToggle').textContent, 'Menu');
+  } finally { dom.window.close(); }
+});
+
+test('candidate drawer opens, closes and returns focus without exposing idle content', () => {
+  const dom = new JSDOM('<button id="candidate">Candidate</button><div id="detailDrawer" hidden><button class="detail-drawer-close">Close</button></div>', { runScripts: 'outside-only' });
+  try {
+    const w = dom.window, trigger = w.document.getElementById('candidate'), drawer = w.document.getElementById('detailDrawer');
+    w.eval(source.slice(source.indexOf('        let detailDrawerReturnFocus = null;'), source.indexOf('        function viewCandidate(')));
+    trigger.focus();
+    w.openDetailDrawer();
+    assert.equal(drawer.hidden, false);
+    assert.ok(drawer.classList.contains('open'));
+    assert.equal(w.document.activeElement, drawer.querySelector('button'));
+    w.closeDetailDrawer();
+    assert.equal(drawer.hidden, true);
+    assert.equal(drawer.classList.contains('open'), false);
+    assert.equal(w.document.activeElement, trigger);
+  } finally { dom.window.close(); }
+});
+
 function fixture(html) {
   const dom = new JSDOM(html, { runScripts: 'outside-only' });
   const { window } = dom;
@@ -104,7 +134,38 @@ test('Queue filter participates in the same global styled-select lifecycle', () 
   const filter = /<select\s+id="commercialQueueFilter"[\s\S]*?<\/select>/.exec(html)[0];
   assert.doesNotMatch(filter, /data-custom-select="off"/);
   assert.match(source, /dashboardSyncAllCustomSelects\(document\);\s+h2sInitDateInputs\(document\)/);
-  assert.match(source, /removed\.forEach\(input => \{ if \(input\._flatpickr\) input\._flatpickr\.destroy\(\)/);
+  assert.ok(source.includes('record.removedNodes.forEach(h2sDestroyDetachedDateInputs)'));
+});
+
+test('destroyed pickers reinitialize with the original type, value and constraints; moved inputs stay live', () => {
+  const f = fixture('<section><input type="datetime-local" value="2099-02-01T09:35" min="2099-01-01T08:00"></section><main></main>');
+  try {
+    const input = f.window.document.querySelector('input');
+    f.window.h2sInitDateInputs();
+    const original = input._flatpickr;
+    let destroyed = 0;
+    original.destroy = () => { destroyed++; original.altInput.remove(); delete original.config; delete original.altInput; };
+    f.window.document.querySelector('main').append(input);
+    f.window.h2sDestroyDetachedDateInputs(input);
+    f.window.h2sInitDateInputs();
+    assert.equal(destroyed, 0);
+    assert.equal(input._flatpickr, original);
+    input.remove();
+    f.window.h2sDestroyDetachedDateInputs(input);
+    assert.equal(destroyed, 1);
+    assert.equal(input._flatpickr, undefined);
+    f.window.document.querySelector('main').append(input);
+    f.window.h2sInitDateInputs(input);
+    assert.equal(f.calls.length, 2);
+    assert.equal(input.value, '2099-02-01T09:35');
+    assert.equal(input._flatpickr.config.dateFormat, 'Y-m-d\\TH:i');
+    assert.equal(input._flatpickr.config.minDate, '2099-01-01T08:00');
+    input._flatpickr.altInput.remove();
+    input._flatpickr = { destroy() {} };
+    f.window.h2sInitDateInputs(input);
+    assert.equal(f.calls.length, 3, 'A stale external destroy reference must not suppress reinitialization');
+    assert.equal(input._flatpickr.altInput.isConnected, true);
+  } finally { f.close(); }
 });
 
 test('vendor date-picker styles load before dashboard overrides so popup footer spacing is retained', () => {

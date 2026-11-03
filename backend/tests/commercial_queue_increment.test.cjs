@@ -229,7 +229,8 @@ test('local date fields preserve exact instants and reject edited DST gaps/folds
   assert.equal(input.type,'datetime-local');
   assert.equal(input.value,'2026-11-01T01:30');
   assert.equal(input.hasAttribute('data-native-date'),false);
-  assert.match(input.closest('label').textContent,/America\/New_York/);
+  assert.equal(input.closest('label').textContent,'Next follow-up');
+  assert.match(input.closest('form').querySelector('.commercial-calendar-zone').textContent,/Times shown in Eastern Time/);
   await submit();
   assert.equal(sent[0].payload.nextFollowUpAt,snapshot.state.next_follow_up_at,'Unchanged ambiguous saved wall time retains offset and microseconds');
   input=host.querySelector('[data-action=follow_up] [name=nextFollowUpAt]');

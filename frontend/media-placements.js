@@ -2,6 +2,10 @@
   'use strict';
 
   const destinationPreviews = {
+    residential: {
+      residential_tv_proof: { preview: { page: 'residential.html', frame: '#residential-proof-media', residentialArea: 'residential_tv_proof' } },
+      residential_camera_proof: { preview: { page: 'residential.html', frame: '#residential-proof-media', residentialArea: 'residential_camera_proof' } },
+    },
     bundles: {
       hero: { preview: { page: 'bundles.html', frame: 'section.hero', mediaClass: 'page-placement-hero', readyClass: 'has-page-placement' } },
       mid_proof_rail: { unavailableReason: 'Unavailable: this section was removed from the current Bundles layout. Historical placement settings are retained and are not applied to another area.' },
@@ -58,6 +62,21 @@
   function destinationFrame(doc, config, url, isVideo, settings) {
     const area = doc.querySelector(config.frame);
     if (!area) throw new Error('The registered destination is absent from the current page. Saved settings have not been changed.');
+    if (config.residentialArea) {
+      if (isVideo) throw new Error('Residential installation proof requires a photo, not a video.');
+      const renderer = typeof module === 'object' && module.exports
+        ? require('./residential-media.js') : root.H2SResidentialMedia;
+      if (!renderer?.createFrame) throw new Error('The residential photo renderer did not load. Reload the dashboard before editing this placement.');
+      const target = renderer.createFrame(config.residentialArea, {
+        media_url: url, media_placement: settings,
+        service: config.residentialArea === 'residential_camera_proof' ? 'cameras' : 'tv_mounting',
+      }, doc);
+      area.replaceChildren(target.figure);
+      area.setAttribute('aria-busy', 'false');
+      const status = doc.getElementById('residential-proof-status');
+      if (status) status.textContent = '';
+      return { frame: target.frame, media: target.media };
+    }
     const wrap = doc.createElement('div');
     wrap.className = config.tileClass || config.mediaClass || '';
     const media = doc.createElement(isVideo ? 'video' : 'img');
@@ -272,11 +291,11 @@
     const thumbnail = (asset, current = false) => asset.media_kind === 'video'
       ? `<video muted playsinline preload="metadata" ${asset.video_thumbnail_url ? `poster="${escape(asset.video_thumbnail_url)}"` : ''} src="${escape(asset.media_url)}"></video>`
       : `<img ${current ? '' : 'loading="lazy"'} src="${escape(asset.media_url)}" alt="">`;
-    dialog.innerHTML = `<header><h3 id="mediaReplacementTitle">Choose replacement media</h3>
-      <p id="mediaReplacementDescription">${escape(options.title)}. Choose a photo or video, then adjust framing. Nothing changes until you save.</p>
-      <div class="media-replacement-current">${thumbnail(options.current, true)}<span>Replacing<br><strong>${escape(options.current.original_filename || options.current.label || 'Current media')}</strong></span></div></header>
+    dialog.innerHTML = `<header><h3 id="mediaReplacementTitle">${options.current ? options.photoOnly ? 'Replace image' : 'Choose replacement media' : 'Choose media for this area'}</h3>
+      <p id="mediaReplacementDescription">${escape(options.title)}. ${options.photoOnly ? 'Only eligible installation photos are shown. Choose a photo' : 'Choose a photo or video'}, then adjust framing. Nothing changes until you save.</p>
+      ${options.current ? `<div class="media-replacement-current">${thumbnail(options.current, true)}<span>Replacing<br><strong>${escape(options.current.original_filename || options.current.label || 'Current media')}</strong></span></div>` : '<p>No image is currently selected for replacement. The chosen media will be included only in this area.</p>'}</header>
       <div class="media-replacement-filters"><input type="search" aria-label="Search replacement media" placeholder="Search media">
-        <div role="group" aria-label="Media type"><button type="button" data-kind="all" aria-pressed="true">All</button><button type="button" data-kind="photo" aria-pressed="false">Photos</button><button type="button" data-kind="video" aria-pressed="false">Videos</button></div></div>
+        ${options.photoOnly ? '' : '<div role="group" aria-label="Media type"><button type="button" data-kind="all" aria-pressed="true">All</button><button type="button" data-kind="photo" aria-pressed="false">Photos</button><button type="button" data-kind="video" aria-pressed="false">Videos</button></div>'}</div>
       <p class="media-replacement-count" role="status"></p><div class="media-replacement-grid"></div>
       <footer class="media-destination-actions"><button type="button" class="btn btn-tonal" data-close>Cancel</button></footer>`;
     let closed = false, kind = 'all';
@@ -297,7 +316,7 @@
         || event.clientY < rect.top || event.clientY > rect.bottom)) close();
     });
     const grid = dialog.querySelector('.media-replacement-grid');
-    for (const asset of options.assets) {
+    for (const asset of options.assets.filter(asset => !options.photoOnly || asset.media_kind === 'photo')) {
       const name = asset.original_filename || asset.label || (asset.media_kind === 'video' ? 'Video' : 'Photo');
       const selected = options.selectedIds.includes(asset.asset_id);
       const button = root.document.createElement('button');

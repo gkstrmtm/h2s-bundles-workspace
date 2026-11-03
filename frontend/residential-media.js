@@ -22,27 +22,35 @@
       ? 'Security camera installation by Home2Smart' : 'TV installation by Home2Smart';
     img.decoding = 'async';
     img.width = 640; img.height = 480;
-    if (!root.H2SMediaPlacements?.style) throw new Error('Residential photo framing did not load.');
-    img.style.cssText = root.H2SMediaPlacements.style(asset.media_placement);
+    const placementStyle = typeof module === 'object' && module.exports
+      ? require('./media-placement-style.js').style : root.H2SMediaPlacements?.style;
+    if (!placementStyle) throw new Error('Residential photo framing did not load.');
+    img.style.cssText = placementStyle(asset.media_placement);
     return img;
+  }
+  function createFrame(area, asset, doc) {
+    if (!Object.hasOwn(areas, area)) throw new Error('Unsupported residential photo area.');
+    const figure = doc.createElement('figure'), frame = doc.createElement('div');
+    figure.id = area; frame.className = 'residential-proof-frame';
+    const media = image(asset, doc), caption = doc.createElement('figcaption');
+    caption.textContent = areas[area];
+    frame.append(media); figure.append(frame, caption);
+    return { figure, frame, media };
   }
   function render(container, selected, status) {
     container.replaceChildren();
     for (const [area, items] of Object.entries(selected.areas)) {
       if (!items[0]) continue;
-      const doc = container.ownerDocument, figure = doc.createElement('figure'), frame = doc.createElement('div');
-      figure.id = area; frame.className = 'residential-proof-frame';
-      const img = image(items[0], doc), caption = doc.createElement('figcaption');
-      caption.textContent = areas[area];
+      const { figure, media: img } = createFrame(area, items[0], container.ownerDocument);
       img.addEventListener('error', () => {
         figure.remove();
         status.textContent = 'An installation photo could not load. You can still send your request.';
       }, { once: true });
-      frame.append(img); figure.append(frame, caption); container.append(figure);
+      container.append(figure);
     }
     status.textContent = container.children.length ? '' : 'Installation photos are unavailable. You can still send your request.';
   }
-  const api = { areas, selection, read, image, render };
+  const api = { areas, selection, read, image, createFrame, render };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.H2SResidentialMedia = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -1,4 +1,8 @@
-# Visual Media Placement Wiring
+# Owner Uploads Library Wiring
+
+## Purpose
+
+This document defines the current wiring contract for Owner Uploads as a centralized content library, while keeping it separate from the later Technician Job Media system.
 
 ## Website Media destination inspection
 
@@ -64,9 +68,180 @@ errors appear beside the custom control. The Commercial Queue's explicit
 model stays hidden. Multiple/listbox exceptions and date/file inputs are unchanged.
 Desktop/mobile viewport fixtures do not establish physical iOS Safari behavior.
 
-This commit covers per-page framing and the migration foundation. The broader Owner Uploads metadata and upload-engine overhaul remains separate local work.
+## Current Intent
+
+Owner Uploads is the current owner/admin-controlled content pool.
+
+It should support:
+
+- manual owner/admin uploads
+- lightweight review and approval
+- centralized browsing for approved social-content assets
+- policy control over whether media team users should ever see a given asset
+
+It should not yet assume the full technician proof-of-job workflow.
+
+## Available Metadata
+
+The Owner Uploads store now supports these fields per asset:
+
+- `captured_at_original`
+  - canonical original media timestamp when known
+- `captured_at_source`
+  - where that original media timestamp came from
+  - current expected values: `exif`, `video_metadata`, `file_last_modified`, `manual`, `unknown`
+- `source_type`
+  - current default: `owner_manual`
+  - future value: `technician_job`
+- `source_job_id`
+- `service_type`
+- `city`
+- `completion_date`
+- `customer_media_opt_in`
+  - supported values: `owner_admin_controlled`, `granted`, `declined`, `unknown`, `not_applicable`
+- `usage_rights_status`
+  - supported values: `pending_review`, `social_allowed`, `internal_only`, `remove_requested`
+- `review_state`
+  - supported values: `pending`, `reviewed`, `approved`, `rejected`, `published`
+- `review_note`
+- `media_team_visible`
+- `qa_hold`
+- `soft_location_label`
+- `capture_source`
+
+## Current Defaults For Owner Uploads
+
+Manual owner/admin uploads currently register with these defaults:
+
+- `source_type = owner_manual`
+- `captured_at_original = file.lastModified when available`
+- `captured_at_source = file_last_modified when that fallback is used`
+- `customer_media_opt_in = owner_admin_controlled`
+- `usage_rights_status = pending_review`
+- `review_state = pending`
+- `media_team_visible = false`
+
+That keeps the current flow simple while still preserving a review boundary before broader media-library exposure.
+
+## API Contract
+
+### `GET /api/owner-media/uploads`
+
+Current query support:
+
+- `limit`
+- `offset`
+- `state`
+  - `all`
+  - `pending`
+  - `reviewed`
+  - `approved`
+  - `rejected`
+  - `published`
+- `audience`
+  - `all`
+  - `media_team`
+- `from`
+- `to`
+- `date_field`
+  - `uploaded`
+  - `captured`
+- `sort_by`
+  - `uploaded`
+  - `captured`
+
+Date behavior:
+
+- `uploaded` uses the stored upload timestamp (`created_at`)
+- `captured` uses `captured_at_original`
+- for date-only filters like `from=2026-07-01&to=2026-07-07`, the upper bound is treated as the start of the next day for clean whole-day filtering
+
+If `audience=media_team`, the API only returns assets that are safe for media-team/social-library access.
+
+That view is automatically limited to assets where:
+
+- `media_team_visible = true`
+- `qa_hold = false`
+- `review_state` is `approved` or `published`
+- `usage_rights_status = social_allowed`
+- `customer_media_opt_in` is not `declined`
+
+### `POST /api/owner-media/uploads`
+
+Current role:
+
+- finalize/register an uploaded asset
+- attach metadata at registration time
+
+This is the current hook for owner/admin upload flow.
+
+### `PATCH /api/owner-media/uploads`
+
+Current role:
+
+- admin-only metadata update for an existing asset
+
+Required body field:
+
+- `asset_id`
+
+This is the current control point for later portal moderation tools.
+
+Placement-related metadata supported on that PATCH surface:
+
+- `frontend_destinations`
+  - array of placement keys such as `commercial_security_rail` or `commercial_display_rail`
+- `display_order`
+  - lower number sorts first inside a destination
+- `psychological_weight`
+  - higher number floats stronger assets upward inside the same order band
+
+### `GET /api/owner-media/public`
+
+Current role:
+
+- public-safe read surface for customer-facing media sections
+- returns only published owner-media assets that passed the existing review, rights, and QA boundaries
+- can fall back to proof-gallery assets where the consuming frontend chooses to do so
+
+Current query support:
+
+- `surface`
+  - currently supports `commercial_intake`
+- `limit`
+
+Current commercial surface mapping:
+
+- `commercial_security_rail`
+- `commercial_display_rail`
+
+## Recommended Portal Wiring
 
 ### Page-specific media placement (Bundles and Commercial)
+
+The dashboard's **Page media** area reads the same public media feeds and shared
+`H2SPageHeroes` selection helpers as the customer pages. It shows Bundles' hero
+and Commercial's hero, security camera rail, and TV/display rail separately.
+Rail thumbnails are the selected first four items, in display order, not the
+entire eligible pool. Each identifies automatic selection or an explicit
+choice for that area and opens the existing **Page placement** controls in
+that exact destination. Viewing and choosing a destination do not save.
+
+The hero shows its primary selection; Commercial's additional candidates are
+collapsed as load-error alternatives, not claimed to be currently displayed.
+There is no timed rotation in this renderer. Desktop/mobile change framing
+and layout, not the selected media list. An individual customer's load failures
+can advance the hero to an alternative; this dashboard is a selection snapshot,
+not telemetry from that customer's browser.
+
+The gallery **In use** stamp and **In use / Not selected** filters share this
+supported-destination inventory. Legacy slot eligibility, exclusions, and
+hero-only load-error alternatives do not count as selected. Source identity
+is preserved, so an Owner Uploads ID does not mark a different proof asset.
+On incomplete reads, retained destination thumbnails are labelled unverified
+and usage filters pause until selections can be verified; drafts and the
+chosen filter are retained. Thumbnail errors do not remove saved assignments
+or prevent opening their placement controls.
 
 Use **Page placement** on a Website Media grid item, in its shared-media editor,
 or on an Owner Uploads item (administrator only). Select **Page**, then **Display
@@ -152,14 +327,10 @@ use Page placement for a change intended for only one page.
 
 #### Schema and release order
 
-Production project `nkccbnrduojnzjfrpwva` already has
-[029_create_media_placements.sql](../backend/migrations/029_create_media_placements.sql)
-and [030_owner_media_placement_fields.sql](../backend/migrations/030_owner_media_placement_fields.sql)
-recorded with verified checksums. Do not rerun the SQL manually or modify an
-applied migration. For another target, inspect and authorize the guarded runner
-workflow first. The existing `proof_assets` and `owner_media_uploads` tables are
-prerequisites. Backend and authoritative frontend changes need a coordinated
-release; this commit does not deploy them.
+Apply [029_create_media_placements.sql](../backend/migrations/029_create_media_placements.sql)
+to the main media database **before deploying the backend changes**. It requires
+the existing `proof_assets` and `owner_media_uploads` tables. Then deploy the
+backend and the authoritative frontend sources together.
 
 `media_placements` has a composite primary key of
 `(asset_source, asset_id, surface, area)`, source-specific foreign keys with
@@ -214,20 +385,48 @@ Public consumers:
 
 Validation: `node --test backend/tests/media_placements.test.cjs`.
 
-### Validation and known limitations
+### For admin or owner review views
 
-The isolated commit snapshot passed 43 focused tests, including a strict-TLS,
-rollback-only production database test, plus six JavaScript syntax checks and
-an Owner Uploads administrator-card/shared-editor handoff check.
+Use:
 
-The full backend TypeScript check still fails: the isolated snapshot reports
-27 existing errors versus 28 at its parent HEAD, with no introduced diagnostics.
-The unchanged Owner Uploads database helper and reminder helper still lack
-`pg` declarations. The separate local Owner Uploads overhaul is intentionally
-not a dependency of this placement commit.
+- `GET /api/owner-media/uploads?state=all`
+- `GET /api/owner-media/uploads?state=all&date_field=uploaded&from=YYYY-MM-DD&to=YYYY-MM-DD`
+- `GET /api/owner-media/uploads?state=all&date_field=captured&from=YYYY-MM-DD&to=YYYY-MM-DD`
 
-The Bundles responsive hero has the nominal-frame limitation described above.
-Live video and a real Owner Uploads asset have not completed the full browser
-acceptance flow. The Owner Uploads handoff check is mocked, not proof of live
-Owner Uploads image/video playback or publication. Cross-browser/mobile checks
-and a full production build remain unverified. No deployment was performed.
+This should be the operational view where review, rights, deletion, and visibility decisions are made.
+
+This is also the current path for questions like:
+
+- "What was uploaded this week?"
+- "What was actually captured this week?"
+
+### For VA/media-team library views
+
+Use:
+
+- `GET /api/owner-media/uploads?audience=media_team`
+
+This should be treated as the safe social-content surface, not the raw intake view.
+
+## Policy Boundary
+
+If a customer does not opt in to media usage, the media-team-facing library should never expose that asset.
+
+For that reason, later portal moderation should treat these fields as the core policy boundary:
+
+- `customer_media_opt_in`
+- `usage_rights_status`
+- `review_state`
+- `media_team_visible`
+- `qa_hold`
+
+## Future Bridge To Technician Job Media
+
+Technician Job Media should later populate the same downstream library concepts, but from a stricter source workflow.
+
+That later system should:
+
+- bind uploads to exact jobs
+- record technician/service/city/completion context at intake
+- treat proof-of-work as the primary purpose
+- only feed approved, rights-safe assets into Owner Uploads or equivalent social-library views

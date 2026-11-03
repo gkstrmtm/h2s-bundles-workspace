@@ -220,7 +220,8 @@ test('explicit native, multiple, listbox and hidden-model selects remain unenhan
   assert.equal(w.document.querySelector('input[type=date]').type, 'date');
   assert.equal(w.document.querySelector('input[type=file]').type, 'file');
   const html = fs.readFileSync(path.join(root, 'frontend', 'dash.html'), 'utf8');
-  assert.match(html, /id="commercialQueueFilter"[\s\S]{0,180}data-custom-select="off"/);
+  const queueFilter = /<select\s+id="commercialQueueFilter"[\s\S]*?<\/select>/.exec(html)[0];
+  assert.doesNotMatch(queueFilter, /data-custom-select="off"/);
 });
 function video(t) {
   const w = setup(t, '<div id="rail"></div>');

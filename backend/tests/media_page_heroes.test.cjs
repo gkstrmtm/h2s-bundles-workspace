@@ -125,7 +125,7 @@ test('Commercial unavailable public feed resolves the same capped proof-gallery 
   assert.match(selected.reason, /fallback/);
 });
 
-async function chooser(t, { fail = false, pending = false } = {}) {
+async function chooser(t, { fail = false, pending = false, mediaKind = 'photo', service = 'tv_mounting' } = {}) {
   const dom = new JSDOM('<button id="origin">Page placement</button><input id="draft" value="Keep this">', {
     url: 'http://localhost/dash.html', runScripts: 'outside-only',
   });
@@ -147,7 +147,7 @@ async function chooser(t, { fail = false, pending = false } = {}) {
   w.H2SPageHeroes = heroes;
   w.document.getElementById('origin').focus();
   const controller = w.H2SMediaPlacements.chooseDestination({
-    asset, source: 'proof_asset', base: '', token: 'fixture-only',
+    asset: { ...asset, media_kind: mediaKind, service }, source: 'proof_asset', base: '', token: 'fixture-only',
     onSelect: destination => selections.push(destination),
   });
   if (!pending) await controller.ready;
@@ -181,9 +181,11 @@ test('Cancel during a pending destination read closes immediately and never reop
 
 test('unscoped placement requires a supported destination, shows saved uses and never opens a preview or writes', async t => {
   const e = await chooser(t);
-  assert.equal(e.dialog.querySelectorAll('[data-destination-surface]').length, 4);
+  assert.equal(e.dialog.querySelectorAll('[data-destination-surface]').length, 6);
   assert.equal(e.dialog.querySelector('[data-destination-area="mid_proof_rail"]'), null);
   assert.equal(e.dialog.querySelector('[data-destination-area="commercial_security_rail"]').disabled, true);
+  assert.equal(e.dialog.querySelector('[data-destination-area="residential_tv_proof"]').disabled, false);
+  assert.equal(e.dialog.querySelector('[data-destination-area="residential_camera_proof"]').disabled, true);
   assert.match(e.dialog.textContent, /Excluded here; order 7/);
   assert.match(e.dialog.textContent, /Up to 4 photos or videos/);
   assert.equal(e.w.document.querySelector('iframe,img,video'), null);
@@ -192,6 +194,18 @@ test('unscoped placement requires a supported destination, shows saved uses and 
   assert.equal(e.selections[0].surface, 'commercial_intake');
   assert.equal(e.selections[0].area, 'commercial_hero');
   assert.equal(e.requests.every(request => request.method === 'GET'), true);
+});
+
+test('residential destination choices enforce photo and service eligibility', async t => {
+  const camera = await chooser(t, { service: 'cameras' });
+  assert.equal(camera.dialog.querySelector('[data-destination-area="residential_camera_proof"]').disabled, false);
+  assert.equal(camera.dialog.querySelector('[data-destination-area="residential_tv_proof"]').disabled, true);
+  camera.controller.close();
+  const video = await chooser(t, { mediaKind: 'video' });
+  for (const area of ['residential_tv_proof', 'residential_camera_proof']) {
+    assert.equal(video.dialog.querySelector(`[data-destination-area="${area}"]`).disabled, true);
+  }
+  assert.equal(video.requests.every(request => request.method === 'GET'), true);
 });
 
 test('destination Cancel leaves drafts untouched and returns keyboard focus', async t => {

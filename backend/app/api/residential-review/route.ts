@@ -7,6 +7,8 @@ export const runtime = 'nodejs';
 function publicReview(context: Awaited<ReturnType<typeof residentialContext>>) {
   return {reference:context.consultation.reference_code,status:context.consultation.status,
     name:context.lead.full_name,phone:context.lead.phone,city:context.lead.project_city,
+    address:[context.lead.project_address,context.lead.project_city,context.lead.project_state,context.lead.project_postal_code].filter(Boolean).join(', '),
+    addressSource:context.lead.assessment_answers?.installationAddress?.source || 'manual',
     services:context.lead.service_needs,notes:context.lead.notes,availability:availabilityLabel(context.lead),bookingConfirmed:false};
 }
 async function handle(request: Request,write: boolean) {

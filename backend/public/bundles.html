@@ -3499,9 +3499,8 @@ body.modal-open {
       <!-- OPTIMIZATION: Placeholder matches final structure to prevent CLS -->
       <!-- API will populate this on load via renderHeroReviews() -->
       <div class="hero-review-slide active">
-        <div class="hero-review-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="hero-review-text">"Professional, on-time, and clean installation."</div>
-        <div class="hero-review-author">&mdash; Recent Customer</div>
+        <div class="hero-review-text">Recent verified reviews are loading.</div>
+        <div class="hero-review-author">Home2Smart reviews</div>
       </div>
       <div class="hero-review-dots">
         <div class="hero-review-dot active"></div>
@@ -3704,7 +3703,7 @@ body.modal-open {
     <!-- Multi-Room -->
     <article class="package">
       <div class="package-header">
-        <h3 class="package-name">3�4 TVs</h3>
+        <h3 class="package-name">3-4 TVs</h3>
         <div class="package-price">From $699</div>
       </div>
       <p class="package-promise">Whole-home entertainment in one visit.</p>
@@ -3723,7 +3722,7 @@ body.modal-open {
           90-Day Workmanship Warranty
         </div>
       </div>
-      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3�4 TVs', 699)">
+      <button class="btn btn-primary" onclick="selectPackage('tv_multi', '3-4 TVs', 699)">
         Schedule Installation
       </button>
       <div class="urgency-text">4 Slots Left This Week</div>
@@ -3756,7 +3755,7 @@ body.modal-open {
 <section class="section" id="security">
   <div class="section-header">
     <h2>Cameras: pick by coverage level</h2>
-    <p>Choose coverage by outcome � faces at the door, plates in the driveway, or full perimeter protection.</p>
+    <p>Choose coverage by outcome - faces at the door, plates in the driveway, or full perimeter protection.</p>
   </div>
 
   <div class="package-grid">
@@ -3794,7 +3793,7 @@ body.modal-open {
         <h3 class="package-name">Standard Perimeter</h3>
         <div class="package-price">$1,199</div>
       </div>
-      <p class="package-promise">Front, driveway, backyard � practical coverage for most homes.</p>
+      <p class="package-promise">Front, driveway, backyard - practical coverage for most homes.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3813,7 +3812,7 @@ body.modal-open {
       <button class="btn btn-primary" onclick="selectPackage('cam_standard', 'Standard Perimeter', 1199)">
         Schedule Installation
       </button>
-      <div class="urgency-text">Most Popular � Book Now</div>
+      <div class="urgency-text">Most Popular - Book Now</div>
     </article>
 
     <!-- Full Perimeter -->
@@ -3850,7 +3849,7 @@ body.modal-open {
         <h3 class="package-name">Custom (quote)</h3>
         <div class="package-price">Quote</div>
       </div>
-      <p class="package-promise">Unique property? We�ll design a coverage plan with you.</p>
+      <p class="package-promise">Unique property? We'll design a coverage plan with you.</p>
       <div class="package-includes">
         <strong>What's Included</strong>
         <ul>
@@ -3876,43 +3875,12 @@ body.modal-open {
   
   <div class="review-track-container">
     <div class="review-track" id="reviewTrack" data-api-reviews="carousel">
-      <!-- Reviews loaded dynamically from backend via renderReviewCarousel() -->
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">JM</div>
-          <div class="review-meta">
-            <div class="review-name">John M.</div>
-            <div class="review-stars">?????</div>
-          </div>
-        </div>
-        <div class="review-text">"Professional, on-time, and clean installation. Couldn't ask for better service."</div>
-      </div>
-      
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">SL</div>
-          <div class="review-meta">
-            <div class="review-name">Sarah L.</div>
-            <div class="review-stars">?????</div>
-          </div>
-        </div>
-        <div class="review-text">"Instant booking saved me! Had my TV mounted same week. Love the online scheduling."</div>
-      </div>
-      
-      <div class="review-card">
-        <div class="review-header">
-          <div class="review-avatar">MT</div>
-          <div class="review-meta">
-            <div class="review-name">Michael T.</div>
-            <div class="review-stars">?????</div>
-          </div>
-        </div>
-        <div class="review-text">"Best camera install I've ever seen. Clean wiring, perfect placement. Worth every penny."</div>
-      </div>
+      <p class="review-loading" style="text-align: center; color: var(--muted); padding: 40px;">Loading recent reviews...</p>
     </div>
   </div>
   
   <div class="review-controls">
+    <div id="reviewNav" class="review-nav" aria-label="Review pages"></div>
     <button class="review-nav review-prev" onclick="scrollReviews('prev')" aria-label="Previous reviews">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="15 18 9 12 15 6"></polyline>
@@ -3967,7 +3935,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Cancel or reschedule anytime before 24 hours of your appointment�no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
+          <p>Cancel or reschedule anytime before 24 hours of your appointment - no fees. Need to change last-minute? Call us at (864) 528-1475 and we'll work with you.</p>
         </div>
       </div>
       
@@ -3979,7 +3947,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>Yes�in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
+          <p>Yes - in-wall wire concealment is included when feasible. For brick/stone walls or complex routing, we use professional-grade cable covers that blend with your wall color.</p>
         </div>
       </div>
       
@@ -3991,7 +3959,7 @@ body.modal-open {
           </svg>
         </button>
         <div class="faq-answer">
-          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking�nothing due at installation.</p>
+          <p>All major credit/debit cards via secure Stripe checkout. No cash or checks. You pay online when booking - nothing due at installation.</p>
         </div>
       </div>
       
@@ -4054,7 +4022,7 @@ body.modal-open {
 <!-- FINAL CTA SECTION -->
 <section class="final-cta-section">
   <div class="final-cta-inner">
-    <h2>Book your installation today�Next available slots filling fast</h2>
+    <h2>Book your installation today - Next available slots filling fast</h2>
     <p>500+ homes served. Licensed installers. Same-week appointments available now.</p>
     <div class="final-cta-buttons">
       <button class="btn btn-primary" onclick="scrollToSection('tv')" style="padding: 16px 32px; font-size: 17px;">
@@ -4065,9 +4033,9 @@ body.modal-open {
       </button>
     </div>
     <div style="margin-top: 24px; font-size: 14px; color: var(--muted);">
-      <span style="margin-right: 20px;">? Book instantly online</span>
-      <span style="margin-right: 20px;">? 90-day warranty</span>
-      <span>? Same-week availability</span>
+      <span style="margin-right: 20px;">- Book instantly online</span>
+      <span style="margin-right: 20px;">- 90-day warranty</span>
+      <span>- Same-week availability</span>
     </div>
   </div>
 </section>

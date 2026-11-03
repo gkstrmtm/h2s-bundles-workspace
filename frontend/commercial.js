@@ -58,6 +58,7 @@
     conflict: false,
   };
   let saveChain = Promise.resolve();
+  let address;
   let uploadChain = Promise.resolve();
 
   function newIdentity() {
@@ -901,6 +902,7 @@
 
   function collectLeadPayload() {
     const smsOptIn = !!(byId('smsConsent') && byId('smsConsent').checked);
+    const installationAddress = address?.read();
     return {
       publicToken: state.leadToken || '',
       fullName: byId('fullName') ? byId('fullName').value.trim() : '',
@@ -914,6 +916,7 @@
       timeline: byId('timeline') ? byId('timeline').value : '',
       budgetBand: byId('budgetBand') ? byId('budgetBand').value : '',
       projectAddress: byId('projectAddress') ? byId('projectAddress').value.trim() : '',
+      projectUnit: byId('projectUnit') ? byId('projectUnit').value.trim() : '',
       projectCity: byId('projectCity') ? byId('projectCity').value.trim() : '',
       projectState: byId('projectState') ? byId('projectState').value.trim() : '',
       projectPostalCode: byId('projectPostalCode') ? byId('projectPostalCode').value.trim() : '',
@@ -922,6 +925,7 @@
       serviceNeeds: selectedServices(),
       projectPhotoUrls: state.uploadedPhotos.slice(),
       assessmentAnswers: {
+        ...(installationAddress ? { installationAddress } : {}),
         decisionMaker: byId('decisionMaker') ? byId('decisionMaker').value : '',
         existingSystem: byId('existingSystem') ? byId('existingSystem').value : '',
         securityIncident: byId('securityIncident') ? byId('securityIncident').value : '',
@@ -1015,6 +1019,17 @@
         field.value = key === 'contactPreference' && value === 'email' ? '' : String(value);
       }
     });
+    const saved = payload.assessmentAnswers?.installationAddress;
+    const parts = typeof payload.projectUnit === 'string'
+      ? { street: payload.projectAddress || '', unit: payload.projectUnit }
+      : window.H2SAddressAutocomplete?.splitLine(payload.projectAddress) || { street: payload.projectAddress || '', unit: '' };
+    const values = { ...parts, city: payload.projectCity || '', state: payload.projectState || '', postalCode: payload.projectPostalCode || '' };
+    const same = saved && ['street', 'unit', 'city', 'state', 'postalCode'].every(name => saved[name] === values[name]);
+    if (address) address.restore({ ...values, ...(same ? saved : { source: 'manual' }) });
+    else {
+      if (byId('projectAddress')) byId('projectAddress').value = values.street;
+      if (byId('projectUnit')) byId('projectUnit').value = values.unit;
+    }
   }
 
   function applyDraft(rawDraft, options) {
@@ -1063,6 +1078,7 @@
 
     const form = byId('commercialIntakeForm');
     if (form) form.reset();
+    address?.restore({ street: '', unit: '', city: '', state: '', postalCode: '' });
     updateLeadUrl('');
     if (state.slots.length) renderSlots(state.slots);
     renderUploadedPhotos();
@@ -1312,6 +1328,10 @@
 
   function applyConfig(config) {
     state.config = config || {};
+    if (!address && window.H2SAddressAutocomplete) address = window.H2SAddressAutocomplete.create(byId('commercialIntakeForm'), config.addressLookup, {
+      fields: { street: 'projectAddress', unit: 'projectUnit', city: 'projectCity', state: 'projectState', postalCode: 'projectPostalCode' },
+      holder: byId('commercial-address-search'), status: byId('commercial-address-status'),
+    });
     const callNumber = config.callNumber || DEFAULT_PHONE;
     const smsNumber = config.smsNumber || callNumber;
     ['headerCallLink', 'heroCallLink', 'footerCallLink', 'footerPhoneText'].forEach(function (id) {

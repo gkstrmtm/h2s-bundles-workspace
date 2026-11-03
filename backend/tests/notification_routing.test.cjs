@@ -154,6 +154,7 @@ test('saved routing reaches installation owner reminders while customer confirma
   const f=await fixture(t);assert.equal((await save(f)).status,200);
   const row=await inquiry(f);
   assert.equal((await f.post('residential-review',{token:row.response_token,action:'approve'})).status,200);
+  await f.db.query("update commercial_leads set project_address='123 Fixture Lane',project_state='SC',project_postal_code='29601' where lead_id=$1",[row.lead_id]);
   const start=new Date(Date.now()+24*3600000).toISOString(),end=new Date(Date.parse(start)+3600000).toISOString();
   const response=await f.route('commercial-calendar').POST(new Request('http://fixture.invalid/api/commercial-calendar',{
     method:'POST',headers:{Authorization:'Bearer fixture-admin','Content-Type':'application/json'},

@@ -621,12 +621,12 @@ async function sendReviewRequest(opts: {
   customerName: string;
   serviceName: string;
   completedAtIso: string;
-}): Promise<void> {
+}): Promise<{ warning?: string }> {
   const { jobId, customerEmail, customerPhone, customerName, serviceName, completedAtIso } = opts;
   
   if (!customerEmail || !String(customerEmail).includes('@')) {
     console.log(`[REVIEW_REQUEST_SKIP] jobId=${jobId} reason=no_email`);
-    return;
+    return { warning: 'Review email not sent: no customer email is recorded.' };
   }
 
   // Time-aware scheduling: check if current time is within 8am-10pm EST
@@ -636,7 +636,7 @@ async function sendReviewRequest(opts: {
   if (estHour < 8 || estHour >= 22) {
     console.log(`[REVIEW_REQUEST_DEFERRED] jobId=${jobId} hour=${estHour} reason=outside_hours`);
     // TODO: Queue for later delivery (8am next day)
-    return;
+    return { warning: 'Review email was not queued outside sending hours. Manual follow-up is required.' };
   }
 
   const reviewUrl = 'https://shop.home2smart.com/reviews';
@@ -674,7 +674,7 @@ async function sendReviewRequest(opts: {
   `;
 
   try {
-    await sendMail({
+    const result = await sendMail({
       to: customerEmail,
       subject: `How was your ${serviceName} experience?`,
       html: emailHtml,
@@ -682,9 +682,12 @@ async function sendReviewRequest(opts: {
       idempotencyKey: `review_request:${jobId}`,
       meta: { jobId, customerName, serviceName }
     });
+    if (!result.ok) return { warning: `Review email was not accepted: ${result.error || 'mail processing failed'}` };
     console.log(`[REVIEW_REQUEST_SENT] jobId=${jobId} to=${customerEmail}`);
+    return {};
   } catch (err: any) {
     console.error(`[REVIEW_REQUEST_FAILED] jobId=${jobId} error=${err.message}`);
+    return { warning: 'Review email processing failed; reconcile before retrying.' };
   }
 }
 
@@ -698,6 +701,7 @@ export async function ensureCompletionSideEffects(opts: {
   actorType: 'pro' | 'admin';
   actorId: string;
   requestId?: string;
+  commercialContext?: { proId: string; orderId: string; customerContactPreference: string };
 }): Promise<{ ok: boolean; error?: string; payoutId?: string; sentMail?: boolean; warning?: string }> {
   const { jobId, completedAtIso, actorType, actorId } = opts;
   const rid = opts.requestId || `req_${Date.now()}`;
@@ -709,7 +713,9 @@ export async function ensureCompletionSideEffects(opts: {
   let idCol = 'job_id';
   let jobsTable = 'h2s_jobs';
   try {
-     const schema = await resolveDispatchSchema(sb);
+     const schema = opts.commercialContext
+       ? { jobsTable: 'h2s_dispatch_jobs', jobsIdCol: 'job_id' }
+       : await resolveDispatchSchema(sb);
      if (schema) {
          jobsTable = schema.jobsTable;
          idCol = schema.jobsIdCol;
@@ -717,17 +723,40 @@ export async function ensureCompletionSideEffects(opts: {
   } catch {}
 
   // 2. Load Job (Fail Closed)
-  const { data: job, error: jobError } = await sb.from(jobsTable).select('*').eq(idCol, jobId).single();
+  const { data: storedJob, error: jobError } = await sb.from(jobsTable).select('*').eq(idCol, jobId).single();
   
-  if (jobError || !job) {
+  if (jobError || !storedJob) {
       console.error(`[COMPLETION_ORCH_FAIL] Job not found: ${jobId}`, jobError);
       return { ok: false, error: 'Job not found during side-effect orchestration' };
+  }
+  let job = storedJob;
+  if (opts.commercialContext) {
+    const { data: order, error } = await sb.from('h2s_orders')
+      .select('id,order_id,total,metadata_json,customer_name,customer_email,customer_phone')
+      .eq('id', opts.commercialContext.orderId).maybeSingle();
+    if (error || !order || ![order.id, order.order_id].includes(storedJob.order_id) || Number(order.total) <= 0) {
+      return { ok: false, error: 'Verified commercial installation/order relationship is unavailable' };
+    }
+    const payout = Number(order.metadata_json?.tech_payout_dollars) || Number(order.metadata_json?.tech_payout_cents) / 100;
+    if (!Number.isFinite(payout) || payout <= 0) {
+      return { ok: false, error: 'Recorded catalog technician payout is missing; reconcile pricing before processing completion effects' };
+    }
+    const { data: payoutJob, error: payoutJobError } = await sb.from('h2s_jobs')
+      .select('job_id,customer_email').eq('job_id', jobId).maybeSingle();
+    const { data: payoutPro, error: payoutProError } = await sb.from('h2s_pros')
+      .select('pro_id').eq('pro_id', opts.commercialContext.proId).maybeSingle();
+    if (payoutJobError || payoutProError || !payoutJob || !payoutPro || !order.customer_email
+      || String(payoutJob.customer_email || '').trim().toLowerCase() !== String(order.customer_email).trim().toLowerCase()) {
+      return { ok: false, error: 'Existing payout job/pro relationship is missing or mismatched. Reconcile the legacy ledger relationship; no job or technician was created.' };
+    }
+    job = { ...storedJob, customer_name: order.customer_name, customer_email: order.customer_email,
+      customer_phone: order.customer_phone, order_total: Number(order.total), metadata: order.metadata_json, estimated_payout: payout };
   }
 
   // 3. Determine Pro
   let beneficiaryProId = (actorType === 'pro') ? actorId : null;
   if (!beneficiaryProId) {
-    beneficiaryProId = job.pro_id || job.assigned_pro_id || job.tech_id || job.technician_id || job.pro_uuid;
+    beneficiaryProId = opts.commercialContext?.proId || job.pro_id || job.assigned_pro_id || job.tech_id || job.technician_id || job.pro_uuid;
   }
   
   // 3b. Update assignments (Legacy Best Effort)
@@ -863,14 +892,16 @@ export async function ensureCompletionSideEffects(opts: {
           total_amount: amount,
           status: 'pending',
           week_start: weekStart, // The FIX
-          week_bucket: weekStart,
-          meta: {
-              ...(typeof job.metadata === 'object' ? job.metadata : {}),
-              service_date_iso: serviceDateIso,
-              completed_at_iso: completedAtIso,
-              derived_week_start: weekStart
-          },
-          updated_at: new Date().toISOString()
+          ...(opts.commercialContext ? {} : {
+            week_bucket: weekStart,
+            meta: {
+                ...(typeof job.metadata === 'object' ? job.metadata : {}),
+                service_date_iso: serviceDateIso,
+                completed_at_iso: completedAtIso,
+                derived_week_start: weekStart
+            },
+            updated_at: new Date().toISOString()
+          })
       };
 
       try {
@@ -922,13 +953,16 @@ export async function ensureCompletionSideEffects(opts: {
          idempotencyKey: `job_completed:${jobId}`,
          meta: { jobId, proId: beneficiaryProId, amount }
        });
+       if (opts.commercialContext && !mailRes.ok) return { ok: false, payoutId, error: 'Completion receipt was not accepted; reconcile mail processing before retrying' };
        console.log(`[COMPLETION_ORCH_MAIL] jobId=${jobId} type=job_completed skippedOrSent=${mailRes.skipped ? 'skipped' : 'sent'}`);
   }
 
   console.log(`[COMPLETION_ORCH_DONE] jobId=${jobId}`);
   
   // 7. Send Review Request (time-aware, customer-focused)
-  await sendReviewRequest({
+  const review = opts.commercialContext && opts.commercialContext.customerContactPreference !== 'email'
+    ? { warning: 'Customer review email was not sent: saved contact preference requires manual follow-up.' }
+    : await sendReviewRequest({
     jobId,
     customerEmail: job.customer_email || job.email,
     customerPhone: job.customer_phone || job.phone,
@@ -937,6 +971,6 @@ export async function ensureCompletionSideEffects(opts: {
     completedAtIso
   });
   
-  return { ok: true, payoutId };
+  return { ok: true, payoutId, ...(opts.commercialContext && review.warning ? { warning: review.warning } : {}) };
 }
 /* PS PATCH: completion orchestration shared + service-week bucketing — end */

@@ -28,7 +28,8 @@ const target = () => {
 
 test('registered production authorization includes exactly the owner-approved reviewed migration scope', () => {
   const config = registeredTarget();
-  assert.deepEqual(config.authorizedMigrations, runner.migrations().map(file => file.version).filter(version => !version.startsWith('039_')));
+  assert.deepEqual(config.authorizedMigrations, runner.migrations().map(file => file.version));
+  assert.ok(!config.authorizedMigrations.some(version => version.startsWith('040_')));
   assert.equal(config.commercial031.reviewOnly, false);
   assert.match(config.commercial031.authorization, /2026-10-20/);
   assert.equal(config.commercial031.sqlSha256, 'c0e2425df45f7bea99fa6d45dc9becd0dd99ccac80cee95417c8add00de1b071');
@@ -53,11 +54,12 @@ test('registered production authorization includes exactly the owner-approved re
   assert.equal(config.workspace038.reviewOnly,false);
   assert.match(config.workspace038.authorization,/2026-10-26/);
   assert.equal(config.workspace038.sqlSha256,'f362259f2ae778507aab8fbaab86faf9f02ec350627141e52a6490d07a43f29d');
-  assert.throws(()=>runner.authorizeApply(config,ref),/outside the explicitly authorized scope/);
-  assert.equal(config.notification039.reviewOnly,true);
-  assert.equal(config.notification039.authorization,null);
+  assert.doesNotThrow(()=>runner.authorizeApply(config,ref));
+  assert.equal(config.notification039.reviewOnly,false);
+  assert.match(config.notification039.authorization,/2026-10-28/);
   assert.equal(config.notification039.sqlSha256,runner.migrations().find(file=>file.version.startsWith('039_')).sha256);
-  assert.throws(()=>runner.authorizeApply({...config,authorizedMigrations:runner.migrations().map(file=>file.version)},ref),/039 remains review-only/);
+  assert.throws(()=>runner.authorizeApply({...config,
+    notification039:{...config.notification039,reviewOnly:true}},ref),/039 remains review-only/);
   assert.throws(()=>runner.authorizeApply({...config,
     authorizedMigrations:config.authorizedMigrations.filter(version=>!/^03[78]_/.test(version))},ref),/outside the explicitly authorized scope/);
   const future={...config,residential037:{reviewOnly:true},workspace038:{reviewOnly:true}};

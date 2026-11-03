@@ -29,6 +29,8 @@
       document.getElementById('residential-phone-row').hidden=false;
     }
     for (const [label,value] of Object.entries({'Reference':inquiry.reference,...(call.hidden?{'Phone':inquiry.phone}:{}),
+      'Installation address':inquiry.address || inquiry.city,
+      'Address entry':inquiry.addressSource==='google_places'?'Google suggestion (not verified)':'Manual entry (not verified)',
       'Availability':inquiry.availability,Notes:inquiry.notes || 'No extra notes'})) {
       const row=document.createElement('div');
       const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=value;

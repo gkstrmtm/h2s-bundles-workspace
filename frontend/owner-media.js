@@ -1,5 +1,6 @@
 (function () {
   const DASH_SESSION_TOKEN_KEY = 'h2s_dashboard_session_token_v1';
+  const OWNER_MEDIA_SESSION_TOKEN_KEY = 'h2s_owner_media_session_token_v1';
   const OWNER_SELECTED_FILES_KEY = 'h2s_owner_media_selected_files_v1';
   const DEFAULT_REMOTE_API_ORIGIN = 'https://h2s-backend.vercel.app';
   const API_ORIGIN = resolveApiOrigin();
@@ -7,7 +8,7 @@
   const OWNER_UPLOADS_API = '/api/owner-media/uploads';
   const LARGE_UPLOAD_BYTES = 4 * 1024 * 1024;
   const MIN_REFRESH_INTERVAL_MS = 1200;
-  const OWNER_GALLERY_PAGE_SIZE = 12;
+  const OWNER_GALLERY_PAGE_SIZE = 24;
   const OWNER_GALLERY_LIMIT = 500;
   const RECENT_SKELETON_COUNT = 3;
 
@@ -15,6 +16,7 @@
     me: null,
     localUploads: [],
     recentUploads: [],
+    uploadNotice: { message: '', tone: '' },
     removingAssetIds: new Set(),
     captureContext: null,
     captureContextPromise: null,
@@ -201,9 +203,21 @@
     if (elements.recentSyncStatus) elements.recentSyncStatus.textContent = String(message || '');
   }
 
+  function setUploadStatus(message, tone) {
+    if (!elements.uploadStatus) return;
+    const text = String(message || '').trim();
+    const mode = String(tone || '').trim().toLowerCase();
+    elements.uploadStatus.textContent = text;
+    if (text) {
+      elements.uploadStatus.setAttribute('data-tone', mode || 'neutral');
+    } else {
+      elements.uploadStatus.removeAttribute('data-tone');
+    }
+  }
+
   function readToken() {
     try {
-      return String(localStorage.getItem(DASH_SESSION_TOKEN_KEY) || '').trim();
+      return String(localStorage.getItem(DASH_SESSION_TOKEN_KEY) || localStorage.getItem(OWNER_MEDIA_SESSION_TOKEN_KEY) || '').trim();
     } catch {
       return '';
     }
@@ -212,8 +226,13 @@
   function writeToken(token) {
     try {
       const value = String(token || '').trim();
-      if (!value) localStorage.removeItem(DASH_SESSION_TOKEN_KEY);
-      else localStorage.setItem(DASH_SESSION_TOKEN_KEY, value);
+      if (!value) {
+        localStorage.removeItem(DASH_SESSION_TOKEN_KEY);
+        localStorage.removeItem(OWNER_MEDIA_SESSION_TOKEN_KEY);
+      } else {
+        localStorage.setItem(DASH_SESSION_TOKEN_KEY, value);
+        localStorage.setItem(OWNER_MEDIA_SESSION_TOKEN_KEY, value);
+      }
     } catch {
       // ignore
     }
@@ -251,6 +270,8 @@
       const message = data && data.error ? String(data.error) : `Request failed (${response.status})`;
       const error = new Error(message);
       error.status = response.status;
+      error.code = data && data.error_code ? String(data.error_code) : '';
+      error.existingUpload = data && data.existing_upload ? data.existing_upload : null;
       throw error;
     }
     return data;
@@ -290,15 +311,35 @@
   }
 
   function toUserMessage(error, fallback) {
+    const errorCode = String(error && error.code || '').trim().toLowerCase();
     const raw = String(error && error.message ? error.message : fallback || '').trim();
     const lower = raw.toLowerCase();
     if (!raw) return fallback || 'Something went wrong.';
+    if (lower === 'null' || lower === 'undefined') return fallback || 'Something went wrong.';
+    if (errorCode === 'duplicate_owner_upload' || lower.includes('already been uploaded')) {
+      return 'That image has already been uploaded.';
+    }
+    if (lower.includes('413') || lower.includes('payload too large') || lower.includes('function_payload_too_large')) {
+      return 'That file is too large for a direct send. Please try again.';
+    }
     if (lower.includes('invalid input syntax for type uuid')) return fallback || 'Recent uploads are temporarily unavailable.';
     if (lower.includes('proof_assets')) return fallback || 'Recent uploads are temporarily unavailable.';
     if (lower.includes('exceed_cached_egress_quota')) return 'Gallery is temporarily unavailable. New uploads can still be sent.';
     if (lower.includes('service for this project is restricted')) return 'Gallery is temporarily unavailable. New uploads can still be sent.';
+    if (lower.includes('database') || lower.includes('schema') || lower.includes('prisma') || lower.includes('supabase')) {
+      return fallback || 'Something went wrong. Try again in a moment.';
+    }
+    if (lower.includes('not found') || lower.includes('upload store') || lower.includes('owner-media')) {
+      return fallback || 'That upload is not available right now.';
+    }
+    if (lower.includes('can\'t reach database server') || lower.includes('enotfound') || lower.includes('connect')) {
+      return fallback || 'The gallery is temporarily unavailable. Try again in a moment.';
+    }
     if (lower.includes('request failed (500)')) return fallback || 'Couldn’t send right now. Try again.';
-    return raw;
+    if (/[{}\[\]]/.test(raw) || /\b(null|undefined|column|relation|constraint|foreign key|uuid|bytea)\b/i.test(raw)) {
+      return fallback || 'Something went wrong. Try again in a moment.';
+    }
+    return raw.length > 140 ? (fallback || 'Something went wrong. Try again in a moment.') : raw;
   }
 
   function resetFileInputs() {
@@ -344,16 +385,32 @@
   function updateUploadStatusLine() {
     if (!elements.uploadStatus) return;
     const activeCount = state.localUploads.filter((entry) => entry.status === 'sending').length;
+    const savedCount = state.localUploads.filter((entry) => entry.status === 'saved').length;
+    const errorCount = state.localUploads.filter((entry) => entry.status === 'error').length;
     if (activeCount > 0) {
-      elements.uploadStatus.textContent = activeCount === 1 ? '1 upload is still sending.' : `${activeCount} uploads are still sending.`;
+      const parts = [activeCount === 1 ? '1 upload is still sending.' : `${activeCount} uploads are still sending.`];
+      if (savedCount > 0) parts.push(savedCount === 1 ? '1 is already saved below.' : `${savedCount} are already saved below.`);
+      if (errorCount > 0) parts.push(errorCount === 1 ? '1 needs another try.' : `${errorCount} need another try.`);
+      setUploadStatus(parts.join(' '), errorCount > 0 ? 'error' : 'warn');
       return;
     }
-    const hasError = state.localUploads.some((entry) => entry.status === 'error');
-    if (hasError) {
-      elements.uploadStatus.textContent = 'Some uploads need another try.';
+    if (state.uploadNotice && state.uploadNotice.message) {
+      setUploadStatus(state.uploadNotice.message, state.uploadNotice.tone || 'neutral');
       return;
     }
-    elements.uploadStatus.textContent = '';
+    if (errorCount > 0 && savedCount > 0) {
+      setUploadStatus(savedCount === 1 ? '1 upload saved below. 1 needs another try.' : `${savedCount} uploads saved below. ${errorCount} ${errorCount === 1 ? 'needs' : 'need'} another try.`, 'error');
+      return;
+    }
+    if (errorCount > 0) {
+      setUploadStatus(errorCount === 1 ? '1 upload needs another try.' : `${errorCount} uploads need another try.`, 'error');
+      return;
+    }
+    if (savedCount > 1) {
+      setUploadStatus(`${savedCount} uploads are saved below.`, 'success');
+      return;
+    }
+    setUploadStatus('', '');
   }
 
   function updateGalleryPagingUi(totalUploads) {
@@ -361,8 +418,8 @@
     const shown = Math.max(0, Number(state.recentUploads.length || 0));
     if (elements.galleryMeta) {
       if (!total) elements.galleryMeta.textContent = 'No uploads in your gallery yet.';
-      else if (shown >= total) elements.galleryMeta.textContent = `All ${total} uploads shown.`;
-      else elements.galleryMeta.textContent = `Showing ${shown} of ${total} uploads.`;
+      else if (shown >= total) elements.galleryMeta.textContent = `${total} ${total === 1 ? 'upload' : 'uploads'} shown.`;
+      else elements.galleryMeta.textContent = `Showing ${shown} of ${total} ${total === 1 ? 'upload' : 'uploads'}.`;
     }
 
     if (elements.galleryLoadMoreButton) {
@@ -370,7 +427,9 @@
       const nextCount = Math.min(OWNER_GALLERY_PAGE_SIZE, remaining);
       elements.galleryLoadMoreButton.classList.toggle('is-hidden', nextCount <= 0);
       elements.galleryLoadMoreButton.disabled = nextCount <= 0;
-      elements.galleryLoadMoreButton.textContent = nextCount > 0 ? `Load ${nextCount} more` : 'All uploads shown';
+      elements.galleryLoadMoreButton.textContent = nextCount <= 0
+        ? 'All uploads shown'
+        : (remaining === 1 ? 'Show final upload' : `Show ${nextCount} more`);
     }
   }
 
@@ -379,6 +438,48 @@
     const assetId = String(item && item.asset_id || '').trim();
     if (assetId) return `remote:${assetId}`;
     return `remote:${getUploadKey(item && item.storage_bucket, item && item.storage_path)}`;
+  }
+
+  function getRemoteIdentityKey(upload) {
+    const contentHash = String(upload && upload.content_sha256 || '').trim().toLowerCase();
+    if (contentHash) return `hash:${contentHash}`;
+    const assetId = String(upload && upload.asset_id || '').trim();
+    if (assetId) return `asset:${assetId}`;
+    const storageKey = getUploadKey(upload && upload.storage_bucket, upload && upload.storage_path);
+    if (storageKey) return `storage:${storageKey}`;
+    return '';
+  }
+
+  function remoteUploadPriority(upload) {
+    if (!upload) return 0;
+    if (upload.is_visible || upload.review_state === 'published') return 4;
+    if (upload.review_state === 'approved') return 3;
+    if (upload.review_state === 'reviewed') return 2;
+    if (upload.review_state === 'pending') return 1;
+    return 0;
+  }
+
+  function remoteUploadTimestamp(upload) {
+    return Date.parse(String(upload && (upload.updated_at || upload.submitted_at || upload.created_at) || '')) || 0;
+  }
+
+  function pickPreferredRemoteUpload(current, candidate) {
+    if (!current) return candidate;
+    if (!candidate) return current;
+    const candidatePriority = remoteUploadPriority(candidate);
+    const currentPriority = remoteUploadPriority(current);
+    if (candidatePriority !== currentPriority) return candidatePriority > currentPriority ? candidate : current;
+    return remoteUploadTimestamp(candidate) > remoteUploadTimestamp(current) ? candidate : current;
+  }
+
+  function coalesceRemoteUploads(uploads) {
+    if (!Array.isArray(uploads) || !uploads.length) return [];
+    const byIdentity = new Map();
+    uploads.forEach((upload, index) => {
+      const identityKey = getRemoteIdentityKey(upload) || `fallback:${index}`;
+      byIdentity.set(identityKey, pickPreferredRemoteUpload(byIdentity.get(identityKey), upload));
+    });
+    return Array.from(byIdentity.values()).sort((left, right) => remoteUploadTimestamp(right) - remoteUploadTimestamp(left));
   }
 
   function buildItemsSignature(items) {
@@ -449,7 +550,8 @@
     const preview = isVideoKind(entry.kind)
       ? `<video src="${escapeHtml(entry.previewUrl)}" muted playsinline preload="metadata"></video>`
       : `<img src="${escapeHtml(entry.previewUrl)}" alt="${escapeHtml(title)}">`;
-    const meta = [formatTimestamp(entry.createdAt), entry.file ? entry.file.name : ''].filter(Boolean).join(' · ');
+    const fileName = entry.file && entry.file.name ? String(entry.file.name).trim() : '';
+    const meta = [formatTimestamp(entry.createdAt), fileName].filter(Boolean).join(' · ');
     const detail = [isVideoKind(entry.kind) ? 'Video' : 'Photo', formatFileSize(entry.fileSizeKb)].filter(Boolean).join(' · ');
     const isRemoving = entry.assetId && state.removingAssetIds.has(entry.assetId);
     const badgeState = isRemoving ? 'removing' : (entry.status === 'error' ? 'error' : (entry.status === 'saved' ? 'saved' : 'sending'));
@@ -496,7 +598,8 @@
     const preview = isVideoKind(upload.media_kind)
       ? `<video src="${escapeHtml(previewUrl)}" ${posterUrl ? `poster="${escapeHtml(posterUrl)}"` : ''} muted playsinline preload="metadata"></video>`
       : `<img src="${escapeHtml(previewUrl)}" alt="${escapeHtml(title)}">`;
-    const meta = [formatTimestamp(upload.submitted_at)].filter(Boolean).join(' · ');
+    const submittedAt = String(upload.submitted_at || '').trim();
+    const meta = [formatTimestamp(submittedAt)].filter(Boolean).join(' · ');
     const detail = [isVideoKind(upload.media_kind) ? 'Video' : 'Photo', formatFileSize(upload.file_size_kb)].filter(Boolean).join(' · ');
     const isRemoving = state.removingAssetIds.has(upload.asset_id);
     const isPublished = !!upload.is_visible || upload.review_state === 'published';
@@ -524,7 +627,7 @@
             ${detail ? `<span class="owner-chip">${escapeHtml(detail)}</span>` : ''}
           </div>
           <p class="owner-upload-card__note">${escapeHtml(noteText)}</p>
-          ${upload.note ? `<p class="owner-upload-card__note">${escapeHtml(upload.note)}</p>` : ''}
+          ${(upload.note && String(upload.note).trim() && String(upload.note).trim().toLowerCase() !== 'null' && String(upload.note).trim().toLowerCase() !== 'undefined') ? `<p class="owner-upload-card__note">${escapeHtml(upload.note)}</p>` : ''}
           ${action}
         </div>
       </article>
@@ -573,7 +676,7 @@
 
   function renderVisibleUploads(options) {
     const localKeys = new Set(state.localUploads.map((entry) => getUploadKey(entry.storageBucket, entry.storagePath)).filter(Boolean));
-    const remoteItems = state.recentUploads.filter((upload) => !localKeys.has(getUploadKey(upload.storage_bucket, upload.storage_path)));
+    const remoteItems = coalesceRemoteUploads(state.recentUploads.filter((upload) => !localKeys.has(getUploadKey(upload.storage_bucket, upload.storage_path))));
     renderUploads([
       ...state.localUploads.map((entry) => ({ ...entry, local: true })),
       ...remoteItems,
@@ -638,7 +741,8 @@
     state.remoteVisibleCount = OWNER_GALLERY_PAGE_SIZE;
     if (elements.sessionMeta) elements.sessionMeta.textContent = 'Your gallery is empty.';
     if (elements.loginStatus) elements.loginStatus.textContent = '';
-    if (elements.uploadStatus) elements.uploadStatus.textContent = '';
+    state.uploadNotice = { message: '', tone: '' };
+    setUploadStatus('', '');
     setRefreshLoop(false);
     setSyncStatus('Enter the owner PIN to open the shared upload gallery.', 'warn');
     renderUploads([], { force: true });
@@ -735,6 +839,10 @@
   }
 
   function buildLocalUploadEntry(file) {
+    const lastModifiedMs = Number(file && file.lastModified || 0);
+    const capturedAtOriginal = Number.isFinite(lastModifiedMs) && lastModifiedMs > 0
+      ? new Date(lastModifiedMs).toISOString()
+      : '';
     return {
       id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
@@ -745,6 +853,8 @@
       error: '',
       fileSizeKb: Math.round((file.size || 0) / 1024),
       createdAt: new Date().toISOString(),
+      capturedAtOriginal,
+      capturedAtSource: capturedAtOriginal ? 'file_last_modified' : '',
       storageBucket: '',
       storagePath: '',
     };
@@ -752,7 +862,7 @@
 
   function startSelectedFiles(fileList) {
     if (!state.me) {
-      elements.uploadStatus.textContent = 'Sign in first.';
+      setUploadStatus('Sign in first.', 'warn');
       return;
     }
 
@@ -777,10 +887,15 @@
     resetFileInputs();
 
     if (!freshEntries.length) {
-      if (skippedCount) setSyncStatus('Those uploads were already sent from this device.', 'warn');
+      if (skippedCount) {
+        state.uploadNotice = { message: skippedCount === 1 ? 'That upload is already in this gallery from this device.' : 'Those uploads are already in this gallery from this device.', tone: 'warn' };
+        setSyncStatus('Those uploads were already sent from this device.', 'warn');
+        updateUploadStatusLine();
+      }
       return;
     }
 
+    state.uploadNotice = { message: '', tone: '' };
     state.localUploads = [...freshEntries, ...state.localUploads];
     const captureContextPromise = getUploadCaptureContext();
     freshEntries.forEach((entry) => {
@@ -801,12 +916,64 @@
   }
 
   async function uploadFileToStorage(file, entry) {
+    const shouldStage = isVideoKind(entry.kind) || Number(file && file.size || 0) > LARGE_UPLOAD_BYTES;
+    if (shouldStage) {
+      const init = await fetchJson('/api/admin/proof-upload-init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surface: 'owner_media',
+          week_of: '',
+          bucket: 'owner-media-db',
+          filename: file && file.name ? file.name : 'upload',
+          mime: file && file.type ? file.type : '',
+          media_kind: entry.kind || 'image',
+          captured_at_original: entry.capturedAtOriginal || null,
+          captured_at_source: entry.capturedAtSource || null,
+          convert_to_mp4: '0',
+        }),
+      });
+
+      if (!init || !init.ok || !init.signed_url || !init.raw_path) {
+        throw new Error('Upload could not be started.');
+      }
+
+      const putRes = await fetch(String(init.signed_url), {
+        method: 'PUT',
+        headers: { 'Content-Type': file && file.type ? file.type : 'application/octet-stream' },
+        body: file,
+      });
+      if (!putRes.ok) {
+        const err = new Error(`Request failed (${putRes.status})`);
+        err.status = putRes.status;
+        throw err;
+      }
+
+      return fetchJson('/api/admin/proof-upload-finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          surface: 'owner_media',
+          bucket: 'owner-media-db',
+          raw_path: init.raw_path,
+          filename: file && file.name ? file.name : 'upload',
+          mime: file && file.type ? file.type : '',
+          media_kind: entry.kind || 'image',
+          captured_at_original: entry.capturedAtOriginal || null,
+          captured_at_source: entry.capturedAtSource || null,
+          convert_to_mp4: '0',
+        }),
+      });
+    }
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('surface', 'owner_media');
     formData.append('week_of', '');
     formData.append('bucket', 'owner-media-db');
     formData.append('media_kind', entry.kind || 'image');
+    if (entry.capturedAtOriginal) formData.append('captured_at_original', entry.capturedAtOriginal);
+    if (entry.capturedAtSource) formData.append('captured_at_source', entry.capturedAtSource);
     formData.append('convert_to_mp4', '0');
 
     return fetchJson('/api/admin/proof-upload', {
@@ -839,7 +1006,14 @@
           content_type: upload.content_type || entry.file.type || null,
           file_size_kb: upload.file_size_kb || entry.fileSizeKb || null,
           thumbnail_storage_path: upload.thumbnail_storage_path || null,
+          source_type: 'owner_manual',
+          customer_media_opt_in: 'owner_admin_controlled',
+          usage_rights_status: 'pending_review',
+          media_team_visible: false,
+          review_state: 'pending',
           capture_source: entry.kind === 'video' ? 'owner_video' : 'owner_photo',
+          captured_at_original: entry.capturedAtOriginal || null,
+          captured_at_source: entry.capturedAtSource || null,
           capture_context: captureContext,
         }),
       });
@@ -854,11 +1028,34 @@
 
       renderVisibleUploads({ force: true });
       await refreshUploads({ silent: true, preserveStatus: true, force: true });
+      state.uploadNotice = {
+        message: 'Upload saved. It is now in Your uploads below.',
+        tone: 'success',
+      };
+      updateUploadStatusLine();
       setSyncStatus('Added to the shared gallery. Remove anything that should not stay here.', 'ok');
     } catch (error) {
+      if (String(error && error.code || '').trim().toLowerCase() === 'duplicate_owner_upload') {
+        removeLocalUpload(entry.id);
+        renderVisibleUploads({ force: true });
+        await refreshUploads({ silent: true, preserveStatus: true, force: true });
+        state.uploadNotice = {
+          message: 'That image is already in Your uploads below.',
+          tone: 'warn',
+        };
+        updateUploadStatusLine();
+        setSyncStatus('That image is already in the shared gallery.', 'warn');
+        return;
+      }
+
       entry.status = 'error';
       entry.error = toUserMessage(error, 'Couldn’t send. Try again.');
       renderVisibleUploads({ force: true });
+      state.uploadNotice = {
+        message: entry.error || 'Upload paused. Check your connection and try again.',
+        tone: 'error',
+      };
+      updateUploadStatusLine();
       setSyncStatus('Upload paused. Check your connection and try again.', 'warn');
     }
   }
@@ -917,15 +1114,15 @@
         const uploads = Array.isArray(data.uploads) ? data.uploads : [];
           if (appendMode) {
             const seen = new Set(state.recentUploads.map((upload) => String(upload && upload.asset_id || '').trim()).filter(Boolean));
-            state.recentUploads = state.recentUploads.concat(uploads.filter((upload) => {
+            state.recentUploads = coalesceRemoteUploads(state.recentUploads.concat(uploads.filter((upload) => {
               const assetId = String(upload && upload.asset_id || '').trim();
               if (!assetId) return true;
               if (seen.has(assetId)) return false;
               seen.add(assetId);
               return true;
-            }));
+            })));
           } else {
-            state.recentUploads = uploads;
+            state.recentUploads = coalesceRemoteUploads(uploads);
           }
           state.remoteVisibleCount = Math.max(OWNER_GALLERY_PAGE_SIZE, Number(state.recentUploads.length || 0));
         pruneSyncedLocalUploads();

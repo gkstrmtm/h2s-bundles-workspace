@@ -176,6 +176,10 @@ function normalizeServiceNeeds(value) {
   return uniqueStrings(toStringArray(value), 8, 80);
 }
 
+function formatAddressLine(street, unit) {
+  return street ? [street, unit ? (/^(unit|apt|suite)\b|^#/i.test(unit) ? unit : `Unit ${unit}`) : ''].filter(Boolean).join(', ') : '';
+}
+
 function normalizeCommercialLeadInput(payload) {
   const source = payload && typeof payload === 'object' ? payload : {};
   const rawAttribution = sanitizeJson(source.attribution || {}, 0) || {};
@@ -190,7 +194,7 @@ function normalizeCommercialLeadInput(payload) {
     phone: normalizePhone(source.phone),
     contactPreference: normalizeContactPreference(source.contactPreference),
     businessType: normalizeText(source.businessType, 120),
-    projectAddress: normalizeText(source.projectAddress, 220),
+    projectAddress: normalizeText(source.projectAddress, 300),
     projectCity: normalizeText(source.projectCity, 120),
     projectState: normalizeText(source.projectState, 80),
     projectPostalCode: normalizeText(source.projectPostalCode, 32),
@@ -215,6 +219,19 @@ function normalizeCommercialLeadInput(payload) {
     notes: normalizeText(source.notes, 2000)
   };
 
+  if (typeof source.projectUnit === 'string') {
+    const street = normalized.projectAddress, unit = normalizeText(source.projectUnit, 40);
+    normalized.projectAddress = formatAddressLine(street, unit);
+    if ([street, unit, normalized.projectState, normalized.projectPostalCode].some(Boolean)) {
+      const saved = normalized.assessmentAnswers.installationAddress;
+      const values = { street, unit, city: normalized.projectCity, state: normalized.projectState, postalCode: normalized.projectPostalCode };
+      const selected = saved?.source === 'google_places' && normalizeText(saved.placeId, 255)
+        && Object.keys(values).every(key => saved[key] === values[key]);
+      normalized.assessmentAnswers = { ...normalized.assessmentAnswers, installationAddress: {
+        ...values, addressLine: normalized.projectAddress,
+        source: selected ? 'google_places' : 'manual', placeId: selected ? normalizeText(saved.placeId, 255) : null } };
+    } else delete normalized.assessmentAnswers.installationAddress;
+  }
   normalized.isContactable = Boolean(normalized.phone || normalized.email);
   return normalized;
 }
@@ -466,6 +483,7 @@ function buildEscalationMessage(input) {
 }
 
 module.exports = {
+  formatAddressLine,
   COMMERCIAL_TIME_ZONE,
   validateConsultationWindow,
   hasCommercialSmsConsent,

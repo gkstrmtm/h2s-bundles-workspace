@@ -2390,18 +2390,6 @@ async function init(){
             }).filter(r => r.text.length > 0);
 
             if (nextHero.length > 0) heroReviews = nextHero;
-          } else {
-            // Backend returned 0 reviews; keep fallbacks and ensure carousel isn't empty.
-            if (allReviews.length === 0 && Array.isArray(heroReviews) && heroReviews.length > 0) {
-              allReviews = heroReviews.map(r => ({
-                rating: r.stars || 5,
-                review_text: r.text || '',
-                display_name: r.author || 'Customer',
-                services_selected: '',
-                timestamp_iso: '',
-                verified: false
-              })).filter(r => (r.review_text || '').trim().length > 0);
-            }
           }
 
           // Initialize hero reviews and carousel
@@ -3892,13 +3880,13 @@ function renderReviews() {
   const track = byId('reviewTrack');
   const nav = byId('reviewNav');
   
-  if (!track || !nav) {
-    // logger.error('[Reviews] Carousel DOM elements not found');
+  if (!track) {
     return;
   }
   
   if (allReviews.length === 0) {
-    track.innerHTML = '<p style="text-align: center; color: var(--muted); padding: 40px;">No reviews available</p>';
+    track.innerHTML = '<p style="text-align: center; color: var(--muted); padding: 40px;">Recent verified reviews will appear here shortly.</p>';
+    if (nav) nav.innerHTML = '';
     return;
   }
   
@@ -3958,9 +3946,11 @@ function renderReviews() {
   const slidesPerView = window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1;
   const totalPages = Math.ceil(allReviews.length / slidesPerView);
   
-  nav.innerHTML = Array.from({length: totalPages}, (_, i) => 
-    `<div class="review-dot ${i === 0 ? 'active' : ''}" onclick="goToReview(${i})" aria-label="Go to page ${i + 1}"></div>`
-  ).join('');
+  if (nav) {
+    nav.innerHTML = Array.from({length: totalPages}, (_, i) => 
+      `<div class="review-dot ${i === 0 ? 'active' : ''}" onclick="goToReview(${i})" aria-label="Go to page ${i + 1}"></div>`
+    ).join('');
+  }
   
   // (reviews rendered log stripped)
 }

@@ -129,7 +129,8 @@ test('review page GET never accepts; the actual explicit button posts its unique
     window.fetch=async(url,options)=>{
       calls.push({url,options});
       return Response.json(options.method==='GET'?{ok:true,inquiry:{reference:'HOME-DOM',status:'pending',name:'<script>Fixture</script>',
-        phone:'+15550000005',city:'Fixture City',services:['TV Mounting'],availability:'2099-01-01 (flexible)',notes:''}}:
+        phone:'+15550000005',city:'Fixture City',address:'100 Fixture Lane, Unit 4B, Fixture City, SC, 29601',
+        addressSource:'google_places',services:['TV Mounting'],availability:'2099-01-01 (flexible)',notes:''}}:
         {ok:true,status:'approved',bookingConfirmed:false,customer:{ok:true}});
     };
     window.eval(file('residential-review.js'));
@@ -138,6 +139,7 @@ test('review page GET never accepts; the actual explicit button posts its unique
     assert.equal(calls.length,1);assert.equal(calls[0].options.method,'GET');
     assert.equal(window.document.querySelectorAll('script:not([src])').length,0);
     assert.match(window.document.getElementById('residential-customer-name').textContent,/<script>Fixture<\/script>/);
+    assert.match(window.document.getElementById('residential-review-details').textContent,/Unit 4B.*Google suggestion \(not verified\)/s);
     form.querySelector('[value=approve]').click();
     await waitFor(()=>calls.length===2 && form.hidden);
     assert.deepEqual(JSON.parse(calls[1].options.body),{token:'fixture-review-token-00001',action:'approve',note:''});

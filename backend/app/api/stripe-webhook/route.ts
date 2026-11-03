@@ -36,9 +36,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Initialize Supabase client
+  const supabaseUrl = String(process.env.SUPABASE_URL || '').trim();
+  const supabaseAnonKey = String(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
   const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY!
+    supabaseUrl,
+    supabaseAnonKey
   );
 
   try {

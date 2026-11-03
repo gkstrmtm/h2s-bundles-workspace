@@ -8,6 +8,7 @@ import { followUpView, prepareFollowUp, FollowUpInputError } from '@/lib/commerc
 import { canTransitionTo } from '@/lib/jobHelpers';
 import { verifyCommercialPayment } from '@/lib/commercial_payment';
 import { getTechnicianPhones, getEscalationPhones, CommercialConfigurationError } from '@/lib/commercial_consultation_runtime';
+const { formatAddressLine }: { formatAddressLine(street: string, unit: string): string } = require('@/lib/commercial_consultation.js');
 
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const schemaErrors = ['42P01','42703','42883','PGRST202','PGRST204','PGRST205'];
@@ -139,7 +140,8 @@ async function snapshot(leadId: string) {
     installation = { order, job, artifacts, payment, assignments, preparation,
       preparationHistory: preparationHistory.slice(0,50), hasOlderPreparationHistory: preparationHistory.length>50 };
   }
-  return { lead, state, staff: await staff(), history: history.slice(0, 50), hasOlderActivity: history.length > 50,
+  return { lead, state, addressLookup: { browserKey: process.env.GOOGLE_MAPS_BROWSER_API_KEY || null },
+    staff: await staff(), history: history.slice(0, 50), hasOlderActivity: history.length > 50,
     installation, installers: installation ? await installers() : [], communications, followUp: await followUpView(leadId), routing: {
       nextReminderAt: consultation?.next_reminder_at || null, reminderCount: consultation?.reminder_count || 0,
       consultationStatus: consultation?.status || null, responseAt: consultation?.response_at || null,
@@ -238,7 +240,10 @@ async function handle(request: Request, write: boolean) {
         throw new OperationError(error.message);
       }
     } else if (body.action === 'location') {
-      for (const key of ['address','city','state','postalCode']) payload[key] = text(input[key], key === 'address' ? 300 : 100);
+      for (const key of ['city','state','postalCode']) payload[key] = text(input[key], 100);
+      const street = text(input.address, 300);
+      if (!street && input.unit !== undefined && text(input.unit, 40)) throw new OperationError('Add the street address before saving a unit, or leave the unit blank.');
+      payload.address = input.unit === undefined ? street : formatAddressLine(street, text(input.unit, 40));
       payload.expectedUpdatedAt = timestamp(input.expectedUpdatedAt);
       if (input.applyToJob === true) Object.assign(payload,{applyToJob:true,
         expectedJobUpdatedAt:timestamp(input.expectedJobUpdatedAt),expectedOrderUpdatedAt:timestamp(input.expectedOrderUpdatedAt)});

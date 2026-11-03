@@ -38,6 +38,7 @@ function publicConfig() {
     timeZone: 'America/New_York',
     photoMaxBytes: 3 * 1024 * 1024,
     photoMaxCount: 8,
+    addressLookup: { browserKey: process.env.GOOGLE_MAPS_BROWSER_API_KEY || null },
   };
 }
 

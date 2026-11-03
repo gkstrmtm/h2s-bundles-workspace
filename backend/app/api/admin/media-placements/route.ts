@@ -52,9 +52,8 @@ async function handle(request: Request) {
       const body = await request.json();
       placement = parseMediaPlacement(body);
       if (body.replace !== undefined) {
-        if (request.method !== 'PUT' || !placement.enabled || placement.surface !== 'commercial_intake'
-          || !['commercial_security_rail', 'commercial_display_rail'].includes(placement.area)) {
-          throw new Error('Replacement requires an included Commercial rail placement');
+        if (request.method !== 'PUT' || !placement.enabled) {
+          throw new Error('Replacement requires an included page placement');
         }
         replacement = parseMediaPlacement({ ...placement, asset_source: body.replace?.asset_source,
           asset_id: body.replace?.asset_id, enabled: false });

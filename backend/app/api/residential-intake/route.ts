@@ -9,7 +9,8 @@ export async function GET(request: Request) {
   try {
     const enabled=process.env.RESIDENTIAL_INTAKE_ENABLED==='true';
     if(enabled)await residentialSetup();
-    return NextResponse.json({ok:true,enabled,timeZone:'America/New_York'},{headers});
+    return NextResponse.json({ok:true,enabled,timeZone:'America/New_York',
+      addressLookup:{browserKey:process.env.GOOGLE_MAPS_BROWSER_API_KEY || null}},{headers});
   } catch(error) {
     if(!(error instanceof BusinessError))console.error('Residential intake configuration failed',error);
     return NextResponse.json({ok:false,error:error instanceof BusinessError?error.message:'Homeowner request setup is unavailable.'},
