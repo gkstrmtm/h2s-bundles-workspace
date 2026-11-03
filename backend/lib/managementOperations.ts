@@ -14,6 +14,7 @@ type Order = CommercialPaymentOrder & {
 type Assignment = { assign_id: string; job_id: string; pro_id: string; state: string };
 type Pro = { pro_id: string; name: string | null; email: string | null };
 type LegacyJob = { job_id: string; customer_email: string | null };
+type LegacyLink = { dispatch_job_id: string; legacy_job_id: string };
 type Payout = { payout_id: string; job_id: string; pro_id: string; status: string | null;
   state: string | null; amount: number | string | null; payout_type: string };
 type Preparation = { ready: boolean; blockers: string[] };
@@ -70,24 +71,28 @@ export async function readManagementOperations(
   if (!jobs.length) return { page, jobs: [], readAt: new Date().toISOString(), readOnly: true };
   const ids = jobs.map(job => job.job_id), refs = Array.from(new Set(jobs.map(job => job.order_id).filter((id): id is string => !!id)));
   const orderColumns = 'id,order_id,total,currency,session_id,payment_intent_id,customer_email,customer_name,service_name,address,city,commercial_request_id,items,metadata_json';
-  const [publicOrders, uuidOrders, assignmentResult, legacyResult] = await Promise.all([
+  const [publicOrders, uuidOrders, assignmentResult, mappingResult] = await Promise.all([
     refs.length ? source<Order[]>('Orders', db.from('h2s_orders').select(orderColumns, { count: 'exact' }).in('order_id', refs).limit(1001), true) : available<Order[]>([]),
     refs.some(id => uuid.test(id)) ? source<Order[]>('Order UUID references', db.from('h2s_orders').select(orderColumns, { count: 'exact' })
       .in('id', refs.filter(id => uuid.test(id))).limit(1001), true) : available<Order[]>([]),
     source<Assignment[]>('Assignments', db.from('h2s_dispatch_job_assignments')
       .select('assign_id,job_id,pro_id,state', { count: 'exact' }).in('job_id', ids).limit(1001), true),
-    source<LegacyJob[]>('Legacy payout jobs', db.from('h2s_jobs').select('job_id,customer_email', { count: 'exact' }).in('job_id', ids).limit(1001), true),
+    source<LegacyLink[]>('Reviewed legacy job links', db.from('h2s_dispatch_legacy_job_links')
+      .select('dispatch_job_id,legacy_job_id', { count: 'exact' }).in('dispatch_job_id', ids).limit(1001), true),
   ]);
   const assignments = bounded(assignmentResult, 'Assignments');
   const orders = publicOrders.status === 'available' && uuidOrders.status === 'available'
     ? bounded(available(Array.from(new Map([...publicOrders.value, ...uuidOrders.value].map(order => [order.id, order])).values())), 'Orders')
     : { status: 'unavailable' as const, detail: 'Order relationships could not be verified.' };
   const proRefs = assignments.status === 'available' ? Array.from(new Set(assignments.value.map(row => row.pro_id))) : [];
-  const [proIds, proEmails] = await Promise.all([
+  const legacyIds = mappingResult.status === 'available' ? Array.from(new Set(mappingResult.value.map(link => link.legacy_job_id))) : [];
+  const [proIds, proEmails, legacyResult] = await Promise.all([
     proRefs.some(id => uuid.test(id)) ? source<Pro[]>('Technicians', db.from('h2s_pros').select('pro_id,name,email', { count: 'exact' })
       .in('pro_id', proRefs.filter(id => uuid.test(id))).limit(1001), true) : available<Pro[]>([]),
     proRefs.some(id => id.includes('@')) ? source<Pro[]>('Legacy technician references', db.from('h2s_pros').select('pro_id,name,email', { count: 'exact' })
       .in('email', proRefs.filter(id => id.includes('@'))).limit(1001), true) : available<Pro[]>([]),
+    legacyIds.length ? source<LegacyJob[]>('Legacy payout jobs', db.from('h2s_jobs')
+      .select('job_id,customer_email', { count: 'exact' }).in('job_id', legacyIds).limit(1001), true) : available<LegacyJob[]>([]),
   ]);
   const pros = proIds.status === 'available' && proEmails.status === 'available'
     ? [...proIds.value, ...proEmails.value] : null;
@@ -103,9 +108,11 @@ export async function readManagementOperations(
     const order = links.get(job.job_id);
     if (!order || order.status !== 'available') return review('Verify the order before linking a payout job.');
     if (consultationOrder(order.value)) return review('Consultations are excluded from installation payout attribution.');
+    if (mappingResult.status !== 'available') return mappingResult;
     if (legacyResult.status !== 'available') return legacyResult;
-    // This is the existing completion compatibility check, not an email-only join.
-    const candidate = legacyResult.value.filter(row => row.job_id === job.job_id);
+    const mappings = mappingResult.value.filter(row => row.dispatch_job_id === job.job_id);
+    if (mappings.length !== 1) return review('No reviewed legacy payout-job link. Identifiers and contact details are not proof.');
+    const candidate = legacyResult.value.filter(row => row.job_id === mappings[0].legacy_job_id);
     if (candidate.length !== 1 || !order.value.customer_email
       || candidate[0].customer_email?.trim().toLowerCase() !== order.value.customer_email.trim().toLowerCase()) {
       return review('No verified legacy payout-job bridge. Matching contact details alone are insufficient.');

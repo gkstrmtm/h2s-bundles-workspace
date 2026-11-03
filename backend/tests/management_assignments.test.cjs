@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict');
 const { PGlite } = require('@electric-sql/pglite');
 const { evaluate, functions } = require('./helpers/commercial_operations_fixture.cjs');
-const { schema, migration, preview, context, assign, id } = require('./helpers/management_assignment_fixture.cjs');
+const { schema, migration, reliability, preview, context, assign, respond, id } = require('./helpers/management_assignment_fixture.cjs');
 
 async function fixture(t, enabled = true) {
   const db = new PGlite();
@@ -65,6 +65,7 @@ test('pending offers retain portal acceptance, audit identities, retry keys and 
       assignmentsStateCol: 'state', jobsTable: 'h2s_dispatch_jobs', jobsIdCol: 'job_id', jobsStatusCol: 'status',
     }) },
     '@/lib/mail': { sendMail: async () => assert.fail('Assignment test must never send mail') },
+    '@/lib/managedOfferResponse': { respondToManagedOffer: async () => null },
   });
   const accepted = await accept.POST(new Request('https://fixture.invalid/api/portal_accept', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'fixture-pro', job_id: id(101) }) }));
@@ -72,8 +73,18 @@ test('pending offers retain portal acceptance, audit identities, retry keys and 
   const row = (await db.query('select * from h2s_dispatch_job_assignments')).rows[0];
   assert.equal(row.state, 'accepted');
   assert.equal(portal.groupByState([{ status: 'queued', assign_state: row.state }]).upcoming.length, 1);
-  assert.equal((await db.query('select status from h2s_dispatch_jobs where job_id=$1', [id(101)])).rows[0].status, 'queued',
-    'Existing accept attempts unsupported scheduled status; assignment state remains authoritative');
+  assert.equal((await db.query('select status from h2s_dispatch_jobs where job_id=$1', [id(101)])).rows[0].status, 'assigned',
+    'Legacy acceptance now uses the actual dispatch CHECK status');
+  await db.query("update h2s_dispatch_jobs set status='queued' where job_id=$1", [id(101)]);
+  await db.exec(`create function fixture_legacy_status_failure() returns trigger language plpgsql as $$
+    begin if NEW.status='assigned' then raise exception 'Fixture legacy status failure'; end if; return NEW; end$$;
+    create trigger fixture_legacy_fail before update on h2s_dispatch_jobs for each row execute function fixture_legacy_status_failure();`);
+  const retryRequest = () => new Request('https://fixture.invalid/api/portal_accept', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: 'fixture-pro', job_id: id(101) }) });
+  assert.equal((await accept.POST(retryRequest())).status, 503, 'Legacy partial failures must not report success or create another assignment');
+  await db.exec('drop trigger fixture_legacy_fail on h2s_dispatch_jobs');
+  assert.equal((await accept.POST(retryRequest())).status, 200);
+  assert.equal((await db.query('select count(*)::int n from h2s_dispatch_job_assignments')).rows[0].n, 1);
   const updatedAudit = (await db.query('select * from h2s_management_assignment_activity order by created_at,event_id')).rows;
   assert.equal(updatedAudit.length, 2);
   const external = updatedAudit.find(row => row.source === 'existing_assignment_handler');
@@ -144,8 +155,10 @@ test('041 composes with existing commercial assignment, calendar and preparation
   const f = await createOperationsFixture(); t.after(() => f.db.close());
   await f.db.exec(`alter table h2s_pros add column email text;
     alter table h2s_dispatch_job_assignments add column offer_sent_at timestamptz;
+    alter table h2s_dispatch_job_assignments add column accepted_at timestamptz,add column declined_at timestamptz;
     delete from h2s_dispatch_job_assignments;`);
   await f.db.exec(migration);
+  await f.db.exec(reliability);
   await f.db.exec(`update h2s_management_assignment_config set enabled=true;
     update h2s_orders set metadata_json=metadata_json||'{"scheduled_end":"2099-01-01T16:00:00Z","scheduled_tz":"UTC"}'::jsonb where id='${id(100)}';
     update h2s_dispatch_jobs set due_at='2099-01-01T15:00:00Z' where job_id='${id(101)}';`);
@@ -159,6 +172,9 @@ test('041 composes with existing commercial assignment, calendar and preparation
   assert.equal((await f.db.query('select status from h2s_dispatch_jobs where job_id=$1', [id(101)])).rows[0].status, 'queued');
   assert.equal((await f.db.query('select count(*)::int n from h2s_payouts_ledger')).rows[0].n, 0);
   assert.deepEqual((await f.db.query('select * from commercial_reservations')).rows, reservation);
+  assert.equal((await respond(f.db)).job_status, 'assigned');
+  assert.deepEqual((await f.db.query('select * from commercial_reservations')).rows, reservation);
+  assert.equal((await f.db.query('select count(*)::int n from h2s_payouts_ledger')).rows[0].n, 0);
 });
 test('same-time technician conflicts and ambiguous order identities block assignment', async t => {
   const db = await fixture(t);

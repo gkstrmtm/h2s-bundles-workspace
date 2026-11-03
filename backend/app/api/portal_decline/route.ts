@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseDispatch } from '@/lib/supabase';
 import { verifyPortalToken } from '@/lib/auth';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
+import { respondToManagedOffer } from '@/lib/managedOfferResponse';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -55,6 +56,10 @@ async function handle(request: Request, token: string, jobId: string) {
       { status: 503, headers: corsHeaders(request) }
     );
   }
+
+  const managed = await respondToManagedOffer(dispatchClient, jobId, payload.sub, 'decline');
+  if (managed) return NextResponse.json(managed.body, { status: managed.status,
+    headers: { ...corsHeaders(request), 'Cache-Control': 'private, no-store' } });
 
   const proId = payload.sub;
   const sb: any = dispatchClient as any;

@@ -4,6 +4,7 @@ import { verifyPortalToken } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { sendMail } from '@/lib/mail';
+import { respondToManagedOffer } from '@/lib/managedOfferResponse';
 
 /**
  * Send customer notification email when technician accepts job
@@ -131,6 +132,10 @@ async function handle(request: Request, token: string, jobId: string) {
     );
   }
 
+  const managed = await respondToManagedOffer(dispatchClient, jobId, payload.sub, 'accept');
+  if (managed) return NextResponse.json(managed.body, { status: managed.status,
+    headers: { ...corsHeaders(request), 'Cache-Control': 'private, no-store' } });
+
   const proId = payload.sub;
   const sb: any = dispatchClient as any;
 
@@ -172,21 +177,24 @@ async function handle(request: Request, token: string, jobId: string) {
         if (!error && Array.isArray(data) && data.length) {
           const row = data[0] || null;
 
-          // CRITICAL: Update job status to 'scheduled' (NOT 'accepted') since constraint only allows: pending, scheduled, done, cancelled
-          // This ensures groupByState will put it in Upcoming section
+          // Legacy available offers retain their existing path; assigned is the dispatch CHECK value.
           try {
             const { error: jobUpdateError } = await sb
               .from(jobsTable)
-              .update({ [jobStatusCol]: 'scheduled', updated_at: new Date().toISOString() } as any)
+              .update({ [jobStatusCol]: 'assigned', updated_at: new Date().toISOString() } as any)
               .eq(jobIdCol as any, jobId);
             
             if (jobUpdateError) {
               console.error('[Accept] Failed to update job status:', jobUpdateError);
+              return NextResponse.json({ ok: false, error: 'Acceptance saved, but job status could not be confirmed. Retry safely.',
+                error_code: 'job_status_unconfirmed', retryable: true }, { status: 503, headers: corsHeaders(request) });
             } else {
-              console.log(`[Accept] Updated job ${jobId} status to 'scheduled'`);
+              console.log(`[Accept] Updated job ${jobId} status to 'assigned'`);
             }
           } catch (jobUpdateErr) {
             console.error('[Accept] Job status update exception:', jobUpdateErr);
+            return NextResponse.json({ ok: false, error: 'Job status could not be confirmed. Retry safely.',
+              error_code: 'job_status_unconfirmed', retryable: true }, { status: 503, headers: corsHeaders(request) });
           }
 
           // Send customer notification email
@@ -236,14 +244,21 @@ async function handle(request: Request, token: string, jobId: string) {
       if (!error) {
         const row = data?.[0] || null;
 
-        // Best-effort: mark job accepted.
+        // Available-offer insertion remains legacy; never hide a partial status update.
         try {
-          await sb
+          const { error: jobUpdateError } = await sb
             .from(jobsTable)
-            .update(({ [jobStatusCol]: 'accepted' } as any))
+            .update(({ [jobStatusCol]: 'assigned' } as any))
             .eq(jobIdCol as any, jobId);
-        } catch {
-          // ignore
+          if (jobUpdateError) {
+            console.error('[Accept] Available-offer job status update failed', { code: jobUpdateError.code });
+            return NextResponse.json({ ok: false, error: 'Acceptance saved, but job status could not be confirmed. Retry safely.',
+              error_code: 'job_status_unconfirmed', retryable: true }, { status: 503, headers: corsHeaders(request) });
+          }
+        } catch (error) {
+          console.error('[Accept] Available-offer job status request failed');
+          return NextResponse.json({ ok: false, error: 'Job status could not be confirmed. Retry safely.',
+            error_code: 'job_status_unconfirmed', retryable: true }, { status: 503, headers: corsHeaders(request) });
         }
 
         // Send customer notification email

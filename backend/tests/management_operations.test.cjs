@@ -94,12 +94,13 @@ async function databaseFixture() {
     create table h2s_dispatch_job_assignments(assign_id text primary key,job_id text,pro_id text,state text);
     create table h2s_pros(pro_id uuid primary key,name text,email text unique);
     create table h2s_jobs(job_id text primary key,customer_email text);
+    create table h2s_dispatch_legacy_job_links(dispatch_job_id uuid primary key,legacy_job_id text unique);
     create table h2s_payouts_ledger(payout_id uuid primary key,job_id text references h2s_jobs(job_id),
       pro_id uuid references h2s_pros(pro_id),status text,state text,amount numeric,payout_type text);
   `);
   async function seed() {
     await db.exec(`
-      truncate h2s_payouts_ledger,h2s_jobs,h2s_pros,h2s_dispatch_job_assignments,h2s_orders,h2s_dispatch_jobs;
+      truncate h2s_dispatch_legacy_job_links,h2s_payouts_ledger,h2s_jobs,h2s_pros,h2s_dispatch_job_assignments,h2s_orders,h2s_dispatch_jobs;
       insert into h2s_dispatch_jobs values('${id(101)}','ORD-FIXTURE','assigned','2099-01-01T15:00:00Z',now());
       insert into h2s_orders values('${id(100)}','ORD-FIXTURE',1200,'usd','cs_fixture','pi_fixture',
         'fixture@example.invalid','Fixture Customer','TV installation','100 Fixture Lane','Fixture City',null,
@@ -107,6 +108,7 @@ async function databaseFixture() {
       insert into h2s_dispatch_job_assignments values('assignment-fixture','${id(101)}','${id(500)}','accepted');
       insert into h2s_pros values('${id(500)}','Fixture Installer','tech@example.invalid'),('${id(501)}','Other Installer','other@example.invalid');
       insert into h2s_jobs values('${id(101)}','fixture@example.invalid');
+      insert into h2s_dispatch_legacy_job_links values('${id(101)}','${id(101)}');
       insert into h2s_payouts_ledger values('${id(600)}','${id(101)}','${id(500)}','pending','approved',420,'job');
     `);
     for (const key of Object.keys(faults)) delete faults[key];
@@ -207,6 +209,14 @@ test('read-only adapter verifies sparse dispatch/order/assignment/payout relatio
       assert.equal(job.assignments.value[0].rawState, 'pending');
       assert.equal(job.payouts.status, 'needs_review');
     });
+    await t.test('same keys and email are insufficient; reviewed links can reference different legacy keys', async () => {
+      await f.seed(); await f.db.exec('delete from h2s_dispatch_legacy_job_links');
+      assert.equal((await f.read()).jobs[0].payouts.status, 'needs_review');
+      await f.db.exec(`insert into h2s_jobs values('LEGACY-FIXTURE','fixture@example.invalid');
+        update h2s_payouts_ledger set job_id='LEGACY-FIXTURE';
+        insert into h2s_dispatch_legacy_job_links values('${id(101)}','LEGACY-FIXTURE');`);
+      assert.equal((await f.read()).jobs[0].payouts.value[0].job_id, 'LEGACY-FIXTURE');
+    });
     await t.test('consultations never masquerade as paid installations or run installation preparation', async () => {
       await f.seed(); const before = f.paymentCalls();
       await f.db.exec(`update h2s_orders set commercial_request_id='${id(201)}'`);
@@ -230,7 +240,7 @@ test('read-only adapter verifies sparse dispatch/order/assignment/payout relatio
     });
     await t.test('missing auxiliary sources and provider failures are explicit, not false clear states', async () => {
       for (const [table, property] of [['h2s_orders','order'], ['h2s_dispatch_job_assignments','assignments'],
-        ['h2s_pros','assignments'], ['h2s_jobs','payouts'], ['h2s_payouts_ledger','payouts']]) {
+        ['h2s_pros','assignments'], ['h2s_jobs','payouts'], ['h2s_payouts_ledger','payouts'], ['h2s_dispatch_legacy_job_links','payouts']]) {
         await f.seed(); f.faults[table] = 'error';
         assert.notEqual((await f.read()).jobs[0][property].status, 'available', table);
       }

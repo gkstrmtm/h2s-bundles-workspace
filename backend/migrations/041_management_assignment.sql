@@ -202,7 +202,7 @@ begin
   insert into public.h2s_management_assignment_requests(operation_id,job_id,pro_id,actor_user_id,expected_context,note)
     values(p_operation_id,p_job_id,p_pro_id,p_actor_user_id,p_context,p_note);
   perform set_config('h2s.assignment_operation',p_operation_id::text,true);
-  assignment:=gen_random_uuid()::text;
+  assignment:='h2s-management:'||gen_random_uuid()::text;
   insert into public.h2s_dispatch_job_assignments(assign_id,job_id,pro_id,state,offer_sent_at,created_at,updated_at)
     values(assignment,p_job_id::text,p_pro_id::text,'pending',now(),now(),now());
   perform set_config('h2s.assignment_operation','',true);
