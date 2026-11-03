@@ -38,7 +38,9 @@ async function sha256Base64Url(text: string): Promise<string> {
   return bytesToBase64Url(new Uint8Array(digest));
 }
 
-export async function getDashboardAuthUserFromSession(request: Request): Promise<DashboardAuthUser | null> {
+export async function getDashboardAuthUserFromSession(
+  request: Request, options: { touchSession?: boolean } = {}
+): Promise<DashboardAuthUser | null> {
   const token = getBearerToken(request);
   if (!token) return null;
 
@@ -66,7 +68,7 @@ export async function getDashboardAuthUserFromSession(request: Request): Promise
 
     if (userError || !user || user.Is_Disabled) return null;
 
-    try {
+    if (options.touchSession !== false) try {
       await db
         .from('Dashboard_Sessions')
         .update({ Last_Seen_At: new Date().toISOString() })

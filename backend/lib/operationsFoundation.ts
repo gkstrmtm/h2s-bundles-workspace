@@ -1,4 +1,4 @@
-// Phase-one contracts only. No live route imports this module.
+// Pure identity contracts; validators never change persisted records.
 export type ExistingStaffRole = 'ADMIN' | 'VA';
 export type ProposedStaffRole = ExistingStaffRole | 'OPERATIONS' | 'SALES';
 export type Market = 'residential' | 'commercial';

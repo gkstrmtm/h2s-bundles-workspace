@@ -5454,6 +5454,11 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
+                try {
+                    await loadScript('management-operations.js');
+                } catch (error) {
+                    console.error('Operations module unavailable; existing dashboard remains available.', error);
+                }
                 for (const filename of ['date-popup.js', 'commercial-labels.js', 'commercial-business.js', 'commercial-calendar.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'residential-media.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js']) {
                     await loadScript(filename);
                 }

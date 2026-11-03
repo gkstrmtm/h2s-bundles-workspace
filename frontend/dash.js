@@ -107,7 +107,10 @@
         function setDashboardSessionToken(token) {
             try {
                 const t = String(token || '').trim();
-                if (t !== getDashboardSessionToken()) verifiedAdminSessionToken = '';
+                if (t !== getDashboardSessionToken()) {
+                    verifiedAdminSessionToken = '';
+                    window.H2SManagementOperations?.reset();
+                }
                 if (!t) {
                     verifiedLegacyAdminKey = '';
                     localStorage.removeItem(DASH_SESSION_TOKEN_KEY);
@@ -1230,6 +1233,10 @@
             appInstanceId = Date.now();
 
             ensureApiReady().then(() => {
+                window.H2SManagementOperations?.configure({
+                    apiBase: API_BASE,
+                    getSession: () => ({ token: getDashboardSessionToken(), isAdmin: isAdminRole() })
+                });
                 setupTabs();
                 // Only load pipeline if it's the active pane
                 const pipelinePane = document.getElementById('pipeline-pane');
@@ -1559,6 +1566,7 @@
             workspace: { label: 'My Summary', areaTitle: 'My Summary', paneId: 'workspace-pane', sidebarGroupId: 'workflow' },
             deliverables: { label: 'Deliverables', areaTitle: 'Deliverables', paneId: 'deliverables-pane', sidebarGroupId: 'salestools' },
             commercialqueue: { label: 'Customer Queue', areaTitle: 'Customer Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
+            operations: { label: 'Operations', areaTitle: 'Operations', paneId: 'operations-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             admin: { label: 'Admin Dashboard', areaTitle: 'Admin Dashboard', paneId: 'admin-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             proofpacks: { label: 'Website Media', areaTitle: 'Website Media', paneId: 'proofpacks-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             owneruploads: { label: 'Owner Uploads', areaTitle: 'Owner Uploads', paneId: 'owneruploads-pane', sidebarGroupId: 'salestools' },
@@ -1978,7 +1986,9 @@
                     return; // Pane was switched away before load completed
                 }
 
-                if (normalizedTargetTab === 'pipeline') {
+                if (normalizedTargetTab === 'operations') {
+                    window.H2SManagementOperations?.open();
+                } else if (normalizedTargetTab === 'pipeline') {
                     loadPipeline();
                 } else if (normalizedTargetTab === 'reports') {
                     loadAIProfiles();

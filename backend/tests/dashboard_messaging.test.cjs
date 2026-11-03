@@ -120,6 +120,9 @@ function mount(t, { flicker = true } = {}) {
   } };
 }
 
+const requiredScriptNames = ['management-operations.js', ...Array.from(
+  html.match(/for \(const filename of \[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g), match => match[1])];
+
 test('required scripts load serially and login stays disabled until all dependencies are ready', async t => {
   const dom = new JSDOM(html, { url: 'https://fixture.invalid/dash.html', runScripts: 'outside-only' });
   t.after(() => dom.window.close());
@@ -133,7 +136,7 @@ test('required scripts load serially and login stays disabled until all dependen
   vm.runInContext(scripts.find(s => s.includes('function loadDashboardScripts()')), dom.getInternalVMContext());
   w.syncDashboardLoginEnabled();
   assert.equal(w.document.getElementById('dashLoginBtn').disabled, true);
-  for (const [index, name] of ['commercial-labels.js', 'commercial-operations.js', 'dash.js', 'media-placement-style.js', 'media-page-heroes.js', 'media-placements.js', 'dash-messages.js', 'sms-no-flicker.js'].entries()) {
+  for (const [index, name] of requiredScriptNames.entries()) {
     assert.equal(pending.length, index + 1);
     assert.equal(new URL(pending[index].src).pathname, `/${name}`);
     pending[index].onload();
@@ -153,18 +156,15 @@ test('a missing support script is explicit and blocks startup and login rather t
   w.document.head.appendChild = script => { pending.push(script); return script; };
   const loader = Array.from(w.document.scripts).find(s => s.textContent.includes('function loadDashboardScripts()')).textContent;
   vm.runInContext(loader, dom.getInternalVMContext());
-  pending[0].onload();
-  await settle();
-  pending[1].onload();
-  await settle();
-  pending[2].onload();
-  await settle();
-  pending[3].onload();
-  await settle();
-  pending[4].onload();
-  await settle();
+  const missingIndex = requiredScriptNames.indexOf('media-placements.js');
+  for (let index = 0; index < missingIndex; index++) {
+    assert.equal(new URL(pending[index].src).pathname, `/${requiredScriptNames[index]}`);
+    pending[index].onload();
+    await settle();
+  }
   const rejected = assert.rejects(w.__h2sDashboardScriptsReady, /media-placements.js/);
-  pending[5].onerror();
+  assert.equal(new URL(pending[missingIndex].src).pathname, '/media-placements.js');
+  pending[missingIndex].onerror();
   await rejected;
   await settle();
   assert.equal(w.__h2sDashboardScriptsLoaded, false);
