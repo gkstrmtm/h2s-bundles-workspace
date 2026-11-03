@@ -24,11 +24,22 @@
     document.head.append(stylesheet);
     let options = null, controller = null, requestId = 0, offset = 0, filter = 'all', data = null;
     let assignmentDialog = null, assignmentController = null, assignmentVersion = 0, assignmentAttempt = null;
+    let view = 'overview', planningFilter = 'all', reviewToken = null;
+    const reviewDrafts = new Map();
+    const views = { overview: 'Dispatch records', schedule: 'Scheduling visibility', reconciliation: 'Reconciliation review' };
+    const planningLabels = {
+        schedule: { all: 'All jobs', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled jobs', attention: 'Management attention', conflicts: 'Observed conflicts' },
+        reconciliation: { all: 'All issues', orphan_assignment: 'Orphan assignments', technician_identity: 'Technician identities',
+            legacy_relationship: 'Legacy job links', assignment_conflict: 'Assignment conflicts', payout_association: 'Payout associations', source_unavailable: 'Unavailable evidence' },
+    };
     const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
         char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     const evidence = value => value.status === 'available' ? value.value : null;
     const date = value => value && Number.isFinite(Date.parse(value))
         ? new Date(value).toLocaleString() : 'Schedule not recorded';
+    const scheduleDate = (value, timezone) => value && Number.isFinite(Date.parse(value))
+        ? timezone ? new Date(value).toLocaleString(undefined, { timeZone: timezone })
+            : `${new Date(value).toISOString()} (recorded instant; local timezone unresolved)` : 'Schedule not recorded';
     const labels = { all: 'All records', upcoming: 'Upcoming installations', assignments: 'Assignment review',
         readiness: 'Preparation review', payments: 'Payment exceptions', payouts: 'Payout review' };
     const done = job => ['completed', 'done', 'cancelled', 'canceled'].includes(job.rawStatus);
@@ -52,9 +63,12 @@
             <p>Dispatch records. Technician offers require a separate review and confirmation; management writes are disabled by default.
             No scheduling, payment or payout changes are made here.</p></div>
             <button type="button" class="commercial-workload-btn" data-operations-action="refresh">Refresh</button></header>
-            <div class="management-operations__filters" role="group" aria-label="Filter this page">
-            ${Object.entries(labels).map(([key, label]) => `<button type="button" data-operations-filter="${key}"
-                aria-pressed="${key === filter}">${label}</button>`).join('')}</div>
+            <div class="management-operations__filters" role="group" aria-label="Operations view">${Object.entries(views).map(([key, label]) =>
+                `<button type="button" data-operations-view="${key}" aria-pressed="${key === view}">${label}</button>`).join('')}</div>
+            <div class="management-operations__filters" role="group" aria-label="${view === 'overview' ? 'Filter this page' : 'Filter bounded dataset'}">
+            ${Object.entries(view === 'overview' ? labels : planningLabels[view]).map(([key, label]) => `<button type="button" ${view === 'overview' ? 'data-operations-filter' : 'data-planning-filter'}="${key}"
+                aria-pressed="${key === (view === 'overview' ? filter : planningFilter)}">${label}</button>`).join('')}</div>
+            ${view === 'reconciliation' ? '<p>Review drafts are held only in this Operations session. They are not shared, saved to production, repair instructions or approvals. Export before signing out. Reviewed does not mean resolved.</p><button type="button" data-review-export disabled>Export session review drafts</button>' : ''}
             <p data-operations-status role="status" aria-live="polite"></p>
             <div data-operations-jobs></div>
             <footer class="management-operations__footer"><span data-operations-page></span><div>
@@ -62,6 +76,7 @@
             <button type="button" data-operations-action="next" disabled>Next</button></div></footer>`;
     }
     function render() {
+        if (view !== 'overview') { renderPlanning(); return; }
         const jobs = data.jobs.filter(matches);
         root.querySelector('[data-operations-status]').textContent = data.jobs.length
             ? `Read ${new Date(data.readAt).toLocaleString()}. Showing ${jobs.length} of ${data.jobs.length} records on this page. Filters apply to this page only.`
@@ -92,6 +107,55 @@
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
         root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
     }
+    function renderPlanning() {
+        const status = root.querySelector('[data-operations-status]');
+        status.textContent = `${data.complete ? 'Complete bounded source reads' : 'Incomplete evidence: unavailable sources are not empty or clear'}. ${data.summary.jobs} jobs; ${data.summary.issues} reconciliation issues. ${data.scope}`;
+        const content = root.querySelector('[data-operations-jobs]');
+        if (view === 'schedule') {
+            content.innerHTML = data.jobs.length ? data.jobs.map(job => `<article class="management-operations__job">
+                <h3>${escape(job.service || 'Unresolved service')}</h3>
+                <p class="management-operations__identity">${escape(job.jobId)} / ${escape(job.orderReference || 'Order unresolved')}</p>
+                <dl><div><dt>Installation window / ${escape(job.rawStatus)}</dt><dd>${escape(job.window.state)}: ${escape(scheduleDate(job.window.start, job.window.timezone))}
+                    to ${escape(job.window.end ? scheduleDate(job.window.end, job.window.timezone) : 'End not recorded')} / ${escape(job.window.timezone || 'Timezone unresolved')}</dd></div>
+                <div><dt>Technician assignments</dt><dd>${escape(job.assignments.length ? job.assignments.map(a =>
+                    `${a.identity.name || a.pro_id || 'Unknown reference'} / ${a.state || 'unknown'} / ${a.identity.status}`).join('; ') : 'No unclosed assignment')}</dd></div>
+                <div><dt>Customer reservation</dt><dd>${escape(job.reservationEvidence)}. Assignment acceptance is not appointment confirmation.</dd></div>
+                <div><dt>Availability evidence</dt><dd>${escape(job.availability.length ? job.availability.map(a => `${a.status}: ${a.detail}`).join('; ') : 'No verified technician to evaluate')}
+                    ${job.availability.some(a => a.dispatchCapacity.length) ? 'Dispatch capacity rows exist; no cross-directory identity or capacity clearance is inferred.' : ''}</dd></div>
+                <div><dt>Installation readiness</dt><dd>${escape(job.preparation.status === 'available' ? job.preparation.value.ready ? 'Preparation ready (not payment clearance)'
+                    : job.preparation.value.blockers.join('; ') || 'Preparation review required' : job.preparation.detail)}</dd></div>
+                <div><dt>Observed scheduling conflicts</dt><dd>${escape(job.conflicts.length ? job.conflicts.map(c => `${c.code}: ${c.detail} (${c.reference})`).join('; ')
+                    : 'None observed in available evidence; not availability clearance.')}</dd></div></dl>
+                ${job.attention.length ? `<p><strong>Management attention:</strong> ${escape(job.attention.join(' '))}</p>` : ''}
+                <details><summary>Source evidence</summary><pre>${escape(JSON.stringify({ reservation: job.reservation,
+                    availability: job.availability, legacyLink: job.legacyLink }, null, 2))}</pre></details>
+                <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button></article>`).join('')
+                : '<p class="management-operations__empty">No jobs match this scheduling filter.</p>';
+        } else {
+            content.innerHTML = data.issues.length ? data.issues.map(issue => {
+                const prior = reviewDrafts.get(issue.id), draft = prior?.fingerprint === issue.fingerprint ? prior : null;
+                const classification = draft?.status || issue.status;
+                return `<article class="management-operations__job">
+                    <h3>${escape(planningLabels.reconciliation[issue.category] || issue.category)}</h3>
+                    <p class="management-operations__identity">${escape(issue.id)} / evidence ${escape(issue.fingerprint)}</p>
+                    <p><strong>${escape(classification.replaceAll('_', ' '))}${draft ? ' (session draft, not resolution)' : ''}</strong></p>
+                    ${prior && !draft ? '<p role="status">Earlier draft is stale: supporting evidence changed. Review again.</p>' : ''}
+                    <p>${escape(issue.reason)}</p><p><strong>Proposed remediation:</strong> ${escape(issue.remediation)}</p>
+                    <details><summary>Affected records and supporting evidence</summary><pre>${escape(JSON.stringify(issue.records, null, 2))}</pre></details>
+                    <form id="review-${escape(issue.fingerprint)}" data-review-issue="${escape(issue.id)}" class="management-review">
+                        <label>Session review classification<select name="classification" data-custom-select="off">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
+                            `<option value="${value}"${value === classification ? ' selected' : ''}>${value.replaceAll('_', ' ')}</option>`).join('')}</select></label>
+                        <label>Evidence reference (required for reviewed)<input name="evidence" maxlength="2000" value="${escape(draft?.evidence || '')}"></label>
+                        <label class="management-review__notes">Review notes<textarea name="notes" maxlength="2000">${escape(draft?.notes || '')}</textarea></label>
+                        <button type="submit">Keep session draft</button><p data-review-status role="status"></p>
+                    </form></article>`;
+            }).join('') : '<p class="management-operations__empty">No issues match this category. Unavailable evidence is listed separately; reviewed drafts do not clear operational issues.</p>';
+            root.querySelector('[data-review-export]').disabled = reviewDrafts.size === 0;
+        }
+        root.querySelector('[data-operations-page]').textContent = `${data.page.total} matching records; page ${Math.floor(offset / 25) + 1}. Filters cover the bounded dataset, not just this page.`;
+        root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
+        root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
+    }
     function reset() {
         assignmentVersion++;
         if (assignmentController) assignmentController.abort();
@@ -100,6 +164,7 @@
         requestId++;
         if (controller) controller.abort();
         controller = null; data = null; offset = 0;
+        reviewDrafts.clear(); reviewToken = null;
         frame();
         root.querySelector('[data-operations-status]').textContent = 'Open Operations with an ADMIN dashboard account to load records.';
     }
@@ -226,6 +291,8 @@
     async function load() {
         const session = options?.getSession();
         if (!session?.isAdmin || !session.token) { reset(); return; }
+        if (reviewToken && reviewToken !== session.token) reviewDrafts.clear();
+        reviewToken = session.token;
         if (controller) controller.abort();
         const localController = controller = new AbortController(), id = ++requestId;
         data = null;
@@ -234,15 +301,22 @@
         const timer = setTimeout(() => localController.abort(), 55000);
         const current = () => id === requestId && options?.getSession().token === session.token && options.getSession().isAdmin;
         try {
-            const response = await global.fetch(`${options.apiBase}/api/management-operations?offset=${offset}&limit=25`, {
+            const endpoint = view === 'overview' ? `management-operations?offset=${offset}&limit=25`
+                : `management-planning?view=${view}&filter=${planningFilter}&offset=${offset}&limit=25`;
+            const response = await global.fetch(`${options.apiBase}/api/${endpoint}`, {
                 method: 'GET', cache: 'no-store', signal: localController.signal, referrerPolicy: 'no-referrer',
                 headers: { Authorization: `Bearer ${session.token}` },
             });
             if (!current()) return;
             const result = await response.json();
             if (!current()) return;
+            if ([401, 403].includes(response.status)) { reviewDrafts.clear(); reviewToken = null; }
             if (!response.ok || !result.ok) throw new Error(result.error || 'Operations read failed.');
             if (!Array.isArray(result.jobs) || !result.page || result.readOnly !== true) throw new Error('Operations response is incomplete.');
+            if (view !== 'overview' && (result.view !== view || !Array.isArray(result.issues) || !result.summary
+                || typeof result.complete !== 'boolean' || typeof result.scope !== 'string' || typeof result.reviewOwnerId !== 'string')) {
+                throw new Error('Planning response is incomplete.');
+            }
             data = result; render();
         } catch (error) {
             if (!current()) return;
@@ -258,7 +332,26 @@
     root.addEventListener('click', event => {
         const button = event.target.closest('button');
         if (!button || !root.contains(button) || button.disabled) return;
-        if (button.dataset.assignmentJob) openAssignment(button.dataset.assignmentJob, button);
+        if (button.dataset.operationsView && Object.hasOwn(views, button.dataset.operationsView)) {
+            view = button.dataset.operationsView; planningFilter = 'all'; offset = 0; load();
+        } else if (button.dataset.planningFilter) {
+            planningFilter = button.dataset.planningFilter; offset = 0; load();
+        } else if (button.hasAttribute('data-review-export')) {
+            const session = options?.getSession();
+            if (!session?.isAdmin || session.token !== reviewToken || !data) { reset(); return; }
+            try {
+                const packet = { version: 1, draftOnly: true, approval: false, exportedAt: new Date().toISOString(),
+                    warning: 'Untrusted session review drafts, not an operational change or repair authorization. Revalidate every source and obtain separate approval.',
+                    reviews: [...reviewDrafts.values()] };
+                const url = global.URL.createObjectURL(new Blob([JSON.stringify(packet, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a'); link.href = url; link.download = 'h2s-operations-review-drafts.json';
+                document.body.append(link); link.click(); link.remove(); setTimeout(() => global.URL.revokeObjectURL(url), 0);
+            } catch (error) {
+                console.error('Operations review draft export failed.');
+                root.querySelector('[data-operations-status]').textContent = 'Review draft export failed. Drafts remain in this session; retry before signing out.';
+                root.querySelector('[data-operations-status]').setAttribute('role', 'alert');
+            }
+        } else if (button.dataset.assignmentJob) openAssignment(button.dataset.assignmentJob, button);
         else if (button.dataset.operationsFilter) {
             filter = button.dataset.operationsFilter;
             frame(); if (data) render();
@@ -267,6 +360,30 @@
         } else if (button.dataset.operationsAction === 'refresh') load();
         else if (button.dataset.operationsAction === 'next') { offset += 25; load(); }
         else if (button.dataset.operationsAction === 'previous') { offset = Math.max(0, offset - 25); load(); }
+    });
+    root.addEventListener('submit', event => {
+        const form = event.target.closest('form[data-review-issue]');
+        if (!form) return;
+        event.preventDefault();
+        const session = options?.getSession();
+        if (!session?.isAdmin || session.token !== reviewToken) { reset(); return; }
+        const issue = data?.issues?.find(value => value.id === form.dataset.reviewIssue);
+        if (!issue || view !== 'reconciliation') return;
+        const status = form.elements.classification.value, evidence = form.elements.evidence.value.trim(), notes = form.elements.notes.value.trim();
+        const message = form.querySelector('[data-review-status]');
+        if (!['unresolved', 'needs_investigation', 'reviewed'].includes(status) || evidence.length > 2000 || notes.length > 2000
+            || status === 'reviewed' && (!evidence || !notes)) {
+            message.setAttribute('role', 'alert'); message.textContent = 'Reviewed drafts require notes and an evidence reference (maximum 2000 characters each).'; return;
+        }
+        const previous = reviewDrafts.get(issue.id), changedAt = new Date().toISOString();
+        reviewDrafts.set(issue.id, { issueId: issue.id, fingerprint: issue.fingerprint, status, evidence, notes,
+            reviewerId: data.reviewOwnerId, changedAt, readAt: data.readAt, approval: false,
+            records: issue.records.map(record => ({ source: record.source, id: record.id })),
+            history: [...(previous?.history || []), { status, evidence, notes, fingerprint: issue.fingerprint, changedAt, reviewerId: data.reviewOwnerId }] });
+        renderPlanning();
+        const saved = document.getElementById(`review-${issue.fingerprint}`);
+        saved.querySelector('[data-review-status]').textContent = 'Draft kept in this session only. Export before signing out.';
+        saved.querySelector('button').focus();
     });
     global.addEventListener('storage', () => reset());
     global.H2SManagementOperations = {

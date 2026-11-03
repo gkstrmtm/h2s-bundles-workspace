@@ -28,3 +28,12 @@
 .management-assignment input[type="radio"] { accent-color: var(--azure); }
 .management-assignment textarea { display: block; width: 100%; box-sizing: border-box; margin-top: 8px; padding: 8px; border: 1px solid var(--border); color: var(--text); background: var(--surface); font: inherit; }
 .management-assignment footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.management-operations details { margin: 8px 0; }
+.management-operations summary { cursor: pointer; color: var(--cobalt); }
+.management-review { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; max-width: 820px; margin: 12px 0; }
+.management-review label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.management-review input, .management-review select, .management-review textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 4px; color: var(--text); background: var(--surface); font: inherit; }
+.management-review textarea { min-height: 72px; resize: vertical; }
+.management-review__notes { grid-column: 1 / -1; }
+.management-review button { justify-self: start; }
+@media (max-width: 820px) { .management-review { grid-template-columns: minmax(0, 1fr); } }

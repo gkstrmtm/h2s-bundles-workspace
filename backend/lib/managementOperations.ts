@@ -57,6 +57,8 @@ function bounded<T>(result: Evidence<T[]>, name: string): Evidence<T[]> {
   }
   return result;
 }
+export { source as readManagementSource, bounded as boundManagementRows, available, review, object };
+export type { Evidence };
 
 export async function readManagementOperations(
   db: Pick<SupabaseClient, 'from' | 'rpc'>,
