@@ -1,0 +1,33 @@
+#h2s-app .field-sales { color: var(--text); font: 400 14px/1.5 Inter, sans-serif; min-width: 0; }
+#h2s-app .field-sales [hidden] { display: none !important; }
+#h2s-app[data-field-sales="true"] :is(.app-sidebar,.app-topbar,.app-sidebar-backdrop) { display: none !important; }
+#h2s-app[data-field-sales="true"] .app-main { margin: 0; width: 100% !important; min-height: 100vh; }
+#h2s-app[data-field-sales="true"] .app-content { margin: 0; padding: 16px; }
+#h2s-app .field-sales :is(h2,h3,h4) { color: var(--cobalt); font-family: 'Space Grotesk', sans-serif; margin: 8px 0; }
+#h2s-app .field-sales h2 { font-size: 22px; }
+#h2s-app .field-sales h3 { font-size: 17px; }
+#h2s-app .field-sales h4 { font-size: 15px; }
+#h2s-app .field-sales :is(header,nav) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#h2s-app .field-sales header { justify-content: space-between; }
+#h2s-app .field-sales nav { margin: 16px 0; }
+#h2s-app .field-sales p { margin: 8px 0; overflow-wrap: anywhere; }
+#h2s-app .field-sales button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--cobalt); font: 500 14px Inter, sans-serif; cursor: pointer; }
+#h2s-app .field-sales button[aria-pressed="true"] { color: var(--azure); border-color: var(--azure); }
+#h2s-app .field-sales button:disabled { opacity: .5; cursor: default; }
+#h2s-app .field-sales :is(button,input,select,textarea):focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
+#h2s-app .field-sales [role="alert"] { color: var(--danger); }
+#h2s-app .field-sales [data-sales-status] { padding-block: 8px; border-block: 1px solid var(--border); }
+#h2s-app .field-sales article { padding-block: 12px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+#h2s-app .field-sales__form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 16px; max-width: 960px; margin-block: 16px 24px; }
+#h2s-app .field-sales label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#h2s-app .field-sales :is(input,select,textarea) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 40px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font: inherit; }
+#h2s-app .field-sales textarea { min-height: 80px; resize: vertical; }
+#h2s-app .field-sales fieldset { min-width: 0; padding: 12px; margin: 0 0 12px; border: 1px solid var(--border); }
+#h2s-app .field-sales fieldset label { margin-block: 8px; }
+#h2s-app .field-sales .field-sales__check { flex-direction: row; align-items: center; min-height: 40px; }
+#h2s-app .field-sales__check input { width: 18px; min-height: 18px; height: 18px; flex-shrink: 0; accent-color: var(--azure); }
+#h2s-app .field-sales__wide { grid-column: 1 / -1; }
+#h2s-app .field-sales__id { font: 12px/1.5 'JetBrains Mono', monospace; }
+#h2s-app .field-sales pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+#h2s-app .field-sales img { display: block; max-width: 100%; max-height: 420px; margin-top: 8px; }
+@media(max-width:680px) { #h2s-app .field-sales__form { grid-template-columns: minmax(0,1fr); } #h2s-app .field-sales :is(input,select,textarea) { font-size: 16px; } #h2s-app .field-sales button { min-height: 44px; } }

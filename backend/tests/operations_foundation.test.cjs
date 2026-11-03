@@ -85,17 +85,22 @@ test('existing dashboard authentication keeps ADMIN/VA behavior and rejects expi
     'node:crypto': require('node:crypto'), '@/lib/supabase': { getSupabaseMgmt: () => db, getSupabase: () => db },
   }, { Buffer });
   const request = new Request('http://fixture.invalid', { headers: { Authorization: 'Bearer fixture-only' } });
-  for (const [stored, expected] of [['ADMIN','ADMIN'], ['VA','VA'], ['OPERATIONS','VA'], ['SALES','VA']]) {
+  for (const [stored, expected] of [['ADMIN','ADMIN'], ['VA','VA']]) {
     user.Role = stored;
     assert.equal((await auth.getDashboardAuthUserFromSession(request)).role, expected);
   }
-  assert.equal(lastSeenWrites, 4, 'Existing authenticated-read side effect is preserved only in a local mock');
+  for (const role of ['OPERATIONS','SALES','UNKNOWN']) {
+    user.Role = role;
+    assert.equal(await auth.getDashboardAuthUserFromSession(request), null, 'Future roles must not inherit VA permissions');
+  }
+  user.Role = 'VA';
+  assert.equal(lastSeenWrites, 2, 'Existing ADMIN/VA authenticated-read side effect is preserved only in a local mock');
   session.Expires_At = '2000-01-01T00:00:00Z';
   assert.equal(await auth.getDashboardAuthUserFromSession(request), null);
   session.Expires_At = '2099-01-01T00:00:00Z'; user.Is_Disabled = true;
   assert.equal(await auth.getDashboardAuthUserFromSession(request), null);
   assert.equal(await auth.getDashboardAuthUserFromSession(new Request('http://fixture.invalid')), null);
-  assert.equal(lastSeenWrites, 4);
+  assert.equal(lastSeenWrites, 2);
 });
 
 test('legacy Dispatch authorization does not gain access through dashboard sessions', async () => {

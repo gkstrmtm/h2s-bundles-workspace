@@ -40,7 +40,7 @@ test('new guards authorize ADMIN, deny VA/future roles and preserve existing ses
   assert.equal(f.calls.filter(call => call === 'WRITE').length, 1, 'Legacy callers still touch the session');
   for (const role of ['VA', 'OPERATIONS', 'SALES', 'OTHER']) {
     f.user.Role = role;
-    await assert.rejects(f.permissions.requireDashboardCapability(request(), 'operations.read'), { status: 403 });
+    await assert.rejects(f.permissions.requireDashboardCapability(request(), 'operations.read'), { status: role === 'VA' ? 403 : 401 });
   }
   for (const role of ['OPERATIONS', 'SALES', '__proto__', 'constructor', '']) {
     assert.equal(f.permissions.hasDashboardCapability(role, 'operations.read'), false);
@@ -67,7 +67,7 @@ test('management GET authenticates before reads, bounds input, rejects legacy to
   });
   for (const role of ['VA', 'OPERATIONS', 'SALES']) {
     f.user.Role = role;
-    assert.equal((await route.GET(request())).status, 403);
+    assert.equal((await route.GET(request())).status, role === 'VA' ? 403 : 401);
   }
   assert.equal((await route.GET(request('', ''))).status, 401);
   f.user.Role = 'ADMIN';

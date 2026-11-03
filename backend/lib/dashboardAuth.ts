@@ -5,7 +5,7 @@ export type DashboardAuthUser = {
   userId: string;
   username: string;
   displayName: string;
-  role: 'VA' | 'ADMIN';
+  role: 'VA' | 'ADMIN' | 'SALES';
 };
 
 const DASHBOARD_SESSION_TOKEN_HEADER = 'authorization';
@@ -39,7 +39,7 @@ async function sha256Base64Url(text: string): Promise<string> {
 }
 
 export async function getDashboardAuthUserFromSession(
-  request: Request, options: { touchSession?: boolean } = {}
+  request: Request, options: { touchSession?: boolean; allowSales?: boolean } = {}
 ): Promise<DashboardAuthUser | null> {
   const token = getBearerToken(request);
   if (!token) return null;
@@ -67,6 +67,8 @@ export async function getDashboardAuthUserFromSession(
       .maybeSingle();
 
     if (userError || !user || user.Is_Disabled) return null;
+    const role = String(user.Role || '').trim().toUpperCase();
+    if (role !== 'ADMIN' && role !== 'VA' && !(role === 'SALES' && options.allowSales)) return null;
 
     if (options.touchSession !== false) try {
       await db
@@ -81,7 +83,7 @@ export async function getDashboardAuthUserFromSession(
       userId: String(user.User_ID),
       username: String(user.Username || '').trim().toUpperCase(),
       displayName: String(user.Display_Name || user.Username || '').trim(),
-      role: String(user.Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA',
+      role,
     };
   } catch {
     return null;

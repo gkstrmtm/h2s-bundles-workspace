@@ -110,6 +110,7 @@
                 if (t !== getDashboardSessionToken()) {
                     verifiedAdminSessionToken = '';
                     window.H2SManagementOperations?.reset();
+                    window.H2SFieldSales?.reset();
                 }
                 if (!t) {
                     verifiedLegacyAdminKey = '';
@@ -142,6 +143,7 @@
 
                         let legacyAdmin = '';
                         try { legacyAdmin = String(localStorage.getItem('h2s_proof_admin_key') || '').trim(); } catch { legacyAdmin = ''; }
+                        if (sessionToken.startsWith('h2s-sales:')) legacyAdmin = '';
 
                         const applyHeaders = (headers) => {
                             const h = new Headers(headers || {});
@@ -1233,6 +1235,31 @@
             appInstanceId = Date.now();
 
             ensureApiReady().then(() => {
+                window.H2SFieldSales?.configure({
+                    apiBase: API_BASE,
+                    getSession: () => ({ token: getDashboardSessionToken(), role: currentRole }),
+                    onLogout: () => logoutUser()
+                });
+                if (currentRole === 'SALES') {
+                    let salesReady = !!window.H2SFieldSales;
+                    try {
+                        verifiedLegacyAdminKey = '';
+                        localStorage.removeItem(ADMIN_CREDENTIAL_KEY);
+                    } catch (error) {
+                        console.error('Could not clear previous administrator credentials.');
+                        salesReady = false;
+                    }
+                    if (!salesReady) {
+                        document.querySelectorAll('#h2s-app .pane').forEach(pane => pane.classList.remove('active'));
+                        setDashboardSessionToken('');
+                        document.getElementById('userGate').classList.remove('hidden');
+                        document.getElementById('userGate').style.display = '';
+                        showToast('Field Sales is unavailable. Reload before continuing.', 'error');
+                        return;
+                    }
+                    window.H2SFieldSales.activate();
+                    return;
+                }
                 window.H2SManagementOperations?.configure({
                     apiBase: API_BASE,
                     getSession: () => ({ token: getDashboardSessionToken(), isAdmin: isAdminRole() })
@@ -1567,6 +1594,7 @@
             deliverables: { label: 'Deliverables', areaTitle: 'Deliverables', paneId: 'deliverables-pane', sidebarGroupId: 'salestools' },
             commercialqueue: { label: 'Customer Queue', areaTitle: 'Customer Queue', paneId: 'commercialqueue-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             operations: { label: 'Operations', areaTitle: 'Operations', paneId: 'operations-pane', sidebarGroupId: 'admin', requiresAdmin: true },
+            fieldsales: { label: 'Field Sales', areaTitle: 'Field Sales', paneId: 'field-sales-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             admin: { label: 'Admin Dashboard', areaTitle: 'Admin Dashboard', paneId: 'admin-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             proofpacks: { label: 'Website Media', areaTitle: 'Website Media', paneId: 'proofpacks-pane', sidebarGroupId: 'admin', requiresAdmin: true },
             owneruploads: { label: 'Owner Uploads', areaTitle: 'Owner Uploads', paneId: 'owneruploads-pane', sidebarGroupId: 'salestools' },
@@ -1727,6 +1755,7 @@
 
         // Tab Switching (updated for sidebar)
         function switchToTab(targetTab, options = {}) {
+            if (currentRole === 'SALES') { window.H2SFieldSales?.activate(); return; }
             const source = String(options && options.source || 'user').trim().toLowerCase() || 'user';
             const fallbackTab = isValidShellTab(options && options.fallbackTab) ? normalizeShellTabId(options.fallbackTab) : DASH_SHELL_DEFAULT_TAB;
             const skipPersistence = !!(options && options.skipPersistence);
@@ -1986,7 +2015,9 @@
                     return; // Pane was switched away before load completed
                 }
 
-                if (normalizedTargetTab === 'operations') {
+                if (normalizedTargetTab === 'fieldsales') {
+                    window.H2SFieldSales?.open();
+                } else if (normalizedTargetTab === 'operations') {
                     window.H2SManagementOperations?.open();
                 } else if (normalizedTargetTab === 'pipeline') {
                     loadPipeline();
@@ -25385,7 +25416,7 @@ function deliverablesBrowserRender(mode) {
                         const data = await res.json().catch(() => null);
                         if (data && data.ok && data.me) {
                             currentUser = String(data.me.username || '').trim().toUpperCase();
-                            currentRole = String(data.me.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                            currentRole = ['ADMIN', 'SALES'].includes(String(data.me.role)) ? data.me.role : 'VA';
                             verifiedAdminSessionToken = currentRole === 'ADMIN' ? token : '';
 
                             try {
@@ -25453,7 +25484,7 @@ function deliverablesBrowserRender(mode) {
                 try { setDashboardSessionToken(token); } catch (e) {}
 
                 currentUser = String(user.username || identifier || '').trim().toUpperCase();
-                currentRole = String(user.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                currentRole = ['ADMIN', 'SALES'].includes(String(user.role)) ? user.role : 'VA';
                 verifiedAdminSessionToken = currentRole === 'ADMIN' ? token : '';
 
                 try {

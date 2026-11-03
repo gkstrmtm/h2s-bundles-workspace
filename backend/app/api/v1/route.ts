@@ -1704,7 +1704,7 @@ type DashboardAuthUser = {
   userId: string;
   username: string;
   displayName: string;
-  role: 'VA' | 'ADMIN';
+  role: 'VA' | 'ADMIN' | 'SALES';
 };
 
 const DASHBOARD_SESSION_TOKEN_HEADER = 'authorization';
@@ -1803,7 +1803,16 @@ function randomTokenBase64Url(bytesLen = 32): string {
   return bytesToBase64Url(bytes);
 }
 
-async function getDashboardAuthUserFromSession(request: Request): Promise<DashboardAuthUser | null> {
+async function salesLoginAllowed(userId: string): Promise<boolean> {
+  if (process.env.H2S_FIELD_SALES_ENABLED !== 'true') return false;
+  const main = process.env.SUPABASE_URL?.trim(), mgmt = process.env.SUPABASE_URL_MGMT?.trim();
+  if (main && mgmt && main.replace(/\/$/, '') !== mgmt.replace(/\/$/, '')) return false;
+  const result = await getDeliverablesDb().rpc('field_sales_access', { p_actor: userId });
+  if (result.error) console.error('Sales session enrollment unavailable', { code: result.error.code });
+  return !result.error && result.data === 'SALES';
+}
+
+async function getDashboardAuthUserFromSession(request: Request, allowSales = false): Promise<DashboardAuthUser | null> {
   const token = getBearerToken(request);
   if (!token) return null;
 
@@ -1836,6 +1845,8 @@ async function getDashboardAuthUserFromSession(request: Request): Promise<Dashbo
 
     if (userError || !user) return null;
     if (user.Is_Disabled) return null;
+    const role = String(user.Role || '').trim().toUpperCase();
+    if (role !== 'ADMIN' && role !== 'VA' && !(allowSales && role === 'SALES')) return null;
 
     // Best-effort: update last seen
     try {
@@ -1846,8 +1857,6 @@ async function getDashboardAuthUserFromSession(request: Request): Promise<Dashbo
     } catch {
       // ignore
     }
-
-    const role = String(user.Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
 
     return {
       userId: String(user.User_ID),
@@ -3826,6 +3835,9 @@ export async function GET(request: Request) {
   if (!action) {
     return missingActionResponse(request, 'GET');
   }
+  if (getBearerToken(request).startsWith('h2s-sales:') && action !== 'dashboardMe') {
+    return NextResponse.json({ ok: false, error: 'Use the assigned-record Field Sales workspace.' }, { status: 403, headers: corsHeaders(request) });
+  }
 
   const excludeTest = ['1', 'true', 'yes', 'on'].includes(
     String(searchParams.get('exclude_test') || searchParams.get('excludeTest') || '').toLowerCase()
@@ -3875,8 +3887,8 @@ export async function GET(request: Request) {
         break;
       case 'dashboardMe':
         {
-          const me = await getDashboardAuthUserFromSession(request);
-          if (!me) {
+          const me = await getDashboardAuthUserFromSession(request, true);
+          if (!me || (me.role === 'SALES' && !(await salesLoginAllowed(me.userId)))) {
             return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401, headers: corsHeaders(request) });
           }
 
@@ -9174,6 +9186,9 @@ export async function POST(request: Request) {
   if (!action) {
     return missingActionResponse(request, 'POST');
   }
+  if (getBearerToken(request).startsWith('h2s-sales:') && action !== 'dashboardLogout') {
+    return NextResponse.json({ ok: false, error: 'Use the assigned-record Field Sales workspace.' }, { status: 403, headers: corsHeaders(request) });
+  }
 
   try {
     try {
@@ -9336,10 +9351,15 @@ export async function POST(request: Request) {
                   return NextResponse.json({ ok: false, error: 'Invalid login' }, { status: 401, headers: corsHeaders(request) });
                 }
 
-                const token = randomTokenBase64Url(32);
+                const role = String(user.Role || '').trim().toUpperCase();
+                if ((role !== 'ADMIN' && role !== 'VA' && role !== 'SALES') ||
+                  (role === 'SALES' && !(await salesLoginAllowed(String(user.User_ID))))) {
+                  return NextResponse.json({ ok: false, error: 'Account access is disabled or not configured.' }, { status: 403, headers: corsHeaders(request) });
+                }
+                const token = (role === 'SALES' ? 'h2s-sales:' : '') + randomTokenBase64Url(32);
                 const tokenHash = await sha256Base64Url(token);
                 const nowIso = new Date().toISOString();
-                const expiresAt = new Date(Date.now() + DASHBOARD_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+                const expiresAt = new Date(Date.now() + (role === 'SALES' ? 8 * 60 * 60 * 1000 : DASHBOARD_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)).toISOString();
 
                 const { error: sessionError } = await db.from('Dashboard_Sessions').insert({
                   User_ID: user.User_ID,
@@ -9368,7 +9388,6 @@ export async function POST(request: Request) {
                   // ignore
                 }
 
-                const role = String(user.Role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
                 result = {
                   token,
                   expiresAt,
@@ -9425,6 +9444,9 @@ export async function POST(request: Request) {
                 }
                 if ((target as any).Is_Disabled) {
                   return NextResponse.json({ ok: false, error: 'Account disabled' }, { status: 403, headers: corsHeaders(request) });
+                }
+                if (!['ADMIN', 'VA'].includes(String(target.Role))) {
+                  return NextResponse.json({ ok: false, error: 'Field Sales accounts cannot use legacy impersonation.' }, { status: 403, headers: corsHeaders(request) });
                 }
 
                 const token = randomTokenBase64Url(32);
