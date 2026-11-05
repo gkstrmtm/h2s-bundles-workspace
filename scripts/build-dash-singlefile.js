@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { assertNoTemplateTokens } = require('../tools/portal-template-check.cjs');
 
 function readUtf8OrThrow(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -73,6 +74,9 @@ function main() {
   const dashCss = normalizeNewlines(readUtf8OrThrow(dashCssPath));
   const dashJs = normalizeNewlines(readUtf8OrThrow(dashJsPath));
   const designCss = normalizeNewlines(readUtf8OrThrow(designSystemPath));
+  for (const [source, text] of [[inputHtmlPath, html], [dashCssPath, dashCss], [dashJsPath, dashJs]]) {
+    assertNoTemplateTokens(text, source);
+  }
 
   // Replace:
   //   <link rel="stylesheet" href="/dashboard-design-system.css">
@@ -87,30 +91,39 @@ function main() {
   // Replace stamped dash css, e.g.
   //   <link rel="stylesheet" href="/dash.PORTAL_BUILD_....css">
   // with inline dash.css.
-  html = injectInlineCss(
-    html,
-    /\s*<link\s+rel=["']stylesheet["']\s+href=["']\/dash\.PORTAL_BUILD_[A-Za-z0-9_]+\.css["']\s*>\s*/i,
-    dashCss,
-    'h2s-inline-dash-css'
-  );
+  const dynamicStyles = /\s*<script>\s*\(function writeDashStylesheet\(\)[\s\S]*?<\/script>/i;
+  html = injectInlineCss(html, dynamicStyles.test(html) ? dynamicStyles
+    : /\s*<link\s+rel=["']stylesheet["']\s+href=["']\/dash\.PORTAL_BUILD_[A-Za-z0-9_]+\.css["']\s*>\s*/i,
+    dashCss, 'h2s-inline-dash-css');
 
   // Replace stamped dash js, e.g.
   //   <script src="/dash.PORTAL_BUILD_....js" defer></script>
   // with inline dash.js.
-  html = injectInlineJs(
-    html,
-    /\s*<script\s+src=["']\/dash\.PORTAL_BUILD_[A-Za-z0-9_]+\.js["']\s+defer\s*>\s*<\/script>\s*/i,
-    dashJs,
-    'h2s-inline-dash-js'
-  );
+  const dynamicLoader = "script.src = filename === 'dash.js'";
+  if (html.includes(dynamicLoader)) {
+    const literal = JSON.stringify(dashJs).replace(/</g, '\\u003c');
+    html = html.replace(dynamicLoader, () => `if (filename === 'dash.js') {
+                    script.textContent = ${literal};
+                    document.head.appendChild(script); resolve(); return;
+                }
+                ${dynamicLoader}`);
+  } else {
+    html = injectInlineJs(html,
+      /\s*<script\s+src=["']\/dash\.PORTAL_BUILD_[A-Za-z0-9_]+\.js["']\s+defer\s*>\s*<\/script>\s*/i,
+      dashJs.replace(/<\/script/gi, '<\\/script'), 'h2s-inline-dash-js');
+  }
+  assertNoTemplateTokens(html, 'built dashboard');
 
   // Write output.
-  const outPath = path.join(repoRoot, 'backend', 'public', 'dash.html');
+  const outputIndex = process.argv.indexOf('--output');
+  if (outputIndex !== -1 && !process.argv[outputIndex + 1]) throw Error('--output requires a path');
+  const outPath = outputIndex === -1 ? path.join(repoRoot, 'backend', 'public', 'dash.html')
+    : path.resolve(process.argv[outputIndex + 1]);
   ensureDirExists(path.dirname(outPath));
   fs.writeFileSync(outPath, html.replace(/\n/g, '\r\n'), 'utf8');
 
   const outBytes = fs.statSync(outPath).size;
-  process.stdout.write(`OK: wrote backend/public/dash.html (${outBytes} bytes)\n`);
+  process.stdout.write(`OK: wrote ${outPath} (${outBytes} bytes)\n`);
 }
 
 main();

@@ -14,11 +14,11 @@
             && !/^[A-Z0-9_-]{3,}$/.test(name) && !/^[a-f0-9-]{16,}$/i.test(name)
             && !/^[^\s@]+@[^\s@]+$/.test(name) ? name : '';
     };
-    function reset() { generation++; current?.controller.abort(); if (current) for (const url of current.downloads) global.URL.revokeObjectURL(url); current?.root.replaceChildren(); current = null; }
+    function reset() { generation++; current?.sync?.destroy(); current?.controller.abort(); if (current) for (const url of current.downloads) global.URL.revokeObjectURL(url); current?.root.replaceChildren(); current = null; }
     function mount(root, options) {
         reset();
         const started = options.getSession()?.token, startedRole=options.getSession()?.role, id = generation;
-        const state = {root, controller:new AbortController(), data:null, busy:false, attempt:null, downloads:new Set(), representativeId:'',representativeLabels:new Map()};
+        const state = {root, controller:new AbortController(), data:null, busy:false, attempt:null, downloads:new Set(), representativeId:'',representativeLabels:new Map(),dirty:false,edits:0,read:0};
         current = state;
         const valid = () => {
             const matches=current===state&&generation===id&&!!started&&options.getSession()?.token===started&&options.getSession()?.role===startedRole&&['ADMIN','SALES'].includes(startedRole);
@@ -105,6 +105,7 @@
             if (!valid()) return;
             const el = root.querySelector('[data-earnings-status]');
             if (el) { el.textContent = text; el.setAttribute('role', error ? 'alert' : 'status'); }
+            if(el&&error)el.insertAdjacentHTML('beforeend',state.attempt?' <button type="button" data-earnings-discard-attempt>Discard interrupted action</button>':' <button type="button" data-earnings-refresh>Retry</button>');
         }
         async function api(body) {
             if (!valid()) throw Error('Session changed; earnings response discarded.');
@@ -112,7 +113,7 @@
             if (options.quoteId) query.set('quoteId', options.quoteId);
             if (admin() && state.representativeId) query.set('representativeId',state.representativeId);
             const response = await global.fetch(`${apiRoot(options.apiBase)}/field-sales-earnings${!body && query.size ? '?' + query : ''}`, {
-                method:body ? 'POST' : 'GET', cache:'no-store', referrerPolicy:'no-referrer', signal:state.controller.signal,
+                method:body ? 'POST' : 'GET', cache:'no-store', referrerPolicy:'no-referrer',                 signal:!body&&global.H2SDataSync?global.H2SDataSync.signal(state.controller.signal):state.controller.signal,
                 headers:{Authorization:'Bearer ' + started, ...(body ? {'Content-Type':'application/json'} : {})},
                 ...(body ? {body:JSON.stringify(body)} : {})
             });
@@ -126,18 +127,17 @@
         function render() {
             const d = state.data;
             for (const url of state.downloads) global.URL.revokeObjectURL(url); state.downloads.clear();
-            root.innerHTML = `<div class="field-sales__toolbar field-workflow__earnings-header"><div><p class="field-workflow__eyebrow">${admin()?'Management · financial review':'Field sales · earnings'}</p><h3>${options.view === 'performance' ? 'Sales performance' : admin() ? 'Commissions & Friday review' : 'Your earnings'}</h3></div><button type="button" data-earnings-refresh>Refresh earnings</button></div>
-                <p data-earnings-status role="status" aria-live="polite"></p>`;
+            root.innerHTML = `<div class="field-sales__toolbar field-workflow__earnings-header"><div><p class="field-workflow__eyebrow">${admin()?'Management · financial review':'Field sales · earnings'}</p><h3>${options.view === 'performance' ? 'Sales performance' : admin() ? 'Commissions & Friday review' : 'Your earnings'}</h3></div></div>
+                ${admin()?'<button type="button" data-earnings-discard-draft>Discard review inputs</button>':''}<p data-earnings-status role="status" aria-live="polite"></p>`;
             if (!d.enabled) { status('Earnings are disabled. No earnings review or settlement can be recorded.'); return; }
             const s = d.summary;
             if (!s || !Array.isArray(d.orders) || !Array.isArray(d.entries) || !Array.isArray(d.runs) || !Array.isArray(d.adjustments)) {
                 status('Earnings response is incomplete. No totals or settlement are assumed.', true); return;
             }
             root.insertAdjacentHTML('beforeend', `<div class="field-sales__summary" aria-label="Verified earnings summary">
-                ${metric('Earned commission',money(s.earnedCents))}${metric('Allocated to Friday review — not paid',money(s.allocatedCents))}${metric('Independently reconciled paid',money(s.reconciledPaidCents))}
-                </div><div class="field-sales__toolbar field-workflow__counts"><span>Awaiting qualification <strong>${esc(s.pendingQualification)}</strong></span><span>Amount under review <strong>${esc(s.calculationReview)}</strong></span><span>Accounting adjustments <strong>${money(s.adjustmentCents)}</strong> — not representative debt</span></div>
-                <p class="field-workflow__note">Commission follows completed installation and verified final payment. Actual costs, fees and the approved rate must be reviewed. Technician wages are separate.</p>
-                <p class="field-workflow__note">Loaded authorized records only, not a forecast or a bank transfer. Friday approval and export do not send money.</p><div data-earnings-records></div>`);
+                ${metric('Commission earned',money(s.earnedCents))}${metric('Commission allocated · not paid',money(s.allocatedCents))}${metric('Commission independently paid',money(s.reconciledPaidCents))}
+                </div><div class="field-sales__toolbar field-workflow__counts"><span>Commission pending qualification · orders <strong>${esc(s.pendingQualification)}</strong></span><span>Amount under review <strong>${esc(s.calculationReview)}</strong></span><span>Accounting adjustments <strong>${money(s.adjustmentCents)}</strong> — not representative debt</span></div>
+                <p class="field-workflow__note" title="Commission requires installation completion, verified final payment and approved actual costs/rates. Technician compensation is separate. Allocation and export do not send money.">Loaded authorized records · allocation is not payment</p><div data-earnings-records></div>`);
             if(options.view==='performance'){
                 const orders=d.orders;
                 root.querySelector('[data-earnings-records]').insertAdjacentHTML('beforebegin',`<section class="field-sales__section"><h4>Loaded order performance</h4><dl class="field-workflow__facts">
@@ -166,11 +166,11 @@
                 const orderIndex=d.orders.findIndex(o=>o.quoteId===row.quoteId);
                 return orderIndex<0 ? title(row,index,'Commission') : title(d.orders[orderIndex],orderIndex);
             };
-            target.innerHTML = `<section class="field-sales__section"><h4>Commission qualification</h4>${d.orders.map((row,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(title(row,index))}</h4><span class="field-sales__badge">${esc(human(row.state))}</span></header>
-                <dl class="field-workflow__facts"><dt>Approved revenue</dt><dd>${money(row.totalCents)}</dd><dt>Verified net paid</dt><dd>${money(row.netPaidCents)}</dd><dt>Installation completed</dt><dd>${date(row.completedAt)}</dd><dt>Qualified for commission</dt><dd>${date(row.qualifiesAt)}</dd></dl>
+            target.innerHTML = `<section class="field-sales__section"><h4>Commission qualification</h4>${[...d.orders].sort((a,b)=>Number(a.state==='earned')-Number(b.state==='earned')||(Date.parse(a.completedAt)||Infinity)-(Date.parse(b.completedAt)||Infinity)).map((row,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(title(row,index))}</h4><span class="field-sales__badge">${esc(human(row.state))}</span></header>
+                <dl class="field-workflow__facts"><dt>Approved quote total</dt><dd>${money(row.totalCents)}</dd><dt>Total verified payments (net)</dt><dd>${money(row.netPaidCents)}</dd><dt>Installation completed</dt><dd>${date(row.completedAt)}</dd><dt>Qualified for commission</dt><dd>${date(row.qualifiesAt)}</dd></dl>
                 <p class="field-workflow__next"><strong>Next step</strong> ${row.state==='earned'?'See the earned commission record below.':row.state==='held'?'Contact management about this order’s hold.':row.state==='calculation_review'?'Management must review actual costs, fees and the approved commission rate.':'Installation and final payment must be verified before commission qualifies.'}</p>
                 ${admin() ? `<details class="field-workflow__review"><summary>Qualification review details</summary><p>${esc((row.reasons || []).join('; ') || 'No additional review reasons reported.')}</p><details class="field-workflow__audit"><summary>Admin audit details — order qualification</summary><pre>${esc(JSON.stringify(row,null,2))}</pre></details></details><button type="button" data-earnings-review="${esc(row.quoteId)}"${row.state === 'earned' || row.state === 'held' ? ' disabled' : ''}>Review actual earning inputs</button>` : ''}</article>`).join('') || '<div class="field-sales__empty"><p>No orders awaiting qualification. Completed sales will appear here for review.</p></div>'}</section>
-                <section class="field-sales__section"><h4>Earned commissions</h4>${d.entries.map((row,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(entryTitle(row,index))}</h4><strong>${money(row.amountCents)} earned</strong></header>
+                <section class="field-sales__section"><h4>Earned commissions</h4><p class="field-workflow__note">Oldest qualification first</p>${[...d.entries].sort((a,b)=>(Date.parse(a.qualifiesAt)||Infinity)-(Date.parse(b.qualifiesAt)||Infinity)).map((row,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(entryTitle(row,index))}</h4><strong>${money(row.amountCents)} earned</strong></header>
                 <dl class="field-workflow__facts"><dt>Qualified</dt><dd>${date(row.qualifiesAt)}</dd><dt>Actual commission basis</dt><dd>${money(row.basisCents)}</dd><dt>Approved rate</dt><dd>${esc(row.rateBasisPoints / 100)}% · tenure day ${esc(row.tenureDay)}</dd></dl>
                 ${admin()?`<details class="field-workflow__audit"><summary>Admin audit details — immutable rate, cost & qualification evidence</summary><pre>${esc(JSON.stringify(row,null,2))}</pre></details>`:''}
                 ${admin() ? `<details><summary>Append reviewed adjustment</summary><form data-earnings-form="review_adjustment" class="field-sales__form">
@@ -215,22 +215,26 @@
                     <label class="field-sales__wide field-sales__check"><input name="independentReconciliation" type="checkbox" required>I independently reconciled the amount, beneficiaries and external reference.</label>
                     <button type="submit">Record settlement evidence</button></form>` : '<p>Settlement recording remains blocked until an approved run is exported and independently reconciled.</p>'}</details>` : ''}</article>`;
         }
-        async function load() {
+        const dirty=()=>state.dirty||state.busy||!!state.attempt||global.H2SDataSync?.interacting(root);
+        async function load(background = false) {
             if (!valid()) return;
-            root.innerHTML = '<h3>Earnings</h3><p data-earnings-status role="status">Loading earnings…</p>';
-            try { const d = await api(); if (valid()) { state.data = d; render(); } }
-            catch (error) { if (valid()) { console.error('Field earnings read failed:', error.message); status(error.message, true); } }
+            const read=++state.read,edits=state.edits;
+            if (!state.data) root.innerHTML = '<h3>Earnings</h3><p data-earnings-status role="status">Loading earnings…</p>';
+            try { const d = await api(); if(!valid()||read!==state.read||background&&(dirty()||edits!==state.edits))return false;
+                if(typeof d.enabled!=='boolean'||d.enabled&&(!d.summary||!['orders','entries','runs','adjustments'].every(key=>Array.isArray(d[key]))))throw Error('Earnings response is incomplete. No totals or settlement are assumed.');
+                state.data=d;if(global.H2SDataSync)global.H2SDataSync.preserveView(root,render);else render();return true; }
+            catch (error) { if (valid()) { console.error('Field earnings read failed:', error.message); if(background)throw error; status(error.message, true); }return false; }
         }
         async function write(body) {
             if (!valid() || !admin() || state.busy) return;
             if (state.attempt && JSON.stringify({...state.attempt,operationId:undefined}) !== JSON.stringify(body)) {
-                status('Retry the interrupted action unchanged or refresh verified records before a different action.', true); return;
+                status('Retry the interrupted action unchanged or explicitly discard it before a different action.', true); return;
             }
             state.busy = true;
             state.attempt ||= {...body,operationId:global.crypto.randomUUID()};
             status('Recording server-reviewed evidence. No external payment is initiated.');
             try {
-                const action = state.attempt.action, result = await api(state.attempt); if (!valid()) return; state.attempt = null;
+                const action = state.attempt.action, result = await api(state.attempt); if (!valid()) return; state.attempt = null;state.dirty=false;
                 await load();
                 if(valid()&&action==='abandon_run'&&result.state==='abandoned'&&result.effectiveAllocationsReleased===true)status('Unexported run abandoned with audit history retained. Effective allocations released; no money sent, debt or clawback authorized. Any replacement requires a separate reviewed run.');
                 if (valid() && action === 'export_run') {
@@ -246,12 +250,19 @@
             const b = event.target.closest('button'); if (!b || !valid()) return;
             if (b.matches('.field-workflow__tab')) { activatePanel(b,true); return; }
             if (state.busy) return;
-            if (b.hasAttribute('data-earnings-refresh')) { state.attempt = null; load(); }
+            if (b.hasAttribute('data-earnings-refresh')) {if(state.sync)state.sync.request('retry',{force:true});else load();}
+            if (b.hasAttribute('data-earnings-discard-attempt')&&global.confirm('Discard this interrupted retry? Your inputs stay available. Review current records before a new action.')) {state.attempt=null;status('Interrupted retry discarded. Your inputs are retained.');}
+            if(b.hasAttribute('data-earnings-discard-draft')){
+                if(state.attempt){status('Retry or explicitly discard the interrupted action first.',true);return;}
+                if(!global.confirm('Discard unsaved financial review inputs and read current records? Server-recorded actions are not undone.'))return;
+                state.dirty=false;state.edits++;load();
+            }
             if (b.dataset.earningsReview) write({action:'review_order',quoteId:b.dataset.earningsReview});
         };
         root.onchange = event => {
             if(event.target.matches('[data-earnings-representative]')&&valid()&&admin()&&!state.busy){
-                if(state.attempt){status('An interrupted operation must be retried or refreshed before changing scope.',true);return;}
+                if(state.attempt){event.target.value=state.representativeId||'';event.target.dispatchEvent(new Event('change',{bubbles:false}));status('Retry or explicitly discard the interrupted operation before changing scope.',true);return;}
+                if(state.dirty){event.target.value=state.representativeId||'';event.target.dispatchEvent(new Event('change',{bubbles:false}));status('Finish the current review draft before changing representative scope.',true);return;}
                 state.representativeId=event.target.value;load();
             }
         };
@@ -263,7 +274,7 @@
                 let body = {...values,action:action === 'run_review' ? values.action : action};
                 if(action==='abandon_run'){
                     const row=state.data.runs.find(r=>r.runId===values.runId),reason=String(values.reason||'').trim(),evidence=String(values.evidence||'').trim();
-                    if(!row||!['draft','approved'].includes(row.state)||row.canAbandon!==true)throw Error('Only an authorized unexported draft or approved run can be abandoned. Refresh verified records.');
+                    if(!row||!['draft','approved'].includes(row.state)||row.canAbandon!==true)throw Error('Only an authorized unexported draft or approved run can be abandoned. Return to this screen to check current records.');
                     if(!f.elements.abandonConfirmed.checked||reason.length<3||reason.length>2000||!evidence)throw Error('Intentional confirmation, a 3–2000 character reason and review evidence are required.');
                     body={action,runId:values.runId,reason,evidence};
                 }
@@ -282,7 +293,11 @@
                 write(body);
             } catch (error) { status(error.message, true); }
         };
-        load();
+        const edited=event=>{if(event.target.closest('form')){state.dirty=true;state.edits++;}};
+        root.addEventListener('input',edited,{signal:state.controller.signal});root.addEventListener('change',edited,{signal:state.controller.signal});
+        state.sync=global.H2SDataSync?.register({id:'field-earnings',isActive:()=>valid()&&root.isConnected&&root.closest('.pane')?.classList.contains('active'),
+            isDirty:dirty,refresh:()=>load(true),onState:s=>{if(!state.attempt)global.H2SDataSync.feedback(root,'[data-earnings-status]',s,()=>state.sync.request('retry',{force:true}));}});
+        if(state.sync)state.sync.request('mount',{force:true});else load();
     }
     global.H2SFieldEarnings = {mount,reset};
 })(window);

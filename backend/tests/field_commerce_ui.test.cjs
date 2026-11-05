@@ -23,6 +23,41 @@ test('default-off UI reads once, never auto-posts; VA cannot fetch private trans
   const f=fixture(t);f.data.enabled=false;f.mount();await settle();assert.match(f.root.textContent,/disabled/);assert.equal(f.calls.length,1);assert.equal(f.root.querySelector('form'),null);
   f.setActor({token:'va',role:'VA'});f.mount();await settle();assert.equal(f.calls.length,1);
 });
+test('automatic quote reads coalesce and never replace a builder edited during the read',async t=>{
+  const f=fixture(t);f.root.parentElement.classList.add('pane','active');
+  f.w.eval(source('dashboard-sync.js'));f.mount();await settle();
+  assert.equal(f.calls.length,1);assert.equal(f.root.querySelector('[data-commerce-refresh]'),null);
+  let release;f.respond(()=>new Promise(resolve=>release=resolve));
+  f.w.Date.now=()=>Date.now()+60000;f.w.dispatchEvent(new f.w.Event('focus'));await settle();
+  assert.equal(f.calls.length,2);
+  f.w.dispatchEvent(new f.w.Event('focus'));await settle();assert.equal(f.calls.length,2);
+  const form=f.root.querySelector('[data-commerce-create]'),quantity=form.querySelector('[name="quantity"]');
+  quantity.value='7';quantity.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+  release(Response.json(f.data));await settle();
+  assert.equal(f.root.querySelector('[data-commerce-create]'),form);assert.equal(quantity.value,'7');
+  assert.match(f.root.querySelector('[data-commerce-status]').textContent,/paused while you edit/);
+  f.w.dispatchEvent(new f.w.Event('focus'));await settle();assert.equal(f.calls.length,2);
+  assert.equal(f.calls.some(call=>call.body),false);
+});
+test('a reserved checkout is never labeled as collected payment',async t=>{
+  const f=fixture(t);f.data.quotes=[{quote_id:'quote',lead_id:'lead',revision:1,state:'approved',snapshot:snapshot(),expires_at:'2099-01-01'}];
+  f.data.payments=[{quote_id:'quote',checkout_id:'checkout',kind:'deposit',state:'open',amount_cents:2500,captured_cents:0,refunded_cents:0}];
+  f.mount();await settle();
+  const payment=[...f.root.querySelectorAll('dt')].find(e=>e.textContent==='Total verified payments (net of refunds)');
+  assert.equal(payment.nextElementSibling.textContent,'$0.00');
+  const deposit=[...f.root.querySelectorAll('dt')].find(e=>e.textContent==='Deposit collected · verified deposit sessions');
+  assert.equal(deposit.nextElementSibling.textContent,'$0.00');
+  assert.match(f.root.textContent,/Checkout amount · not proof of collection/);
+});
+test('an incomplete automatic response retains prior records and remains a visible failure',async t=>{
+  const f=fixture(t);f.root.parentElement.classList.add('pane','active');f.w.eval(source('dashboard-sync.js'));
+  f.mount();await settle();const form=f.root.querySelector('[data-commerce-create]');
+  f.respond(()=>Response.json({ok:true,enabled:true}));f.w.Date.now=()=>Date.now()+60000;
+  f.w.dispatchEvent(new f.w.Event('focus'));await settle();
+  assert.equal(f.root.querySelector('[data-commerce-create]'),form);
+  assert.match(f.root.querySelector('[role="alert"]').textContent,/Incomplete quote and payment response/);
+  assert.equal(f.root.querySelector('[role="alert"] button').textContent,'Retry');
+});
 test('generic configured quote form preserves added lines, filters market, submits no prices and retains uncertain retry',async t=>{
   const f=fixture(t);f.mount();await settle();assert.doesNotMatch(f.root.textContent,/Commercial only/);
   f.root.querySelector('[name="quantity"]').value='3';f.root.querySelector('[data-q="size"]').value='50';

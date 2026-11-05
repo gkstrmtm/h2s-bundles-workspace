@@ -30521,33 +30521,38 @@ async function loadRecommendationsForFilter() {
                 }
             },
 
-            async openAdminModal() {
+            async openAdminModal(fromSync = false) {
+                const sessionToken=getDashboardSessionToken();
+                if(!sessionToken||!isAdminRole()){showToast('Management sign-in is required.','error');return;}
                 // Cache expires after 2 minutes
                 const cacheExpired = !this.cache?.lastUpdated || 
                     (Date.now() - new Date(this.cache.lastUpdated).getTime() > 2 * 60 * 1000);
                 
                 // Fetch fresh data if cache is empty or expired
-                if (!this.cache?.reports || this.cache.reports.length === 0 || cacheExpired) {
+                if (!fromSync || !this.cache?.reports || cacheExpired) {
                     showToast('Loading bug reports...', 'info');
                     const adminToken = this.getAdminToken();
                     const headers = adminToken ? { 'x-h2s-admin-token': adminToken } : {};
                     const daysParam = '365'; // Show all reports from last year
                     
                     try {
-                        const res = await fetch(`${API_URL}?action=bug_reports&days=${encodeURIComponent(daysParam)}&limit=50`, { headers });
+                        const res = await fetch(`${API_URL}?action=bug_reports&days=${encodeURIComponent(daysParam)}&limit=50`, { headers, cache:'no-store', signal:window.H2SDataSync?.signal() });
                         const data = await res.json().catch(() => ({}));
+                        if(sessionToken!==getDashboardSessionToken()||!isAdminRole())return;
                         console.log('[Bug Reports] Raw API response:', { ok: data?.ok, hasReports: !!data?.bug_reports, reportsCount: data?.bug_reports?.reports?.length });
-                        if (res.ok && data?.ok && data?.bug_reports) {
+                        if (res.ok && data?.ok && Array.isArray(data?.bug_reports?.reports)) {
                             this.setCache(data.bug_reports);
                             console.log('[Bug Reports] Cache updated:', { reportsCount: this.cache?.reports?.length, meta: this.cache?.meta });
                         } else if (res.status === 401 || res.status === 403) {
                             showToast('Admin token required (open Admin Dashboard to authenticate)', 'error');
                             return;
                         } else {
-                            console.error('[Bug Reports] Invalid response:', { status: res.status, data });
+                            throw new Error(data?.error || `Bug reports unavailable (HTTP ${res.status}).`);
                         }
                     } catch (e) {
                         console.error('[Bug Reports] Failed to fetch:', e);
+                        showModal('Bug Reports', `<p role="alert">Bug reports could not load. No empty result or successful read is implied.</p><button type="button" onclick="bugReportsUI.openAdminModal()">Retry</button>`, {hideConfirm:true,hideActions:true});
+                        return;
                     }
                 }
 
@@ -30634,11 +30639,11 @@ async function loadRecommendationsForFilter() {
 
                 const html = `
                     <div style="display:flex; flex-direction:column; gap:12px;">
+                        <p data-bug-sync-status role="status" aria-live="polite"></p>
                         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
                             <div style="font-size:13px; color:#6b7280;">${tokenHint}</div>
                             <div style="display:flex; gap:10px;">
                                 <button type="button" onclick="bugReportsUI.runDigest();" style="padding:10px 12px; border:1px solid var(--cobalt); background:var(--cobalt); color:#fff; border-radius:10px; font-weight:900; cursor:pointer;">Run digest</button>
-                                <button type="button" onclick="bugReportsUI.refreshAndReopen();" style="padding:10px 12px; border:1px solid #e5e7eb; background:#fff; color:#111827; border-radius:10px; font-weight:900; cursor:pointer;">Refresh</button>
                             </div>
                         </div>
                         ${summaryMetrics}
@@ -30653,6 +30658,24 @@ async function loadRecommendationsForFilter() {
                 `;
 
                 showModal('Bug Reports', html, { width: '920px', hideConfirm: true, hideActions: true, maxHeight: '80vh' });
+                if (!this.dataSync && window.H2SDataSync) this.dataSync = window.H2SDataSync.register({
+                    id:'bug-reports',isActive:()=>!!getDashboardSessionToken()&&isAdminRole()
+                        && !!document.querySelector('#modalOverlay.active [data-bug-sync-status]'),
+                    isDirty:()=>false,refresh:async()=>{
+                        const token=getDashboardSessionToken(),headers=this.getAdminToken()?{'x-h2s-admin-token':this.getAdminToken()}:{};
+                        const response=await fetch(`${API_URL}?action=bug_reports&days=365&limit=50`,{headers,cache:'no-store',signal:window.H2SDataSync.signal()});
+                        const result=await response.json();
+                        if(!response.ok||!result.ok||!Array.isArray(result.bug_reports?.reports))throw Error(result.error||'Bug reports unavailable.');
+                        if(token!==getDashboardSessionToken()||!isAdminRole()||!document.querySelector('#modalOverlay.active [data-bug-sync-status]'))return false;
+                        if(JSON.stringify(this.cache?.reports)!==JSON.stringify(result.bug_reports.reports)){
+                            const overlay=document.getElementById('modalOverlay'),scroll=overlay.scrollTop;
+                            const expanded=[...overlay.querySelectorAll('details')].map(e=>e.open);
+                            this.setCache(result.bug_reports);await this.openAdminModal(true);
+                            overlay.querySelectorAll('details').forEach((e,i)=>e.open=!!expanded[i]);overlay.scrollTop=scroll;
+                        }else this.setCache(result.bug_reports);
+                        return true;
+                    },onState:s=>window.H2SDataSync.feedback(document,'[data-bug-sync-status]',s,()=>this.dataSync.request('retry',{force:true}))
+                });
             },
 
             async autoRunDigest() {
@@ -33208,7 +33231,6 @@ async function loadRecommendationsForFilter() {
                             ${this.renderCharts(this.calculate())}
                         </div>
                     </div>
-    %%H2S_STYLE_PLACEHOLDER%%
 `;
                 
                 this.attachListeners();
@@ -34601,7 +34623,6 @@ async function loadRecommendationsForFilter() {
                                 ${optionalToggle}
                                 ${progressHtml}
                                 ${nextBtnHtml}
-                                <button type="button" class="btn-secondary" onclick="adFrameworks.resetChecklist()" style="width:100%;">Refresh status</button>
                                 ${glossaryHtml}
                             </div>
                         </div>
@@ -46878,7 +46899,6 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                             </div>
                             <div style="display:flex; gap: 8px; align-items:center;">
                                 <button class="ob-btn ob-btn--secondary" onclick="adResources.createCreative()">New Creative</button>
-                                <button class="ob-btn ob-btn--secondary" onclick="adResources.refresh(true)">Refresh</button>
                                 <button class="ob-btn ob-btn--tertiary" onclick="closeModal(false)">Close</button>
                             </div>
                         </div>
@@ -46924,12 +46944,18 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 `;
 
                 showModal('Ad Resources', html, { width: hasFolders ? '1320px' : '1120px', maxHeight: '88vh', html: true, backdropClose: false, hideConfirm: true, hideActions: true });
+                this.dataSync = window.H2SDataSync?.register({
+                    id:'ad-resources',isActive:()=>!!getDashboardSessionToken() && !!document.querySelector('#modalOverlay.active #adResMeta'),
+                    isDirty:()=>this.state.uploadBusy || !!document.querySelector('#modalOverlay.active')&&window.H2SDataSync.interacting(document.getElementById('modalOverlay')),
+                    refresh:()=>this.refresh(false,true),
+                    onState:s=>window.H2SDataSync.feedback(document,'#adResMeta',s,()=>this.dataSync.request('retry',{force:true}))
+                });
                 if (hasFolders) this.renderFolders();
                 try {
                     const stageSel = document.getElementById('adResStage');
                     if (stageSel && this.state.stage) stageSel.value = this.state.stage;
                 } catch (_) {}
-                this.refresh(true);
+                if(this.dataSync)this.dataSync.request('mount',{force:true});else this.refresh(true);
             },
 
             attachLoadedCreativeToChart() {
@@ -47095,11 +47121,13 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                 this.refresh(false);
             },
 
-            async refresh(showToastOnSuccess = false) {
+            async refresh(showToastOnSuccess = false, background = false) {
+                const state=this.state,read=state.readVersion=(state.readVersion||0)+1, token=getDashboardSessionToken();
+                this.readController?.abort();this.readController=new AbortController();
                 const meta = document.getElementById('adResMeta');
                 const listMount = document.getElementById('adResList');
-                if (meta) meta.textContent = 'Loading...';
-                if (listMount) listMount.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading...</div>';
+                if (meta && !background) meta.textContent = 'Loading...';
+                if (listMount && !background && !this.state.list.length) listMount.innerHTML = '<div style="padding: 14px; color:#64748b;">Loading...</div>';
 
                 try {
                     const params = new URLSearchParams();
@@ -47111,18 +47139,29 @@ ${this.offer.oneSentencePromise ? `Promise: ${this.offer.oneSentencePromise}` : 
                     if (this.state.offerId && this.state.linkedOnly) params.set('offer_id', this.state.offerId);
                     params.set('limit', '200');
 
-                    const resp = await fetch(`${API_URL}?${params.toString()}`);
-                    const data = await resp.json().catch(() => null);
+                    const resp = await fetch(`${API_URL}?${params.toString()}`,{cache:'no-store',signal:window.H2SDataSync?.signal(this.readController.signal)});
+                    const data = await resp.json();
                     if (!resp.ok || !data || data.ok !== true) {
                         throw new Error((data && data.error) ? data.error : `HTTP ${resp.status}`);
                     }
+                    if(state!==this.state||read!==state.readVersion||token!==getDashboardSessionToken()||document.getElementById('adResList')!==listMount)return false;
+                    if(background&&(!document.querySelector('#modalOverlay.active #adResMeta')||this.state.uploadBusy||window.H2SDataSync?.interacting(document.getElementById('modalOverlay'))))return false;
+                    if(!Array.isArray(data.creatives))throw new Error('Ad Resources response incomplete. Previously loaded records are retained.');
 
                     this.state.list = Array.isArray(data.creatives) ? data.creatives : [];
                     this._renderList();
                     if (showToastOnSuccess) showToast('Ad resources refreshed', 'success');
+                    return true;
                 } catch (e) {
+                    if(state!==this.state||read!==state.readVersion||token!==getDashboardSessionToken())return false;
+                    if(background)throw e;
                     showToast(e && e.message ? e.message : 'Failed to load Ad Resources', 'error');
-                    if (meta) meta.textContent = 'Failed to load.';
+                    if (meta) {
+                        meta.textContent = 'Could not load Ad Resources. ';
+                        const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';
+                        retry.onclick=()=>this.refresh(false);meta.append(retry);
+                    }
+                    return false;
                 }
             },
 

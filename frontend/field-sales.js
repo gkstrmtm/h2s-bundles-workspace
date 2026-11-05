@@ -13,7 +13,7 @@
     workflowStyle.href = global.__h2sResolveDashSiblingAsset?.('field-workflow.css') || './field-workflow.css'; document.head.append(workflowStyle);
     let options, data, detail, mode = 'dashboard', token = '', version = 0, controller, attempt, busy = false, preparing = false, quoteLead = null, assessmentDraft = {};
     const urls = new Set(), hiddenNav = new Map(), draftViews = new Map(), quoteDrafts = new Map();
-    let renderedKey = null, mountedDirty = false, savedForm = null, actorRole = null;
+    let renderedKey = null, mountedDirty = false, savedForm = null, actorRole = null, sync = null, editVersion = 0;
     const viewKey = () => mode === 'detail' && detail ? `detail:${detail.opportunity.lead_id}` : mode;
     // Keep actual form nodes, including browser-owned FileLists, only in this session's memory.
     function retainDraft() {
@@ -28,7 +28,7 @@
     }
     function safeToLeave() {
         if (busy || preparing) { status('Wait for the current save or photo preparation to finish.'); return false; }
-        if (attempt) { status('Retry the interrupted save before leaving, or explicitly Refresh to discard it.', true); return false; }
+        if (attempt) { status('Retry the interrupted save before leaving, or discard that interrupted action explicitly.', true); return false; }
         if (global.H2SFieldCommerce?.canLeave?.() === false) return false;
         if (mountedDirty && !global.confirm('Leave this destination and discard its unsaved changes, including any selected files?')) return false;
         mountedDirty = false;
@@ -50,6 +50,14 @@
     const leadTone = value => ({ready_for_review:'info',reviewed:'success',needs_information:'attention',closed:'neutral'}[value] || 'neutral');
     const nextContact = value => value ? date(value) : 'Not planned';
     const nextStep = value => ({new:'Start service assessment',assessing:'Continue assessment',ready_for_review:'Await management review',reviewed:'Review assessment & quote',needs_information:'Complete requested details',closed:'Review saved assessment'}[value] || 'Review lead details');
+    const chronological = rows => [...rows].sort((a,b) => {
+        const closed = Number(a.status === 'closed') - Number(b.status === 'closed');
+        const aTime = Date.parse(a.follow_up_at), bTime = Date.parse(b.follow_up_at);
+        return closed || (Number.isFinite(aTime) ? aTime : Infinity) - (Number.isFinite(bTime) ? bTime : Infinity)
+            || String(a.created_at || '').localeCompare(String(b.created_at || ''));
+    });
+    const representative = id => (data?.representatives || []).find(rep => rep.user_id === id)?.display_name || 'Profile name unavailable';
+    const attribution = row => `<div><dt>Originating salesperson</dt><dd>${esc(row.originating_user_id ? representative(row.originating_user_id) : 'Historical origin unverified')}</dd></div><div><dt>Assigned salesperson</dt><dd>${esc(representative(row.owner_user_id))}</dd></div>`;
     const serviceName = id => data.services.find(service => service.service_id === id)?.definition.label || 'Service unavailable';
     const identityNames = () => ({
         customerNames: Object.fromEntries((data?.opportunities || []).map(row=>[row.lead_id,row.full_name])),
@@ -68,6 +76,7 @@
     const instant = value => value ? new Date(value).toISOString() : null;
     function release() { for (const url of urls) global.URL.revokeObjectURL(url); urls.clear(); }
     function reset() {
+        sync?.destroy(); sync = null;
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
@@ -79,12 +88,18 @@
         let target = root.querySelector('[data-sales-status]');
         if (!target) { target = document.createElement('p'); target.dataset.salesStatus = ''; root.append(target); }
         target.textContent = message; target.setAttribute('role', error ? 'alert' : 'status');
+        if (error) {
+            const retry = document.createElement('button'); retry.type = 'button';
+            retry.textContent = attempt ? 'Discard interrupted action' : 'Retry';
+            retry.dataset[attempt ? 'salesDiscardAttempt' : 'salesRetryRead'] = '';
+            target.append(' ', retry);
+        }
     }
     async function request(path, body) {
         if (!allowed()) { reset(); throw new Error('Sign in to Field Sales.'); }
         const started = session().token, startedRole=session().role, generation = version;
         const response = await global.fetch(`${apiRoot(options.apiBase)}/${path}`, { method: body ? 'POST' : 'GET', cache: 'no-store',
-            signal: controller?.signal, referrerPolicy: 'no-referrer',
+            signal: controller && !body && global.H2SDataSync ? global.H2SDataSync.signal(controller.signal) : controller?.signal, referrerPolicy: 'no-referrer',
             headers: { Authorization: `Bearer ${started}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
             ...(body ? { body: JSON.stringify(body) } : {}) });
         if (generation !== version || session()?.token !== started || session()?.role !== startedRole) { if(generation===version)reset(); throw new Error('Session changed; private response discarded.'); }
@@ -123,7 +138,7 @@
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
         release(); assessmentDraft = {};
-        root.innerHTML = `<header class="field-sales__header${admin() ? ' field-sales__header--management' : ''}"><div class="field-sales__identity">${admin() ? '' : '<span class="field-sales__eyebrow">Home2Smart</span>'}<h2>Field Sales</h2></div><div class="field-sales__toolbar"><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</div></header>
+        root.innerHTML = `<header class="field-sales__header${admin() ? ' field-sales__header--management' : ''}"><div class="field-sales__identity">${admin() ? '' : '<span class="field-sales__eyebrow">Home2Smart</span>'}<h2>Field Sales</h2></div><div class="field-sales__toolbar">${['new','detail','representatives'].includes(mode)?'<button type="button" data-sales-discard-draft>Discard unsaved changes</button>':''}${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</div></header>
             ${admin() ? `<nav class="field-sales__management-nav" aria-label="Management views">${[['dashboard','Overview'],['opportunities','Leads'],['transactions','Quotes & Payments'],['orders','Orders'],['commissions','Commissions'],['performance','Performance'],['representatives','Representatives']]
                 .map(([id,title])=>`<button type="button" data-sales-mode="${id}" aria-pressed="${managementMode()===id}"${managementMode()===id ? ' aria-current="page"' : ''}>${title}</button>`).join('')}</nav>`
                 : `<nav class="field-sales__nav" aria-label="Field Sales views">${[['dashboard', 'Home'], ['opportunities', 'Leads'], ['quotes', 'Quotes'], ['orders','Orders'], ['commissions','Earnings']]
@@ -205,8 +220,7 @@
                 <section class="field-sales__customer-summary" aria-label="Customer assessment summary"><div class="field-sales__record-heading"><h3>${esc(detail.lead.full_name)}</h3>
                 <span class="field-sales__badge" data-tone="${leadTone(op.status)}">${esc(label(op.status))}</span></div>
                 <p>${esc([detail.lead.project_address, detail.lead.project_city].filter(Boolean).join(' · ') || 'Property address not provided')}</p>
-                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(detail.lead.phone || 'Not provided')}</dd></div><div><dt>Next step</dt><dd>${esc(nextStep(op.status))}</dd></div></dl></section>
-                <p class="field-sales__note">Save the assessment, then open customer quotes. Approval, acceptance and payment remain separate steps.</p>
+                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(detail.lead.phone || 'Not provided')}</dd></div>${attribution(op)}<div><dt>Technician</dt><dd>See installation assignment in Orders</dd></div><div><dt>Next step</dt><dd>${esc(nextStep(op.status))}</dd></div></dl></section>
                 ${admin() ? `<details><summary>Identity & ownership audit</summary><p class="field-sales__id">Shared lead ${esc(op.lead_id)} / ${esc(op.status)} / revision ${esc(op.revision)}</p>
                 <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p></details>` : ''}
                 <p class="field-sales__note">Assessment progress: ${required.filter(answer => answer !== undefined && answer !== '').length}/${required.length} required answers;
@@ -241,20 +255,20 @@
                 content.querySelectorAll('form[data-sales-form="save"] button, form[data-sales-form="photo"] button').forEach(button => { button.disabled = true; });
             }
         } else {
-            const rows = data.opportunities || [], due = rows.filter(row => row.follow_up_at && Date.parse(row.follow_up_at) <= Date.now() && row.status !== 'closed');
+            const rows = chronological(data.opportunities || []), due = rows.filter(row => row.follow_up_at && Date.parse(row.follow_up_at) <= Date.now() && row.status !== 'closed');
             const active = rows.filter(row=>row.status !== 'closed'), followUpsToday = rows.filter(row=>row.follow_up_at && new Date(row.follow_up_at).toDateString()===new Date().toDateString() && row.status!=='closed');
             content.innerHTML = `<div class="field-sales__toolbar field-sales__section-heading"><h3>${mode==='dashboard' ? (admin() ? 'Sales overview' : 'Your day in sales') : 'Customer leads'}</h3><button type="button" data-sales-mode="new" class="field-sales__primary">New prospect</button></div>
                 ${mode==='dashboard' ? `<div class="field-sales__summary" aria-label="Loaded lead activity">
                     ${[[active.length,'Active leads'],[due.length,'Follow-ups due'],[followUpsToday.length,'Follow-ups today'],[rows.filter(row=>row.status==='ready_for_review').length,'Awaiting review']].map(([value,title])=>`<div class="field-sales__metric"><span>${title}</span><strong>${value}</strong></div>`).join('')}</div>` : ''}
                 <p class="field-sales__note">${rows.length} of ${esc(data.total ?? rows.length)} assigned leads loaded. ${data.total > rows.length ? 'Activity counts cover only the latest loaded leads, not your complete history.' : 'Activity counts reflect your current loaded leads.'}</p>
-                ${mode === 'dashboard' ? `<section class="field-sales__section"><h4>Follow-ups to make</h4>${due.map(row => `<div class="field-sales__followup"><button type="button" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span>${esc(date(row.follow_up_at))}</span></div>`).join('') || '<p class="field-sales__empty">You have no overdue follow-ups in loaded leads.</p>'}</section>` : ''}
+                ${mode === 'dashboard' ? `<section class="field-sales__section"><h4>Contact next · oldest due first</h4>${due.map(row => `<div class="field-sales__followup"><button type="button" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span>${esc(date(row.follow_up_at))} · ${esc(nextStep(row.status))}</span></div>`).join('') || '<p class="field-sales__empty">You have no overdue follow-ups in loaded leads.</p>'}</section><p class="field-sales__note">${active.filter(row=>['new','assessing','needs_information'].includes(row.status)).length} loaded leads need assessment or details. Open Quotes for approvals and customer signatures; Orders for installation and payment actions.</p>` : ''}
                 <div class="field-sales__toolbar"><label class="field-sales__search">Find a lead<input type="search" data-sales-search placeholder="Customer, phone or address" autocomplete="off"></label>
                 ${admin() ? `<label>Representative<select data-sales-owner><option value="">All representatives</option>${(data.representatives || []).map(rep => `<option value="${esc(rep.user_id)}">${esc(rep.display_name)}</option>`).join('')}</select></label>` : ''}</div>
                 <div data-sales-list>${rows.map(row => `<article class="field-sales__lead-card" data-owner="${esc(row.owner_user_id)}" data-search="${esc([row.full_name,row.phone,row.address].join(' ').toLowerCase())}">
                 <div class="field-sales__record-heading"><button type="button" class="field-sales__customer-link" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span class="field-sales__badge" data-tone="${leadTone(row.status)}">${esc(label(row.status))}</span></div>
                 <p class="field-sales__service-label">${esc(row.services.map(serviceName).join(' · ') || 'Service interests not selected')}</p>
                 <p class="field-sales__note">${esc(row.address || 'Property address not provided')}</p>
-                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(row.phone || 'Not provided')}</dd></div><div><dt>Property</dt><dd>${row.market==='commercial'?'Commercial':'Residential'}</dd></div><div><dt>Next contact</dt><dd>${esc(nextContact(row.follow_up_at))}</dd></div><div class="field-sales__next-step"><dt>Next step</dt><dd>${esc(nextStep(row.status))}</dd></div></dl>
+                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(row.phone || 'Not provided')}</dd></div><div><dt>Property</dt><dd>${row.market==='commercial'?'Commercial':'Residential'}</dd></div>${attribution(row)}<div><dt>Next contact</dt><dd>${esc(nextContact(row.follow_up_at))}</dd></div><div class="field-sales__next-step"><dt>Next step</dt><dd>${esc(nextStep(row.status))}</dd></div></dl>
                 <div class="field-sales__card-actions"><button type="button" data-sales-lead="${esc(row.lead_id)}">View assessment<span aria-hidden="true"> ›</span></button></div></article>`).join('') || '<div class="field-sales__empty"><h4>Your next customer starts here</h4><p>Add a prospect, or ask management to assign an existing inquiry.</p></div>'}</div><p class="field-sales__empty" data-sales-no-results hidden>No leads match these filters. Try another name, phone or address.</p>`;
         }
         const key = viewKey(), retained = draftViews.get(key);
@@ -321,6 +335,10 @@
         const service = data.services.find(s => s.service_id === form.elements.serviceId.value);
         form.elements.label.innerHTML = (service?.definition.photos || []).map(label => `<option>${esc(label)}</option>`).join('');
     }
+    function checkedRecords(result){
+        if(typeof result.enabled!=='boolean'||result.enabled&&(!Array.isArray(result.opportunities)||!Array.isArray(result.services)))throw Error('Field Sales response incomplete. No empty result or current synchronization is assumed.');
+        return result;
+    }
     async function load(leadId) {
         if (!allowed()) { reset(); return; }
         if (token && (token !== session().token || actorRole !== session().role)) reset();
@@ -330,10 +348,34 @@
         data = detail = null; render(); status('Loading assigned Field Sales records...');
         root.querySelector('[data-sales-status]').classList.add('field-sales__loading');
         try {
-            const result = await json('field-sales'); if (id !== version) return; data = result;
+            const result = checkedRecords(await json('field-sales')); if (id !== version) return; data = result;
             if (leadId && result.enabled) { const record = await json(`field-sales?leadId=${encodeURIComponent(leadId)}`); if (id !== version) return; detail = record; mode = 'detail'; }
             render();
         } catch (error) { console.error('Field Sales read failed.'); if (id === version) { data = detail = null; render(); status(error.message, true); } }
+        ensureSync();
+    }
+    async function synchronize() {
+        const id = version, edits = editVersion, lead = detail?.opportunity.lead_id;
+        const fresh = checkedRecords(await json('field-sales'));
+        const record = lead && fresh.enabled ? await json(`field-sales?leadId=${encodeURIComponent(lead)}`) : null;
+        if (id !== version || edits !== editVersion || hasUnsavedDraft() || global.H2SDataSync?.interacting(root)) return false;
+        const search = root.querySelector('[data-sales-search]')?.value, owner = root.querySelector('[data-sales-owner]')?.value;
+        data = fresh; detail = record;
+        draftViews.delete(renderedKey);
+        render();
+        if (search !== undefined && root.querySelector('[data-sales-search]')) root.querySelector('[data-sales-search]').value = search;
+        if (owner !== undefined && root.querySelector('[data-sales-owner]')) root.querySelector('[data-sales-owner]').value = owner;
+        filterLeads();
+        return true;
+    }
+    function ensureSync() {
+        if (sync || !global.H2SDataSync) return;
+        sync = global.H2SDataSync.register({id:'field-sales',isActive:()=>allowed() && root.classList.contains('active')
+            && !['orders','commissions','performance','transactions','quotes','commerce'].includes(mode),
+            isDirty:()=>hasUnsavedDraft() || global.H2SDataSync.interacting(root),
+            refresh:synchronize,onState:state=>{
+                if (!attempt) global.H2SDataSync.feedback(root,'[data-sales-status]',state,()=>sync.request('retry',{force:true}));
+            }});
     }
     async function write(path, body) {
         if (busy) return null;
@@ -342,7 +384,7 @@
         if (!attempt) attempt = { path, body: { ...body, operationId: global.crypto.randomUUID() } };
         status('Saving securely. If interrupted, retry this same action.');
         try { const result = await json(attempt.path, attempt.body); attempt = null; return result; }
-        catch (error) { console.error('Field Sales save failed.'); if (generation === version) status(`${error.message} Your form is retained. Retry this action, or refresh before starting a different action.`, true); return null; }
+        catch (error) { console.error('Field Sales save failed.'); if (generation === version) status(`${error.message} Your form is retained. Retry this same save or explicitly discard the interrupted action.`, true); return null; }
         finally { if (generation === version) busy = false; }
     }
     async function preparePhoto(file) {
@@ -353,6 +395,7 @@
         finally { image.close(); }
     }
     root.addEventListener('change', event => {
+        editVersion++;
         if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
             !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
         if (event.target.name === 'services') questions();
@@ -380,6 +423,7 @@
         const empty = root.querySelector('[data-sales-no-results]'); if (empty) empty.hidden = !rows.length || rows.some(row=>!row.hidden);
     }
     root.addEventListener('input', event=>{
+        editVersion++;
         if(event.target.matches('[data-sales-search]')) filterLeads();
         if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
             !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
@@ -418,14 +462,14 @@
             }
             preparing = false;
             const result = await write(path, body);
-            if (result) { const lead = result.leadId || (detail?.opportunity.lead_id); if (action === 'account_create') { status('Disabled account created. Save the temporary credential securely before Refresh; it is not recoverable. Refresh to enable explicitly.'); form.querySelector('button').disabled = true; await refreshRepresentatives(); } else {
+            if (result) { const lead = result.leadId || (detail?.opportunity.lead_id); if (action === 'account_create') { form.querySelector('button').disabled = true; await refreshRepresentatives(); retainDraft(); render(); status('Disabled account created. Save the retained temporary credential securely; it is not recoverable. Activation remains a separate explicit management action.'); } else {
                 if (action === 'create') { draftViews.delete(renderedKey); renderedKey = null; }
                 savedForm = form; await load(lead);
             } }
         } catch (error) { if (generation === version) status(error.message, true); }
         finally { if (generation === version) preparing = false; }
     });
-    async function refreshRepresentatives() { const fresh = await json('field-sales'); data = fresh; }
+    async function refreshRepresentatives() { const fresh = checkedRecords(await json('field-sales')); data = fresh; }
     root.addEventListener('click', async event => {
         const button = event.target.closest('button'); if (!button) return;
         if (button.hasAttribute('data-sales-logout')) {
@@ -434,11 +478,17 @@
         }
         if (busy || preparing) return;
         try {
-            if (button.hasAttribute('data-sales-refresh')) {
-                if (!global.confirm('Refresh and discard unsaved changes in this destination, including selected files and any interrupted save?')) return;
-                quoteDrafts.delete(quoteLead); global.H2SFieldCommerce?.reset();
-                draftViews.delete(renderedKey); renderedKey = null; mountedDirty = false; attempt = null; await load(detail?.opportunity.lead_id);
+            if (button.hasAttribute('data-sales-discard-attempt')) {
+                if (!global.confirm('Discard the interrupted action? Your form stays available. A prior server result may still exist; review current records before submitting another action.')) return;
+                attempt = null; status('Interrupted retry discarded. Your form is retained; review current records before another save.');
             }
+            if(button.hasAttribute('data-sales-discard-draft')){
+                if(attempt){status('Retry or explicitly discard the interrupted action before discarding form changes.',true);return;}
+                if(!global.confirm('Discard the unsaved changes and selected files in this view? Server records are not undone.'))return;
+                draftViews.delete(renderedKey);renderedKey=savedForm=null;assessmentDraft={};mountedDirty=false;
+                root.querySelector('[data-sales-content]').replaceChildren();await load(detail?.opportunity.lead_id);
+            }
+            if (button.hasAttribute('data-sales-retry-read')) await load(detail?.opportunity.lead_id);
             if (button.dataset.salesMode) { if (!safeToLeave()) return; mode = button.dataset.salesMode; detail = null; attempt = null; await load(); }
             if (button.dataset.salesBuildQuote) { if (!safeToLeave()) return; quoteLead = button.dataset.salesBuildQuote; mode = 'quotes'; detail = null; attempt = null; await load(); }
             if (button.dataset.salesLead) { if (!safeToLeave()) return; attempt = null; await load(button.dataset.salesLead); }

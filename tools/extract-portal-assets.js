@@ -1,80 +1,43 @@
 const fs = require('fs');
 const path = require('path');
+const { JSDOM } = require('jsdom');
+const { assertNoTemplateTokens } = require('./portal-template-check.cjs');
 
-function fail(msg) {
-  console.error(msg);
-  process.exit(1);
+function extractPortal(originalHtml) {
+  const dom = new JSDOM(originalHtml, { includeNodeLocations: true });
+  try {
+    const styles = [...dom.window.document.querySelectorAll('style')];
+    const scripts = [...dom.window.document.querySelectorAll('script:not([src])')]
+      .sort((a, b) => b.textContent.length - a.textContent.length);
+    if (!styles.length) throw Error('No HTML style blocks found in portal source');
+    if (!scripts.length) throw Error('No inline application script found in portal source');
+    const mainScript = scripts[0], location = dom.nodeLocation(mainScript);
+    const js = '// Auto-extracted from portal.html to reduce HTML size.\n' +
+      originalHtml.slice(location.startTag.endOffset, location.endTag.startOffset).replace(/^\n+/, '');
+    const css = '/* Auto-extracted from portal.html to reduce HTML size. */\n' +
+      styles.map((style, index) => `\n/* ---- inline style block ${index + 1} ---- */\n${style.textContent.trimEnd()}\n`).join('\n');
+    const replacements = styles.map((style, index) => ({
+      ...dom.nodeLocation(style), content: index ? '' : '<link rel="stylesheet" href="./dash.css">'
+    }));
+    replacements.push({ ...location, content: '<script src="./dash.js" defer></script>' });
+    let html = originalHtml;
+    for (const replacement of replacements.sort((a, b) => b.startOffset - a.startOffset)) {
+      html = html.slice(0, replacement.startOffset) + replacement.content + html.slice(replacement.endOffset);
+    }
+    for (const [name, content] of Object.entries({html, css, js})) assertNoTemplateTokens(content, name);
+    return { html, css, js };
+  } finally { dom.window.close(); }
 }
 
-const portalPath = path.join('frontend', 'portal.html');
-if (!fs.existsSync(portalPath)) fail('Missing frontend/portal.html');
-
-const originalHtml = fs.readFileSync(portalPath, 'utf8');
-
-// Extract all <style> blocks.
-const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-const styles = [];
-let styleMatch;
-while ((styleMatch = styleRegex.exec(originalHtml)) !== null) {
-  styles.push(styleMatch[1]);
+function main() {
+  const portalPath = path.join('frontend', 'portal.html');
+  const result = extractPortal(fs.readFileSync(portalPath, 'utf8'));
+  for (const [filename, content] of [['dash.css', result.css], ['dash.js', result.js],
+    ['dash.html', result.html], ['portal.html', result.html]]) {
+    const output = path.join('frontend', filename);
+    fs.writeFileSync(output, content, 'utf8');
+    console.log('Wrote:', output, { bytes: fs.statSync(output).size });
+  }
 }
-if (styles.length === 0) fail('No <style> blocks found in frontend/portal.html');
-
-// Remove style blocks but keep a placeholder where the first one was.
-let html = originalHtml.replace(styleRegex, '%%H2S_STYLE_PLACEHOLDER%%');
-html = html.replace(/(?:\s*%%H2S_STYLE_PLACEHOLDER%%\s*)+/g, '\n    %%H2S_STYLE_PLACEHOLDER%%\n');
-
-// Extract inline <script> blocks without src.
-const inlineScriptRegex = /<script\b(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
-const inlineScripts = [];
-let scriptMatch;
-while ((scriptMatch = inlineScriptRegex.exec(html)) !== null) {
-  inlineScripts.push({
-    full: scriptMatch[0],
-    content: scriptMatch[1],
-  });
-}
-if (inlineScripts.length === 0) fail('No inline <script> blocks found in frontend/portal.html');
-
-// Choose the largest inline script as the main app script (leave small head bootstrap inline).
-inlineScripts.sort((a, b) => b.content.length - a.content.length);
-const mainScript = inlineScripts[0];
-
-const dashCssPath = path.join('frontend', 'dash.css');
-const dashJsPath = path.join('frontend', 'dash.js');
-const dashHtmlPath = path.join('frontend', 'dash.html');
-
-const cssBanner = '/* Auto-extracted from portal.html to reduce HTML size. */\n';
-const cssContent =
-  cssBanner +
-  styles
-    .map((s, i) => `\n/* ---- inline style block ${i + 1} ---- */\n${s.trimEnd()}\n`)
-    .join('\n');
-
-const jsBanner = '// Auto-extracted from portal.html to reduce HTML size.\n';
-const jsContent = jsBanner + mainScript.content.replace(/^\n+/, '');
-
-fs.writeFileSync(dashCssPath, cssContent, 'utf8');
-fs.writeFileSync(dashJsPath, jsContent, 'utf8');
-
-// Rewrite HTML: insert link tag, replace main script with external script tag.
-let newHtml = html;
-newHtml = newHtml.replace('%%H2S_STYLE_PLACEHOLDER%%', '    <link rel="stylesheet" href="./dash.css">');
-newHtml = newHtml.replace(mainScript.full, '<script src="./dash.js" defer></script>');
-newHtml = newHtml.replace(/%%H2S_STYLE_PLACEHOLDER%%/g, '');
-
-// Write both dash.html (source) and portal.html (deploy entry) to the same smaller HTML.
-fs.writeFileSync(dashHtmlPath, newHtml, 'utf8');
-fs.writeFileSync(portalPath, newHtml, 'utf8');
-
-function stat(p) {
-  const st = fs.statSync(p);
-  const lines = fs.readFileSync(p, 'utf8').split(/\r\n|\n|\r/).length;
-  return { bytes: st.size, lines };
-}
-
-console.log('Wrote:');
-console.log(' -', dashHtmlPath, stat(dashHtmlPath));
-console.log(' -', portalPath, stat(portalPath));
-console.log(' -', dashCssPath, stat(dashCssPath));
-console.log(' -', dashJsPath, stat(dashJsPath));
+if (require.main === module) main();
+module.exports = { extractPortal };

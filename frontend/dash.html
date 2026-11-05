@@ -3755,7 +3755,6 @@
                                 </div>
                                 <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                                     <div id="ownerUploadsCommercialMeta" style="font-size:12px; color:#64748b; line-height:1.45;">Checking current commercial preview...</div>
-                                    <button id="ownerUploadsCommercialRefresh" type="button" onclick="ownerUploadsUI.refreshCommercialPreview()" style="display:inline-flex; align-items:center; justify-content:center; min-height:34px; padding:0 12px; border-radius:10px; border:1px solid #dbe4f0; background:#fff; color:var(--cobalt); font-size:12px; font-weight:700; line-height:1; box-shadow:none;">Refresh preview</button>
                                 </div>
                             </div>
                             <div id="ownerUploadsCommercialPreview" style="display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); padding:14px 16px;"></div>
@@ -5408,6 +5407,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
+                await loadScript('dashboard-sync.js');
                 await loadScript('dashboard-controls.js');
                 try {
                     await loadScript('management-operations.js');

@@ -25,9 +25,10 @@
     let options = null, controller = null, requestId = 0, offset = 0, filter = 'all', data = null;
     let assignmentDialog = null, assignmentController = null, assignmentVersion = 0, assignmentAttempt = null;
     let view = 'overview', planningFilter = 'all', reviewToken = null;
+    let sync = null, syncState = null;
     const reviewDrafts = new Map();
     const reviewInputs = new Map();
-    const views = { overview: 'Dispatch records', schedule: 'Scheduling visibility', reconciliation: 'Reconciliation review' };
+    const views = { overview: 'Overview / dispatch', schedule: 'Scheduling visibility', reconciliation: 'Reconciliation review' };
     const planningLabels = {
         schedule: { all: 'All jobs', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled jobs', attention: 'Management attention', conflicts: 'Observed conflicts' },
         reconciliation: { all: 'All issues', orphan_assignment: 'Orphan assignments', technician_identity: 'Technician identities',
@@ -35,15 +36,122 @@
     };
     const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
         char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-    const evidence = value => value.status === 'available' ? value.value : null;
-    const date = value => value && Number.isFinite(Date.parse(value))
-        ? new Date(value).toLocaleString() : 'Schedule not recorded';
-    const scheduleDate = (value, timezone) => value && Number.isFinite(Date.parse(value))
-        ? timezone ? new Date(value).toLocaleString(undefined, { timeZone: timezone })
-            : `${new Date(value).toISOString()} (recorded instant; local timezone unresolved)` : 'Schedule not recorded';
+    const evidence = value => value?.status === 'available' ? value.value : null;
+    const readable = value => String(value || 'Not recorded').replaceAll('_', ' ').replace(/\b\w/g, char => char.toUpperCase());
+    const date = value => value != null && Number.isFinite(new Date(value).getTime())
+        ? `${new Date(value).toLocaleString()} (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'browser local time'})` : 'Schedule not recorded';
+    const scheduleDate = (value, timezone) => {
+        if (!value || !Number.isFinite(Date.parse(value))) return 'Schedule not recorded';
+        if (timezone) {
+            try { return `${new Date(value).toLocaleString(undefined, { timeZone: timezone })} (${timezone})`; } catch { /* Keep the recorded instant if the zone cannot be formatted. */ }
+        }
+        return `${new Date(value).toISOString()} (recorded instant; local timezone unresolved)`;
+    };
     const labels = { all: 'All records', upcoming: 'Upcoming installations', assignments: 'Assignment review',
         readiness: 'Preparation review', payments: 'Payment exceptions', payouts: 'Payout review' };
     const done = job => ['completed', 'done', 'cancelled', 'canceled'].includes(job.rawStatus);
+    function isDirty() {
+        return !!assignmentDialog || !!assignmentAttempt || reviewInputs.size > 0 || reviewDrafts.size > 0
+            || !!global.H2SDataSync?.interacting?.(root)
+            || root.contains(document.activeElement) && document.activeElement.matches('input, textarea, select, [contenteditable="true"]');
+    }
+    function syncStatus() {
+        const status = root.querySelector('[data-operations-sync]');
+        if (!status) return;
+        const messages = { loading: 'Checking for updates…', current: 'Automatic sync current.', stale: 'Updates pending; current edits are preserved.', error: 'Automatic sync failed; displayed evidence may be stale.' };
+        status.textContent = syncState ? messages[syncState.status] || '' : 'Read-only evidence.';
+        status.title = syncState?.updatedAt ? `Last checked ${date(syncState.updatedAt)}` : '';
+    }
+    function registerSync() {
+        if (sync || !global.H2SDataSync?.register) return;
+        sync = global.H2SDataSync.register({
+            id: 'management-operations', intervalMs: 60000, minIntervalMs: 15000,
+            isActive: () => root.classList.contains('active') && !!options?.getSession()?.isAdmin,
+            isDirty,
+            refresh: () => load({ background: true }),
+            onState(state) { syncState = state; syncStatus(); },
+        });
+    }
+    function metric(label, count, detail, note = '') {
+        return `<div title="${escape(detail)}"><dt>${escape(label)}</dt><dd><strong>${escape(count)}</strong>${note ? `<span>${escape(note)}</span>` : ''}</dd></div>`;
+    }
+    function measured(jobs, known, test) {
+        const verified = jobs.filter(known), unknown = jobs.length - verified.length;
+        return { count: unknown ? `${verified.filter(test).length} known · ${unknown} unknown` : verified.filter(test).length,
+            detail: unknown ? 'Unknown evidence is not zero or clearance.' : 'Verified evidence in loaded records only.' };
+    }
+    function operationalMetrics(jobs, planning = false) {
+        const validStart = value => typeof value === 'string' && /T.*(?:Z|[+-]\d\d:\d\d)$/i.test(value) && Number.isFinite(Date.parse(value));
+        const startRecorded = job => {
+            const start = planning ? job.window?.start : job.scheduledAt;
+            if (start === null && (!planning || job.window?.state === 'unscheduled')) return false;
+            if (planning && job.window?.state === 'invalid') return null;
+            return validStart(start) ? true : null;
+        };
+        const installation = (job, evaluate) => done(job) || job.kind === 'consultation' ? false
+            : job.kind === 'installation' ? evaluate(job) : null;
+        const assignmentRows = job => planning ? Array.isArray(job.assignments) ? job.assignments : null : evidence(job.assignments);
+        const assignmentState = row => planning ? row.state : row.rawState;
+        const committed = ['accepted', 'assigned', 'scheduled', 'in_progress'];
+        const knownStates = [...committed, 'pending', 'declined', 'expired', 'cancelled', 'canceled', 'completed', 'done', 'rejected'];
+        const pending = job => {
+            const rows = assignmentRows(job);
+            if (!rows) return null;
+            if (rows.some(row => assignmentState(row) === 'pending')) return true;
+            return rows.every(row => knownStates.includes(assignmentState(row))) ? false : null;
+        };
+        const preparationReady = job => {
+            const preparation = evidence(job.preparation);
+            return typeof preparation?.ready === 'boolean' ? preparation.ready : null;
+        };
+        const count = evaluate => {
+            const results = jobs.map(evaluate), known = results.filter(value => value === true).length,
+                unknown = results.filter(value => value === null).length;
+            return unknown ? `${known} known · ${unknown} unknown` : known;
+        };
+        const attention = job => {
+            if (planning) {
+                if (job.attention?.length || job.conflicts?.length) return true;
+                return Array.isArray(job.attention) && Array.isArray(job.conflicts) && data.complete ? false : null;
+            }
+            if (done(job)) return false;
+            const rows = assignmentRows(job), preparation = preparationReady(job);
+            const sources = ['order', 'assignments', 'preparation', 'equipment', 'payouts'].map(key => job[key]);
+            if (sources.some(source => source?.status === 'needs_review') || job.scheduledAt === null
+                || typeof job.scheduledAt === 'string' && !validStart(job.scheduledAt)
+                || rows && (rows.length !== 1 || !rows[0].proId || !committed.includes(rows[0].rawState))
+                || preparation === false || job.payment?.status === 'unpaid'
+                || evidence(job.payouts)?.some(row => row.status && row.status !== 'paid')) return true;
+            return sources.every(source => source?.status === 'available') && startRecorded(job) === true
+                && preparation !== null && ['paid', 'not_applicable'].includes(job.payment?.status) ? false : null;
+        };
+        return metric('Awaiting scheduling', count(job => installation(job, value => {
+            const recorded = startRecorded(value); return recorded === null ? null : !recorded;
+        })), 'Active installations with no recorded start, not jobs merely marked queued. Loaded page only; unresolved kind/window is unknown.')
+            + metric('Scheduled (recorded start)', count(job => installation(job, startRecorded)),
+                'Active installations with a valid recorded start; not a confirmed booking, complete window or technician acceptance. Loaded page only.')
+            + metric('Pending technician acceptance', count(job => installation(job, pending)),
+                'Active installations with an explicit pending assignment. Unknown assignment evidence/state is not zero; acceptance is not booking confirmation.')
+            + metric('Ready for installation', 'Unknown / unavailable',
+                'Preparation alone cannot establish overall installation readiness or payment / availability clearance.',
+                `${count(job => installation(job, preparationReady))} preparation-ready`)
+            + metric('Completed', count(job => typeof job.rawStatus === 'string' && job.rawStatus ? ['completed', 'done'].includes(job.rawStatus) : null),
+                'Loaded jobs explicitly marked completed or done; cancelled jobs are excluded. Not proof of settlement.')
+            + metric('Attention', count(attention), planning
+                ? 'Loaded jobs with projected attention items or observed conflicts. Empty flags with incomplete evidence remain unknown; not availability clearance.'
+                : 'Active loaded jobs with observed schedule, relationship, assignment, preparation, payment or payout review indicators. Unavailable evidence without a known indicator remains unknown.');
+    }
+    function nextAction(job) {
+        if (!evidence(job.order)) return 'Verify customer / order link.';
+        const assignments = evidence(job.assignments);
+        if (!assignments) return 'Restore assignment evidence.';
+        if (assignments.length !== 1 || !assignments[0].proId) return 'Review technician assignment.';
+        if (!job.scheduledAt) return 'Review installation window.';
+        if (!['paid', 'not_applicable'].includes(job.payment.status)) return 'Verify payment separately.';
+        if (!evidence(job.preparation)?.ready) return 'Review preparation blockers.';
+        if (done(job)) return 'Review completion / settlement.';
+        return 'Confirm appointment and technician commitment.';
+    }
     function matches(job) {
         if (filter === 'upcoming') return job.kind === 'installation' && !done(job)
             && !!job.scheduledAt && Date.parse(job.scheduledAt) >= Date.now();
@@ -61,32 +169,51 @@
     }
     function frame() {
         root.innerHTML = `<header class="management-operations__header"><div><h2>Operations</h2>
-            <p>Dispatch records. Technician offers require a separate review and confirmation; management writes are disabled by default.
-            No scheduling, payment or payout changes are made here.</p></div>
-            <button type="button" class="commercial-workload-btn" data-operations-action="refresh">Refresh</button></header>
+            <p>Dispatch, scheduling and reconciliation review.</p></div>
+            <button type="button" data-operations-action="retry" hidden>Retry read</button></header>
+            <p data-operations-sync role="status" aria-live="polite"></p>
             <div class="management-operations__filters" role="group" aria-label="Operations view">${Object.entries(views).map(([key, label]) =>
                 `<button type="button" data-operations-view="${key}" aria-pressed="${key === view}">${label}</button>`).join('')}</div>
             <div class="management-operations__filters" role="group" aria-label="${view === 'overview' ? 'Filter this page' : 'Filter bounded dataset'}">
             ${Object.entries(view === 'overview' ? labels : planningLabels[view]).map(([key, label]) => `<button type="button" ${view === 'overview' ? 'data-operations-filter' : 'data-planning-filter'}="${key}"
                 aria-pressed="${key === (view === 'overview' ? filter : planningFilter)}">${label}</button>`).join('')}</div>
-            ${view === 'reconciliation' ? '<p>Review drafts are held only in this Operations session. They are not shared, saved to production, repair instructions or approvals. Export before signing out. Reviewed does not mean resolved.</p><button type="button" data-review-export disabled>Export session review drafts</button>' : ''}
+            ${view === 'reconciliation' ? '<p>Session drafts only. Reviewed does not mean resolved. Export before sign-out.</p><button type="button" data-review-export disabled>Export session review drafts</button>' : ''}
             <p data-operations-status role="status" aria-live="polite"></p>
+            <section class="management-operations__summary" aria-label="Loaded-scope summary"><h3 data-operations-summary-title></h3><dl data-operations-metrics></dl>
+            <details><summary>Scope and evidence limits</summary><p data-operations-scope></p>
+            <dl data-operations-secondary-metrics></dl>
+            <p>Metric criteria are available in each metric's tooltip. Unknown evidence is not zero or clearance. Recorded starts and technician acceptance do not confirm a customer booking. Preparation is not payment or availability clearance.</p>
+            <p>Technician offers require separate review and confirmation. No scheduling, payment, payout or automatic repair changes are made here. Session review drafts are not shared, saved to production, repair instructions or approvals.</p></details></section>
             <div data-operations-jobs></div>
             <footer class="management-operations__footer"><span data-operations-page></span><div>
             <button type="button" data-operations-action="previous" disabled>Previous</button>
             <button type="button" data-operations-action="next" disabled>Next</button></div></footer>`;
+        syncStatus();
     }
     function render() {
         if (view !== 'overview') { renderPlanning(); return; }
         const jobs = data.jobs.filter(matches);
+        const assignmentMetric = measured(data.jobs.filter(job => !done(job)), job => evidence(job.assignments) !== null, job => {
+            const rows = job.assignments.value;
+            return rows.length !== 1 || !rows[0].proId || !['accepted', 'assigned', 'scheduled', 'in_progress'].includes(rows[0].rawState);
+        });
+        const preparationMetric = measured(data.jobs.filter(job => job.kind !== 'consultation'), job => evidence(job.preparation) !== null, job => !job.preparation.value.ready);
+        const paymentMetric = measured(data.jobs, job => ['paid', 'unpaid', 'not_applicable'].includes(job.payment.status), job => job.payment.status === 'unpaid');
+        root.querySelector('[data-operations-summary-title]').textContent = 'Dispatch overview · loaded page only';
+        root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Loaded jobs', data.jobs.length, `${jobs.length} match the selected page filter; not a business-wide total.`)
+            + metric('Active-job assignment review', assignmentMetric.count, assignmentMetric.detail)
+            + metric('Preparation blockers', preparationMetric.count, preparationMetric.detail)
+            + metric('Verified unpaid', paymentMetric.count, paymentMetric.detail);
+        root.querySelector('[data-operations-metrics]').innerHTML = operationalMetrics(data.jobs);
+        root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. Latest records, at most 25 per page. Counts cover loaded records only, not the business. Filters apply to this page only.`;
         root.querySelector('[data-operations-status]').textContent = data.jobs.length
-            ? `Read ${new Date(data.readAt).toLocaleString()}. Showing ${jobs.length} of ${data.jobs.length} records on this page. Filters apply to this page only.`
+            ? `${jobs.length} of ${data.jobs.length} loaded jobs shown. Filters apply to this page only.`
             : 'No Dispatch records found.';
         root.querySelector('[data-operations-jobs]').innerHTML = jobs.length ? jobs.map(job => {
             const order = evidence(job.order), assignments = evidence(job.assignments),
                 preparation = evidence(job.preparation), equipment = evidence(job.equipment), payouts = evidence(job.payouts);
             const assignedText = assignments ? assignments.length
-                ? assignments.map(row => `${row.name || 'Technician identity unresolved'} (${row.rawState})`).join('; ')
+                ? assignments.map(row => `${row.name || 'Technician identity unresolved'} (${readable(row.rawState)})`).join('; ')
                 : 'No active assignment recorded' : job.assignments.detail;
             const payoutText = payouts ? payouts.length ? payouts.map(row =>
                 `Settlement: ${row.status || 'unknown'}; approval: ${row.state || 'not recorded'}; amount: ${row.amount == null ? 'not recorded' : row.amount}`).join('; ')
@@ -94,13 +221,14 @@
             return `<article class="management-operations__job"><h3>${escape(order?.service || 'Service requires reconciliation')}</h3>
                 <p>${escape(order?.customerName || 'Customer not verified')} / ${escape(order?.address || 'Address not verified')}</p>
                 <p>${escape(order?.reference || job.order.detail || 'Order reference unverified')} / ${escape(job.kind === 'installation' ? 'Installation' : job.kind === 'consultation' ? 'Consultation' : 'Job record')}</p>
-                <dl><div><dt>Job / schedule</dt><dd>${escape(job.rawStatus)} / ${escape(date(job.scheduledAt))}</dd></div>
+                <p class="management-operations__next"><strong>Next review:</strong> ${escape(nextAction(job))}</p>
+                <dl><div><dt>Job / schedule</dt><dd>${escape(readable(job.rawStatus))} / ${escape(date(job.scheduledAt))}<p>Browser timezone; job timezone is not provided by this dispatch read.</p></dd></div>
                 <div><dt>Technician assignment</dt><dd>${escape(assignedText)}${assignments?.length > 1 ? ' / Conflicting assignments' : ''}</dd></div>
                 <div><dt>Preparation</dt><dd>${escape(preparation ? preparation.ready ? 'Preparation ready (not payment clearance)'
                     : preparation.blockers.join('; ') || 'Preparation review required' : job.preparation.detail)}</dd></div>
                 <div><dt>Equipment requirements</dt><dd>${escape(equipment ? `Required: ${equipment.required === null ? 'unverified' : equipment.required ? 'yes' : 'no'}; stage: ${equipment.stage || 'not recorded'}`
                     : job.equipment.detail)}${equipment?.scope ? `<pre>${escape(equipment.scope)}</pre>` : ''}</dd></div>
-                <div><dt>Payment verification</dt><dd>${escape(job.payment.status)} / ${escape(job.payment.detail)}</dd></div>
+                <div><dt>Payment verification</dt><dd>${escape(readable(job.payment.status))} / ${escape(job.payment.detail)}${job.payment.checkedAt ? `<p>Checked ${escape(date(job.payment.checkedAt))}</p>` : ''}</dd></div>
                 <div><dt>Technician payout</dt><dd>${escape(payoutText)}</dd></div></dl>
                 <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button>
                 <details><summary>Technical record references</summary><p class="management-operations__identity">Job ${escape(job.jobId)}</p></details></article>`;
@@ -111,26 +239,38 @@
     }
     function renderPlanning() {
         const status = root.querySelector('[data-operations-status]');
-        status.textContent = `${data.complete ? 'Complete bounded source reads' : 'Incomplete evidence: unavailable sources are not empty or clear'}. ${data.summary.jobs} jobs; ${data.summary.issues} reconciliation issues. ${data.scope}`;
+        status.textContent = `${data.complete ? 'Bounded read complete' : 'Incomplete evidence'}. Counts cover loaded records, not all jobs.`;
+        root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. ${data.scope}`;
+        root.querySelector('[data-operations-summary-title]').textContent = view === 'schedule' ? 'Scheduling · loaded page' : 'Reconciliation · loaded cases';
+        const scopeDetail = data.complete ? 'Complete bounded read; not an organization-wide total.' : 'Known in bounded read; additional issues may be unknown.';
+        root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Jobs in bounded read', data.summary.jobs ?? 'Unknown', scopeDetail)
+            + metric('Observed reconciliation issues', data.summary.issues ?? 'Unknown', scopeDetail)
+            + (view === 'schedule' ? metric('Loaded scheduling jobs', data.jobs.length, `${data.jobs.filter(job => job.conflicts.length).length} with observed conflicts on this page; absence is not clearance.`)
+                : metric('Loaded review cases', data.issues.length, 'Session classifications do not resolve production issues.'))
+            + metric('Evidence coverage', data.complete ? 'Bounded read complete' : 'Incomplete / unknown', 'Separate reads, not an atomic snapshot.');
+        root.querySelector('[data-operations-metrics]').innerHTML = view === 'schedule' ? operationalMetrics(data.jobs, true)
+            : metric('Loaded review cases', data.issues.length, 'Cases on this page only; session classifications do not resolve production issues.');
         const content = root.querySelector('[data-operations-jobs]');
         if (view === 'schedule') {
             content.innerHTML = data.jobs.length ? data.jobs.map(job => `<article class="management-operations__job">
                 <h3>${escape(job.service || 'Unresolved service')}</h3>
-                <p>${escape(job.orderReference || 'Order unresolved')}</p>
-                <dl><div><dt>Installation window / ${escape(job.rawStatus)}</dt><dd>${escape(job.window.state)}: ${escape(scheduleDate(job.window.start, job.window.timezone))}
+                <p>Customer details are not provided by this scheduling read · ${escape(job.orderReference || 'Order unresolved')}</p>
+                <p class="management-operations__next"><strong>Next review:</strong> ${escape(job.conflicts.length ? 'Review overlapping commitments.'
+                    : job.attention.length ? 'Review attention items and missing evidence.' : 'Verify reservation and availability.')}</p>
+                <dl><div><dt>Installation window / ${escape(readable(job.rawStatus))}</dt><dd>${escape(readable(job.window.state))}: ${escape(scheduleDate(job.window.start, job.window.timezone))}
                     to ${escape(job.window.end ? scheduleDate(job.window.end, job.window.timezone) : 'End not recorded')} / ${escape(job.window.timezone || 'Timezone unresolved')}</dd></div>
                 <div><dt>Technician assignments</dt><dd>${escape(job.assignments.length ? job.assignments.map(a =>
-                    `${a.identity.name || 'Technician identity unresolved'} / ${a.state || 'unknown'} / ${a.identity.status}`).join('; ') : 'No unclosed assignment')}</dd></div>
-                <div><dt>Customer reservation</dt><dd>${escape(job.reservationEvidence)}. Assignment acceptance is not appointment confirmation.</dd></div>
-                <div><dt>Availability evidence</dt><dd>${escape(job.availability.length ? job.availability.map(a => `${a.status}: ${a.detail}`).join('; ') : 'No verified technician to evaluate')}
+                    `${a.identity.name || 'Technician identity unresolved'} / ${readable(a.state)} / ${readable(a.identity.status)}`).join('; ') : 'No unclosed assignment')}</dd></div>
+                <div><dt>Customer reservation</dt><dd>${escape(readable(job.reservationEvidence))}. Assignment acceptance is not appointment confirmation.</dd></div>
+                <div><dt>Availability evidence</dt><dd>${escape(job.availability.length ? job.availability.map(a => `${readable(a.status)}: ${a.detail}`).join('; ') : 'No verified technician to evaluate')}
                     ${job.availability.some(a => a.dispatchCapacity.length) ? 'Dispatch capacity rows exist; no cross-directory identity or capacity clearance is inferred.' : ''}</dd></div>
                 <div><dt>Installation readiness</dt><dd>${escape(job.preparation.status === 'available' ? job.preparation.value.ready ? 'Preparation ready (not payment clearance)'
                     : job.preparation.value.blockers.join('; ') || 'Preparation review required' : job.preparation.detail)}</dd></div>
-                <div><dt>Observed scheduling conflicts</dt><dd>${escape(job.conflicts.length ? job.conflicts.map(c => `${c.code}: ${c.detail} (${c.reference})`).join('; ')
+                <div><dt>Observed scheduling conflicts</dt><dd>${escape(job.conflicts.length ? job.conflicts.map(c => `${readable(c.code)}: ${c.detail} (related job: ${c.reference})`).join('; ')
                     : 'None observed in available evidence; not availability clearance.')}</dd></div></dl>
                 ${job.attention.length ? `<p><strong>Management attention:</strong> ${escape(job.attention.join(' '))}</p>` : ''}
                 <details><summary>Source evidence</summary><pre>${escape(JSON.stringify({ jobId: job.jobId, assignments: job.assignments, reservation: job.reservation,
-                    availability: job.availability, legacyLink: job.legacyLink }, null, 2))}</pre></details>
+                    availability: job.availability, conflicts: job.conflicts, legacyLink: job.legacyLink }, null, 2))}</pre></details>
                 <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button></article>`).join('')
                 : '<p class="management-operations__empty">No jobs match this scheduling filter.</p>';
         } else {
@@ -138,13 +278,30 @@
                 const prior = reviewDrafts.get(issue.id), draft = prior?.fingerprint === issue.fingerprint ? prior : null;
                 const classification = draft?.status || issue.status;
                 const pending = reviewInputs.get(issue.id), input = pending?.fingerprint === issue.fingerprint ? pending : null;
+                const priority = ['assignment_conflict', 'payout_association', 'orphan_assignment'].includes(issue.category) ? 'High'
+                    : issue.category === 'source_unavailable' ? 'Evidence gap' : 'Relationship review';
+                const relationships = issue.records.map(record => {
+                    const fields = record.fields || {};
+                    const humanLabel = value => typeof value === 'string' && value.trim()
+                        && !/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}/i.test(value) ? value : null;
+                    const orderReference = record.source === 'h2s_orders' ? humanLabel(fields.order_id) : null;
+                    const customer = record.source === 'h2s_orders' ? humanLabel(fields.customer_name) : null;
+                    return `${readable(record.source.replace(/^h2s_/, ''))} · ${[
+                        orderReference ? `Recorded order reference: ${orderReference}` : null,
+                        customer ? `Recorded customer name: ${customer}` : null,
+                    ].filter(Boolean).join(' · ') || 'Name unavailable'} · 1 source record`;
+                });
                 return `<article class="management-operations__job">
                     <h3>${escape(planningLabels.reconciliation[issue.category] || issue.category)}</h3>
                     <p><strong>${escape(classification.replaceAll('_', ' '))}${draft ? ' (session draft, not resolution)' : ''}</strong></p>
+                    <p class="management-operations__priority"><strong>Review priority: ${escape(priority)}</strong> · category-based triage, not a verified incident severity</p>
                     ${prior && !draft ? '<p role="status">Earlier draft is stale: supporting evidence changed. Review again.</p>' : ''}
                     ${pending && !input ? '<p role="status">Unsubmitted inputs refer to older evidence. Review current records before re-entering them.</p>' : ''}
-                    <p>${escape(issue.reason)}</p><p><strong>Proposed remediation:</strong> ${escape(issue.remediation)}</p>
-                    <details><summary>Affected records and supporting evidence</summary><pre>${escape(JSON.stringify({ issueId: issue.id, fingerprint: issue.fingerprint, records: issue.records }, null, 2))}</pre></details>
+                    <p><strong>Evidence / concern:</strong> ${escape(issue.reason)}</p>
+                    <p><strong>Affected relationships (${issue.records.length} source records):</strong></p><ul>${relationships.map(value => `<li>${escape(value)}</li>`).join('')}</ul>
+                    <p class="management-operations__next"><strong>Recommended review:</strong> ${escape(issue.remediation)}</p>
+                    <p>No automatic repair. Reviewed does not mean resolved; approval and any production change remain separate.</p>
+                    <details><summary>Technical records and supporting evidence</summary><pre>${escape(JSON.stringify({ issueId: issue.id, fingerprint: issue.fingerprint, records: issue.records }, null, 2))}</pre></details>
                     <form id="review-${escape(issue.fingerprint)}" data-review-issue="${escape(issue.id)}" class="management-review">
                         <label>Session review classification<select name="classification">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
                             `<option value="${value}"${value === (input?.classification || classification) ? ' selected' : ''}>${value.replaceAll('_', ' ')}</option>`).join('')}</select></label>
@@ -155,11 +312,13 @@
             }).join('') : '<p class="management-operations__empty">No issues match this category. Unavailable evidence is listed separately; reviewed drafts do not clear operational issues.</p>';
             root.querySelector('[data-review-export]').disabled = reviewDrafts.size === 0;
         }
-        root.querySelector('[data-operations-page]').textContent = `${data.page.total} matching records; page ${Math.floor(offset / 25) + 1}. Filters cover the bounded dataset, not just this page.`;
+        root.querySelector('[data-operations-page]').textContent = `${data.page.total ?? 'Unknown number of'} matching records; page ${Math.floor(offset / 25) + 1}. Filters cover the bounded dataset, not just this page.`;
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
         root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
     }
     function reset() {
+        sync?.invalidate();
+        syncState = null;
         assignmentVersion++;
         if (assignmentController) assignmentController.abort();
         assignmentAttempt = null;
@@ -196,6 +355,7 @@
             if (assignmentController) assignmentController.abort();
             dialog.remove(); assignmentDialog = null;
             if (trigger?.isConnected) trigger.focus();
+            if (sync) sync.request('assignment-review-closed');
         };
         dialog.querySelector('[data-assignment-close]').addEventListener('click', close);
         dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
@@ -237,7 +397,8 @@
                     const recordedAssignment = dialog.querySelector('[data-assignment-current]');
                     if (recordedAssignment) recordedAssignment.textContent = `Recorded offer: ${name} / pending technician acceptance. Reopen this review for refreshed audit history.`;
                     announce(`Offer recorded (${result.assignment.state}). Technician acceptance is required.${result.assignment.replayed ? ' The original request was already saved; no duplicate was created.' : ''}`);
-                    load();
+                    if (sync) { sync.invalidate(); sync.request('assignment-saved', { force: true }); }
+                    else load();
                 } catch (error) {
                     if (!current()) return;
                     console.error('Management assignment confirmation failed', { code: error.code || 'TRANSPORT_FAILURE' });
@@ -291,16 +452,21 @@
             announce(`${error.message} Close and reopen the review to retry.`);
         }
     }
-    async function load() {
+    async function load({ background = false } = {}) {
         const session = options?.getSession();
-        if (!session?.isAdmin || !session.token) { reset(); return; }
-        if (reviewToken && reviewToken !== session.token) { reviewDrafts.clear(); reviewInputs.clear(); }
+        if (!session?.isAdmin || !session.token) { reset(); return false; }
+        const accountChanged = reviewToken && reviewToken !== session.token;
+        if (accountChanged) reset();
+        if (background && isDirty()) return false;
         reviewToken = session.token;
         if (controller) controller.abort();
         const localController = controller = new AbortController(), id = ++requestId;
-        data = null;
-        frame();
-        root.querySelector('[data-operations-status]').textContent = 'Reading existing operational records...';
+        const preserve = background && !!data;
+        if (!preserve) {
+            data = null;
+            frame();
+            root.querySelector('[data-operations-status]').textContent = 'Reading existing operational records...';
+        }
         const timer = setTimeout(() => localController.abort(), 55000);
         const current = () => id === requestId && options?.getSession().token === session.token && options.getSession().isAdmin;
         try {
@@ -310,23 +476,37 @@
                 method: 'GET', cache: 'no-store', signal: localController.signal, referrerPolicy: 'no-referrer',
                 headers: { Authorization: `Bearer ${session.token}` },
             });
-            if (!current()) return;
+            if (!current()) return false;
             const result = await response.json();
-            if (!current()) return;
-            if ([401, 403].includes(response.status)) { reviewDrafts.clear(); reviewInputs.clear(); reviewToken = null; }
+            if (!current()) return false;
+            if ([401, 403].includes(response.status)) {
+                reviewDrafts.clear(); reviewInputs.clear(); reviewToken = null; data = null;
+                assignmentVersion++; assignmentAttempt = null;
+                if (assignmentController) assignmentController.abort();
+                if (assignmentDialog) { assignmentDialog.remove(); assignmentDialog = null; }
+                frame();
+            }
             if (!response.ok || !result.ok) throw new Error(result.error || 'Operations read failed.');
             if (!Array.isArray(result.jobs) || !result.page || result.readOnly !== true) throw new Error('Operations response is incomplete.');
             if (view !== 'overview' && (result.view !== view || !Array.isArray(result.issues) || !result.summary
                 || typeof result.complete !== 'boolean' || typeof result.scope !== 'string' || typeof result.reviewOwnerId !== 'string')) {
                 throw new Error('Planning response is incomplete.');
             }
-            data = result; render();
+            if (background && isDirty()) { sync?.invalidate(); return false; }
+            data = result;
+            root.querySelector('[data-operations-status]').setAttribute('role', 'status');
+            root.querySelector('[data-operations-action="retry"]').hidden = true;
+            render();
+            return true;
         } catch (error) {
-            if (!current()) return;
+            if (!current()) return false;
             console.error('Operations view read failed.');
             const status = root.querySelector('[data-operations-status]');
             status.setAttribute('role', 'alert');
-            status.textContent = `${error.name === 'AbortError' ? 'Operations read timed out.' : error.message} Use Refresh to retry.`;
+            status.textContent = `${error.name === 'AbortError' ? 'Operations read timed out.' : error.message} ${data ? 'Displayed records are stale; no current clearance is implied. ' : ''}Use Retry read to retry.`;
+            root.querySelector('[data-operations-action="retry"]').hidden = false;
+            if (background) throw error;
+            return false;
         } finally {
             clearTimeout(timer);
             if (controller === localController) controller = null;
@@ -359,9 +539,11 @@
             filter = button.dataset.operationsFilter;
             frame(); if (data) render();
             else root.querySelector('[data-operations-status]').textContent = controller
-                ? 'Reading existing operational records...' : 'Use Refresh to load records.';
-        } else if (button.dataset.operationsAction === 'refresh') load();
-        else if (button.dataset.operationsAction === 'next') { offset += 25; load(); }
+                ? 'Reading existing operational records...' : 'Reopen Operations to load records.';
+        } else if (button.dataset.operationsAction === 'retry') {
+            if (sync && !isDirty()) sync.request('retry', { force: true });
+            else load();
+        } else if (button.dataset.operationsAction === 'next') { offset += 25; load(); }
         else if (button.dataset.operationsAction === 'previous') { offset = Math.max(0, offset - 25); load(); }
     });
     function rememberReviewInput(event) {
@@ -402,8 +584,14 @@
     });
     global.addEventListener('storage', () => reset());
     global.H2SManagementOperations = {
-        configure(value) { options = value; reset(); nav.hidden = !options.getSession().isAdmin; },
-        open() { return load(); },
+        configure(value) { options = value; reset(); nav.hidden = !options.getSession().isAdmin; registerSync(); },
+        open() {
+            const session = options?.getSession();
+            if (!session?.isAdmin || !session.token) { reset(); return Promise.resolve(false); }
+            if (reviewToken && reviewToken !== session.token) reset();
+            registerSync();
+            return sync ? sync.request('show') : load();
+        },
         reset,
     };
     reset();

@@ -120,7 +120,7 @@ function mount(t, { flicker = true } = {}) {
   } };
 }
 
-const requiredScriptNames = ['dashboard-controls.js', 'management-operations.js', 'field-workflow.js', 'field-earnings.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
+const requiredScriptNames = ['dashboard-sync.js', 'dashboard-controls.js', 'management-operations.js', 'field-workflow.js', 'field-earnings.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
   Array.from(html.matchAll(/for \(const filename of \[([^\]]+)\]/g)).at(-1)[1].matchAll(/'([^']+)'/g), match => match[1])];
 
 test('required scripts load serially and login stays disabled until all dependencies are ready', async t => {

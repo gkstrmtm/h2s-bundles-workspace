@@ -75,7 +75,7 @@ test('current balance distinguishes zero from positive blocked collection withou
     ]){
         const d=workflow();d.workflows[0].balanceCents=balanceCents;d.workflows[0].gates.canBalance=canBalance;
         const f=browser(t,'field-workflow.js','ADMIN',d);await settle();
-        const label=[...f.root.querySelectorAll('dt')].find(el=>el.textContent==='Current net balance');
+        const label=[...f.root.querySelectorAll('dt')].find(el=>el.textContent==='Outstanding balance');
         assert.equal(label.nextElementSibling.textContent,expected);
         assert.doesNotMatch(label.nextElementSibling.textContent,/settled|payment verified|refund approved/i);
         assert.equal(f.root.querySelector('[data-workflow-form="reschedule"] button').disabled,true);
@@ -130,7 +130,7 @@ test('SALES earnings separate earned, allocated and independently paid amounts w
     const f=browser(t,'field-earnings.js','SALES',earnings());await settle();
     assert.match(f.root.textContent,/Your earnings/);assert.match(f.root.textContent,/Order 1/);
     assert.match(f.root.textContent,/\$396\.00/);assert.match(f.root.textContent,/\$395\.00/);
-    assert.match(f.root.textContent,/Independently reconciled paid\$0\.00/);
+    assert.match(f.root.textContent,/Commission independently paid\$0\.00/);
     assert.match(f.root.textContent,/Review exported — not paid/);assert.match(f.root.textContent,/Amount under review/);
     assert.match(f.root.textContent,/55% · tenure day 30/);assert.match(f.root.textContent,/not representative debt or authorization to recover money/);
     assert.doesNotMatch(f.root.textContent,/00000000-|calculation_review|recovery_review_required|earning_correction_not_debt|internal_classification|Synthetic commission evidence|integer cents|JSON/);
@@ -444,7 +444,7 @@ test('management puts tabs directly after one concise status band and next actio
     assert.deepEqual([...record.children].map(el=>el.tagName),['HEADER','DL','P','DIV']);
     const band=record.querySelector(':scope > dl');
     assert.deepEqual([...band.querySelectorAll('dt')].map(el=>el.textContent),[
-        'Exact 25% deposit','Current net balance','Credited representative','Installation team'
+        'Deposit required (25%)','Outstanding balance','Credited representative','Installation team'
     ]);
     assert.match(band.textContent,/\$25\.01.*Verified net payment covers deposit.*\$75\.00 — not ready for collection/s);
     assert.match(band.textContent,/Jordan Representative.*Assigned/s);
@@ -454,7 +454,7 @@ test('management puts tabs directly after one concise status band and next actio
     assert.equal(views.firstElementChild.getAttribute('role'),'tablist');
     const overview=views.querySelector('[role="tabpanel"]');
     assert.equal(overview.hidden,false);
-    const paid=[...overview.querySelectorAll('dt')].find(el=>el.textContent==='Verified net paid');
+    const paid=[...overview.querySelectorAll('dt')].find(el=>el.textContent==='Total verified payments (net)');
     assert.equal(paid.nextElementSibling.textContent,'$25.01');
     assert.equal(overview.querySelectorAll('.field-workflow__summary-panel').length,6);
     assert.equal(f.calls.length,1);
@@ -468,9 +468,9 @@ test('representative cards use one compact row set with no duplicated progress o
     assert.equal(card.querySelector('ol,[aria-label="Order progress"],details'),null);
     const rows=[...card.querySelectorAll('dt')];
     assert.deepEqual(rows.map(el=>el.textContent),[
-        'Exact 25% deposit','Current net balance','Installation team','Completion','Customer copies'
+        'Deposit required (25%)','Outstanding balance','Installation team','Completion','Customer copies'
     ]);
-    assert.match(rows[0].nextElementSibling.textContent,/\$25\.01.*Verified net payment covers deposit.*Verified net paid: \$25\.01/s);
+    assert.match(rows[0].nextElementSibling.textContent,/\$25\.01.*Verified net payment covers deposit.*Total verified payments \(net\): \$25\.01/s);
     assert.equal(rows[1].nextElementSibling.textContent,'$75.00 — not ready for collection');
     assert.equal(rows[2].nextElementSibling.textContent,'Assigned');
     assert.notEqual(rows[3].nextElementSibling.textContent,'Not established');

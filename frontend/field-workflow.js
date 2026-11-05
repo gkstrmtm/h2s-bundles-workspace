@@ -27,11 +27,11 @@
         return millionths*BigInt(unitCents)===BigInt(amountCents)*1000000n;
     }
     let current, generation = 0;
-    function reset() { generation++; current?.controller.abort(); current?.root.replaceChildren(); current = null; }
+    function reset() { generation++; current?.sync?.destroy(); current?.controller.abort(); current?.root.replaceChildren(); current = null; }
     function mount(root, options) {
         reset();
         const started = options.getSession()?.token, startedRole=options.getSession()?.role, id = generation;
-        const state = {root,controller:new AbortController(),data:null,busy:false,attempt:null};
+        const state = {root,controller:new AbortController(),data:null,busy:false,attempt:null,dirty:false,edits:0,read:0};
         current = state;
         const valid = () => {
             const matches=current===state&&id===generation&&!!started&&options.getSession()?.token===started&&options.getSession()?.role===startedRole&&['ADMIN','SALES'].includes(startedRole);
@@ -105,6 +105,7 @@
             if (!valid()) return;
             const el = root.querySelector('[data-workflow-status]');
             if (el) { el.textContent = text; el.setAttribute('role',error ? 'alert' : 'status'); }
+            if (el && error && !state.attempt) el.insertAdjacentHTML('beforeend',' <button type="button" data-workflow-refresh>Retry</button>');
         }
         async function api(body) {
             if (!valid()) throw Error('Session changed; workflow response discarded.');
@@ -112,7 +113,7 @@
             if (options.quoteId) query.set('quote_id',options.quoteId);
             else if (options.leadId) query.set('lead_id',options.leadId);
             const response = await global.fetch(`${apiRoot(options.apiBase)}/field-sales-workflow${!body && query.size ? '?' + query : ''}`, {
-                method:body ? 'POST' : 'GET',cache:'no-store',referrerPolicy:'no-referrer',signal:state.controller.signal,
+                method:body ? 'POST' : 'GET',cache:'no-store',referrerPolicy:'no-referrer',signal:!body&&global.H2SDataSync?global.H2SDataSync.signal(state.controller.signal):state.controller.signal,
                 headers:{Authorization:'Bearer '+started,...(body ? {'Content-Type':'application/json'} : {})},...(body ? {body:JSON.stringify(body)} : {})
             });
             if (!valid()) throw Error('Session changed; workflow response discarded.');
@@ -164,11 +165,11 @@
             const payment = Number.isSafeInteger(w.depositCents)&&w.depositCents>0&&Number.isSafeInteger(w.netPaidCents)&&w.netPaidCents>=w.depositCents ? 'Verified net payment covers deposit' : 'Deposit verification pending';
             const deposit = `${money(w.depositCents)}<span class="field-workflow__inline-note">${payment}</span>`;
             const summary = admin() ? strip([
-                ['Exact 25% deposit',deposit],['Current net balance',balanceText],
+                ['Deposit required (25%)',deposit],['Outstanding balance',balanceText],
                 ['Credited representative',esc(rep || (w.representativeId?'Assigned — profile name unavailable':'Not supplied'))],['Installation team',w.technicianId?'Assigned':'Not assigned']
             ],'identity') : strip([
-                ['Exact 25% deposit',`${deposit}<span class="field-workflow__inline-note">Verified net paid: ${money(w.netPaidCents)}</span>`],
-                ['Current net balance',balanceText],['Installation team',w.technicianId?'Assigned':'Not assigned'],
+                ['Deposit required (25%)',`${deposit}<span class="field-workflow__inline-note">Total verified payments (net): ${money(w.netPaidCents)}</span>`],
+                ['Outstanding balance',balanceText],['Installation team',w.technicianId?'Assigned':'Not assigned'],
                 ['Completion',date(w.completedAt)],['Customer copies',w.documents?.length?'Published':'Being prepared']
             ],'payment-strip');
             return `<article class="field-workflow__record${admin()?' field-workflow__order-detail':' field-workflow__mobile-order'}"><header class="field-workflow__header"><div><p class="field-workflow__eyebrow">${admin()?'Management order review':'Your order'}</p><h4>${esc(recordTitle(w,index,options.customerNames))}</h4><p class="field-workflow__service">${esc(serviceTitle(w))}</p></div>
@@ -185,7 +186,7 @@
             const panel = (label,heading,body) => `<section class="field-workflow__panel" data-context-view data-tab-label="${label}"><h4>${heading}</h4>${body}</section>`;
             const overview = `<div class="field-workflow__overview">
                 ${summaryPanel('Approved quote summary',docs.some(d=>d.kind==='quote')?'Published copy':'Copy not published',facts([
-                    ['Scope',esc(serviceTitle(w))],['Approved revenue',money(w.totalCents)],['Verified net paid',money(w.netPaidCents)],['Copy approved',date(quote?.approvedAt)]
+                    ['Scope',esc(serviceTitle(w))],['Approved quote total',money(w.totalCents)],['Total verified payments (net)',money(w.netPaidCents)],['Copy approved',date(quote?.approvedAt)]
                 ]),docs.some(d=>d.kind==='quote')?'success':'info')}
                 ${summaryPanel('Customer agreement',w.acceptedAt?'Accepted':'Acceptance pending',facts([
                     ['Customer copy',agreement?'Published':'Not published'],['Accepted',date(w.acceptedAt)],['Delivery records',esc(w.deliveryEvidence?.length ?? 0)]
@@ -272,15 +273,17 @@
         }
         function render() {
             const d = state.data;
-            root.innerHTML = '<div class="field-sales__toolbar"><h3>Orders & next actions</h3><button type="button" data-workflow-refresh>Refresh orders</button></div><p data-workflow-status role="status" aria-live="polite"></p>';
+            root.innerHTML = '<div class="field-sales__toolbar"><h3>Orders & next actions</h3>'+(admin()?'<button type="button" data-workflow-discard-draft>Discard review inputs</button>':'')+'</div><p data-workflow-status role="status" aria-live="polite"></p>';
             if (!d.enabled) { status('Sales workflow disabled. Legal, scheduling and completion actions are unavailable.'); return; }
             if (!Array.isArray(d.workflows) || !Array.isArray(d.policies)) { status('Incomplete workflow response. No readiness or scheduling is assumed.',true); return; }
             root.insertAdjacentHTML('beforeend', `<div class="field-sales__summary" aria-label="Loaded order summary">
                 <div class="field-sales__metric"><span>Orders</span><strong>${d.workflows.length}</strong></div>
                 <div class="field-sales__metric"><span>Scheduled</span><strong>${d.workflows.filter(w=>w.state==='scheduled').length}</strong></div>
                 <div class="field-sales__metric"><span>Completed</span><strong>${d.workflows.filter(w=>w.completedAt).length}</strong></div></div>
-                <p class="field-workflow__note">25% deposit, then the remaining net balance after installation. A deposit does not confirm an installation appointment.</p>
-                <section class="field-sales__section" aria-label="Order records">${d.workflows.map(order).join('') || '<div class="field-sales__empty"><h4>No orders yet</h4><p>Accepted new sales will appear here after management enrollment. Existing Dispatch orders stay in Dispatch.</p></div>'}</section>`);
+                <p class="field-workflow__note" title="The remaining net balance becomes collectible only after installation and current payment clearance. A deposit is not an appointment.">25% deposit · final balance after installation</p>
+                <section class="field-sales__section" aria-label="Order records">${[...d.workflows].sort((a,b)=>Number(!!a.completedAt)-Number(!!b.completedAt)
+                    || (Date.parse(a.reservation?.starts_at)||Infinity)-(Date.parse(b.reservation?.starts_at)||Infinity)
+                    || (Date.parse(a.completedAt)||Infinity)-(Date.parse(b.completedAt)||Infinity)).map(order).join('') || '<div class="field-sales__empty"><h4>No orders yet</h4><p>Accepted new sales will appear here after management enrollment. Existing Dispatch orders stay in Dispatch.</p></div>'}</section>`);
             if (admin()) root.insertAdjacentHTML('beforeend', `<div data-context-panels aria-label="Order enrollment and policy management"><details><summary>New order enrollment — exact quote and approved policies</summary>
                 ${form('enroll',null,`<details class="field-sales__wide field-workflow__audit"><summary>Admin linkage details — approved quote, lead & commission credit</summary><p>Use the exact approved records. These identifiers establish order ownership and cannot be substituted.</p><label>Exact approved quote ID<input name="quoteId" value="${esc(options.quoteId || '')}" required></label>
                     <input type="hidden" name="revision" value="0">
@@ -297,26 +300,30 @@
                         <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details></details></div>`);
             preparePanels();
         }
-        async function load() {
+        const dirty = () => state.dirty || state.busy || !!state.attempt || global.H2SDataSync?.interacting(root);
+        async function load(background = false) {
             if (!valid()) return;
-            root.innerHTML = '<h3>Orders</h3><p data-workflow-status role="status">Loading orders…</p>';
-            try { const d = await api(); if (valid()) { state.data = d; render(); } }
-            catch (error) { if (valid()) { console.error('Field workflow read failed:',error.message); status(error.message,true); } }
+            const read=++state.read, edits=state.edits;
+            if (!state.data) root.innerHTML = '<h3>Orders</h3><p data-workflow-status role="status">Loading orders…</p>';
+            try { const d = await api(); if (!valid() || read!==state.read || background && (dirty()||edits!==state.edits)) return false;
+                if(typeof d.enabled!=='boolean'||d.enabled&&(!Array.isArray(d.workflows)||!Array.isArray(d.policies)))throw Error('Incomplete workflow response. No readiness or scheduling is assumed.');
+                state.data = d; if(global.H2SDataSync)global.H2SDataSync.preserveView(root,render);else render(); return true; }
+            catch (error) { if (valid()) { console.error('Field workflow read failed:',error.message); if(background)throw error; status(error.message,true); } return false; }
         }
         async function write(body) {
             if (!valid() || !admin() || state.busy) return;
-            if (state.attempt) { status('An interrupted operation is pending. Retry it unchanged using Retry, or refresh the order trace.',true); return; }
+            if (state.attempt) { status('An interrupted operation is pending. Retry it unchanged using Retry, or explicitly discard the interrupted action.',true); return; }
             state.attempt = {...body,operationId:global.crypto.randomUUID()};
             await retry();
         }
         async function retry() {
             if (!valid() || !admin() || state.busy || !state.attempt) return;
             state.busy = true; status('Recording evidence on the server. No payment or scheduling success is assumed.');
-            try { await api(state.attempt); if (!valid()) return; state.attempt = null; await load(); }
+            try { await api(state.attempt); if (!valid()) return; state.attempt = null; state.dirty=false; await load(); }
             catch (error) {
                 if (valid()) {
                     console.error('Field workflow action failed:',error.message); status(error.message + ' The exact interrupted operation is retained.',true);
-                    if (!root.querySelector('[data-workflow-retry]')) root.querySelector('[data-workflow-status]').insertAdjacentHTML('afterend','<button type="button" data-workflow-retry>Retry identical interrupted operation</button>');
+                    if (!root.querySelector('[data-workflow-retry]')) root.querySelector('[data-workflow-status]').insertAdjacentHTML('afterend','<button type="button" data-workflow-retry>Retry identical interrupted operation</button><button type="button" data-workflow-discard-attempt>Discard interrupted action</button>');
                 }
             } finally { state.busy = false; }
         }
@@ -324,7 +331,13 @@
             const b = event.target.closest('button'); if (!b || !valid()) return;
             if (b.matches('.field-workflow__tab')) { activatePanel(b,true); return; }
             if (state.busy) return;
-            if (b.hasAttribute('data-workflow-refresh')) { state.attempt = null; load(); }
+            if (b.hasAttribute('data-workflow-refresh')) { if(state.sync)state.sync.request('retry',{force:true});else load(); }
+            if (b.hasAttribute('data-workflow-discard-attempt')&&global.confirm('Discard only this interrupted retry? Your form is retained. Review current records before a new action.')) {state.attempt=null;status('Interrupted retry discarded. Your form is retained.');b.previousElementSibling?.remove();b.remove();}
+            if(b.hasAttribute('data-workflow-discard-draft')){
+                if(state.attempt){status('Retry or explicitly discard the interrupted action first.',true);return;}
+                if(!global.confirm('Discard unsaved order review inputs and read current records? Server-recorded actions are not undone.'))return;
+                state.dirty=false;state.edits++;load();
+            }
             if (b.hasAttribute('data-workflow-retry')) retry();
         };
         root.onsubmit = event => {
@@ -366,7 +379,11 @@
                 write(body);
             } catch (error) { status(error.message,true); }
         };
-        load();
+        const edited=event=>{if(event.target.closest('form')){state.dirty=true;state.edits++;}};
+        root.addEventListener('input',edited,{signal:state.controller.signal});root.addEventListener('change',edited,{signal:state.controller.signal});
+        state.sync=global.H2SDataSync?.register({id:'field-workflow',isActive:()=>valid()&&root.isConnected&&root.closest('.pane')?.classList.contains('active'),
+            isDirty:dirty,refresh:()=>load(true),onState:s=>{if(!state.attempt)global.H2SDataSync.feedback(root,'[data-workflow-status]',s,()=>state.sync.request('retry',{force:true}));}});
+        if(state.sync)state.sync.request('mount',{force:true});else load();
     }
     global.H2SFieldWorkflow = {mount,reset};
 })(window);

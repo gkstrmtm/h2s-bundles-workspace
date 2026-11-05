@@ -13,12 +13,13 @@ label{margin-left:auto}select{font:inherit;padding:4px}iframe{display:block;flex
 <script>
 (async()=>{
     const screen=new URLSearchParams(location.search).get('screen')||'home';
-    const screens={home:['Salesperson Home','home'],leads:['Leads & New Prospect','new'],assessment:['Service Selection & Assessment','assessment'],
+    const screens={home:['Salesperson Home','home'],leads:['Leads & New Prospect','leads'],assessment:['Service Selection & Assessment','assessment'],
         quotes:['Quote Builder','quotes'],orders:['Orders & Customer Status','orders'],earnings:['Personal Earnings','earnings'],
-        management:['Management Sales Overview','performance'],managementOrders:['Management Orders & Customer Details','orders'],
+        management:['Management Sales Overview','dashboard'],managementOrders:['Management Orders & Customer Details','orders'],
         managementQuotes:['Management Quotes & Payments','transactions'],commissions:['Management Commissions & Friday Review','commissions'],
-        adminDashboard:['Admin Dashboard'],websiteMedia:['Website Media'],customerQueue:['Customer Queue'],operations:['Operations']};
-    const dashboardTabs={adminDashboard:'admin',websiteMedia:'proofpacks',customerQueue:'commercialqueue',operations:'operations'};
+        adminDashboard:['Admin Dashboard'],websiteMedia:['Website Media'],customerQueue:['Customer Queue'],operations:['Operations Overview'],
+        scheduling:['Scheduling Visibility'],reconciliation:['Reconciliation Review'],forecast:['Forecast / Simulation']};
+    const dashboardTabs={adminDashboard:'admin',websiteMedia:'proofpacks',customerQueue:'commercialqueue',operations:'operations',scheduling:'operations',reconciliation:'operations',forecast:'admin'};
     const [label,view]=screens[screen]||screens.home,admin=['management','managementOrders','managementQuotes','commissions'].includes(screen)||Object.hasOwn(dashboardTabs,screen),frame=document.getElementById('application');
     document.title=label+' · Home2Smart Local';document.getElementById('title').textContent=label;
     const width=document.getElementById('width');width.value=admin?'1280':'390';
@@ -32,7 +33,9 @@ label{margin-left:auto}select{font:inherit;padding:4px}iframe{display:block;flex
     if(screen==='quotes')url.searchParams.set('lead',state.gallery.quoteLeadId);
     addEventListener('message',event=>{
         if(event.source!==frame.contentWindow||event.origin!==location.origin)return;
-        if(admin&&view&&event.data?.type==='h2s-review-ready')frame.contentWindow.postMessage({type:'h2s-review-position',mode:view,navigationVersion:1,documentVersion:1},location.origin);
+        if(admin&&(view||['scheduling','reconciliation','forecast'].includes(screen))&&event.data?.type==='h2s-review-ready')frame.contentWindow.postMessage({type:'h2s-review-position',mode:view,
+            operationsView:screen==='scheduling'?'schedule':screen==='reconciliation'?'reconciliation':null,
+            focusForecast:screen==='forecast',navigationVersion:1,documentVersion:1},location.origin);
         if(event.data?.type==='h2s-review-navigation'){
             const target=new URL(event.data.url,location.origin);
             if(target.origin!==location.origin){const error=document.getElementById('error');error.hidden=false;error.textContent='External navigation blocked.';return;}

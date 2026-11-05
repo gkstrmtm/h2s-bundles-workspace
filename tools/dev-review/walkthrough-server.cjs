@@ -31,9 +31,10 @@ const json = (res, status, data) => {
 };
 const assets = new Map();
 const worktree = process.env.H2S_REVIEW_WORKTREE === 'true';
-const reviewedAssets=new Set(['frontend/sales.html','frontend/sales-app.js','frontend/sales-app.css','frontend/dashboard-controls.js',
+const reviewedAssets=new Set(['frontend/sales.html','frontend/sales-app.js','frontend/sales-app.css','frontend/dashboard-controls.js','frontend/dashboard-sync.js',
     'frontend/dash.html','frontend/dash.js','frontend/dash.css','frontend/field-sales.js','frontend/field-sales.css','frontend/field-commerce.js',
-    'frontend/field-workflow.js','frontend/field-workflow.css','frontend/field-earnings.js','frontend/management-operations.js']);
+    'frontend/field-workflow.js','frontend/field-workflow.css','frontend/field-earnings.js','frontend/management-operations.js',
+    'frontend/management-operations.css','frontend/field-agreement.html','frontend/field-agreement.js','frontend/commercial-business.js']);
 function committed(relative) {
     if(worktree&&reviewedAssets.has(relative))return fs.readFileSync(path.join(workspace,...relative.split('/')));
     if (assets.has(relative)) return assets.get(relative);

@@ -101,13 +101,24 @@ test('customer-first mobile presentation retains escaped labels, role-safe facts
   assert.equal(card.querySelector('.field-sales__customer-link').textContent,'<img src=x onerror=alert(1)>');
   assert.equal(card.querySelector('img'),null);
   assert.equal(card.querySelector('.field-sales__service-label').textContent,'Future configurable service');
-  assert.deepEqual([...card.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Next contact','Next step']);
+  assert.deepEqual([...card.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Originating salesperson','Assigned salesperson','Next contact','Next step']);
   assert.equal(card.querySelector('.field-sales__next-step dd').textContent,'Continue assessment');
   assert.doesNotMatch(card.textContent,/future_fixture|00000000|owner_user_id/);
   f.click('.field-sales__card-actions [data-sales-lead]');await settle();
   assert.equal(f.w.document.querySelector('.field-sales__customer-summary h3').textContent,'Synthetic customer');
   assert.ok(f.w.document.querySelector('[data-sales-form="save"]'));
   assert.equal(f.calls.some(call=>call.body),false);
+});
+test('lead follow-ups are oldest first and customer names never become staff attribution',async t=>{
+  const f=fixture(t);
+  f.listing.opportunities.unshift({...f.listing.opportunities[0],lead_id:'later',full_name:'SYNTHETIC Customer only',originating_user_id:'unknown-origin',follow_up_at:'2025-01-01T00:00:00Z'});
+  await f.w.H2SFieldSales.navigate('home');await settle();
+  const rows=[...f.w.document.querySelectorAll('.field-sales__followup button')];
+  assert.equal(rows[0].dataset.salesLead,lead);assert.equal(rows[1].dataset.salesLead,'later');
+  const facts=[...f.w.document.querySelectorAll('.field-sales__lead-card')].find(card=>card.textContent.includes('SYNTHETIC Customer only')).querySelector('dl').textContent;
+  assert.match(facts,/Originating salespersonProfile name unavailable/);
+  assert.match(facts,/Assigned salespersonFixture rep/);
+  assert.doesNotMatch(facts,/SYNTHETIC Customer only|unknown-origin/);
 });
 test('assessment DOM draft survives navigation without transferring across the same-token role boundary', async t => {
   const f = fixture(t, 'ADMIN'); await f.w.H2SFieldSales.navigate('assessment', lead); await settle();

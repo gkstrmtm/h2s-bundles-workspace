@@ -69,3 +69,20 @@ test('management Quotes review retains ADMIN context and requests the native pay
     w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin:w.location.origin,data:{type:'h2s-review-ready'}}));
     assert.equal(messages[0].mode,'transactions');
 });
+test('final refinement previews position native Operations views and inspect the unchanged Forecast',async t=>{
+    for(const [screen,tab,property,value]of [
+        ['scheduling','operations','operationsView','schedule'],
+        ['reconciliation','operations','operationsView','reconciliation'],
+        ['forecast','admin','focusForecast',true],
+        ['management','fieldsales','mode','dashboard']
+    ]){
+        const dom=new JSDOM(fs.readFileSync(path.join(__dirname,'sales-preview.html'),'utf8'),{url:'http://127.0.0.1:9444/sales-review?screen='+screen,runScripts:'outside-only'});
+        t.after(()=>dom.window.close());const w=dom.window,messages=[];
+        w.fetch=async()=>({ok:true,json:async()=>({gallery:{}})});w.eval(w.document.querySelector('script').textContent);
+        await new Promise(resolve=>setImmediate(resolve));const frame=w.document.getElementById('application');
+        assert.equal(new URL(frame.src).searchParams.get('reviewTab'),tab);
+        frame.contentWindow.postMessage=message=>messages.push(message);
+        w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin:w.location.origin,data:{type:'h2s-review-ready'}}));
+        assert.equal(messages[0][property],value);assert.equal(messages[0].documentVersion,1);
+    }
+});

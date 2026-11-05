@@ -362,7 +362,7 @@ test('saving permission retains an unuploaded file; uploading it retains unsaved
     const body=f.calls.filter(call=>call.body?.action==='save').at(-1).body;
     assert.equal(body.revision,9);assert.equal(body.notes,'Keep this while uploading');assert.equal(body.answers.tv.units,6);
 });
-test('changing saved services never silently relabels a selected photo and Refresh/Sign out require explicit discard',async t=>{
+test('changing saved services never silently relabels a selected photo and discard/Sign out require confirmation',async t=>{
     const f=fixture(t);await f.navigate('assessment',leadId);
     const photo=f.root().querySelector('[name="photo"]');
     const file=new f.w.File(['synthetic pixels'],'fixture.jpg',{type:'image/jpeg'});
@@ -384,7 +384,7 @@ test('changing saved services never silently relabels a selected photo and Refre
     assert.equal(upload.elements.serviceId.checkValidity(),true);assert.equal(upload.elements.label.checkValidity(),true);
     const before=f.calls.length;let confirmations=0;
     f.w.confirm=()=>{confirmations++;return false;};
-    f.root().querySelector('[data-sales-refresh]').click();await settle();
+    f.root().querySelector('[data-sales-discard-draft]').click();await settle();
     f.root().querySelector('[data-sales-logout]').click();await settle();
     assert.equal(confirmations,2);assert.equal(f.calls.length,before);
     assert.equal(f.root().querySelector('[name="photo"]'),photo);
@@ -446,9 +446,9 @@ test('changed pricing retains but blocks the unsaved quote scope until explicit 
     assert.equal(form.querySelector('[type="submit"]').disabled,true);
     assert.match(f.root().querySelector('[data-commerce-status]').textContent,/Pricing configuration changed/);
     const count=f.calls.length;f.submit(form,form.querySelector('[type="submit"]'));await settle();assert.equal(f.calls.length,count);
-    f.w.confirm=()=>false;f.root().querySelector('[data-commerce-refresh]').click();await settle();
+    f.w.confirm=()=>false;f.root().querySelector('[data-commerce-discard-draft]').click();await settle();
     assert.equal(f.root().querySelector('[data-commerce-create]'),form);
-    f.w.confirm=()=>true;f.root().querySelector('[data-commerce-refresh]').click();await settle();
+    f.w.confirm=()=>true;f.root().querySelector('[data-commerce-discard-draft]').click();await settle();
     const fresh=f.root().querySelector('[data-commerce-create]');
     assert.notEqual(fresh,form);assert.equal(fresh.querySelector('[name="quantity"]').value,'1');
     interrupted=true;f.submit(fresh,fresh.querySelector('[type="submit"]'));await settle();
@@ -566,7 +566,7 @@ test('real lead cards separate customer, service, status and labeled next action
     assert.equal(first.querySelector('.field-sales__service-label').textContent,'TV Mounting');
     assert.equal(first.querySelector('.field-sales__badge').textContent,'Awaiting review');
     assert.equal(first.querySelector('.field-sales__badge').dataset.tone,'info');
-    assert.deepEqual([...first.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Next contact','Next step']);
+    assert.deepEqual([...first.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Originating salesperson','Assigned salesperson','Next contact','Next step']);
     assert.equal(first.querySelector('.field-sales__next-step dd').textContent,'Await management review');
     assert.match(cards[2].querySelector('.field-sales__next-step').textContent,/Review saved assessment/);
     assert.doesNotMatch(first.textContent,/private-owner|00000000|deposit|scheduled|verified payment/i);
@@ -617,7 +617,7 @@ test('saved quote review uses structured customer, scoped line and payment facts
     assert.equal(review.querySelector('.field-sales__quote-customer not'),null);
     assert.match(review.querySelector('.field-sales__quote-scope').textContent,/TV Mounting.*Customer-owned TV/s);
     assert.ok([...review.querySelectorAll('dt')].some(el=>el.textContent==='Wall construction'));
-    assert.ok([...review.querySelectorAll('dt')].some(el=>el.textContent==='Net verified collected'));
+    assert.ok([...review.querySelectorAll('dt')].some(el=>el.textContent==='Total verified payments (net of refunds)'));
     assert.equal(review.querySelector('.field-sales__quote-total strong').textContent,'$100.00');
     assert.equal(f.root().querySelector('[data-commerce-quote]').getAttribute('aria-pressed'),'true');
     assert.doesNotMatch(review.textContent,/undefined|private-quote-reference|private-hash|internal_question_id/);

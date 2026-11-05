@@ -126,7 +126,7 @@ test('workflow uses authoritative gates, exact readonly documents, camelCase com
 });
 test('workflow SALES role hides policy/write controls, VA never fetches, default-off does not fabricate empty readiness',async t=>{
     const f=fixture(t,'field-workflow.js','H2SFieldWorkflow','SALES');f.respond(async()=>Response.json(workflowData()));f.mount();await settle();
-    assert.equal(f.root.querySelector('form'),null);assert.match(f.root.textContent,/Current net balance/);
+    assert.equal(f.root.querySelector('form'),null);assert.match(f.root.textContent,/Outstanding balance/);
     f.w.H2SFieldWorkflow.reset();f.actor({token:'va',role:'VA'});const count=f.calls.length;f.mount();await settle();assert.equal(f.calls.length,count);
     f.actor({token:'admin',role:'ADMIN'});f.respond(async()=>Response.json({ok:true,enabled:false}));f.mount();await settle();
     assert.match(f.root.textContent,/disabled/);assert.equal(f.root.querySelector('form'),null);
@@ -159,13 +159,14 @@ test('policy update/approval binds viewed definition hash, blocks missing hash a
     stale=true;f.root.querySelector('[data-workflow-form="policy_approve"] [name="evidence"]').value='Synthetic approval';
     f.submit('[data-workflow-form="policy_approve"]');await settle();assert.match(f.root.textContent,/Policy changed; reload/);const old=f.calls.filter(c=>c.body).at(-1).body;
     assert.equal(old.expectedDefinitionHash,'synthetic-viewed-definition-hash');
-    d.policies[0].definitionHash='synthetic-new-definition-hash';stale=false;f.click('[data-workflow-refresh]');await settle();f.root.querySelector('[data-workflow-form="policy_approve"] [name="evidence"]').value='Synthetic refreshed approval';
+    d.policies[0].definitionHash='synthetic-new-definition-hash';stale=false;f.w.confirm=()=>true;
+    f.click('[data-workflow-discard-attempt]');f.click('[data-workflow-discard-draft]');await settle();f.root.querySelector('[data-workflow-form="policy_approve"] [name="evidence"]').value='Synthetic refreshed approval';
     f.submit('[data-workflow-form="policy_approve"]');await settle();const fresh=f.calls.filter(c=>c.body).at(-1).body;assert.equal(fresh.expectedDefinitionHash,'synthetic-new-definition-hash');assert.notEqual(fresh.operationId,old.operationId);
 });
 test('commission DTO renders actual immutable amounts and separates exported from independently reconciled paid',async t=>{
     const f=fixture(t,'field-earnings.js','H2SFieldEarnings','SALES');f.respond(async()=>Response.json(earningsData()));f.mount();await settle();
     assert.match(f.root.textContent,/\$396\.00/);assert.match(f.root.textContent,/55%/);assert.match(f.root.textContent,/tenure day 30/);
-    assert.match(f.root.textContent,/exported/);assert.match(f.root.textContent,/Independently reconciled paid\s*\$0\.00/);assert.equal(f.root.querySelector('form'),null);assert.equal(f.root.querySelector('img'),null);
+    assert.match(f.root.textContent,/exported/);assert.match(f.root.textContent,/Commission independently paid\s*\$0\.00/);assert.equal(f.root.querySelector('form'),null);assert.equal(f.root.querySelector('img'),null);
 });
 test('allocated negative correction displays recovery review, not representative debt or authorized clawback',async t=>{
     const f=fixture(t,'field-earnings.js','H2SFieldEarnings','SALES'),d=earningsData();d.adjustments[0].effect='earning_correction_not_debt';d.adjustments[0].settlementState='recovery_review_required';
@@ -292,8 +293,9 @@ test('existing customer page uses secure-token checkout commands, downloads exac
     w.fetch=async(url,init)=>{assert.equal(url,'http://127.0.0.1:64170/api/field-sales-agreement');const body=init.body&&JSON.parse(init.body);calls.push({url,init,body});return Response.json(body?.action==='checkout'?{ok:true,checkoutUrl:'javascript:alert(1)'}:d);};
     w.eval(source('field-agreement.js'));await settle();assert.equal(w.location.hash,'');assert.equal(w.document.querySelector('img'),null);assert.match(w.document.body.textContent,/Exact new-sales 25% deposit: \$25\.01/);
     w.document.querySelector('[data-agreement-checkout]').click();await settle();assert.deepEqual(Object.keys(calls.find(c=>c.body).body).sort(),['action','kind','operationId']);assert.match(w.document.querySelector('[role="alert"]').textContent,/Untrusted checkout URL/);assert.equal(w.document.querySelector('a[href^="javascript"]'),null);
+    d.workflow.netPaidCents=2501;d.workflow.gates.canDeposit=false;
     w.document.querySelector('[data-agreement-verify]').click();await settle();assert.equal(calls.filter(c=>c.body).at(-1).body.action,'refresh_payment');assert.equal(calls.filter(c=>c.body).at(-1).body.checkoutId,'checkout-fixture');
-    d.workflow.netPaidCents=2501;d.workflow.gates.canDeposit=false;w.document.querySelector('[data-agreement-refresh]').click();await settle();assert.equal(w.document.querySelector('[data-agreement-checkout]').disabled,true);assert.equal(w.document.querySelector('[data-agreement-checkout]').dataset.agreementCheckout,'balance');
+    assert.equal(w.document.querySelector('[data-agreement-refresh]'),null);assert.equal(w.document.querySelector('[data-agreement-checkout]').disabled,true);assert.equal(w.document.querySelector('[data-agreement-checkout]').dataset.agreementCheckout,'balance');
     assert.equal(w.localStorage.length,0);assert.ok(calls.every(c=>!c.url.includes('token')));
 });
 test('ADMIN catalog uses existing configuration API, drafts remain unapproved and publish requires exact digest/evidence',async t=>{
@@ -327,7 +329,7 @@ test('accepted enrolled agreement renews finite scoped link without changing acc
     f.respond(async(url,init)=>Response.json(init.method==='POST'?{ok:true,agreementUrl:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64),handoffId:uuid,expiresAt:'2026-11-05T00:00:00Z',scope:'accepted_documents_balance'}:d));
     f.mount({leadId:'lead-fixture'});await settle();assert.match(f.root.querySelector('[data-commerce-agreement]').textContent,/Renew finite/);
     f.click('[data-commerce-agreement]');await settle();assert.equal(f.calls.find(c=>c.body).body.action,'agreement_link');assert.match(f.root.querySelector('[data-commerce-handoff]').textContent,/Secure handoff expires/);assert.match(f.root.textContent,/Customer copies and eligible remaining balance/);assert.doesNotMatch(f.root.textContent,/accepted_documents_balance/);
-    assert.match(f.root.textContent,/does not extend initial acceptance or imply payment/);assert.equal(d.agreements[0].accepted_at,'2026-01-01');
+    assert.match(f.root.textContent,/does not extend acceptance or imply payment/);assert.equal(d.agreements[0].accepted_at,'2026-01-01');
 });
 test('expired customer link exposes no customer data and asks for finite renewal, not late acceptance',async t=>{
     const dom=new JSDOM(source('field-agreement.html'),{runScripts:'outside-only',url:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64)});t.after(()=>dom.window.close());const w=dom.window;w.console.error=()=>{};

@@ -71,6 +71,20 @@
                 clearInterval(positionTimer);
                 const timer=setInterval(()=>{
                     if(++attempt>100){clearInterval(timer);notify({type:'h2s-review-position-failed',navigationVersion:command.navigationVersion});return;}
+                    if(command.operationsView){
+                        const root=document.getElementById('operations-pane');
+                        if(!root?.classList.contains('active'))return;
+                        const button=root.querySelector('[data-operations-view="'+command.operationsView+'"]');
+                        if(button?.getAttribute('aria-pressed')!=='true'){button?.click();return;}
+                        clearInterval(timer);notify({type:'h2s-review-positioned',navigationVersion:command.navigationVersion});return;
+                    }
+                    if(command.focusForecast){
+                        const root=document.querySelector('#admin-pane.active #adminForecastCalculator');
+                        if(!root?.querySelector('#forecastMainGrid'))return;
+                        root.scrollIntoView({block:'start',behavior:'instant'});
+                        window.scrollBy({top:-(document.querySelector('#h2s-app .app-topbar')?.getBoundingClientRect().height||0),behavior:'instant'});clearInterval(timer);
+                        notify({type:'h2s-review-positioned',navigationVersion:command.navigationVersion});return;
+                    }
                     const root=document.getElementById('field-sales-pane');if(!root?.classList.contains('active'))return;
                     const mode=command.leadId?'opportunities':command.mode;
                     if(!command.openedLead){

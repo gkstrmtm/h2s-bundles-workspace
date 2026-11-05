@@ -172,7 +172,7 @@
             <section data-business-section="history"><h5>Business record activity</h5><ol class="commercial-operations-timeline">${data.history.map(event =>
                 `<li><strong>${escape(label(event.action))}</strong><span>${escape(event.actor.name)} - ${escape(date(event.created_at))}</span>
                 <span>${escape(event.payload.note || event.payload.reason || event.payload.reference || '')}</span></li>`).join('') || '<li>No business record changes.</li>'}</ol></section>
-            <button class="commercial-operations-review" type="button" data-business-reload>Refresh business records / discard this draft</button>`;
+            <button class="commercial-operations-review" type="button" data-business-reload>Discard this draft</button>`;
         model.root.querySelectorAll('[data-business-view]').forEach(button => { button.onclick = () => showRecord(model,button.dataset.businessView); });
         showRecord(model,model.view === 'email' && !emailEnabled ? 'quote' : model.view || 'quote');
         model.root.querySelectorAll('form').forEach(form => {
