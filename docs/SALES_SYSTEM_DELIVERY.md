@@ -5,8 +5,10 @@ Authority: [alignment](SALES_SYSTEM_ALIGNMENT.md), [execution plan](SALES_SYSTEM
 [repository map](REPOSITORY_REVIEW_MAP.md).
 
 Branch: `retro-dev`. Foundation delivery:
-`45ec8035bae2dde88db61f01db81225df8f9dba8`. Verified integrated delivery hashes
-are recorded in [progress](SALES_SYSTEM_PROGRESS.md). **Not a production-readiness claim.**
+`45ec8035bae2dde88db61f01db81225df8f9dba8`. Integrated implementation:
+`6c5eb284bdf25b167f03930fe427c71baa7b2ee6`, pushed and remote verified.
+Subsequent documentation handoff preserves that implementation evidence.
+**Not a production-readiness claim.**
 
 ## Implemented operation
 
@@ -220,6 +222,24 @@ These are code contracts, not inspected production values.
 
 No deployment, production migration/data write, real account enrollment,
 live collection, actual payout, notification or paid service was performed.
-The seven preexisting unrelated tracked edits and51 unrelated untracked paths
-remain local and untouched. Unsaved editor buffers were not inspected, discarded,
+The seven preexisting unrelated tracked edits and50 current untracked Git status
+entries remain local and untouched (directory entries may contain multiple files).
+Unsaved editor buffers were not inspected, discarded,
 saved or claimed as committed. Temporary build/layout helpers are not deliverables.
+
+## Exact integrated changed-file inventory
+
+These47 paths changed in the integrated implementation commit; the earlier
+foundation commit and later documentation handoff are separate.
+
+| Area | Exact files |
+|---|---|
+| Backend routes (8) | [agreement](../backend/app/api/field-sales-agreement/route.ts), [earnings](../backend/app/api/field-sales-earnings/route.ts), [installation](../backend/app/api/field-sales-installation/route.ts), [field webhook](../backend/app/api/field-sales-stripe-webhook/route.ts), [transactions](../backend/app/api/field-sales-transactions/route.ts), [workflow](../backend/app/api/field-sales-workflow/route.ts), [portal_jobs](../backend/app/api/portal_jobs/route.ts), [portal_mark_done](../backend/app/api/portal_mark_done/route.ts). |
+| Server authorities (4) | [fieldCommerce.ts](../backend/lib/fieldCommerce.ts), [fieldEarnings.ts](../backend/lib/fieldEarnings.ts), [fieldQuote.ts](../backend/lib/fieldQuote.ts), [fieldWorkflow.ts](../backend/lib/fieldWorkflow.ts). |
+| Additive inactive migrations (2) | [046_field_sales_workflow.sql](../backend/migrations/046_field_sales_workflow.sql), [047_field_sales_earnings.sql](../backend/migrations/047_field_sales_earnings.sql). |
+| Backend tests/fixtures (13) | [commercial_compatibility](../backend/tests/commercial_compatibility.test.cjs), [field_completion_catalog](../backend/tests/field_completion_catalog.test.cjs), [field_earnings](../backend/tests/field_earnings.test.cjs), [field_earnings_math](../backend/tests/field_earnings_math.test.cjs), [field_sales_catalog_admin](../backend/tests/field_sales_catalog_admin.test.cjs), [field_sales_session_integration](../backend/tests/field_sales_session_integration.test.cjs), [field_workflow](../backend/tests/field_workflow.test.cjs), [field_workflow_expiry](../backend/tests/field_workflow_expiry.test.cjs), [field_workflow_fees](../backend/tests/field_workflow_fees.test.cjs), [field_workflow_proof_requirements](../backend/tests/field_workflow_proof_requirements.test.cjs), [sales_system_pilot](../backend/tests/sales_system_pilot.test.cjs), [field_earnings_fixture](../backend/tests/helpers/field_earnings_fixture.cjs), [field_workflow_fixture](../backend/tests/helpers/field_workflow_fixture.cjs). |
+| Dashboard/mobile/customer frontend (9) | [dash.html](../frontend/dash.html), [field-agreement.html](../frontend/field-agreement.html), [field-agreement.js](../frontend/field-agreement.js), [field-commerce.js](../frontend/field-commerce.js), [field-earnings.js](../frontend/field-earnings.js), [field-installation.js](../frontend/field-installation.js), [field-sales.js](../frontend/field-sales.js), [field-workflow.css](../frontend/field-workflow.css), [field-workflow.js](../frontend/field-workflow.js). |
+| Verified pro host (1) | [portal.html](../portal.html); dirty mirrors unchanged. |
+| Actual UI/host tests (4) | [field-costs-authority-ui](../tests/field-costs-authority-ui.test.cjs), [field-portal-wiring](../tests/field-portal-wiring.test.cjs), [field-sales-integration-ui](../tests/field-sales-integration-ui.test.cjs), [field-workflow-ui fixture](../tests/fixtures/field-workflow-ui.html). |
+| Review/progress documentation (5) | [REMOTE_DEVELOPMENT_REVIEW.md](REMOTE_DEVELOPMENT_REVIEW.md), [REPOSITORY_REVIEW_MAP.md](REPOSITORY_REVIEW_MAP.md), [SALES_SYSTEM_DELIVERY.md](SALES_SYSTEM_DELIVERY.md), [SALES_SYSTEM_EXECUTION_PLAN.md](SALES_SYSTEM_EXECUTION_PLAN.md), [SALES_SYSTEM_PROGRESS.md](SALES_SYSTEM_PROGRESS.md). |
+| Separate inspection-only helper (1) | [tools/dev-review/server.cjs](../tools/dev-review/server.cjs); never imported by production. |

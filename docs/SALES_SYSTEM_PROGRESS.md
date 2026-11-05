@@ -2,7 +2,7 @@
 
 Single persistent tracker for the [execution plan](SALES_SYSTEM_EXECUTION_PLAN.md), grounded in the [alignment audit](SALES_SYSTEM_ALIGNMENT.md).
 
-**Current state: independently executable engineering, including configurable installation proof, is implemented; final 38-file regression selection passes332/332, exact-index TypeScript/12-file lint/Next build pass. Final verified development preservation is underway. Native integration, business policies and production actions remain blocked.**
+**Current state: independently executable engineering, including configurable installation proof, is implemented and pushed at `6c5eb284bdf25b167f03930fe427c71baa7b2ee6`; final 38-file regression selection passes332/332, exact-index TypeScript/12-file lint/Next build pass. Native integration, business policies and production actions remain blocked.**
 
 Audit baseline: `retro-dev`, `0176651f6bfb43c4050b2773bc4d697746ffaf39`. Approved execution starts from verified planning commit `19227325e42d36c1e8d84a804ceecb265c774c66`. Original specification PDF unavailable; supplied requirements govern remaining work.
 
@@ -43,6 +43,15 @@ Audit baseline: `retro-dev`, `0176651f6bfb43c4050b2773bc4d697746ffaf39`. Approve
 ### Verified development deliveries
 
 - `45ec8035bae2dde88db61f01db81225df8f9dba8`, pushed to `retro-dev` and remote SHA verified: immutable originating identities, explicit audited representative start-date contracts, separately gated ADMIN catalog administration and the coupled session/fixture/type validation. Thirty-one focused tests passed; full configured backend types passed on isolated exact-index sources without environment files. No production actions occurred. Workflow, fulfillment, earnings and integrated interfaces continue automatically; this is not certification of an entire delivery batch.
+- `6c5eb284bdf25b167f03930fe427c71baa7b2ee6`, pushed to `retro-dev` and remote
+  SHA verified:47 integrated source/schema/test/review files; all remaining
+  independently executable approved engineering completed.332 regression tests,
+ 308 pricing tests, exact-index types/12-source lint/Next build and real-source
+  mobile/desktop layouts pass. Actual configured client commands and five
+  connected combined-service orders run through isolated SQL/fake provider.
+  No deployment, production data/account/payment/payout or flag activation.
+  Full file inventory, blockers and authorization checklist:
+  [delivery report](SALES_SYSTEM_DELIVERY.md).
 
 ### Policy and activation gates
 
