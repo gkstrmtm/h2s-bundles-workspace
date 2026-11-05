@@ -13,7 +13,7 @@ test('asset extraction only removes HTML styles, never styles inside JavaScript 
     finally {dom.window.close();}
 });
 test('active management/customer sources and extraction reject unresolved related template tokens',()=>{
-    for(const name of ['dash.html','dash.js','sales.html','sales-app.js','field-sales.js','field-commerce.js','field-workflow.js','field-earnings.js','field-agreement.html','field-agreement.js']){
+    for(const name of ['dash.html','dash.js','forecast-assistant.js','sales.html','sales-app.js','field-sales.js','field-commerce.js','field-workflow.js','field-earnings.js','field-agreement.html','field-agreement.js']){
         assertNoTemplateTokens(fs.readFileSync(path.join(root,'frontend',name),'utf8'),name);
     }
     assert.throws(()=>assertNoTemplateTokens('<main>%%H2S_STYLE_PLACEHOLDER%%</main>','fixture'),/Unresolved template/);

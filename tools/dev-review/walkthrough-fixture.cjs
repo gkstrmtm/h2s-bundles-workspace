@@ -92,6 +92,22 @@ async function nativeRoutes(f) {
     'portal_payouts'].map(name => [name, evaluate(`app\\api\\${name}\\route.ts`, imports, globals)]));
 }
 
+function forecastRoute(f) {
+  const globals = {
+    process: { env: { ...f.env, H2S_FORECAST_RESEARCH_ENABLED: 'false', H2S_FORECAST_AI_ENABLED: 'false',
+      H2S_FIELD_CATALOG_ADMIN_ENABLED: 'false', H2S_FIELD_SALES_ENABLED: 'false' } },
+    AbortController, TextDecoder, Buffer, Headers,
+    fetch: async () => { throw Error('External research is prohibited in the isolated Forecast preview'); }
+  };
+  const imports = { '@/lib/commercial_business': f.business };
+  for (const name of ['forecast', 'forecastResearch', 'forecastService']) imports['@/lib/' + name] = evaluate('lib\\' + name + '.ts', imports, globals);
+  imports.openai = class ForbiddenOpenAI { constructor() { throw Error('Paid AI is prohibited in the isolated Forecast preview'); } };
+  imports['@/lib/forecastProviders'] = evaluate('lib\\forecastProviders.ts', imports, globals);
+  Object.assign(imports, { '@/lib/adminAuth': { corsHeaders: () => ({}) }, '@/lib/fieldSales': f.sales,
+    '@/lib/supabase': { getSupabase: () => f.client }, '@/lib/fieldQuote': f.engine });
+  return evaluate('app\\api\\forecast\\route.ts', imports, globals);
+}
+
 async function initialize(origin, scenario) {
   const f = await createWorkflowFixture();
   try {
@@ -165,7 +181,7 @@ async function initialize(origin, scenario) {
       '@/lib/supabase': { getSupabase: () => f.client }, '@/lib/adminAuth': { corsHeaders: () => ({}) },
       '@/lib/fieldSales': f.sales, '@/lib/fieldQuote': f.engine
     }, { process: { env: f.env }, Buffer, Headers });
-    const routes = { ...f.routes, ...await nativeRoutes(f), 'field-sales-catalog': catalogRoute };
+    const routes = { ...f.routes, ...await nativeRoutes(f), 'field-sales-catalog': catalogRoute, forecast: forecastRoute(f) };
     return { f, routes, scenario, dashboardTokens, agreementUrl: null, declined: new Set(), captures: new Map() };
   } catch (error) { await f.db.close(); throw error; }
 }

@@ -69,11 +69,12 @@ test('management Quotes review retains ADMIN context and requests the native pay
     w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin:w.location.origin,data:{type:'h2s-review-ready'}}));
     assert.equal(messages[0].mode,'transactions');
 });
-test('final refinement previews position native Operations views and inspect the unchanged Forecast',async t=>{
+test('previews position native Operations views and the dedicated Strategy workspace',async t=>{
     for(const [screen,tab,property,value]of [
         ['scheduling','operations','operationsView','schedule'],
         ['reconciliation','operations','operationsView','reconciliation'],
-        ['forecast','admin','focusForecast',true],
+        ['forecast','strategy','focusForecast',true],
+        ['strategy','strategy','focusForecast',true],
         ['management','fieldsales','mode','dashboard']
     ]){
         const dom=new JSDOM(fs.readFileSync(path.join(__dirname,'sales-preview.html'),'utf8'),{url:'http://127.0.0.1:9444/sales-review?screen='+screen,runScripts:'outside-only'});

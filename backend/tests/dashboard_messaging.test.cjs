@@ -120,7 +120,7 @@ function mount(t, { flicker = true } = {}) {
   } };
 }
 
-const requiredScriptNames = ['dashboard-sync.js', 'dashboard-controls.js', 'management-operations.js', 'field-workflow.js', 'field-earnings.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
+const requiredScriptNames = ['dashboard-sync.js', 'dashboard-controls.js', 'forecast-assistant.js', 'management-operations.js', 'field-workflow.js', 'field-earnings.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
   Array.from(html.matchAll(/for \(const filename of \[([^\]]+)\]/g)).at(-1)[1].matchAll(/'([^']+)'/g), match => match[1])];
 
 test('required scripts load serially and login stays disabled until all dependencies are ready', async t => {
@@ -170,6 +170,24 @@ test('a missing support script is explicit and blocks startup and login rather t
   assert.equal(w.__h2sDashboardScriptsLoaded, false);
   assert.match(w.document.getElementById('dashLoginStatus').textContent, /media-placements.js.*Reload/);
   assert.equal(w.document.getElementById('dashLoginBtn').disabled, true);
+});
+
+test('an unavailable Forecast module is explicit without blocking the existing dashboard', async t => {
+  const dom = new JSDOM(html, { url: 'https://fixture.invalid/dash.html', runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const w = dom.window, pending = [], errors = [];
+  w.console.error = (...args) => errors.push(args.join(' '));
+  w.document.head.appendChild = script => { pending.push(script); return script; };
+  vm.runInContext(Array.from(w.document.scripts).find(s => s.textContent.includes('function loadDashboardScripts()')).textContent, dom.getInternalVMContext());
+  for (const [index, name] of requiredScriptNames.entries()) {
+    assert.equal(new URL(pending[index].src).pathname, `/${name}`);
+    if (name === 'forecast-assistant.js') pending[index].onerror();
+    else pending[index].onload();
+    await settle();
+  }
+  await w.__h2sDashboardScriptsReady;
+  assert.equal(w.__h2sDashboardScriptsLoaded, true);
+  assert.match(errors.join(' '), /Contextual Forecast module unavailable/);
 });
 
 test('dashboard session initialization waits for required scripts', async t => {

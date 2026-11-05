@@ -79,7 +79,7 @@
                         clearInterval(timer);notify({type:'h2s-review-positioned',navigationVersion:command.navigationVersion});return;
                     }
                     if(command.focusForecast){
-                        const root=document.querySelector('#admin-pane.active #adminForecastCalculator');
+                        const root=document.querySelector('#strategy-pane.active #strategyForecastWorkspace');
                         if(!root?.querySelector('#forecastMainGrid'))return;
                         root.scrollIntoView({block:'start',behavior:'instant'});
                         window.scrollBy({top:-(document.querySelector('#h2s-app .app-topbar')?.getBoundingClientRect().height||0),behavior:'instant'});clearInterval(timer);

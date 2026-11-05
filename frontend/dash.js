@@ -111,6 +111,7 @@
                     verifiedAdminSessionToken = '';
                     window.H2SManagementOperations?.reset();
                     window.H2SFieldSales?.reset();
+                    window.H2SForecast?.reset();
                 }
                 if (!t) {
                     verifiedLegacyAdminKey = '';
@@ -1235,6 +1236,11 @@
             appInstanceId = Date.now();
 
             ensureApiReady().then(() => {
+                window.H2SForecast?.configure({
+                    endpoint: new URL('forecast', API_URL).href,
+                    getToken: getDashboardSessionToken,
+                    isAdmin: isAdminRole
+                });
                 window.H2SFieldSales?.configure({
                     apiBase: API_BASE,
                     getSession: () => ({ token: getDashboardSessionToken(), role: currentRole }),
@@ -1584,6 +1590,7 @@
         const DASH_SHELL_DEFAULT_TAB = 'pipeline';
         const DASH_SHELL_SIDEBAR_STORAGE_PREFIX = 'h2s_sidebar_group_';
         const DASH_SHELL_TABS = Object.freeze({
+            strategy: { label: 'Strategy & Forecasting', areaTitle: 'Strategy & Forecasting', paneId: 'strategy-pane', sidebarGroupId: null, requiresAdmin: true, requiresAdminSession: true },
             pipeline: { label: 'Pipeline', areaTitle: 'Pipeline', paneId: 'pipeline-pane', sidebarGroupId: 'hiringpipeline' },
             screening: { label: 'Screening Form', areaTitle: 'Screening Form', paneId: 'screening-pane', sidebarGroupId: 'hiringpipeline' },
             techinterview: { label: 'Tech Interview', areaTitle: 'Tech Interview', paneId: 'techinterview-pane', sidebarGroupId: 'hiringpipeline' },
@@ -1783,6 +1790,12 @@
             if (!targetConfig) return;
             const useSmoothTransition = smooth && normalizedTargetTab !== 'owneruploads';
 
+            if (targetConfig.requiresAdminSession && (!isAdminRole() || !getDashboardSessionToken())) {
+                showToast('Strategy & Forecasting requires an authenticated ADMIN account; shared credentials do not grant strategic-data access.', 'warning');
+                if (source === 'restore') clearPersistedActiveShellTab();
+                if (normalizedTargetTab !== fallbackTab) switchToTab(fallbackTab, { ...options, source: 'fallback', allowPrompt: false });
+                return;
+            }
             if (targetConfig.requiresAdmin && !checkAdminAuth()) {
                 const lockedMessage = `${targetConfig.label} requires a verified ADMIN account or shared admin credential.`;
                 if (allowPrompt) {
@@ -2015,7 +2028,10 @@
                     return; // Pane was switched away before load completed
                 }
 
-                if (normalizedTargetTab === 'fieldsales') {
+                if (normalizedTargetTab === 'strategy') {
+                    if (window.H2SForecast) window.H2SForecast.open();
+                    else document.getElementById('strategyForecastWorkspace').textContent = 'Strategy & Forecasting could not load. Reload the dashboard to retry.';
+                } else if (normalizedTargetTab === 'fieldsales') {
                     window.H2SFieldSales?.open();
                 } else if (normalizedTargetTab === 'operations') {
                     window.H2SManagementOperations?.open();
@@ -31346,20 +31362,9 @@ async function loadRecommendationsForFilter() {
 
                         ${learningKnowledgeHtml}
 
-                        <!-- Forecast / Simulation -->
-                        <div class="card" style="background: white; border: 1px solid #e5e7eb; padding: 24px; border-radius: 12px; margin-top: 24px;">
-                            <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 24px 0;">Forecast / Simulation</h3>
-                            <div id="adminForecastCalculator"></div>
-                        </div>
                     </div>
                 `;
                 
-                // Initialize forecast calculator after rendering
-                setTimeout(async () => {
-                    if (typeof adminForecastCalculator !== 'undefined' && adminForecastCalculator) {
-                        await adminForecastCalculator.init();
-                    }
-                }, 100);
             },
             
             async showDeliverablesDetail() {
@@ -31785,19 +31790,18 @@ async function loadRecommendationsForFilter() {
             },
             
             async init() {
-                // Calculate intelligent defaults before loading saved values
-                await this.calculateIntelligentDefaults();
-                this.loadFromStorage();
-                
-                // Initialize sticky positioning observer
-                setTimeout(() => {
-                    this.initStickyPositioningObserver();
-                    this.updateStickyPositioning();
-                }, 200);
-                
-                this.render();
-                this.attachListeners();
-                setTimeout(() => this.loadOfferPresets(), 100);
+                const container = document.getElementById('adminForecastCalculator');
+                if (!container) return;
+                if (!window.H2SForecast) {
+                    container.setAttribute('role', 'alert');
+                    container.textContent = 'Contextual Forecast could not load. Reload the dashboard to retry. No legacy assumptions have been substituted.';
+                    return;
+                }
+                await window.H2SForecast.mount(container, {
+                    endpoint: new URL('forecast', API_URL).href,
+                    getToken: getDashboardSessionToken,
+                    isAdmin: isAdminRole
+                });
             },
             
             async calculateIntelligentDefaults(extractedText) {

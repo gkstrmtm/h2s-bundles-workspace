@@ -106,12 +106,49 @@ test('host constraint cleanup leaves responsive main width under stylesheet cont
 test('every tab destination is a semantic button and existing destinations are retained', t => {
   const { document } = fixture(t);
   const tabs = [...document.querySelectorAll('.app-sidebar-nav-item[data-tab]')];
-  assert.equal(tabs.length, 13);
+  assert.equal(tabs.length, 14);
   for (const tab of tabs) {
     assert.equal(tab.tagName, 'BUTTON');
     assert.equal(tab.type, 'button');
   }
   assert.equal(document.getElementById('appNavToggle').getAttribute('aria-controls'), 'appSidebar');
+});
+
+test('Strategy is a primary destination and Admin retains its content without the embedded simulator', t => {
+  const { document } = fixture(t);
+  const nav = document.getElementById('strategyNavigation');
+  assert.equal(nav.hidden, true);
+  assert.equal(nav.parentElement.className, 'app-sidebar-nav');
+  assert.equal(nav.querySelector('[data-tab="strategy"]').textContent.trim(), 'Strategy & Forecasting');
+  assert.ok(document.getElementById('strategy-pane').querySelector('#strategyForecastWorkspace'));
+  const admin = declarations.get('adminDashboard');
+  assert.ok(admin);
+  assert.doesNotMatch(admin, /id="adminForecastCalculator"|adminForecastCalculator\.init\(/);
+  assert.match(admin, /Admin Dashboard/);
+});
+
+test('Strategy requires a verified ADMIN session; shared credentials, VA and SALES cannot enter', async t => {
+  const { w, document, context } = fixture(t);
+  w.localStorage.setItem('h2s_active_tab', 'strategy');
+  w.switchToTab('strategy', { source: 'restore', smooth: false });
+  assert.notEqual(document.querySelector('.pane.active')?.id, 'strategy-pane');
+  assert.notEqual(w.localStorage.getItem('h2s_active_tab'), 'strategy');
+  vm.runInContext("currentRole='VA';verifiedLegacyAdminKey='fixture-shared';localStorage.setItem(ADMIN_CREDENTIAL_KEY,'fixture-shared');", context);
+  assert.equal(w.checkAdminAuth(), true);
+  w.switchToTab('strategy', { smooth: false });
+  assert.notEqual(document.querySelector('.pane.active')?.id, 'strategy-pane');
+  w.setDashboardSessionToken('fixture-strategy-session');
+  w.fetch = async () => ({ ok: true, json: async () => ({ ok: true, me: { username: 'ADMIN_FIXTURE', role: 'ADMIN' } }) });
+  await w.checkCachedUser();
+  w.switchToTab('strategy', { smooth: false });
+  assert.equal(document.querySelector('.pane.active').id, 'strategy-pane');
+  assert.equal(document.querySelector('[data-tab="strategy"]').getAttribute('aria-current'), 'page');
+  assert.equal(document.getElementById('currentAreaTitle').textContent, 'Strategy & Forecasting');
+  let activatedSales = false;
+  w.H2SFieldSales = { activate: () => { activatedSales = true; } };
+  vm.runInContext("currentRole='SALES';", context);
+  w.switchToTab('strategy', { smooth: false });
+  assert.equal(activatedSales, true);
 });
 
 test('mobile Log Hours keeps its icon treatment and label without the shared logout typography override', t => {

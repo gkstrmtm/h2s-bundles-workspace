@@ -2213,6 +2213,14 @@
                 <button type="button" class="app-nav-close" onclick="closeMobileSidebar()" aria-label="Close navigation">Close</button>
             </div>
             <nav class="app-sidebar-nav" aria-label="Dashboard sections">
+                <div id="strategyNavigation" hidden>
+                    <div class="app-sidebar-nav-label">Business management</div>
+                    <button type="button" class="app-sidebar-nav-item" data-tab="strategy" onclick="switchToTab('strategy')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18M7 14l5-5 4 3 5-7"></path><path d="M17 5h4v4"></path></svg>
+                        <span>Strategy &amp; Forecasting</span>
+                    </button>
+                    <div class="app-sidebar-nav-divider"></div>
+                </div>
                 <div class="app-sidebar-group open" data-group-id="hiringpipeline">
                     <button type="button" class="app-sidebar-group-header" onclick="toggleSidebarGroup('hiringpipeline')" aria-expanded="true">
                         <span>Pipeline</span>
@@ -2284,6 +2292,9 @@
         <!-- MAIN CONTENT -->
         <div class="app-main">
             <div class="app-content">
+                <section id="strategy-pane" class="pane" aria-label="Strategy &amp; Forecasting">
+                    <div id="strategyForecastWorkspace"></div>
+                </section>
                 <!-- TABS (hidden, kept for compatibility) -->
                 <nav class="tabs" style="display: none;">
                     <button class="tab active" data-tab="pipeline">Pipeline</button>
@@ -5409,6 +5420,11 @@
             window.__h2sDashboardScriptsReady = (async () => {
                 await loadScript('dashboard-sync.js');
                 await loadScript('dashboard-controls.js');
+                try {
+                    await loadScript('forecast-assistant.js');
+                } catch (error) {
+                    console.error('Contextual Forecast module unavailable; existing dashboard remains available.', error);
+                }
                 try {
                     await loadScript('management-operations.js');
                 } catch (error) {
