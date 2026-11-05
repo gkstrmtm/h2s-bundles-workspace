@@ -23,6 +23,13 @@ test('focus, visibility and polling coalesce; hidden/inactive work does not poll
     f.visibility('visible');active=false;await sync.request('return',{force:true});assert.equal(calls,2);
     sync.destroy();assert.equal(f.timers.size,0);
 });
+test('an authorized initial mount reads once in a background editor; hidden polling and inactive mounts remain blocked',async t=>{
+    const f=fixture(t);f.visibility('hidden');let calls=0,active=true;
+    const sync=f.w.H2SDataSync.register({id:'initial',isActive:()=>active,refresh:async()=>{calls++;return true;}});
+    assert.equal(await sync.request('mount',{force:true}),true);assert.equal(calls,1);
+    await sync.request('focus',{force:true});await sync.request('poll',{force:true});assert.equal(calls,1);
+    active=false;await sync.request('mount',{force:true});assert.equal(calls,1);
+});
 test('dirty input stays intact; errors never become current and have Retry',async t=>{
     const f=fixture(t),input=f.w.document.querySelector('input'),states=[];let dirty=true,fail=true;
     input.value='unsaved';

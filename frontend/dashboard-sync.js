@@ -6,11 +6,11 @@
         let disposed = false, pending = null, invalidated = true, lastAttempt = -Infinity, updatedAt = null;
         const interval = Math.max(30000, options.intervalMs || 60000);
         const minimum = Math.max(1000, options.minIntervalMs || 15000);
-        const active = () => !disposed && document.visibilityState !== 'hidden' && options.isActive();
+        const active = (initialMount = false) => !disposed && (initialMount || document.visibilityState !== 'hidden') && options.isActive();
         const notify = (status, reason, error) => options.onState?.({status, reason, error, updatedAt});
         function invalidate() { invalidated = true; }
         function request(reason = 'return', {force = false} = {}) {
-            if (!active()) return Promise.resolve(false);
+            if (!active(reason === 'mount')) return Promise.resolve(false);
             if (options.isDirty?.()) { notify('stale', reason); return Promise.resolve(false); }
             if (pending) return pending;
             if (!force && !invalidated && Date.now() - lastAttempt < minimum) return Promise.resolve(false);

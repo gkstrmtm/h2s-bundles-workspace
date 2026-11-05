@@ -21,6 +21,8 @@ The build now understands the current stylesheet bootstrap and serial script loa
 
 `frontend/dashboard-sync.js` provides visible/active-screen synchronization, coalesced pending reads, default 60-second polling, 15-second focus throttling, mutation invalidation, honest failure/Retry feedback and bounded 15-second read signals.
 
+An authorized active module performs its initial mount read even in a background editor panel, preventing an empty preview. Subsequent hidden-panel polling/focus reads and inactive/unauthorized mounts remain blocked.
+
 Native screens reread after successful mutations and on return. Session, read-generation and edit-generation checks reject late responses. Dirty forms, interrupted operations, focused fields and open shared dropdowns pause unsafe updates. The shared-select guard covers actual `aria-haspopup` triggers, including search portals outside the module. Read-only contextual tabs and scroll position survive updates.
 
 Existing Queue, media, Owner Uploads and legacy dashboard synchronization remains in place rather than adding competing loops. Archived duplicate bundles and the separate technician application were not migrated.
@@ -70,7 +72,7 @@ Proposed v1/v2 catalogs are not approved offers. Proposed, approved, estimated, 
 ### Automated
 
 - Combined root Field Sales and backend field/dashboard/media/management/commercial/Operations suites plus isolated-preview regressions: **763 passed, 2 skipped, 0 failed**.
-- Final focused native UI/template/synchronization/preview suite, including subsequent popup, modal-race and scroll protections: **159 passed, 0 failed**.
+- Final focused native UI/template/synchronization/preview suite, including subsequent popup, modal-race, background-mount and scroll protections: **160 passed, 0 failed**.
 - Operations/Planning/Assignment focused checks: **27 passed**.
 - Two skips require genuinely independent PostgreSQL sessions; no external database was supplied. The live media-database integration suite was intentionally excluded.
 - Canonical build passed:
