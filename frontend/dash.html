@@ -5445,6 +5445,7 @@
                 document.head.appendChild(script);
             });
             window.__h2sDashboardScriptsReady = (async () => {
+                await loadScript('dashboard-controls.js');
                 try {
                     await loadScript('management-operations.js');
                 } catch (error) {

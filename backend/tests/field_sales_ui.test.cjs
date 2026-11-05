@@ -39,10 +39,16 @@ test('SALES mobile enclave, assigned worklist, generic configured assessment, es
   assert.equal(f.w.document.getElementById('h2s-app').dataset.fieldSales, 'true');
   assert.equal(f.w.document.querySelector('.app-sidebar-nav-item').hidden, true);
   assert.equal(f.w.document.querySelector('[data-sales-list] img'), null, 'Untrusted customer name is text');
-  assert.match(f.w.document.querySelector('[data-sales-content]').textContent, /follow-ups due/);
+  const due=[...f.w.document.querySelectorAll('.field-sales__metric')].find(el=>el.querySelector('span').textContent==='Follow-ups due');
+  assert.ok(due);assert.equal(due.querySelector('strong').textContent,'1');
+  assert.equal(f.w.document.querySelector('.field-sales__management-nav'),null,'SALES has no management destinations');
   f.click('[data-sales-lead]'); await settle();
   assert.equal(f.w.document.querySelector('[data-question="quantity"]').value, '2');
-  assert.match(f.w.document.querySelector('[data-sales-questions]').textContent, /definition v3/);
+  assert.equal(f.w.document.querySelector('[data-sales-questions] legend').textContent,'Future configurable service');
+  assert.equal(f.w.document.querySelector('[data-question="quantity"]').min,'1');
+  assert.equal(f.w.document.querySelector('[data-question="quantity"]').max,'10');
+  assert.deepEqual([...f.w.document.querySelector('[data-question="equipment"]').options].map(option=>option.textContent),['Choose','Customer equipment','Review needed']);
+  assert.doesNotMatch(f.w.document.querySelector('[data-sales-questions]').textContent,/definition v3|future_fixture/);
   assert.match(f.w.document.querySelector('[data-sales-content]').textContent, /Assessment progress: 1\/1 required answers/);
   f.w.document.querySelector('[data-question="quantity"]').value = '4';
   const form = f.w.document.querySelector('[data-sales-form="save"]');
@@ -55,7 +61,11 @@ test('SALES mobile enclave, assigned worklist, generic configured assessment, es
 });
 test('ADMIN oversight/reps/exact inquiry attach; VA cannot read; default-off is explicit', async t => {
   const f = fixture(t, 'ADMIN'); f.w.H2SFieldSales.open(); await settle();
-  assert.match(f.w.document.querySelector('[data-sales-content]').textContent, /across representatives/);
+  assert.equal(f.w.document.querySelector('[data-sales-content] h3').textContent,'Sales overview');
+  const owners=f.w.document.querySelector('[data-sales-owner]');
+  assert.ok(owners);assert.equal(owners.options[0].textContent,'All representatives');
+  assert.equal(owners.options[1].value,'rep');assert.equal(owners.options[1].textContent,'Fixture rep');
+  assert.ok(f.w.document.querySelector('[data-sales-mode="representatives"]'),'ADMIN retains representative oversight');
   f.click('[data-sales-mode="new"]'); await settle(); assert.ok(f.w.document.querySelector('[data-sales-form="attach"]'));
   f.click('[data-sales-mode="representatives"]'); await settle();
   assert.ok(f.w.document.querySelector('[data-sales-form="account_create"]')); assert.ok(f.w.document.querySelector('[data-rep-state]'));

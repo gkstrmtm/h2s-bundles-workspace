@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="referrer" content="no-referrer">
+    <title>Home2Smart | Field Sales</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="./dashboard-design-system.css">
+    <link rel="stylesheet" href="./dash.css">
+    <link rel="stylesheet" href="./sales-app.css">
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
+    <script defer src="./date-popup.js"></script>
+    <script defer src="./dashboard-controls.js"></script>
+    <script defer src="./field-workflow.js"></script>
+    <script defer src="./field-earnings.js"></script>
+    <script defer src="./field-sales.js"></script>
+    <script defer src="./field-commerce.js"></script>
+    <script defer src="./sales-app.js"></script>
+</head>
+<body data-sales-app="true">
+    <a class="sales-skip" href="#field-sales-pane">Skip to workspace</a>
+    <section class="sales-access" aria-labelledby="sales-access-title">
+        <p class="sales-access__brand">Home2Smart <span>Field Sales</span></p>
+        <h1 id="sales-access-title">Your next sale starts here.</h1>
+        <p>Sign in with your existing Home2Smart account.</p>
+        <p id="sales-access-status" role="status" aria-live="polite">Checking your session...</p>
+        <form id="sales-login" hidden>
+            <label for="sales-username">Username or email</label>
+            <input id="sales-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+            <label for="sales-pin">PIN</label>
+            <input id="sales-pin" name="pin" type="password" autocomplete="current-password" required>
+            <button type="submit">Sign in</button>
+        </form>
+        <a id="sales-management" href="./dash.html" hidden>Open management dashboard</a>
+    </section>
+    <main id="h2s-app" hidden><div class="app-content"></div></main>
+    <noscript>JavaScript is required to sign in and use the Field Sales workspace.</noscript>
+</body>
+</html>

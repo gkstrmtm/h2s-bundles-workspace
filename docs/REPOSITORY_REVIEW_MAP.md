@@ -9,6 +9,8 @@ source, not permission to deploy or run database mutations.
 | Purpose | Primary entry point | Dependencies / boundary |
 |---|---|---|
 | Central management application | [frontend/dash.html](../frontend/dash.html) | [dash.js](../frontend/dash.js) is the existing IIFE application; [dash.css](../frontend/dash.css) is the shared component library. Do not edit root `Dash.*` duplicates. |
+| Dedicated salesperson application | [frontend/sales.html](../frontend/sales.html) | [sales-app.js](../frontend/sales-app.js) verifies the existing account through `dashboardMe` before mounting SALES-only Home, Leads, Quotes, Orders and Earnings; [sales-app.css](../frontend/sales-app.css) scopes the standalone shell. Management remains in the dashboard. |
+| Shared original selects and dates | [frontend/dashboard-controls.js](../frontend/dashboard-controls.js) | Extracted unchanged control implementation, loaded by both entries; native-backed styled selects and existing Flatpickr/date-popup integration. Not a second dropdown library. |
 | Navigation | [frontend/dash.js](../frontend/dash.js) | Native `?tab=operations`, `fieldsales`, `commercialqueue`, `admin`, `training`, `pipeline`; SALES receives the restricted sales shell. |
 | Sessions and employee roles | [backend/lib/dashboardAuth.ts](../backend/lib/dashboardAuth.ts) | `Dashboard_Users`, `Dashboard_Sessions`, hashed bearer tokens, expiry/disabled-user checks; existing dashboard account handlers in [api/v1](../backend/app/api/v1/route.ts). |
 | New Operations permissions | [backend/lib/dashboardPermissions.ts](../backend/lib/dashboardPermissions.ts) | ADMIN capabilities; VA retains legacy permissions but not these adapters. The policy table does not globally activate SALES or OPERATIONS. |
@@ -33,7 +35,7 @@ source, not permission to deploy or run database mutations.
 
 | Purpose | Primary entry point | Dependencies / boundary |
 |---|---|---|
-| Phone-first salesperson workspace | [frontend/field-sales.js](../frontend/field-sales.js) | [field-sales.css](../frontend/field-sales.css), dashboard shell; prospects, follow-ups, configurable assessments, photos and opportunities. |
+| Phone-first salesperson workspace | [frontend/field-sales.js](../frontend/field-sales.js) | [field-sales.css](../frontend/field-sales.css), standalone sales entry and dashboard management shell; prospects, follow-ups, configurable assessments, photos and opportunities. [Redesign review](FIELD_SALES_REDESIGN_REVIEW.md) documents isolated validation and limits. |
 | Sales accounts, ownership and assessment commands | [api/field-sales](../backend/app/api/field-sales/route.ts) | [fieldSales.ts](../backend/lib/fieldSales.ts), [043](../backend/migrations/043_field_sales.sql); ADMIN management, SALES own-record scope, revision checks and idempotent commands. |
 | Private assessment photographs | [api/field-sales-photos](../backend/app/api/field-sales-photos/route.ts) | Same ownership/consent boundary; private storage, guarded retrieval and synthetic fixture coverage. These are not automatically public marketing media. |
 | Shared Customer Queue | [frontend/dash.js](../frontend/dash.js) | `commercialQueue` tab and projection in [api/v1](../backend/app/api/v1/route.ts). Shared `commercial_leads`; residential records carry market attribution. |

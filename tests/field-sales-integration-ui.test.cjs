@@ -326,7 +326,7 @@ test('accepted enrolled agreement renews finite scoped link without changing acc
         agreements:[{quote_id:'quote-fixture',accepted_at:'2026-01-01'}],workflows:[{quoteId:'quote-fixture',state:'completed',gates:{canBalance:true}}]};
     f.respond(async(url,init)=>Response.json(init.method==='POST'?{ok:true,agreementUrl:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64),handoffId:uuid,expiresAt:'2026-11-05T00:00:00Z',scope:'accepted_documents_balance'}:d));
     f.mount({leadId:'lead-fixture'});await settle();assert.match(f.root.querySelector('[data-commerce-agreement]').textContent,/Renew finite/);
-    f.click('[data-commerce-agreement]');await settle();assert.equal(f.calls.find(c=>c.body).body.action,'agreement_link');assert.match(f.root.querySelector('[data-commerce-handoff]').textContent,/Secure handoff expires/);assert.match(f.root.textContent,/accepted_documents_balance/);
+    f.click('[data-commerce-agreement]');await settle();assert.equal(f.calls.find(c=>c.body).body.action,'agreement_link');assert.match(f.root.querySelector('[data-commerce-handoff]').textContent,/Secure handoff expires/);assert.match(f.root.textContent,/Customer copies and eligible remaining balance/);assert.doesNotMatch(f.root.textContent,/accepted_documents_balance/);
     assert.match(f.root.textContent,/does not extend initial acceptance or imply payment/);assert.equal(d.agreements[0].accepted_at,'2026-01-01');
 });
 test('expired customer link exposes no customer data and asks for finite renewal, not late acceptance',async t=>{

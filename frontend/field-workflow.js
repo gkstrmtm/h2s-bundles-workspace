@@ -5,6 +5,10 @@
     const money = value => Number.isSafeInteger(value) ? new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(value / 100) : 'Evidence pending';
     const date = value => value ? esc(new Date(value).toLocaleString()) : 'Not established';
     const contentText = value => typeof value === 'string' ? value : JSON.stringify(value,null,2);
+    const labels = {enrolled:'Agreement in progress',deposit_pending:'Deposit pending',deposit_paid:'Deposit received',ready:'Ready for scheduling',scheduled:'Installation scheduled',completed:'Installation completed',cancelled:'Cancelled',refund_review:'Refund under review',legal_review:'Agreement under review',accepted:'Agreement accepted',awaiting_deposit:'Awaiting deposit'};
+    const human = value => labels[value] || 'Order under review';
+    const policyLabel = (p,index=0) => `${({legal:'Customer agreement',commission:'Commission',settlement:'Friday settlement'})[p.kind] || 'Policy'} · ${p.version || p.definition?.version ? 'Version '+(p.version || p.definition.version) : p.approved_at ? 'Approved '+new Date(p.approved_at).toLocaleDateString() : 'Record '+(index+1)+' (version not supplied)'}`;
+    const recordTitle = (w,index,names) => w.customerName || w.customer?.name || names?.[w.leadId] || `Order ${index + 1}`;
     function exactCost(quantity,unitCents,amountCents){
         const [whole,fraction='']=quantity.split('.');
         const millionths=BigInt(whole)*1000000n+BigInt(fraction.padEnd(6,'0'));
@@ -45,7 +49,7 @@
             return result;
         }
         function policies(kind) {
-            return state.data.policies.filter(p => p.kind === kind && p.status === 'approved').map(p => `<option value="${esc(p.policy_id)}">${esc(p.policy_id)}</option>`).join('');
+            return state.data.policies.filter(p => p.kind === kind && p.status === 'approved').map((p,index) => `<option value="${esc(p.policy_id)}">${esc(policyLabel(p,index))}</option>`).join('');
         }
         function form(action, w, contents, label, disabled = false) {
             return `<form data-workflow-form="${action}" class="field-sales__form">${w ? `<input type="hidden" name="quoteId" value="${esc(w.quoteId)}"><input type="hidden" name="leadId" value="${esc(w.leadId)}"><input type="hidden" name="revision" value="${esc(w.revision)}">` : ''}
@@ -54,6 +58,16 @@
         const evidence = '<label class="field-sales__wide">Approval/source evidence<textarea name="evidence" required maxlength="6000"></textarea></label>';
         const reason = '<label class="field-sales__wide">Reason<textarea name="reason" required maxlength="2000"></textarea></label>';
         function nextAction(w) {
+            if(!admin()){
+                if(['cancelled','refund_review'].includes(w.state))return 'Contact management for cancellation or refund updates. Payments and scheduling are on hold.';
+                if(w.gates?.canBalance)return 'Follow up with the customer about their remaining balance after installation.';
+                if(w.completedAt)return w.balanceCents>0?'Installation is complete. Management is reviewing payment readiness.':'Installation is complete. Check Earnings for commission review and payment history.';
+                if(w.state==='scheduled')return w.technicianId?'Confirm the customer is ready for the scheduled visit.':'Management is arranging the installation team.';
+                if(w.gates?.canSchedule)return 'Coordinate a suitable installation time with the customer and management.';
+                if(w.gates?.canDeposit)return 'Help the customer complete their secure 25% deposit.';
+                if(!w.documents?.length)return 'Management is preparing the customer agreement. Follow up when it is ready.';
+                return 'Follow up on the customer agreement. Management will confirm when payment and scheduling are ready.';
+            }
             if(['cancelled','refund_review'].includes(w.state))return 'Management: reconcile cancellation/refund holds; collection and scheduling remain blocked.';
             if(w.gates?.canBalance)return 'Customer: verify and pay the outstanding post-installation net balance.';
             if(w.completedAt)return w.balanceCents>0?'Management: resolve payment clearance before post-install balance collection.':'Management: review actual costs, earned commission and the eligible Friday settlement run.';
@@ -66,38 +80,49 @@
             if(!w.documents?.length)return 'Management: publish exact approved customer copies; customer retrieval and acceptance are required.';
             return 'Management: resolve the current legal, delivery and verified-deposit gates before scheduling.';
         }
-        function order(w) {
+        function timeline(w) {
+            const steps = [
+                ['Customer copies',w.documents?.length ? 'Published' : 'Being prepared'],
+                ['Deposit',Number.isSafeInteger(w.depositCents)&&w.depositCents>0&&Number.isSafeInteger(w.netPaidCents)&&w.netPaidCents>=w.depositCents ? 'Verified net payment covers deposit' : 'Not yet verified'],
+                ['Installation',w.completedAt ? 'Completed '+date(w.completedAt) : w.state==='scheduled' ? 'Scheduled' : 'Not scheduled']
+            ];
+            return `<ol class="field-workflow__timeline" aria-label="Order progress">${steps.map(([label,value])=>`<li><strong>${label}</strong><span>${value}</span></li>`).join('')}</ol>`;
+        }
+        function order(w,index) {
             const holds = Array.isArray(w.holds) ? w.holds : ['Readiness evidence unavailable'];
-            return `<article><h4>${esc(w.orderId || 'Exact quote awaiting enrollment')}</h4>
-                <p class="field-sales__id">Lead ${esc(w.leadId)} / quote ${esc(w.quoteId)} / revision ${esc(w.revision)}</p>
-                <p>${esc(w.state)} / credited representative ${esc(w.representativeId)}</p>
-                <p class="field-workflow__next">Next action: ${esc(nextAction(w))}</p><p>Review reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')}</p>
+            return `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(recordTitle(w,index,options.customerNames))}</h4>
+                <span class="field-sales__badge">${esc(human(w.state))}</span></header>
+                ${admin()&&(w.representativeName||options.representativeNames?.[w.representativeId])?`<p class="field-workflow__note">Credited representative: ${esc(w.representativeName||options.representativeNames[w.representativeId])}</p>`:''}
+                ${timeline(w)}
+                <p class="field-workflow__next"><strong>Next step</strong> ${esc(nextAction(w))}</p>
                 <dl class="field-workflow__facts"><dt>Exact 25% deposit</dt><dd>${money(w.depositCents)}</dd><dt>Verified net paid</dt><dd>${money(w.netPaidCents)}</dd>
-                <dt>Current net balance</dt><dd>${money(w.balanceCents)}${w.gates?.canBalance ? ' — post-install collection available' : ' — collection blocked by current server gates'}</dd>
-                <dt>Cancellation deadline</dt><dd>${date(w.cancellationDeadline)} — approved policy and delivery evidence control clearance</dd>
-                <dt>Installation</dt><dd>${esc(w.jobId || 'Not linked')} / technician ${esc(w.technicianId || 'Not assigned')}</dd>
-                <dt>Completion</dt><dd>${date(w.completedAt)}</dd><dt>Actual processing fee</dt><dd>${money(w.processingFeeCents)} / ${esc(w.processingFeeEvidence ? contentText(w.processingFeeEvidence) : 'Evidence pending')}</dd>
+                <dt>Current net balance</dt><dd>${money(w.balanceCents)}${w.gates?.canBalance ? ' — available after installation' : ' — not ready for collection'}</dd>
+                <dt>Cancellation deadline</dt><dd>${date(w.cancellationDeadline)}${admin()?' — approved policy and delivery evidence control clearance':''}</dd>
+                <dt>Installation team</dt><dd>${w.technicianId?'Assigned':'Not assigned'}</dd>
+                <dt>Completion</dt><dd>${date(w.completedAt)}</dd></dl>
+                ${admin()?`<details class="field-workflow__review"><summary>Order review & supporting records</summary>
+                <p>Review reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')}</p>
+                <dl class="field-workflow__facts"><dt>Actual processing fee</dt><dd>${money(w.processingFeeCents)}</dd>
                 <dt>Actual technician hours</dt><dd>${esc(w.hours ?? 'Not recorded')} — wages are separate from commission</dd></dl>
-                <details><summary>Approved immutable customer copies & delivery</summary>
+                ${installationProof(w)}
+                <p>${w.costsComplete===true?'Actual costs approved by management.':'Technician costs are not approved costs. Commission remains in review until management approves evidenced actual costs.'}</p>
+                <details class="field-workflow__audit"><summary>Admin audit details — IDs, documents & evidence</summary>
+                <p class="field-sales__id">Lead ${esc(w.leadId)} / quote ${esc(w.quoteId)} / revision ${esc(w.revision)} / representative ${esc(w.representativeId)}</p>
+                <h4>Approved immutable customer copies & delivery</h4>
                 ${(w.documents || []).map(doc => `<section><h4>${esc(doc.label)} / ${esc(doc.kind)}</h4><p class="field-sales__id">${esc(doc.artifactId)} / ${esc(doc.contentHash)}</p><pre>${esc(contentText(doc.content))}</pre></section>`).join('') || '<p>No approved immutable copies published.</p>'}
-                <pre>${esc(JSON.stringify(w.deliveryEvidence || [],null,2))}</pre></details>
-                <details><summary>Installation, preparation & actual expenses</summary><p>${w.costsComplete===true?'Actual costs approved by management.':'Technician costs are not approved costs. Commission amount remains in review until management explicitly approves evidenced actual costs.'}</p>
-                    ${installationProof(w)}
-                    <p>Cost approval: ${esc(w.costApprovedBy||'Not approved')} / ${date(w.costApprovedAt)}</p>
-                    <pre>${esc(JSON.stringify({reservation:w.reservation,preparation:w.preparation,assignmentPreview:w.assignmentPreview,technicianExpenses:w.technicianExpenses,approvedExpenses:w.expenses,costReviewEvidence:w.costReviewEvidence},null,2))}</pre></details>
-                ${(w.refunds||[]).length?`<details><summary>Refund reconciliation records</summary><p>Reserved/provider-pending is not refunded. Retry the identical operation or verify the provider record; failed states require management review.</p>
-                    ${w.refunds.map(r=>`<p class="field-sales__id">${esc(r.operation_id)} / checkout ${esc(r.checkout_id)}</p><p>${esc(r.state)} / ${money(r.amount_cents)} / provider reference ${esc(r.provider_refund_id||'Not confirmed')}</p>`).join('')}</details>`:''}
-                ${admin() ? management(w, holds) : '<p>Management controls legal clearance, readiness and scheduling. Payment confirmations come from server reconciliation, not a checkout return.</p>'}</article>`;
+                <pre>${esc(JSON.stringify({...w,proof:undefined},null,2))}</pre></details></details>
+                ${(w.refunds||[]).length?`<p class="field-workflow__note">Refund reconciliation requires management review. Reserved or provider-pending amounts are not confirmed refunds; verify the provider record or retry the identical operation.</p>`:''}
+                ${management(w, holds)}`:''}</article>`;
         }
         function installationProof(w){
             if(!admin())return '';
             const p=w.proof;if(!p)return '<p>Assigned-job installation proof status unavailable. No completion clearance is implied.</p>';
             return `<h4>Pinned installation requirements</h4><p>Baseline saved photos: ${esc(p.photoCount)} / customer signatures: ${esc(p.signatureCount)}. ${p.complete===true?'Server proof requirements satisfied.':'Proof remains incomplete: '+esc((p.missing||[]).join('; '))}</p>
-                ${Array.isArray(p.requirements)&&p.requirements.length?`<ul>${p.requirements.map(r=>`<li>${esc(r.label)} / service ${esc(r.serviceId)} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Missing '+esc(r.missingCount)}</li>`).join('')}</ul>`:'<p>No additional service requirements reported. Baseline photo/signature requirements remain mandatory.</p>'}
+                ${Array.isArray(p.requirements)&&p.requirements.length?`<ul>${p.requirements.map(r=>`<li>${esc(r.label)} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Missing '+esc(r.missingCount)}</li>`).join('')}</ul>`:'<p>No additional service requirements reported. Baseline photo/signature requirements remain mandatory.</p>'}
                 <p>Requirements are pinned to the approved quote. The assigned technician records native evidence and explicit checklist completion; management does not bypass proof here.</p>`;
         }
         function management(w, holds) {
-            const docForms = form('documents_publish',w,`<label class="field-sales__wide">Exact required customer copies from the server (not editable)<textarea name="artifacts" readonly required>${esc(JSON.stringify(w.requiredArtifacts || [],null,2))}</textarea></label>${evidence}`,'Publish approved immutable copies',
+            const docForms = form('documents_publish',w,`<p class="field-sales__wide">Publish the approved customer copies below without changing their content.</p><details class="field-sales__wide field-workflow__audit"><summary>Admin evidence details — exact required customer copies</summary><label>Server copies (read-only JSON)<textarea name="artifacts" readonly required>${esc(JSON.stringify(w.requiredArtifacts || [],null,2))}</textarea></label></details>${evidence}`,'Publish approved immutable copies',
                 !w.requiredArtifacts?.length || !!w.documents?.length || ['cancelled','completed'].includes(w.state)) +
                 form('delivery_record',w,`<label>Approved delivery method<input name="method" required maxlength="120"></label><label>Delivered at (device timezone)<input name="deliveredAt" type="datetime-local" required></label>
                 <label>Exact recipient<input name="recipient" required maxlength="500"></label><label>Delivery reference<input name="reference" required maxlength="2000"></label>`,'Record document delivery evidence');
@@ -110,17 +135,17 @@
                 <label>Approved IANA timezone<input name="timezone" required></label><label class="field-sales__check"><input name="customerAgreed" type="checkbox" required>Customer agreed to these times</label>${reason}`,
                 'Confirm in existing company calendar',w.gates?.canSchedule !== true);
             const preview = w.assignmentPreview, technicians = preview?.technicians || [];
-            const assignment = form('assign',w,`<label>Available canonical technician<select name="proId" required><option value="">Choose an authorized technician</option>${technicians.map(t=>`<option value="${esc(t.proId)}">${esc(t.name)} / ${esc(t.proId)}</option>`).join('')}</select></label>
+            const assignment = form('assign',w,`<label>Available technician<select name="proId" required><option value="">Choose an authorized technician</option>${technicians.map((t,i)=>`<option value="${esc(t.proId)}">${esc(t.name || 'Technician '+(i+1))}</option>`).join('')}</select></label>
                 <input name="context" type="hidden" value="${esc(preview?.job?.context || '')}"><label class="field-sales__wide">Assignment note<textarea name="note" required maxlength="4000"></textarea></label>`,'Submit managed assignment',w.gates?.canAssign !== true || !preview?.job?.context || !technicians.length);
-            return `${costReview(w)}<details><summary>Management documents and readiness</summary>${docForms}${readiness}</details>
-                <details><summary>Existing calendar and managed assignment</summary>${holds.length ? '<p>Scheduling/assignment blocked by the readiness reasons above. Server revalidates every transition.</p>' : ''}
+            return `${costReview(w)}<details class="field-workflow__review"><summary>Customer documents & installation readiness</summary><h4>Customer copies & delivery</h4>${docForms}<h4>Installation readiness</h4>${readiness}</details>
+                <details><summary>Existing calendar and managed assignment</summary>${holds.length ? '<p>Review the order readiness reasons above. Scheduling and assignment have separate requirements; disabled actions are not ready. The server revalidates every transition.</p>' : ''}
                 ${schedule}${assignment}</details><details><summary>Cancellation or refund review — not automatic refund</summary>
                 ${form('cancel',w,reason+evidence,'Record cancellation and holds')}${form('refund_review',w,reason+evidence,'Record refund review — no automatic transfer')}</details>`;
         }
         function costReview(w){
             if(!w.completedAt||w.costsComplete===true)return '';
             const rows=w.technicianExpenses||[];
-            return `<details><summary>Review technician actual costs before commission calculation</summary><p>Technician rows stay immutable. Document any correction here. Approval saves a separate immutable actual-cost snapshot; wages are excluded.</p>
+            return `<p class="field-workflow__note">Approval required: review actual equipment and materials costs before commission can be calculated. Technician wages are separate.</p><details class="field-workflow__review"><summary>Review technician actual costs before commission calculation</summary><p>Technician rows stay immutable. Document any correction here. Approval saves a separate immutable actual-cost snapshot; wages are excluded.</p>
                 ${form('cost_review',w,`${rows.map((row,index)=>`<fieldset class="field-sales__wide" data-workflow-cost-row><legend>Reviewed actual cost ${index+1}</legend>
                     <label>Category<select name="category"><option value="equipment"${row.category==='equipment'?' selected':''}>Equipment</option><option value="materials"${row.category==='materials'?' selected':''}>Installation materials</option></select></label>
                     <label>Quantity (up to 6 decimals)<input name="quantity" type="number" min="0" max="100000" step="0.000001" value="${esc(row.quantity)}" required></label>
@@ -134,31 +159,33 @@
         }
         function render() {
             const d = state.data;
-            root.innerHTML = '<h3>Orders & next actions</h3><p data-workflow-status role="status" aria-live="polite"></p>';
+            root.innerHTML = '<div class="field-sales__toolbar"><h3>Orders & next actions</h3><button type="button" data-workflow-refresh>Refresh orders</button></div><p data-workflow-status role="status" aria-live="polite"></p>';
             if (!d.enabled) { status('Sales workflow disabled. Legal, scheduling and completion actions are unavailable.'); return; }
             if (!Array.isArray(d.workflows) || !Array.isArray(d.policies)) { status('Incomplete workflow response. No readiness or scheduling is assumed.',true); return; }
-            root.insertAdjacentHTML('beforeend', `<button type="button" data-workflow-refresh>Refresh order trace</button>
-                <p>New sales use a fixed 25% deposit, then post-installation net balance. Deposit alone is not legal clearance or an installation appointment.</p>
-                ${d.workflows.map(order).join('') || '<p>No enrolled new-sales orders. Legacy Dispatch is not included.</p>'}`);
+            root.insertAdjacentHTML('beforeend', `<div class="field-sales__summary" aria-label="Loaded order summary">
+                <div class="field-sales__metric"><span>Orders</span><strong>${d.workflows.length}</strong></div>
+                <div class="field-sales__metric"><span>Scheduled</span><strong>${d.workflows.filter(w=>w.state==='scheduled').length}</strong></div>
+                <div class="field-sales__metric"><span>Completed</span><strong>${d.workflows.filter(w=>w.completedAt).length}</strong></div></div>
+                <p class="field-workflow__note">25% deposit, then the remaining net balance after installation. A deposit does not confirm an installation appointment.</p>
+                <section class="field-sales__section" aria-label="Order records">${d.workflows.map(order).join('') || '<div class="field-sales__empty"><h4>No orders yet</h4><p>Accepted new sales will appear here after management enrollment. Existing Dispatch orders stay in Dispatch.</p></div>'}</section>`);
             if (admin()) root.insertAdjacentHTML('beforeend', `<details><summary>New order enrollment — exact quote and approved policies</summary>
-                ${form('enroll',null,`<label>Exact approved quote ID<input name="quoteId" value="${esc(options.quoteId || '')}" required></label>
+                ${form('enroll',null,`<details class="field-sales__wide field-workflow__audit"><summary>Admin linkage details — approved quote, lead & commission credit</summary><p>Use the exact approved records. These identifiers establish order ownership and cannot be substituted.</p><label>Exact approved quote ID<input name="quoteId" value="${esc(options.quoteId || '')}" required></label>
                     <input type="hidden" name="revision" value="0">
-                    <label>Shared lead ID<input name="leadId" value="${esc(options.leadId || '')}" required></label>
+                    <label>Shared lead ID<input name="leadId" value="${esc(options.leadId || '')}" required></label><label>Immutable commission credit representative ID<input name="representativeId" required></label></details>
                     ${[['legalPolicyId','legal','Legal policy'],['commissionPolicyId','commission','Commission policy'],['settlementPolicyId','settlement','Settlement policy']].map(([name,kind,label]) => `<label>${label}<select name="${name}" required><option value="">Choose approved version</option>${policies(kind)}</select></label>`).join('')}
-                    <label>Immutable commission credit representative ID<input name="representativeId" required></label>
                     <label class="field-sales__wide">Commission credit approval evidence<textarea name="creditEvidence" required maxlength="4000"></textarea></label>`,'Enroll exact new-sales order')}</details>
                 <details><summary>Versioned legal, commission and settlement policies</summary><p>No jurisdiction, legal days, refund rule, rate-effective event or settlement method is preselected. Drafts are not approved.</p>
-                    ${d.policies.map(p => `<article><p class="field-sales__id">${esc(p.policy_id)} / ${esc(p.kind)} / ${esc(p.status)}</p><pre>${esc(JSON.stringify(p.definition,null,2))}</pre>
-                    <p>Approval evidence: ${esc(p.approval_evidence ? contentText(p.approval_evidence) : 'Unapproved')}</p>
+                    ${d.policies.map((p,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(policyLabel(p,index))}</h4><span class="field-sales__badge">${esc(({draft:'Draft — not approved',approved:'Approved',retired:'Retired'})[p.status] || 'Review required')}</span></header>
+                    <details class="field-workflow__audit"><summary>Admin audit details — policy ID, definition & approval</summary><pre>${esc(JSON.stringify(p,null,2))}</pre>
                     ${p.status === 'draft' ? form('policy_update',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}"><input type="hidden" name="expectedDefinitionHash" value="${esc(p.definitionHash||'')}"><label class="field-sales__wide">Policy definition JSON<textarea name="definition" required>${esc(JSON.stringify(p.definition,null,2))}</textarea></label>`,'Save draft policy',!p.definitionHash) +
                         form('policy_approve',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}"><input type="hidden" name="expectedDefinitionHash" value="${esc(p.definitionHash||'')}">${evidence}`,'Explicitly approve policy version',!p.definitionHash) +
-                        form('policy_delete_draft',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Delete unapproved draft') : p.status === 'approved' ? form('policy_retire',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Retire policy for future enrollment') : ''}</article>`).join('')}
-                    ${form('policy_create',null,`<label>New policy UUID<input name="policyId" required></label><label>Policy kind<select name="kind"><option value="legal">Legal</option><option value="commission">Commission</option><option value="settlement">Settlement</option></select></label>
-                        <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details>`);
+                        form('policy_delete_draft',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Delete unapproved draft') : p.status === 'approved' ? form('policy_retire',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Retire policy for future enrollment') : ''}</details></article>`).join('')}
+                    <details class="field-workflow__audit"><summary>Admin policy authoring — create an unapproved version</summary>${form('policy_create',null,`<label>New policy UUID<input name="policyId" required></label><label>Policy kind<select name="kind"><option value="legal">Legal</option><option value="commission">Commission</option><option value="settlement">Settlement</option></select></label>
+                        <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details></details>`);
         }
         async function load() {
             if (!valid()) return;
-            root.innerHTML = '<h3>Orders</h3><p data-workflow-status role="status">Loading authorized order trace…</p>';
+            root.innerHTML = '<h3>Orders</h3><p data-workflow-status role="status">Loading orders…</p>';
             try { const d = await api(); if (valid()) { state.data = d; render(); } }
             catch (error) { if (valid()) { console.error('Field workflow read failed:',error.message); status(error.message,true); } }
         }

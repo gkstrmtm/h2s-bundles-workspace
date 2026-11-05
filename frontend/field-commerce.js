@@ -4,6 +4,7 @@
     let active, generation = 0;
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = value => value === null || value === undefined ? 'Pricing required' : new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(Number(value)/100);
+    const stateLabel = value => ({draft:'Draft',published:'Published',retired:'Retired',pending_approval:'Awaiting approval',approved:'Approved',rejected:'Not approved',expired:'Expired',superseded:'Replaced by a newer revision',open:'Open',paid:'Paid',complete:'Complete',completed:'Complete',payment_exception:'Payment review needed',pending:'Pending',processing:'Processing',failed:'Failed',cancelled:'Cancelled',refunded:'Refunded',partially_refunded:'Partially refunded',deposit:'Deposit',balance:'Remaining balance',full:'Full payment',payment_pending:'Awaiting payment',scheduled:'Scheduled',unpaid:'Unpaid',no_payment_required:'No payment required'}[value] || 'Review needed');
     function reset() { generation++; active?.controller.abort(); global.H2SFieldWorkflow?.reset(); if (active) active.root.replaceChildren(); active = null; }
     function mount(root, options) {
         reset(); const id = generation, started = options.getSession()?.token, startedRole=options.getSession()?.role;
@@ -34,7 +35,7 @@
         }
         async function load() {
             if (!valid()) return;
-            root.innerHTML = '<h3>Quotes, agreements & payments</h3><p data-commerce-status role="status">Loading transaction visibility...</p>';
+            root.innerHTML = '<h3>Quotes & customer acceptance</h3><p data-commerce-status role="status">Loading transaction visibility…</p>';
             try {
                 const data = await api(); if (!valid()) return; state.data = data;
                 if(admin()&&!options.leadId){
@@ -48,14 +49,15 @@
         }
         function render() {
             const d = state.data;
-            root.innerHTML = '<h3>Quotes, agreements & payments</h3><p data-commerce-status role="status" aria-live="polite"></p>';
+            root.innerHTML = '<h3>Quotes & customer acceptance</h3><p data-commerce-status role="status" aria-live="polite"></p>';
             if(admin()&&!options.leadId)catalogAdmin();
             if (!d.enabled) { status('Transactions are disabled. No quote, agreement or payment can be activated.'); return; }
-            root.insertAdjacentHTML('beforeend', '<p>Published pricing, approved customer documents and separately authorized feature gates are required. No card details are entered here; payment is confirmed only by provider reconciliation.</p><button type="button" data-commerce-refresh>Refresh records</button>');
+            root.insertAdjacentHTML('beforeend', '<p class="field-sales__note">Build the scope, submit for approval, then present the approved customer quote. Acceptance is not payment confirmation. No automatic technician assignment. Use secure checkout; never enter card details here.</p><div class="field-sales__toolbar"><button type="button" data-commerce-refresh>Refresh quotes</button></div>');
             if (!options.leadId) {
                 root.insertAdjacentHTML('beforeend', `<h4>Management quote and payment review</h4><p>${d.quotes.length} quote revisions loaded. Historical revisions are not separate sales.</p>
                     ${d.quotes.map(q => `<article><button type="button" data-commerce-lead="${esc(q.lead_id)}">${esc(q.snapshot.customer.name)} / revision ${esc(q.revision)}</button>
-                    <p>${esc(q.state)} / ${money(q.snapshot.totalCents)} / ${esc(q.snapshot.customer.market)} / attributed to ${esc(q.attributed_user_id)}</p>
+                    <p><span class="field-sales__badge">${esc(stateLabel(q.state))}</span> · ${money(q.snapshot.totalCents)} · ${q.snapshot.customer.market==='commercial'?'Commercial':'Residential'}</p>
+                    ${admin()?`<details><summary>Quote attribution audit</summary><p class="field-sales__id">${esc(q.attributed_user_id)} / ${esc(q.quote_id)}</p></details>`:''}
                     <p>${d.agreements.some(a=>a.quote_id===q.quote_id&&a.accepted_at) ? 'Agreement accepted' : 'No accepted agreement'}</p>
                     ${payments(q)}</article>`).join('') || '<p>No quote revisions.</p>'}`);
                 return;
@@ -83,15 +85,15 @@
                         <button type="submit">Validate and save unapproved draft</button></form></details>`);
             }
             const catalogs = d.catalogs.filter(c=>c.status!=='retired').sort((a,b)=>Number(b.status==='published')-Number(a.status==='published'));
-            if (!catalogs.length) root.insertAdjacentHTML('beforeend', '<p>No quoting catalog is configured. Management must reconcile and formally publish pricing; proposed v2 and the $599 solar proposal are not payment authority.</p>');
+            if (!catalogs.length) root.insertAdjacentHTML('beforeend', '<p class="field-sales__empty">No quoting catalog is configured. Contact management to review and publish pricing before building a quote.</p>');
             else {
                 root.insertAdjacentHTML('beforeend', `<h4>Create Quote</h4><form data-commerce-create class="field-sales__form">
-                    <label class="field-sales__wide">Pricing version<select name="catalogId" data-commerce-catalog data-custom-select="off">${catalogs.map(c=>`<option value="${esc(c.catalog_id)}">${esc(c.version)} / ${esc(c.status)}${c.status==='draft'?' - not payable':''}</option>`).join('')}</select></label>
+                    <label class="field-sales__wide">Pricing version<select name="catalogId" data-commerce-catalog>${catalogs.map(c=>`<option value="${esc(c.catalog_id)}">${esc(c.version)} · ${esc(stateLabel(c.status))}${c.status==='draft'?' - not payable':''}</option>`).join('')}</select></label>
                     <div class="field-sales__wide" data-commerce-lines></div><button type="button" data-commerce-add>Add service line</button>
-                    <button type="submit">Calculate & save immutable draft</button></form>`);
+                    <button type="submit" class="field-sales__primary">Calculate & save quote draft</button></form>`);
                 rows();
             }
-            root.insertAdjacentHTML('beforeend', `<h4>Review Quote</h4><div>${d.quotes.map(q=>`<button type="button" data-commerce-quote="${esc(q.quote_id)}">Revision ${esc(q.revision)} / ${esc(q.state)} / ${money(q.snapshot.totalCents)}</button>`).join('') || '<p>No saved quotes.</p>'}</div><div data-commerce-review></div>`);
+            root.insertAdjacentHTML('beforeend', `<h4>Saved quotes</h4><div class="field-sales__toolbar">${d.quotes.map(q=>`<button type="button" data-commerce-quote="${esc(q.quote_id)}">Revision ${esc(q.revision)} · ${esc(stateLabel(q.state))} · ${money(q.snapshot.totalCents)}</button>`).join('') || '<p class="field-sales__empty">No saved quotes for this customer. Complete the service scope above to create a draft.</p>'}</div><div data-commerce-review></div>`);
             state.current = d.quotes.find(q=>q.quote_id===state.current?.quote_id) || d.quotes[0];
             review();
         }
@@ -102,7 +104,7 @@
             const offers = c.definition.services.filter(s=>!market||s.markets.includes(market)).flatMap(s=>s.offers.filter(o=>o.enabled).map(o=>({s,o})));
             const start = target.children.length;
             target.insertAdjacentHTML('beforeend', Array.from({length:state.rows-start},(_,n)=>{ const i=start+n; return `<fieldset data-commerce-line><legend>Service line ${i+1}</legend>
-                <label>Service / equipment / installation<select data-commerce-offer data-custom-select="off">${offers.map(({s,o})=>`<option value="${esc(s.id+':'+o.id)}">${esc(s.label)} / ${esc(o.label)}</option>`).join('')}</select></label>
+                <label>Service / equipment / installation<select data-commerce-offer>${offers.map(({s,o})=>`<option value="${esc(s.id+':'+o.id)}">${esc(s.label)} / ${esc(o.label)}</option>`).join('')}</select></label>
                 <div data-commerce-inputs></div><button type="button" data-commerce-remove>Remove service line</button></fieldset>`; }).join(''));
             for (const row of [...target.children].slice(start)) inputs(row);
         }
@@ -113,7 +115,7 @@
             target.innerHTML=`<p>${esc(o.scope.join('; '))}</p><p>Equipment: ${esc(o.equipment.join('; ')||'No included equipment specified')}</p>
                 <label>Quantity<input name="quantity" type="number" step="1" min="${esc(o.minimum)}" max="${esc(o.maximum)}" value="${esc(o.minimum)}" required></label>
                 ${o.questions.map(q=>`<label>${esc(q.label)}${q.required?' (qualification required)':''}${q.type==='select'
-                    ?`<select data-q="${esc(q.id)}" data-custom-select="off"><option value="">Not yet qualified</option>${q.options.map(v=>`<option>${esc(v)}</option>`).join('')}</select>`
+                    ?`<select data-q="${esc(q.id)}"><option value="">Not yet qualified</option>${q.options.map(v=>`<option>${esc(v)}</option>`).join('')}</select>`
                     :`<input data-q="${esc(q.id)}" type="${q.type==='number'?'number':'text'}"${q.type==='number'?` step="any" min="${esc(q.min??0)}" max="${esc(q.max??100000)}"`:' maxlength="2000"'}>`}</label>`).join('')}
                 ${o.options.map(opt=>`<label class="field-sales__check"><input type="checkbox" data-option value="${esc(opt.id)}">${esc(opt.label)} / ${money(opt.amountCents)} ${opt.perUnit?'per unit':'per line'}</label>`).join('')}
                 <label>Unusual conditions requiring review<textarea name="exceptionNote" maxlength="2000"></textarea></label>`;
@@ -122,9 +124,10 @@
             const rows=state.data.payments.filter(p=>p.quote_id===q.quote_id), net=rows.reduce((s,p)=>s+Number(p.captured_cents)-Number(p.refunded_cents),0),
                 workflow=state.data.workflows?.find(w=>w.quoteId===q.quote_id);
             return `<p>Net verified collected: ${money(net)} / outstanding: ${q.snapshot.totalCents===null?'Unpriced':money(Math.max(0,q.snapshot.totalCents-net))}</p>
-                ${rows.map(p=>`<p>${esc(p.kind)} / ${esc(p.state)}${p.provider_state?' / Stripe '+esc(p.provider_state):''} / reserved ${money(p.amount_cents)} / refunded ${money(p.refunded_cents)}
+                ${rows.map(p=>`<div>${esc(stateLabel(p.kind))} · ${esc(stateLabel(p.state))} · reserved ${money(p.amount_cents)} · refunded ${money(p.refunded_cents)}
+                ${admin()?`<details><summary>Provider reconciliation details</summary><p>${esc(p.kind)} / ${esc(p.state)} / ${esc(p.provider_state || 'Provider state unavailable')}</p></details>`:''}
                 ${options.leadId&&p.session_id?`<button type="button" data-commerce-verify="${esc(p.checkout_id)}">Verify with Stripe</button>`:''}
-                ${admin()&&options.leadId&&workflow&&p.session_id&&p.state==='open'?`<button type="button" data-commerce-expire="${esc(p.checkout_id)}">Expire this open checkout</button>`:''}</p>
+                ${admin()&&options.leadId&&workflow&&p.session_id&&p.state==='open'?`<button type="button" data-commerce-expire="${esc(p.checkout_id)}">Expire this open checkout</button>`:''}</div>
                 ${admin()&&options.leadId&&workflow&&['cancelled','refund_review'].includes(workflow.state)&&Number(p.captured_cents)>Number(p.refunded_cents)?
                     `<details><summary>Explicitly reviewed provider refund</summary><p>Cancellation is not an automatic refund. A submitted request can move money through the existing payment provider; pending and failed states require reconciliation.</p>
                     <form data-commerce-refund class="field-sales__form"><input name="checkoutId" type="hidden" value="${esc(p.checkout_id)}">
@@ -139,17 +142,18 @@
                 net=p.reduce((sum,row)=>sum+Number(row.captured_cents)-Number(row.refunded_cents),0),exception=p.some(p=>Number(p.refunded_cents)>0||p.disputed||p.state==='payment_exception'),
                 depositReady=Number(a?.policy_snapshot?.paymentPlan?.depositCents)>0,
                 workflow=state.data.workflows?.find(w=>w.quoteId===q.quote_id);
-            target.innerHTML=`<article><h4>Quote revision ${esc(q.revision)} / ${esc(q.state)}</h4><p class="field-sales__id">${esc(q.quote_id)} / ${esc(q.quote_hash)}</p>
+            target.innerHTML=`<article><div class="field-sales__record-heading"><h4>Quote revision ${esc(q.revision)}</h4><span class="field-sales__badge">${esc(stateLabel(q.state))}</span></div>
+                ${admin()?`<details><summary>Immutable quote audit</summary><p class="field-sales__id">${esc(q.quote_id)} / ${esc(q.quote_hash)}</p><p>${esc(q.snapshot.catalogVersion)} / ${esc(q.snapshot.pricingStatus)}</p></details>`:''}
                 <p>${esc(q.snapshot.customer.name)} / ${esc(q.snapshot.customer.address)} / ${esc(q.snapshot.customer.city)} / ${esc(q.snapshot.customer.phone)}</p>
                 ${q.snapshot.lines.map(line=>`<section><h4>${esc(line.service)} / ${esc(line.description)}</h4><p>Quantity ${esc(line.quantity)}; base ${money(line.baseCents)}</p>
                     <p>Equipment/materials: ${esc(line.equipment.join('; '))}</p><p>Scope: ${esc(line.scope.join('; '))}</p>
-                    ${Object.entries(line.answers||{}).map(([id,value])=>`<p>${esc(line.answerLabels?.[id]||id)}: ${esc(value)}</p>`).join('')}
+                    ${Object.entries(line.answers||{}).map(([id,value])=>`<p>${esc(line.answerLabels?.[id]||'Qualification')}: ${esc(value)}</p>`).join('')}
                     ${line.addOns.map(a=>`<p>${esc(a.label)}: ${money(a.amountCents)}</p>`).join('')}<p>Line total: ${money(line.totalCents)}</p>
                     <p>Exclusions/conditions: ${esc(line.exclusions.join('; '))}</p></section>`).join('')}
                 ${q.snapshot.managementAdjustmentCents!==undefined?`<p>Audited management adjustment: ${money(q.snapshot.managementAdjustmentCents)} / ${esc(q.snapshot.managementReview.reason)}</p>`:''}
-                ${q.snapshot.managementReview?`<p>Management decision: ${esc(q.snapshot.managementReview.decision)} / final scope confirmation: ${esc(q.snapshot.managementReview.scopeConfirmation)}</p>`:''}
+                ${q.snapshot.managementReview?`<p>Management decision: ${esc(stateLabel(q.snapshot.managementReview.decision==='approve'?'approved':q.snapshot.managementReview.decision==='reject'?'rejected':q.snapshot.managementReview.decision))} · final scope confirmation: ${esc(q.snapshot.managementReview.scopeConfirmation)}</p>`:''}
                 <strong>Total customer price: ${money(q.snapshot.totalCents)}</strong><p>Valid until: ${q.expires_at?esc(new Date(q.expires_at).toLocaleString()):'Not payable / validity pending approval'}</p>
-                <p>Pricing authority: ${esc(q.snapshot.catalogVersion)} / ${esc(q.snapshot.pricingStatus)}</p>
+                <p class="field-sales__note">Pricing version: ${esc(q.snapshot.catalogVersion)}. Saved quotes are read-only; any approved changes create a new revision.</p>
                 <p>Approval requirements: ${esc(q.snapshot.approvalReasons.join('; ')||'No exceptional qualification flags')}</p>
                 ${q.state==='draft'?'<button type="button" data-commerce-submit>Submit quote / request management approval</button>':''}
                 ${admin()&&q.state==='pending_approval'?`<form data-commerce-approve class="field-sales__form"><label>Approved final total (optional adjustment, USD)<input name="amount" inputmode="decimal"></label>
@@ -167,10 +171,11 @@
                 ${!state.data.depositConfigured&&!depositReady?'<p>Deposit policy unset. No nonrefundable terms are implied.</p>':''}
                 ${depositReady?`<p>Exact agreement deposit: ${money(a.policy_snapshot.paymentPlan.depositCents)}; remaining balance: ${money(a.policy_snapshot.paymentPlan.remainingAfterDepositCents)}. Later policy changes do not alter these accepted amounts.</p>`:''}<div data-commerce-checkout-link></div>
                 ${a&&!depositReady&&state.data.depositConfigured?'<p>This exact agreement does not authorize a deposit. Later policy changes do not alter accepted terms.</p>':''}
-                ${state.data.orders.filter(o=>o.quote_id===q.quote_id).map(o=>`<p>Customer order: <span class="field-sales__id">${esc(o.order_reference)}</span> / ${esc(o.status)} / scheduling requires management review. No automatic technician assignment.</p>`).join('')}
+                ${state.data.orders.filter(o=>o.quote_id===q.quote_id).map((o,index)=>`<p>Customer order ${index+1} · ${esc(stateLabel(o.status))} · scheduling requires management review.</p>${admin()?`<details><summary>Order audit reference</summary><p class="field-sales__id">${esc(o.order_reference)} / ${esc(o.status)}</p></details>`:''}`).join('')}
                 </article><div data-commerce-workflow></div>`;
             const workflowRoot=target.querySelector('[data-commerce-workflow]');
-            if(global.H2SFieldWorkflow) global.H2SFieldWorkflow.mount(workflowRoot,{apiBase:options.apiBase,getSession:options.getSession,quoteId:q.quote_id,leadId:options.leadId,onSessionEnded:options.onSessionEnded});
+            if(global.H2SFieldWorkflow) global.H2SFieldWorkflow.mount(workflowRoot,{apiBase:options.apiBase,getSession:options.getSession,quoteId:q.quote_id,leadId:options.leadId,onSessionEnded:options.onSessionEnded,
+                customerNames:{...options.customerNames,...(options.leadId?{[options.leadId]:q.snapshot.customer.name}:{})},representativeNames:options.representativeNames});
             else workflowRoot.textContent='Integrated order trace unavailable. No legal clearance or fulfillment is implied.';
         }
         function safeLink(value,checkout=false){
@@ -189,7 +194,7 @@
                 const action=state.attempt.action,result=await api(state.attempt,state.attemptEndpoint);if(!valid())return;state.attempt=null;state.attemptEndpoint=null;
                 if(result.id&&['quote','submit','approve','reject'].includes(action))state.current={quote_id:result.id};
                 if(result.agreementUrl){const href=safeLink(result.agreementUrl),target=root.querySelector('[data-commerce-handoff]');target.replaceChildren();const a=document.createElement('a');a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open/share finite secure customer link';target.append(a);
-                    if(result.expiresAt){const expiry=document.createElement('p');expiry.textContent='Secure handoff expires '+new Date(result.expiresAt).toLocaleString()+' / scope '+String(result.scope||'exact agreement');target.append(expiry);}
+                    if(result.expiresAt){const expiry=document.createElement('p');expiry.textContent='Secure handoff expires '+new Date(result.expiresAt).toLocaleString()+'. '+(result.scope==='accepted_documents_balance'?'Customer copies and eligible remaining balance.':'Exact approved customer agreement.');target.append(expiry);}
                     root.querySelector('[data-commerce-agreement]').disabled=true;status(result.handoffId?'Finite customer-copy/payment handoff issued. It does not extend initial acceptance or imply payment. Refresh to renew another authorized link.':'Agreement prepared. The customer must review and accept the exact approved terms. Refresh records after acceptance.');}
                 else if(result.checkoutUrl){const href=safeLink(result.checkoutUrl,true);if(result.payment){state.data.payments=[...state.data.payments.filter(p=>p.checkout_id!==result.payment.checkout_id),result.payment];review();}const target=root.querySelector('[data-commerce-checkout-link]');target.replaceChildren();const a=document.createElement('a');a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open secure Stripe Checkout — not paid';target.append(a);status('Checkout created, not paid. After the customer returns, use Verify with Stripe to check payment and order status.');}
                 else await load();

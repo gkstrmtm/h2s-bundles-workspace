@@ -4,6 +4,9 @@ const workspace = path.resolve(__dirname, '..', '..');
 const port = Number(process.env.H2S_REVIEW_PORT || 50271);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('Invalid local review port.');
 const origin = 'https://127.0.0.1:' + port;
+const httpPort = process.env.H2S_REVIEW_HTTP_PORT ? Number(process.env.H2S_REVIEW_HTTP_PORT) : null;
+if (httpPort !== null && (!Number.isInteger(httpPort) || httpPort < 1024 || httpPort > 65535 || httpPort === port))
+    throw Error('Invalid optional loopback HTTP review port.');
 const commit = cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8' }).trim();
 if (cp.execFileSync('git', ['branch', '--show-current'], { cwd: workspace, encoding: 'utf8' }).trim() !== 'retro-dev')
     throw Error('The interactive review requires retro-dev.');
@@ -27,7 +30,12 @@ const json = (res, status, data) => {
     res.end(JSON.stringify(data));
 };
 const assets = new Map();
+const worktree = process.env.H2S_REVIEW_WORKTREE === 'true';
+const reviewedAssets=new Set(['frontend/sales.html','frontend/sales-app.js','frontend/sales-app.css','frontend/dashboard-controls.js',
+    'frontend/dash.html','frontend/dash.js','frontend/field-sales.js','frontend/field-sales.css','frontend/field-commerce.js',
+    'frontend/field-workflow.js','frontend/field-workflow.css','frontend/field-earnings.js']);
 function committed(relative) {
+    if(worktree&&reviewedAssets.has(relative))return fs.readFileSync(path.join(workspace,...relative.split('/')));
     if (assets.has(relative)) return assets.get(relative);
     const names = cp.execFileSync('git', ['ls-tree', '-z', '--name-only', commit, '--', relative], { cwd: workspace, encoding: 'utf8' }).split('\0');
     if (!names.includes(relative)) return null;
@@ -53,10 +61,14 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     '.svg': 'image/svg+xml', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
 (async () => {
     const engine = await createWalkthrough({ origin });
-    const server = https.createServer(tls, async (req, res) => {
+    const gallery=process.env.H2S_REVIEW_SALES_GALLERY==='true'
+        ?await require('./sales-preview-seed.cjs').seedSalesPreview(engine,samplePhoto()):null;
+    const handler = async (req, res) => {
         try {
-            if (!['127.0.0.1:' + port, 'localhost:' + port].includes(req.headers.host)) return json(res, 403, { ok: false, error: 'Loopback only.' });
-            if (req.headers.origin && req.headers.origin !== origin) return json(res, 403, { ok: false, error: 'Cross-origin request blocked.' });
+            const requestPort = req.socket.encrypted ? port : httpPort;
+            const requestOrigin = req.socket.encrypted ? origin : 'http://127.0.0.1:' + httpPort;
+            if (!requestPort || !['127.0.0.1:' + requestPort, 'localhost:' + requestPort].includes(req.headers.host)) return json(res, 403, { ok: false, error: 'Loopback only.' });
+            if (req.headers.origin && req.headers.origin !== requestOrigin) return json(res, 403, { ok: false, error: 'Cross-origin request blocked.' });
             const url = new URL(req.url, origin);
             res.setHeader('Cache-Control', 'no-store');
             res.setHeader('Content-Security-Policy', "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; media-src 'self' blob: data:; frame-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'");
@@ -68,7 +80,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
             if (text) {
                 try { body = JSON.parse(text); } catch { return json(res, 400, { ok: false, error: 'Invalid JSON.' }); }
             }
-            if (url.pathname === '/walkthrough/status') return json(res, 200, { ...(await engine.status()), sourceCommit: commit, isolated: true, productionNetwork: false, outgoingPayments: false });
+            if (url.pathname === '/walkthrough/status') return json(res, 200, { ...(await engine.status()), sourceCommit: commit, assetsMode:worktree?'reviewed-sales-working-tree':'committed', gallery, isolated: true, productionNetwork: false, outgoingPayments: false });
             if (url.pathname === '/walkthrough/control') {
                 if (req.method !== 'POST') return json(res, 405, { ok: false, error: 'POST required.' });
                 if (!['reset', 'provider_capture', 'provider_decline'].includes(body?.action)) return json(res, 400, { ok: false, error: 'Unsupported review control.' });
@@ -90,7 +102,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
                 return res.end(Buffer.from(await response.arrayBuffer()));
             }
             const local = { '/': 'walkthrough.html', '/walkthrough': 'walkthrough.html', '/walkthrough/navigator.js': 'walkthrough.js',
-                '/walkthrough/boot.js': 'bootstrap.js', '/walkthrough/provider': 'walkthrough-provider.html' }[url.pathname];
+                '/walkthrough/boot.js': 'bootstrap.js', '/walkthrough/provider': 'walkthrough-provider.html', '/sales-review':'sales-preview.html' }[url.pathname];
             if (local) {
                 res.setHeader('Content-Type', mime[path.extname(local)]);
                 return res.end(fs.readFileSync(path.join(__dirname, local)));
@@ -103,7 +115,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
             let data = committed(appPath);
             if (!data) return json(res, 404, { ok: false, error: 'Asset is not in the verified commit: ' + appPath });
             if (relative.endsWith('.html')) data = data.toString().replace(/<head([^>]*)>/i, '<head$1><script src="/walkthrough/boot.js"></script>')
-                .replace(/content="https:\/\/h2s-backend\.vercel\.app"/g, 'content="' + origin + '"')
+                .replace(/content="https:\/\/h2s-backend\.vercel\.app"/g, 'content="' + requestOrigin + '"')
                 .replaceAll('https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png', '/media/home2smart-logo.png')
                 .replaceAll('https://storage.googleapis.com/msgsndr/7Drmpw623JAkrfDKPdjG/media/68da0ce6f00445991d64a63f.png', '/media/home2smart-logo.png');
             res.setHeader('Content-Type', mime[path.extname(relative)]); res.end(data);
@@ -111,8 +123,14 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
             console.error('Isolated walkthrough request failed:', error.message);
             if (!res.headersSent) json(res, 500, { ok: false, error: error.message }); else res.end();
         }
-    });
+    };
+    const server = https.createServer(tls, handler);
+    const httpServer = httpPort === null ? null : http.createServer(handler);
     server.listen(port, '127.0.0.1', () => console.log('READY ' + origin + '/ - committed ' + commit + '; isolated interactive walkthrough'));
-    async function close() { server.close(); await engine.close(); }
+    if (httpServer) httpServer.listen(httpPort, '127.0.0.1', () => console.log('READY http://127.0.0.1:' + httpPort + '/sales-review - synthetic editor preview; secure customer links remain HTTPS'));
+    async function close() { server.close(); if (httpServer) httpServer.close(); await engine.close(); }
+    for (const listener of [server, httpServer].filter(Boolean)) listener.once('error', error => {
+        console.error('Local review listener failed:', error.message); close().catch(failure => console.error(failure)); process.exitCode = 1;
+    });
     process.once('SIGINT', close); process.once('SIGTERM', close);
 })().catch(error => { console.error('Interactive walkthrough startup failed:', error); process.exitCode = 1; });

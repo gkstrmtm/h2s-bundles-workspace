@@ -1,0 +1,15 @@
+body[data-sales-app="true"] { --sales-brand-azure: #1493ff; --sales-brand-cobalt: #0a2a5a; margin: 0; background: var(--bg-page); color: var(--text); font: 400 14px/1.5 Inter, sans-serif; }
+body[data-sales-app="true"] [hidden] { display: none !important; }
+body[data-sales-app="true"] #h2s-app { min-height: 100dvh; width: 100%; margin: 0; }
+body[data-sales-app="true"] #h2s-app .app-content { margin: 0 auto; max-width: 1280px; box-sizing: border-box; }
+.sales-access { box-sizing: border-box; max-width: 420px; margin: 10vh auto; padding: 24px; }
+.sales-access__brand { color: var(--sales-brand-cobalt); font: 700 20px/1.3 Archivo, sans-serif; }
+.sales-access__brand span { display: block; color: var(--muted); font: 500 12px/1.5 Inter, sans-serif; margin-top: 4px; }
+.sales-access h1 { font: 600 28px/1.2 'Space Grotesk', sans-serif; color: var(--sales-brand-cobalt); }
+.sales-access form { display: grid; gap: 8px; margin-top: 24px; }
+.sales-access :is(input,button) { width: 100%; box-sizing: border-box; min-height: 48px; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; background: var(--surface); color: var(--text); font: inherit; }
+.sales-access form button { margin-top: 8px; background: var(--sales-brand-cobalt); color: var(--white); font-weight: 600; cursor: pointer; }
+.sales-access :is(input,button,a):focus-visible { outline: 2px solid var(--sales-brand-azure); outline-offset: 3px; }
+.sales-access [role="alert"] { color: var(--danger); }
+.sales-skip { position: fixed; top: -80px; left: 16px; z-index: 10000; background: var(--surface); padding: 12px; }
+.sales-skip:focus { top: 8px; }

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 const source = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.js'), 'utf8');
+const controlsSource = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dashboard-controls.js'), 'utf8');
 
 test('candidate and task overlays stay inside the canonical styled dashboard and the drawer starts hidden', () => {
   const dom = new JSDOM(fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.html'), 'utf8'));
@@ -39,9 +40,8 @@ function fixture(html) {
   const dom = new JSDOM(html, { runScripts: 'outside-only' });
   const { window } = dom;
   window.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'date-popup.js'), 'utf8'));
-  const block = source.slice(source.indexOf('        function h2sDispatchDateInputEvents('),
-    source.indexOf('        function taskCreatorOpenDueField('));
-  window.eval(block);
+  window.eval(controlsSource);
+  Object.assign(window,window.H2SDashboardControls);
   const calls = [];
   window.flatpickr = (input, options) => {
     calls.push({ input, options });
@@ -133,8 +133,8 @@ test('Queue filter participates in the same global styled-select lifecycle', () 
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.html'), 'utf8');
   const filter = /<select\s+id="commercialQueueFilter"[\s\S]*?<\/select>/.exec(html)[0];
   assert.doesNotMatch(filter, /data-custom-select="off"/);
-  assert.match(source, /dashboardSyncAllCustomSelects\(document\);\s+h2sInitDateInputs\(document\)/);
-  assert.ok(source.includes('record.removedNodes.forEach(h2sDestroyDetachedDateInputs)'));
+  assert.match(controlsSource, /dashboardSyncAllCustomSelects\(document\);\s+h2sInitDateInputs\(document\)/);
+  assert.ok(controlsSource.includes('record.removedNodes.forEach(h2sDestroyDetachedDateInputs)'));
 });
 
 test('destroyed pickers reinitialize with the original type, value and constraints; moved inputs stay live', () => {

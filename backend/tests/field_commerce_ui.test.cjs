@@ -39,7 +39,13 @@ test('immutable review, management overview, disabled deposit and exact agreemen
   f.data.agreements=[{quote_id:'quote',accepted_at:'2026-01-01'}];f.data.policyReady=true;
   f.data.orders=[{quote_id:'quote',order_reference:'FS-fixture',status:'field_sales_management_review'}];f.mount();await settle();
   assert.equal(f.root.querySelector('img'),null);assert.match(f.root.textContent,/\$100\.00/);assert.match(f.root.textContent,/FS-fixture/);
-  assert.equal(f.root.querySelector('[data-commerce-checkout="deposit"]').disabled,true);assert.match(f.root.textContent,/not payment authority|No automatic technician assignment/);
+  assert.equal(f.root.querySelector('[data-commerce-checkout="deposit"]').disabled,true);
+  assert.match(f.root.textContent,/Acceptance is not payment confirmation/);
+  assert.match(f.root.textContent,/No automatic technician assignment/);
+  assert.match(f.root.querySelector('[data-commerce-review] .field-sales__badge').textContent,/^Approved$/);
+  assert.equal(f.calls.some(call=>call.body),false,'Review must not initiate payment or assignment');
+  const audit=[...f.root.querySelectorAll('details')].find(el=>el.querySelector('summary')?.textContent==='Order audit reference');
+  assert.ok(audit);assert.equal(audit.open,false);assert.match(audit.textContent,/FS-fixture/);
   f.mount(null);await settle();assert.match(f.root.textContent,/Historical revisions are not separate sales/);f.click('[data-commerce-lead]');assert.equal(f.opened,'lead');
 });
 test('late private responses are discarded after account change/reset',async t=>{
@@ -51,7 +57,12 @@ test('successful immutable revision actions select the new revision instead of r
   f.data.quotes=[old];f.mount();await settle();
   f.respond(async(url,init)=>{if(init.method==='POST'){f.data.quotes=[{...old,quote_id:'new',revision:2,state:'pending_approval'},old];return Response.json({ok:true,id:'new'});}return Response.json(f.data);});
   f.click('[data-commerce-submit]');await settle();
-  assert.match(f.root.querySelector('[data-commerce-review] h4').textContent,/revision 2 \/ pending_approval/);
+  assert.equal(f.root.querySelector('[data-commerce-review] h4').textContent,'Quote revision 2');
+  assert.equal(f.root.querySelector('[data-commerce-review] .field-sales__badge').textContent,'Awaiting approval');
+  assert.doesNotMatch(f.root.querySelector('[data-commerce-review]').textContent,/pending_approval|Quote revision 1/);
+  const submitted=f.calls.find(call=>call.body).body;
+  assert.equal(submitted.action,'submit');assert.equal(submitted.quoteId,'old');assert.equal(submitted.leadId,'lead');assert.ok(submitted.operationId);
+  assert.equal(submitted.amountCents,undefined);assert.equal(submitted.totalCents,undefined);
   assert.equal(f.root.querySelector('[data-commerce-submit]'),null);
 });
 test('customer fragment is removed, exact quote/policy accepted without payment assertion or token persistence',async t=>{
