@@ -5,7 +5,8 @@ import { readManagementSource, boundManagementRows, available, review, object, M
 
 type Job = { job_id: string; order_id: string | null; status: string; due_at: string | null; updated_at: string };
 type Assignment = { assign_id: string; job_id: string; pro_id: string; state: string | null; updated_at: string };
-type Order = { id: string; order_id: string; metadata_json: unknown; commercial_request_id: string | null; service_name: string | null; customer_email: string | null };
+type Order = { id: string; order_id: string; metadata_json: unknown; commercial_request_id: string | null; service_name: string | null; customer_email: string | null;
+  customer_name?: string | null; address?: string | null; city?: string | null };
 type Pro = { pro_id: string; name: string | null; is_active: boolean };
 type DispatchPro = { pro_id: string; status: string | null };
 type Legacy = { job_id: string; customer_email: string | null };
@@ -189,7 +190,9 @@ export function projectManagementPlanning(snapshot: PlanningSnapshot, now: strin
     if (!terminal(job.status) && availability.some(a => a.status !== 'no_recorded_day_block')) attention.push('Technician availability is blocked or unverified.');
     if (snapshot.days.status !== 'available' || snapshot.capacity.status !== 'available' || snapshot.reservations.status !== 'available') attention.push('Availability/calendar source evidence is incomplete.');
     return { jobId: job.job_id, rawStatus: job.status, kind, orderId: order?.id || null, orderReference: order?.order_id || job.order_id,
-      service: order?.service_name || null, window: { state: windowState, start: job.due_at, end: typeof meta.scheduled_end === 'string' ? meta.scheduled_end : null, timezone },
+      service: order?.service_name || null, customerName: order?.customer_name || null,
+      address: order ? [order.address, order.city].filter(Boolean).join(', ') || null : null,
+      window: { state: windowState, start: job.due_at, end: typeof meta.scheduled_end === 'string' ? meta.scheduled_end : null, timezone },
       assignments: assigned, availability, conflicts, attention, reservation: reservation ? record('commercial_reservations', reservation.lead_id, reservation) : null,
       reservationEvidence: snapshot.reservations.status !== 'available' || snapshot.operations.status !== 'available' ? 'unverified'
         : reservation ? reservation.state : 'not_linked',
@@ -255,7 +258,7 @@ export async function readManagementPlanning(db: Pick<SupabaseClient, 'from' | '
     load<Capacity>('h2s_dispatch_pro_capacity', 'capacity_id,pro_id,date_local,time_slot,max_jobs,booked_jobs,available_spots,blocked'),
   ]);
   const refs = [...new Set(rows(jobs).map(job => job.order_id).filter((value): value is string => !!value))];
-  const orderColumns = 'id,order_id,metadata_json,commercial_request_id,service_name,customer_email';
+  const orderColumns = 'id,order_id,metadata_json,commercial_request_id,service_name,customer_email,customer_name,address,city';
   const orderRead = (column: string, values: string[]) => values.length ? readManagementSource<Order[]>('Orders',
     db.from('h2s_orders').select(orderColumns, { count: 'exact' }).in(column, values).limit(1001), true) : Promise.resolve(available<Order[]>([]));
   const [publicOrders, uuidOrders] = await Promise.all([orderRead('order_id', refs), orderRead('id', refs.filter(value => uuid.test(value)))]);

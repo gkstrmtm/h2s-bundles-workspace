@@ -62,10 +62,11 @@ export type { Evidence };
 
 export async function readManagementOperations(
   db: Pick<SupabaseClient, 'from' | 'rpc'>,
-  options: { offset: number; limit: number; verifyPayment(order: CommercialPaymentOrder): Promise<Payment> }
+  options: { offset: number; limit: number; jobId?: string; verifyPayment(order: CommercialPaymentOrder): Promise<Payment> }
 ) {
-  const jobsResult = await source<Job[]>('Dispatch jobs', db.from('h2s_dispatch_jobs')
-    .select('job_id,order_id,status,due_at').order('updated_at', { ascending: false })
+  let query = db.from('h2s_dispatch_jobs').select('job_id,order_id,status,due_at');
+  if (options.jobId) query = query.in('job_id', [options.jobId]);
+  const jobsResult = await source<Job[]>('Dispatch jobs', query.order('updated_at', { ascending: false })
     .order('job_id').range(options.offset, options.offset + options.limit));
   if (jobsResult.status !== 'available') throw new ManagementReadError(jobsResult.detail);
   const jobs = jobsResult.value.slice(0, options.limit);

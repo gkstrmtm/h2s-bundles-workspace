@@ -18,8 +18,8 @@ label{margin-left:auto}select{font:inherit;padding:4px}iframe{display:block;flex
         management:['Management Sales Overview','dashboard'],managementOrders:['Management Orders & Customer Details','orders'],
         managementQuotes:['Management Quotes & Payments','transactions'],commissions:['Management Commissions & Friday Review','commissions'],
         adminDashboard:['Admin Dashboard'],websiteMedia:['Website Media'],customerQueue:['Customer Queue'],operations:['Operations Overview'],
-        scheduling:['Scheduling Visibility'],reconciliation:['Reconciliation Review'],forecast:['Strategy & Forecasting'],strategy:['Strategy & Forecasting']};
-    const dashboardTabs={adminDashboard:'admin',websiteMedia:'proofpacks',customerQueue:'commercialqueue',operations:'operations',scheduling:'operations',reconciliation:'operations',forecast:'strategy',strategy:'strategy'};
+        scheduling:['Scheduling Visibility'],installationDetail:['Selected Installation Detail'],reconciliation:['Reconciliation Review'],forecast:['Strategy & Forecasting'],strategy:['Strategy & Forecasting']};
+    const dashboardTabs={adminDashboard:'admin',websiteMedia:'proofpacks',customerQueue:'commercialqueue',operations:'operations',scheduling:'operations',installationDetail:'operations',reconciliation:'operations',forecast:'strategy',strategy:'strategy'};
     const [label,view]=screens[screen]||screens.home,admin=['management','managementOrders','managementQuotes','commissions'].includes(screen)||Object.hasOwn(dashboardTabs,screen),frame=document.getElementById('application');
     document.title=label+' · Home2Smart Local';document.getElementById('title').textContent=label;
     const width=document.getElementById('width');width.value=admin?'1280':'390';
@@ -33,8 +33,9 @@ label{margin-left:auto}select{font:inherit;padding:4px}iframe{display:block;flex
     if(screen==='quotes')url.searchParams.set('lead',state.gallery.quoteLeadId);
     addEventListener('message',event=>{
         if(event.source!==frame.contentWindow||event.origin!==location.origin)return;
-        if(admin&&(view||['scheduling','reconciliation','forecast','strategy'].includes(screen))&&event.data?.type==='h2s-review-ready')frame.contentWindow.postMessage({type:'h2s-review-position',mode:view,
-            operationsView:screen==='scheduling'?'schedule':screen==='reconciliation'?'reconciliation':null,
+        if(admin&&(view||['scheduling','installationDetail','reconciliation','forecast','strategy'].includes(screen))&&event.data?.type==='h2s-review-ready')frame.contentWindow.postMessage({type:'h2s-review-position',mode:view,
+            operationsView:['scheduling','installationDetail'].includes(screen)?'schedule':screen==='reconciliation'?'reconciliation':null,
+            operationsJobId:new URLSearchParams(location.search).get('job'),operationsSection:new URLSearchParams(location.search).get('section'),
             focusForecast:screen==='forecast'||screen==='strategy',navigationVersion:1,documentVersion:1},location.origin);
         if(event.data?.type==='h2s-review-navigation'){
             const target=new URL(event.data.url,location.origin);

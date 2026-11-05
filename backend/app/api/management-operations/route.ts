@@ -4,6 +4,7 @@ import { corsHeaders } from '@/lib/adminAuth';
 import { DashboardPermissionError, requireDashboardCapability } from '@/lib/dashboardPermissions';
 import { ManagementReadError, readManagementOperations } from '@/lib/managementOperations';
 import { verifyCommercialPayment } from '@/lib/commercial_payment';
+import { managementAssignmentsEnabled } from '@/lib/managementAssignments';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -15,21 +16,23 @@ export async function GET(request: Request) {
   try {
     await requireDashboardCapability(request, 'operations.read');
     const query = new URL(request.url).searchParams;
-    for (const key of query.keys()) if (!['offset', 'limit'].includes(key)) {
+    for (const key of query.keys()) if (!['offset', 'limit', 'jobId'].includes(key) || query.getAll(key).length !== 1) {
       return Response.json({ ok: false, error: 'Unsupported management read parameter.' }, { status: 400, headers });
     }
     const rawOffset = query.get('offset') ?? '0', rawLimit = query.get('limit') ?? '25';
     const offset = Number(rawOffset), limit = Number(rawLimit);
+    const jobId = query.get('jobId');
     if (!/^\d+$/.test(rawOffset) || !/^\d+$/.test(rawLimit)
-      || !Number.isSafeInteger(offset) || offset > 10000 || limit < 1 || limit > 25) {
+      || !Number.isSafeInteger(offset) || offset > 10000 || limit < 1 || limit > 25
+      || jobId !== null && (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(jobId) || offset !== 0 || limit !== 1)) {
       return Response.json({ ok: false, error: 'Use offset 0-10000 and limit 1-25.' }, { status: 400, headers });
     }
     const stripe = process.env.STRIPE_SECRET_KEY
       ? new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 4000, maxNetworkRetries: 0 }) : null;
     const result = await readManagementOperations(getSupabase(), {
-      offset, limit, verifyPayment: order => verifyCommercialPayment(order, stripe),
+      offset, limit, ...(jobId ? { jobId } : {}), verifyPayment: order => verifyCommercialPayment(order, stripe),
     });
-    return Response.json({ ok: true, ...result }, { headers });
+    return Response.json({ ok: true, ...result, assignmentManagementEnabled: managementAssignmentsEnabled() }, { headers });
   } catch (error) {
     if (error instanceof DashboardPermissionError) {
       return Response.json({ ok: false, error: error.message }, { status: error.status, headers });

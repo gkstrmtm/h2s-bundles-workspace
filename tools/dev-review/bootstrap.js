@@ -76,6 +76,17 @@
                         if(!root?.classList.contains('active'))return;
                         const button=root.querySelector('[data-operations-view="'+command.operationsView+'"]');
                         if(button?.getAttribute('aria-pressed')!=='true'){button?.click();return;}
+                        if(command.operationsJobId){
+                            const record=[...root.querySelectorAll('[data-operation-record]')].find(item=>item.dataset.operationRecord===command.operationsJobId);
+                            if(!record)return;
+                            if(record.getAttribute('aria-pressed')!=='true'){record.click();return;}
+                            if(root.querySelector('[data-selected-read-status]')?.textContent.includes('Checking selected job'))return;
+                        }
+                        if(['overview','schedule','technician','readiness','payments','completion'].includes(command.operationsSection)){
+                            const section=root.querySelector('[data-job-section="'+command.operationsSection+'"]');
+                            if(!section)return;
+                            section.scrollIntoView({block:'center',behavior:'instant'});section.focus({preventScroll:true});
+                        }
                         clearInterval(timer);notify({type:'h2s-review-positioned',navigationVersion:command.navigationVersion});return;
                     }
                     if(command.focusForecast){

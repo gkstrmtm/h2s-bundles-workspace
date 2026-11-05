@@ -21,7 +21,7 @@ function fixture() {
   w.fetch = async (url, options) => {
     calls.push({ url, options });
     if (url.includes('/api/management-operations')) return { ok: true, json: async () => ({
-      ok: true, readOnly: true, jobs: [row], page: { hasMore: false }, readAt: '2026-01-01T12:00:00Z' }) };
+      ok: true, readOnly: true, assignmentManagementEnabled: enabled, jobs: [row], page: { hasMore: false }, readAt: '2026-01-01T12:00:00Z' }) };
     if (options.method === 'GET') return { ok: true, json: async () => ({
       ok: true, enabled, job: { jobId: id(101), customerName: 'Fixture Customer', service: 'TV installation',
         orderReference: 'ORD-FIXTURE', rawStatus: 'queued', assignments: [], eligible, reason: 'Existing assignment requires reconciliation.',
@@ -48,8 +48,8 @@ function fixture() {
 }
 test('default-off UI offers no write control and never issues a POST', async t => {
   const f = fixture(); t.after(() => f.dom.window.close());
-  await f.open();
-  assert.match(f.dialog().textContent, /assignments are disabled/);
+  await f.module.open();
+  assert.equal(f.w.document.querySelector('[data-assignment-job]'), null);
   assert.equal(f.w.document.querySelector('[data-assignment-confirm]'), null);
   assert.equal(f.calls.some(call => call.options.method === 'POST'), false);
 });

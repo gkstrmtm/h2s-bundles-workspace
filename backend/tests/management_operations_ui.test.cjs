@@ -31,7 +31,11 @@ function fixture(html = '<div id="h2s-app"><div class="app-sidebar-group" data-g
   module.configure({ apiBase: 'https://backend.fixture.invalid', getSession: () => session });
   return { dom, w, module, session, calls, errors, root: w.document.getElementById('operations-pane') };
 }
-const click = (f, selector) => f.root.querySelector(selector).click();
+const click = (f, selector) => {
+  const control=f.root.querySelector(selector);
+  if(control.tagName==='OPTION'){control.parentElement.value=control.value;control.parentElement.dispatchEvent(new f.w.Event('change',{bubbles:true}));}
+  else control.click();
+};
 
 test('module attaches to the real dashboard, preserves existing panes, and shell hooks are registered', async () => {
   const html = fs.readFileSync(path.join(frontend, 'dash.html'), 'utf8');
@@ -85,14 +89,17 @@ test('read-only view renders evidence, escapes content, filters loaded page, and
     assert.match(f.root.textContent, /Next review:/);
     assert.match(f.root.textContent, /Browser timezone; job timezone is not provided/);
     assert.match(f.root.textContent, /<img src=x onerror=alert\(1\)>/); assert.equal(f.root.querySelector('img'), null);
-    assert.match(f.root.textContent, /Settlement: pending; approval: approved/);
+    assert.match(f.root.querySelector('[data-operations-evidence]').textContent, /"status": "pending"/);
+    assert.match(f.root.querySelector('[data-operations-evidence]').textContent, /"state": "approved"/);
     assert.match(f.root.textContent, /Preparation ready \(not payment clearance\)/);
     assert.match(f.root.textContent, /Filters apply to this page only/);
     assert.match(f.root.textContent, /2 mounts/);
-    assert.match(f.root.querySelector('article > p:nth-of-type(2)').textContent, /ORD-FIXTURE/);
-    assert.doesNotMatch(f.root.querySelector('article > p:nth-of-type(2)').textContent, /fixture-job/);
-    const audit = f.root.querySelector('article details');
-    assert.equal(audit.open, false); assert.match(audit.textContent, /fixture-job/);
+    assert.match(f.root.querySelector('article header').textContent, /ORD-FIXTURE/);
+    assert.doesNotMatch(f.root.querySelector('article header').textContent, /fixture-job/);
+    const audit = f.root.querySelector('[data-operations-audit]');
+    assert.equal(audit.hidden, true); assert.match(audit.textContent, /fixture-job/);
+    assert.equal(f.root.querySelector('details'), null);
+    click(f, '[data-operations-context="audit"]'); assert.equal(audit.hidden, false);
     click(f, '[data-operations-filter="payments"]');
     assert.equal(f.root.querySelectorAll('article').length, 0);
     click(f, '[data-operations-filter="payouts"]');
@@ -274,7 +281,7 @@ test('assignment review pauses sync and a successful confirmed offer invalidates
     f.root.classList.add('active');
     f.w.fetch = async (url, options) => {
       f.calls.push({ url, options });
-      if (url.includes('/api/management-operations')) return { ok: true, json: async () => payload() };
+      if (url.includes('/api/management-operations')) return { ok: true, json: async () => ({ ...payload(), assignmentManagementEnabled: true }) };
       return { ok: true, json: async () => options.method === 'POST'
         ? { ok: true, assignment: { state: 'pending' } }
         : { ok: true, enabled: true, job: { jobId: 'fixture-job', eligible: true, service: 'TV installation',

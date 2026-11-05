@@ -41,3 +41,66 @@ test('dashboard read fixture exercises native queue/media readers, keeps markets
     assert.equal((await read('management-planning', '?view=schedule&filter=all')).jobs.length, 1);
     assert.equal((await preview.request('management-operations', 'GET', 'admin', '?offset=-1', origin)).status, 400);
 });
+
+test('Operations native readers and selectable UI handle zero, one, ten and sixty synthetic jobs', async t => {
+    const { JSDOM } = require('jsdom'), fs = require('node:fs'), path = require('node:path');
+    const source = fs.readFileSync(path.resolve(__dirname, '..', '..', 'frontend', 'management-operations.js'), 'utf8');
+    const settle = async () => { for (let i=0;i<5;i++) await new Promise(resolve=>setImmediate(resolve)); };
+    for (const count of [0,1,10,60]) await t.test(`${count} jobs`, async () => {
+        const preview=createDashboardPreview({jobCount:count});
+        const dom=new JSDOM('<div id="h2s-app"><div class="app-sidebar-group" data-group-id="admin"><div class="app-sidebar-group-items"></div></div><div class="app-content"></div></div>',
+            {runScripts:'outside-only',url:origin});
+        try {
+            const w=dom.window,calls=[];
+            w.console.error=()=>{};
+            w.fetch=(url,options)=>{const u=new URL(url);calls.push({u,options});return preview.request(u.pathname.replace('/api/',''),options.method,'admin',u.search,origin);};
+            w.eval(source);
+            w.H2SManagementOperations.configure({apiBase:origin,getSession:()=>({token:'synthetic-admin',isAdmin:true})});
+            await w.H2SManagementOperations.open();
+            const root=w.document.getElementById('operations-pane'),buttons=()=>root.querySelectorAll('[data-operation-record]');
+            assert.equal(buttons().length,Math.min(count,25));
+            assert.equal(root.querySelectorAll('details, summary').length,0);
+            assert.match(root.textContent,/Filters apply to this page only/);
+            if(!count){assert.match(root.textContent,/No Dispatch records/);return;}
+            assert.equal(root.querySelectorAll('[data-job-section]').length,6);
+            assert.equal(root.querySelector('[data-assignment-job]'),null);
+            if(count>1){
+                buttons()[1].click();
+                assert.equal(root.querySelector('[data-selected-title]').textContent,'SYNTHETIC Chen household 2');
+                buttons()[1].dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));
+                assert.equal(root.querySelector('[data-selected-title]').textContent,'SYNTHETIC Patel household 3');
+                assert.equal(root.querySelectorAll('[data-operation-record][aria-pressed="true"]').length,1);
+                assert.equal(w.document.activeElement.dataset.operationRecord,buttons()[2].dataset.operationRecord);
+                const search=root.querySelector('[data-operations-search]');
+                search.value='No matching household';search.dispatchEvent(new w.Event('input',{bubbles:true}));
+                assert.equal(buttons().length,0);assert.match(root.textContent,/Other pages may contain/);
+                search.value='';search.dispatchEvent(new w.Event('input',{bubbles:true}));
+            }
+            root.querySelector('[data-operations-view="schedule"]').click();await settle();
+            assert.equal(buttons().length,Math.min(count,25));
+            assert.ok(root.querySelector('[data-selected-title]').textContent.includes('SYNTHETIC'));
+            if(count>1){
+                assert.ok(calls.some(call=>call.u.searchParams.has('jobId')));
+                assert.match(root.querySelector('[data-job-section="payments"]').textContent,/SYNTHETIC full-order payment evidence/);
+                assert.match(root.querySelector('[data-job-section="payments"]').textContent,/Deposit allocation not provided/);
+            }
+            if(count>25){
+                root.querySelector('[data-operations-action="next"]').click();await settle();
+                assert.match(root.querySelector('[data-operations-page]').textContent,/60 matching records; page 2/);
+                assert.equal(buttons().length,25);
+            }
+            root.querySelector('[data-operations-context="audit"]').click();
+            assert.equal(root.querySelector('[data-operations-audit]').hidden,false);
+            assert.equal(root.querySelector('[data-operations-detail]').hidden,true);
+            assert.match(root.querySelector('[data-operations-audit]').textContent,/selectedRecord/);
+            if(count>=10){
+                root.querySelector('[data-operations-view="reconciliation"]').click();await settle();
+                const labels=[...buttons()].map(button=>button.querySelector('strong').textContent);
+                assert.ok(labels.length>1);
+                assert.equal(new Set(labels).size,labels.length,'historical cases with the same category must remain distinguishable');
+                assert.ok(labels.every(label=>/^Case \d+ in this result set/.test(label)));
+            }
+            assert.ok(calls.every(call=>call.options.method==='GET'));
+        } finally {dom.window.close();}
+    });
+});

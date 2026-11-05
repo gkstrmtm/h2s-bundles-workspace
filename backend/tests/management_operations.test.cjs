@@ -64,6 +64,7 @@ test('management GET authenticates before reads, bounds input, rejects legacy to
     '@/lib/dashboardPermissions': f.permissions,
     '@/lib/managementOperations': { ...adapter, readManagementOperations: async () => ({ jobs: [], readOnly: true }) },
     '@/lib/commercial_payment': { verifyCommercialPayment() { throw Error('Unexpected payment call'); } },
+    '@/lib/managementAssignments': { managementAssignmentsEnabled: () => false },
   });
   for (const role of ['VA', 'OPERATIONS', 'SALES']) {
     f.user.Role = role;
@@ -71,7 +72,8 @@ test('management GET authenticates before reads, bounds input, rejects legacy to
   }
   assert.equal((await route.GET(request('', ''))).status, 401);
   f.user.Role = 'ADMIN';
-  for (const query of ['?limit=0', '?limit=26', '?offset=-1', '?offset=10001', '?offset=1.5', '?limit=NaN', '?write=true']) {
+  for (const query of ['?limit=0', '?limit=26', '?offset=-1', '?offset=10001', '?offset=1.5', '?limit=NaN', '?write=true',
+    '?jobId=invalid&limit=1', `?jobId=${id(101)}`, `?jobId=${id(101)}&limit=1&offset=25`, '?limit=1&limit=2']) {
     assert.equal((await route.GET(request(query))).status, 400, query);
   }
   assert.equal(reads, 0);
@@ -80,6 +82,7 @@ test('management GET authenticates before reads, bounds input, rejects legacy to
   assert.match(response.headers.get('cache-control'), /private, no-store/);
   assert.match(response.headers.get('vary'), /Authorization/);
   assert.equal(f.calls.includes('WRITE'), false);
+  assert.equal((await route.GET(request(`?jobId=${id(101)}&limit=1`))).status, 200);
   assert.equal(route.POST, undefined); assert.equal(route.PATCH, undefined); assert.equal(route.DELETE, undefined);
   // A fixed legacy token is not resolved through Dashboard_Sessions.
   assert.equal((await route.GET(request('', 'legacy-admin-token'))).status, 401);
@@ -160,6 +163,16 @@ async function databaseFixture() {
 test('read-only adapter verifies sparse dispatch/order/assignment/payout relationships and failure states', async t => {
   const f = await databaseFixture();
   try {
+    await t.test('selected job read targets its exact identity and never substitutes another page record', async () => {
+      await f.seed();
+      await f.db.exec(`insert into h2s_dispatch_jobs(job_id,order_id,status) values('${id(102)}','missing-order','queued')`);
+      const read = jobId => adapter.readManagementOperations(f.client, { offset: 0, limit: 1, jobId,
+        verifyPayment: async () => ({ status: 'unverified', detail: 'Fixture selected read' }) });
+      assert.equal((await read(id(102))).jobs[0].jobId, id(102));
+      assert.equal((await read(id(101))).jobs[0].order.value.customerName, 'Fixture Customer');
+      assert.equal((await read(id(999))).jobs.length, 0);
+      assert.ok(f.calls.every(call => ['select', 'rpc'].includes(call[0])));
+    });
     await t.test('verified bridge retains equipment, schedule, assignment and separate approval/settlement evidence', async () => {
       await f.seed();
       const before = (await f.db.query('select * from h2s_payouts_ledger')).rows;

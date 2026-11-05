@@ -41,7 +41,12 @@ function fixture(t, withSync = false) {
   module.configure({ apiBase: 'https://backend.fixture.invalid', getSession: () => session });
   const root = w.document.getElementById('operations-pane');
   root.classList.add('active');
-  const click = async selector => { root.querySelector(selector).click(); await tick(); };
+  const click = async selector => {
+    const control=root.querySelector(selector);
+    if(control.tagName==='OPTION'){control.parentElement.value=control.value;control.parentElement.dispatchEvent(new w.Event('change',{bubbles:true}));}
+    else control.click();
+    await tick();
+  };
   const enter = async () => { await module.open(); await click('[data-operations-view="reconciliation"]'); };
   const save = (status = 'reviewed', notes = 'Reviewed original evidence', evidence = 'Source record reference') => {
     const form = root.querySelector('form[data-review-issue]');
@@ -59,11 +64,11 @@ test('scheduling mode renders uncertainty, paginates server-wide filters and pre
   const formattedZones = [], format = f.w.Date.prototype.toLocaleString;
   f.w.Date.prototype.toLocaleString = function (locale, options) { formattedZones.push(options?.timeZone); return format.call(this, locale, options); };
   f.state.timezone = 'Asia/Tokyo'; f.state.end = '2027-01-01T16:00:00Z';
-  await f.module.open(); assert.equal(formattedZones.filter(zone => zone === 'Asia/Tokyo').length, 2);
+  await f.module.open(); assert.ok(formattedZones.filter(zone => zone === 'Asia/Tokyo').length >= 2);
   assert.match(f.root.textContent, /\(Asia\/Tokyo\)/);
-  await f.click('[data-planning-filter="unscheduled"]'); assert.match(f.calls.at(-1).url, /filter=unscheduled/);
-  await f.click('[data-operations-action="next"]'); assert.match(f.calls.at(-1).url, /offset=25/);
-  await f.click('[data-assignment-job]'); assert.match(f.w.document.body.textContent, /disabled/i);
+  await f.click('[data-planning-filter="unscheduled"]'); assert.match(f.calls.findLast(call=>call.url.includes('management-planning')).url, /filter=unscheduled/);
+  await f.click('[data-operations-action="next"]'); assert.match(f.calls.findLast(call=>call.url.includes('management-planning')).url, /offset=25/);
+  assert.equal(f.root.querySelector('[data-assignment-job]'), null, 'No assignment capability was supplied');
   assert.equal(f.w.document.getElementById('existing').textContent, 'Existing hiring workflow');
   for (const call of f.calls) { assert.equal(call.options.method, 'GET'); assert.equal(call.options.cache, 'no-store'); assert.equal(call.options.body, undefined); }
   assert.equal(f.w.localStorage.length, 0);
@@ -91,7 +96,7 @@ test('scheduling operational counts remain page-scoped and distinguish starts, p
     row({ rawStatus: 'cancelled', window: { state: 'unscheduled', start: null } }),
   ];
   await f.module.open(); await f.click('[data-operations-view="schedule"]');
-  const metric = label => Array.from(f.root.querySelectorAll('.management-operations__summary dl > div'))
+  const metric = label => Array.from(f.root.querySelectorAll('[data-operations-metrics] > div, [data-operations-secondary-metrics] > div'))
     .find(node => node.querySelector('dt').textContent === label).querySelector('strong').textContent;
   assert.equal(metric('Jobs in bounded read'), '40');
   assert.equal(metric('Loaded scheduling jobs'), '7');
@@ -103,7 +108,7 @@ test('scheduling operational counts remain page-scoped and distinguish starts, p
   assert.equal(metric('Attention'), '3 known · 4 unknown');
   assert.match(f.root.querySelector('[data-operations-metrics]').textContent, /2 known · 2 unknown preparation-ready/);
   assert.match(f.root.querySelector('[data-operations-status]').textContent, /Counts cover loaded records/);
-  assert.match(f.root.textContent, /Customer details are not provided/);
+  assert.match(f.root.textContent, /Customer not verified/);
   f.state.complete = true; await f.module.open();
   assert.equal(metric('Attention'), '3', 'complete bounded evidence supports zero observed flags on the other loaded jobs, not clearance');
 });
@@ -118,12 +123,13 @@ test('normal scheduling copy stays compact while exact source limitations and cr
   assert.equal(metrics.querySelectorAll('dd span').length, 1, 'only concise preparation evidence remains visible under a metric');
   assert.ok(metrics.textContent.length < 350);
   assert.match(metrics.textContent, /Unknown \/ unavailable/);
-  const limits = f.root.querySelector('[data-operations-scope]').closest('details');
-  assert.equal(limits.open, false);
+  const limits = f.root.querySelector('[data-operations-audit]');
+  assert.equal(limits.hidden, true);
   assert.match(limits.textContent, /At most 1000 complete rows per source; separate SELECTs, not an atomic snapshot/);
   assert.match(limits.textContent, /Revalidate before any approved repair/);
   assert.match(Array.from(metrics.children).find(node => node.querySelector('dt').textContent === 'Scheduled (recorded start)').title, /not a confirmed booking/);
-  const routine = f.root.cloneNode(true); routine.querySelectorAll('details').forEach(node => node.remove());
+  const routine = f.root.cloneNode(true); routine.querySelectorAll('[data-operations-audit]').forEach(node => node.remove());
+  assert.equal(f.root.querySelector('details'), null);
   assert.doesNotMatch(routine.textContent, /separate SELECTs|atomic snapshot|1000 complete rows|Revalidate before any approved repair/);
 });
 test('review classifications are explicit session drafts, require supporting evidence, escape data and export without tokens or production writes', async t => {
@@ -167,8 +173,8 @@ test('routine reconciliation relationships never expose UUIDs or raw record keys
   assert.match(routine.textContent, /Recorded order reference: SYNTHETIC-ORDER-1 · Recorded customer name: Fixture Customer/);
   assert.match(routine.textContent, /Orders · Name unavailable · 1 source record/);
   assert.match(routine.textContent, /Affected relationships \(4 source records\)/);
-  const technical = article.querySelector('details');
-  assert.equal(technical.open, false);
+  const technical = f.root.querySelector('[data-operations-audit]');
+  assert.equal(technical.hidden, true);
   for (const id of [jobId, orderId, assignmentId, proId]) assert.ok(technical.textContent.includes(id));
 });
   test('unsubmitted review inputs survive view and filter changes without becoming approved or exportable drafts', async t => {
@@ -228,6 +234,36 @@ test('a late planning response cannot repopulate private records after logout', 
   resolve({ ok: true, json: async () => ({ ok: true, readOnly: true, jobs: [], issues: [{ id: 'private-late-record' }], page: {} }) });
   await pending; assert.doesNotMatch(f.root.textContent, /private-late-record/);
 });
+
+test('selected-job reads reject late selections, mismatched identities and revoked access', async t => {
+  const f=fixture(t);
+  f.state.jobs=['one','two','three'].map(jobId=>({jobId,customerName:'Planning '+jobId,service:'TV installation',rawStatus:'assigned',kind:'installation',
+    window:{state:'complete',start:'2027-01-01T14:00:00Z',end:'2027-01-01T16:00:00Z',timezone:'UTC'},
+    assignments:[],availability:[],attention:[],conflicts:[],preparation:{status:'available',value:{ready:true,blockers:[]}}}));
+  const transport=f.w.fetch,pending=new Map();
+  f.w.fetch=(url,options)=>{
+    const jobId=new URL(url).searchParams.get('jobId');
+    return jobId?new Promise(resolve=>pending.set(jobId,resolve)):transport(url,options);
+  };
+  await f.module.open();await f.click('[data-operations-view="schedule"]');
+  await f.click('[data-operation-record="two"]');
+  await f.click('[data-operation-record="three"]');
+  const result=jobId=>({ok:true,status:200,json:async()=>({ok:true,readOnly:true,readAt:'2026-11-03T20:00:00Z',
+    jobs:[{jobId,order:{status:'available',value:{customerName:'Verified '+jobId,service:'TV installation'}},
+      payment:{status:'paid',detail:'Synthetic verified order'}}]})});
+  pending.get('three')(result('three'));await tick();
+  assert.equal(f.root.querySelector('[data-selected-title]').textContent,'Verified three');
+  pending.get('two')(result('two'));pending.get('one')(result('one'));await tick();
+  assert.equal(f.root.querySelector('[data-selected-title]').textContent,'Verified three');
+  await f.click('[data-operation-record="two"]');
+  pending.get('two')(result('wrong-job'));await tick();
+  assert.match(f.root.textContent,/No other job was substituted/);
+  assert.doesNotMatch(f.root.querySelector('[data-operations-detail]').textContent,/Verified wrong-job/);
+  await f.click('[data-selected-retry]');
+  pending.get('two')({ok:false,status:403,json:async()=>({ok:false,error:'Permission revoked'})});await tick();
+  assert.equal(f.root.querySelector('[data-operation-record]'),null);
+  assert.match(f.root.textContent,/Selected job access was denied/);
+});
 test('real shared sync refreshes on visible focus but preserves review inputs and saved session drafts', async t => {
   const f = fixture(t, true); await f.enter();
   let now = f.w.Date.now(); f.w.Date.now = () => now;
@@ -250,6 +286,12 @@ test('real shared sync refreshes on visible focus but preserves review inputs an
   f.state.error = null; await f.click('[data-operations-action="retry"]');
   assert.match(f.root.textContent, /reviewed \(session draft, not resolution\)/);
   assert.equal(f.root.querySelector('[data-operations-action="retry"]').hidden, true);
+  await f.click('[data-operations-view="schedule"]');
+  before = f.calls.length; now += 16000;
+  f.w.dispatchEvent(new f.w.Event('focus')); await tick();
+  assert.ok(f.calls.length > before, 'a historical review draft must not freeze installation synchronization');
+  await f.click('[data-operations-view="reconciliation"]');
+  assert.match(f.root.textContent, /reviewed \(session draft, not resolution\)/);
 });
 test('expanded reconciliation combobox with an external search portal blocks sync and drops a pending read', async t => {
   const f = fixture(t, true); await f.enter();

@@ -6,7 +6,8 @@ const { evaluate } = require('../../backend/tests/helpers/commercial_operations_
 const { pages } = require('../../frontend/media-page-heroes.js');
 const id = number => `00000000-0000-4000-8000-${number.toString(16).padStart(12, '0')}`;
 
-function createDashboardPreview() {
+function createDashboardPreview({ jobCount = 1 } = {}) {
+    if (!Number.isInteger(jobCount) || jobCount < 0 || jobCount > 1000) throw Error('Use 0-1000 isolated Operations jobs.');
     const fixture = createFixture(), now = new Date().toISOString();
     for (const [index, market, name] of [
         [1, 'residential', 'SYNTHETIC Morgan and Jordan Wellington household'],
@@ -41,18 +42,55 @@ function createDashboardPreview() {
     for (const table of ['h2s_dispatch_jobs', 'h2s_dispatch_job_assignments', 'h2s_dispatch_legacy_job_links',
         'h2s_pros', 'h2s_dispatch_pros', 'h2s_jobs', 'h2s_payouts_ledger', 'commercial_reservations',
         'h2s_dispatch_pros_availability', 'h2s_dispatch_pro_capacity']) fixture.tables[table] = [];
-    fixture.tables.h2s_orders.push({ id: id(300), order_id: 'SYNTHETIC-ORDER-1',
-        customer_name: fixture.tables.commercial_leads[0].full_name, customer_email: 'review1@example.invalid',
-        address: '100 Synthetic Review Lane', service_name: 'SYNTHETIC installation review',
-        total: null, status: 'pending', metadata_json: {}, created_at: now, updated_at: now });
-    fixture.tables.h2s_dispatch_jobs.push({ job_id: id(301), order_id: 'SYNTHETIC-ORDER-1',
-        status: 'queued', due_at: new Date(Date.now() + 86400000).toISOString(), updated_at: now });
+    const readiness = new Map(), payments = new Map();
+    for (let i = 0; i < jobCount; i++) {
+        const jobId = id(301 + i * 10), orderId = id(300 + i * 10), proId = id(50000 + i % 3), legacyId = 'SYNTHETIC-LEGACY-' + i;
+        const start = new Date(Date.now() + 86400000 * (1 + Math.floor(i / 10)));
+        start.setUTCHours(15 + (i % 10 === 3 ? 0 : i % 3) * 2, 0, 0, 0);
+        const scheduled = i % 10 !== 2, completed = i % 10 === 4;
+        const end = new Date(start.getTime() + 7200000).toISOString();
+        const email = `installation${i}@example.invalid`;
+        fixture.tables.h2s_orders.push({ id: orderId, order_id: 'SYNTHETIC-ORDER-' + (i + 1),
+            customer_name: i === 0 ? fixture.tables.commercial_leads[0].full_name : `SYNTHETIC ${['Rivera', 'Chen', 'Patel', 'Williams'][i % 4]} household ${i + 1}`,
+            customer_email: email, address: `${100 + i} Synthetic Review Lane`, city: 'Review City',
+            service_name: i % 2 ? 'SYNTHETIC camera installation' : 'SYNTHETIC TV installation',
+            total: null, status: completed ? 'completed' : 'pending',
+            items: 'Customer-owned equipment; mounting supplies require review',
+            metadata_json: scheduled ? { scheduled_end: end, scheduled_tz: 'America/Chicago', order_required: true,
+                order_stage: i % 10 === 6 ? 'pending' : 'delivered' } : {},
+            created_at: now, updated_at: now });
+        fixture.tables.h2s_dispatch_jobs.push({ job_id: jobId, order_id: 'SYNTHETIC-ORDER-' + (i + 1),
+            status: completed ? 'completed' : scheduled ? 'assigned' : 'queued',
+            due_at: scheduled ? start.toISOString() : null, updated_at: now });
+        if (!fixture.tables.h2s_pros.some(row => row.pro_id === proId)) fixture.tables.h2s_pros.push({
+            pro_id: proId, name: ['SYNTHETIC Alex installer', 'SYNTHETIC Taylor installer', 'SYNTHETIC Casey installer'][i % 3],
+            email: `installer${i % 3}@example.invalid`, is_active: true });
+        if (scheduled) fixture.tables.h2s_dispatch_job_assignments.push({ assign_id: 'SYNTHETIC-OFFER-' + i, job_id: jobId,
+            pro_id: proId, state: completed ? 'completed' : i % 10 === 0 ? 'pending' : 'accepted', updated_at: now });
+        fixture.tables.h2s_jobs.push({ job_id: legacyId, customer_email: email });
+        if (i % 10 !== 8) fixture.tables.h2s_dispatch_legacy_job_links.push({ dispatch_job_id: jobId, legacy_job_id: legacyId,
+            evidence_basis: 'source_record', evidence_reference: 'SYNTHETIC reviewed link, not production',
+            reviewed_by_user_id: id(9), reviewed_at: now });
+        readiness.set(jobId, i % 10 === 7 || jobCount === 1 ? null : { ready: ![2, 6].includes(i % 10),
+            blockers: [2, 6].includes(i % 10) ? ['Equipment or materials require review', 'Confirm property access instructions'] : [] });
+        payments.set(orderId, jobCount === 1 ? { status: 'unverified', detail: 'No external payment verification in this read fixture.' }
+            : { status: i % 10 === 5 ? 'unpaid' : i % 10 === 7 ? 'unavailable' : 'paid',
+                detail: 'SYNTHETIC full-order payment evidence only; not a real payment or verified deposit allocation.', checkedAt: now });
+        if (i % 10 === 1) {
+            fixture.tables.commercial_lead_operations.push({ lead_id: id(90000 + i), installation_job_id: jobId, order_id: orderId });
+            fixture.tables.commercial_reservations.push({ lead_id: id(90000 + i), revision: 1, state: 'confirmed',
+                starts_at: start.toISOString(), ends_at: end, expires_at: null, timezone: 'America/Chicago' });
+        }
+    }
+    if (jobCount > 1) fixture.tables.h2s_dispatch_job_assignments.push({ assign_id: 'SYNTHETIC-HISTORICAL-ORPHAN',
+        job_id: id(999999), pro_id: id(50000), state: 'accepted', updated_at: now });
     const foundation = evaluate('lib\\operationsFoundation.ts', {});
     const operations = evaluate('lib\\managementOperations.ts', { '@/lib/operationsFoundation': foundation });
     const planning = evaluate('lib\\managementPlanning.ts', { 'node:crypto': crypto,
         '@/lib/operationsFoundation': foundation, '@/lib/managementOperations': operations });
-    const readDb = { from: fixture.database.from.bind(fixture.database), async rpc(name) {
+    const readDb = { from: fixture.database.from.bind(fixture.database), async rpc(name, args) {
         if (name !== 'h2s_job_readiness') throw Error('Unsupported isolated dashboard RPC: ' + name);
+        if (readiness.get(args.p_job_id)) return { data: readiness.get(args.p_job_id), error: null };
         return { data: null, error: { code: '42883', message: 'Readiness evidence is unavailable in this read fixture.' } };
     } };
     const imports = { 'next/server': { NextResponse: Response }, '@/lib/supabase': { getSupabase: () => fixture.database } };
@@ -88,8 +126,9 @@ function createDashboardPreview() {
             if (['management-operations', 'management-planning'].includes(name)
                 && (!Number.isSafeInteger(offset) || offset < 0))
                 return json({ ok: false, error: 'Invalid review offset.' }, 400);
-            if (name === 'management-operations') return json({ ok: true, ...await operations.readManagementOperations(readDb,
-                { offset, limit: 25, verifyPayment: async () => ({ status: 'unverified', detail: 'No external payment verification in this read fixture.' }) }) });
+            if (name === 'management-operations') return json({ ok: true, assignmentManagementEnabled: false, ...await operations.readManagementOperations(readDb,
+                { offset, limit: url.searchParams.has('jobId') ? 1 : 25, jobId: url.searchParams.get('jobId') || undefined,
+                    verifyPayment: async order => payments.get(order.id) }) });
             if (name === 'management-planning') return json({ ok: true, reviewOwnerId: id(9),
                 ...await planning.readManagementPlanning(readDb, { offset, limit: 25,
                     view: url.searchParams.get('view') === 'reconciliation' ? 'reconciliation' : 'schedule',

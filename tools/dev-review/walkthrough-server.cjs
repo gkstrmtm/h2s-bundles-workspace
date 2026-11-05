@@ -65,7 +65,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     const engine = await createWalkthrough({ origin });
     const gallery=process.env.H2S_REVIEW_SALES_GALLERY==='true'
         ?await require('./sales-preview-seed.cjs').seedSalesPreview(engine,samplePhoto()):null;
-    const dashboard = require('./dashboard-preview-fixture.cjs').createDashboardPreview();
+    const dashboard = require('./dashboard-preview-fixture.cjs').createDashboardPreview({ jobCount: Number(process.env.H2S_REVIEW_OPERATIONS_JOBS || 1) });
     const handler = async (req, res) => {
         try {
             const requestPort = req.socket.encrypted ? port : httpPort;

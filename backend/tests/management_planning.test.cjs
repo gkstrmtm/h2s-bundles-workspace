@@ -13,7 +13,8 @@ function snapshot() {
     jobs: ok([{ job_id: id(101), order_id: 'ORD-FIXTURE', status: 'queued', due_at: '2027-01-01T14:00:00Z', updated_at: now }]),
     assignments: ok([{ assign_id: 'offer-one', job_id: id(101), pro_id: id(500), state: 'pending', updated_at: now }]),
     orders: ok([{ id: id(100), order_id: 'ORD-FIXTURE', metadata_json: { scheduled_end: '2027-01-01T16:00:00Z', scheduled_tz: 'UTC' },
-      commercial_request_id: null, service_name: 'TV installation', customer_email: 'fixture@example.invalid' }]),
+      commercial_request_id: null, service_name: 'TV installation', customer_email: 'fixture@example.invalid',
+      customer_name: 'Fixture Household', address: '100 Fixture Lane', city: 'Fixture City' }]),
     pros: ok([{ pro_id: id(500), name: 'Fixture Installer', is_active: true }]), dispatchPros: ok([]), legacy: ok([]), links: ok([]),
     payouts: ok([]), reservations: ok([]), operations: ok([]), days: ok([]), capacity: ok([]),
   };
@@ -26,6 +27,7 @@ const addJob = (s, n = 102, start = '2027-01-01T15:00:00Z', state = 'accepted') 
 test('scheduled, unscheduled and incomplete windows retain separate assignment, customer reservation and availability evidence', () => {
   const s = snapshot(), before = JSON.stringify(s), p = project(s), row = p.schedule[0];
   assert.equal(row.window.state, 'complete'); assert.equal(row.reservationEvidence, 'not_linked');
+  assert.equal(row.customerName, 'Fixture Household'); assert.equal(row.address, '100 Fixture Lane, Fixture City');
   assert.equal(row.availability[0].status, 'no_recorded_day_block');
   assert.match(row.availability[0].detail, /not skills, travel/);
   assert.ok(row.attention.some(item => /Pending offer/.test(item)));
@@ -134,7 +136,8 @@ function clientFixture(s = snapshot()) {
       assert.ok(Object.hasOwn(tables, table)); let fields, values, column, limit = 1001;
       const builder = {
         select(value, opts) {
-          assert.equal(opts.count, 'exact'); assert.doesNotMatch(value, /phone|w9|address|reason|notes/);
+          assert.equal(opts.count, 'exact'); assert.doesNotMatch(value, /phone|w9|reason|notes/);
+          if (table !== 'h2s_orders') assert.doesNotMatch(value, /address/);
           if (!['h2s_orders', 'h2s_jobs'].includes(table)) assert.doesNotMatch(value, /email/);
           fields = value.split(','); return builder;
         },
