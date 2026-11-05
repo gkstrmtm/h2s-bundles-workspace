@@ -145,3 +145,57 @@ Committed isolated review at `https://127.0.0.1:50275`; no production connection
 - [Orders & Payments — native Quotes & Payments review](https://127.0.0.1:50275/sales-review?screen=managementQuotes)
 - [Forecast / Simulation — current engine](https://127.0.0.1:50275/sales-review?screen=forecast)
 - [Independent representative Home](https://127.0.0.1:50275/sales-review?screen=home)
+
+## Presentation refinement: installation sources and customer follow-ups
+
+- Removed the persistent selected-installation success message. Loading, failed reads, Retry and exact-selection protection remain; preview positioning uses a nonvisual read state.
+- Replaced vague "Record checks" navigation with "Installation & payout review", installation-specific list/filter/pagination labels, and concrete issue categories. Successful reads are not presented as an accomplishment.
+- Operations Audit defaults to bordered, readable field groups with wrapping values and the selected installation first. A separate Source JSON control preserves the complete original evidence, including missing values, source limitations and identifiers. Both representations remain management-only.
+- Contact next is a semantic customer/service/due-date/next-step table. Existing earliest-due ordering and lead actions remain. Narrow screens scroll only the keyboard-focusable table region.
+- The six order overview cards have equal widths and heights, a 196px minimum height, and container-responsive columns. Content can increase all six card heights rather than being clipped. Other document panels are not forced to equal heights.
+- Order labels now identify customer acceptance, appointments, installation checks, installation costs and sales commission review. Fees say "Stripe payment fees" only when every supplied fee entry has verified Stripe balance-transaction evidence; otherwise they say "Card payment fees". Amounts, payment gates and commission calculations are unchanged.
+- Sales review customers now have fictional names without synthetic prefixes or service descriptions embedded in their names. The isolated-session disclosure and synthetic evidence remain.
+
+### Changed files
+
+- `frontend/management-operations.js`, `frontend/management-operations.css`
+- `frontend/field-sales.js`, `frontend/field-sales.css`
+- `frontend/field-workflow.js`, `frontend/field-workflow.css`
+- `backend/tests/management_operations_ui.test.cjs`, `backend/tests/management_planning_ui.test.cjs`
+- `tests/field-sales-redesign-ui.test.cjs`, `tests/field-workflow-presentation.test.cjs`
+- `tools/dev-review/bootstrap.js`, `tools/dev-review/dashboard-preview.test.cjs`
+- `tools/dev-review/sales-preview-seed.cjs`, `tools/dev-review/sales-preview.test.cjs`
+- `docs/WORKFLOW_REFINEMENT_REVIEW.md`
+
+### Validation
+
+The following coordinated command passed: **189 passed, 1 existing independent-PostgreSQL concurrency test skipped, 0 failed**.
+
+```powershell
+$tests = @(Get-ChildItem tests\field*.test.cjs | ForEach-Object {$_.FullName}) +
+  @(Get-ChildItem backend\tests\management*.test.cjs | ForEach-Object {$_.FullName}) +
+  @(Get-ChildItem backend\tests\dashboard_sync*.test.cjs | ForEach-Object {$_.FullName}) +
+  @('backend\tests\field_workflow_fees.test.cjs',
+    'backend\tests\field_earnings_math.test.cjs',
+    'backend\tests\portal_templates.test.cjs',
+    'tools\dev-review\dashboard-preview.test.cjs',
+    'tools\dev-review\sales-preview.test.cjs')
+node --test @tests
+```
+
+- JavaScript syntax checks passed for all three changed frontend modules and preview bootstrap.
+- `npm run build:dash:singlefile -- --output <session-files>\presentation-dashboard.html` passed.
+- `git diff --check` passed.
+- Actual rendered checks at 320, 390, 768, 1024 and 1280px: all six cards equal-sized; no clipped card/Audit values or application-wide horizontal overflow. Cards measured 196px high at desktop/tablet widths, 212px at 390px, and 273px at 320px with the longer original fixture labels.
+- At 320px, deliberately lengthened quote content increased all six cards to 525px without clipping. Original text was restored; this was a browser-only stress test.
+- Follow-up table: three customer rows and all four semantic columns, with local horizontal scrolling at phone widths. Native button actions and chronology are covered by regression tests.
+- Operations Audit: 117 source values in 42 styled groups; exact source JSON remains accessible. Screenshot review supplements geometry checks.
+- Integrated-browser pages can remain backgrounded (`document.visibilityState === 'hidden'`); native keyboard-event checks were inconclusive there. Focusable controls, semantic headings/table structure and native lead actions are covered, but this pass does not claim a completed visible-browser keyboard audit.
+
+### Review and limits
+
+- [Selected installation and Audit](http://127.0.0.1:50284/sales-review?screen=scheduling&job=00000000-0000-4000-8000-000000000137&section=technician)
+- [Management order cards](http://127.0.0.1:50284/sales-review?screen=managementOrders)
+- [Salesperson follow-up table](http://127.0.0.1:50284/sales-review?screen=home)
+
+These are local isolated previews, not production deployments. No pricing, commission rules, technician portal, financial calculations, authorization contracts or live payment behavior changed. Missing source evidence stays explicit; approved assignment writes and external provider actions remain unavailable in the preview.

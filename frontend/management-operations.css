@@ -61,6 +61,14 @@
 .management-operations__next button { display: block; margin-top: 8px; }
 .management-operations__selected > .management-operations__filters { margin-top: 0; }
 .management-operations [data-operations-audit] pre { max-height: 640px; overflow: auto; font: 12px/1.5 'JetBrains Mono', monospace; }
+.management-operations__audit-group { border: 1px solid var(--border); padding: 12px; margin-block: 8px; min-width: 0; background: var(--surface); }
+.management-operations__audit-group h4 { margin: 0 0 8px; color: var(--cobalt); font: 600 13px/1.5 Inter, sans-serif; overflow-wrap: anywhere; }
+.management-operations__audit-group dl { display: block; margin: 0; }
+.management-operations__audit-group dl > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: 8px 12px; padding-block: 8px; border-top: 1px solid var(--border); }
+.management-operations__audit-group dt { margin: 0; }
+.management-operations__audit-group dd { white-space: pre-wrap; font: 12px/1.5 'JetBrains Mono', monospace; }
+.management-operations .management-operations__source-json { border: 1px solid var(--border); border-radius: 4px; background: var(--surface); padding: 12px; tab-size: 2; }
+@container (max-width: 420px) { .management-operations__audit-group dl > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 .management-operations__summary dl { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px; }
 .management-operations__summary h3 { font: 500 12px/1.5 Inter, sans-serif; color: var(--muted); }
 .management-operations__summary dd strong { font-size: 14px; overflow-wrap: anywhere; }

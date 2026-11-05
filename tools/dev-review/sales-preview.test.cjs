@@ -17,6 +17,8 @@ test('eight-screen review seeds only isolated records through actual contracts a
     assert.equal(records.ok,true);
     assert.ok(JSON.stringify(records).includes('Avery Chen'));
     assert.ok(JSON.stringify(records).includes('Taylor Brooks'));
+    assert.deepEqual(records.opportunities.map(row=>row.full_name).sort(),['Avery Chen','Morgan & Jordan Wellington','Taylor Brooks']);
+    assert.ok(records.opportunities.every(row=>!row.full_name.includes('SYNTHETIC')));
 });
 test('management Orders review opens the actual dashboard order destination at desktop width',async t=>{
     const html=fs.readFileSync(path.join(__dirname,'sales-preview.html'),'utf8');

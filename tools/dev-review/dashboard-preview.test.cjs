@@ -61,7 +61,7 @@ test('Operations native readers and selectable UI handle zero, one, ten and sixt
             assert.equal(buttons().length,Math.min(count,25));
             assert.equal(root.querySelectorAll('details, summary').length,0);
             if(count) assert.match(root.textContent,/filters and search apply to this page/);
-            if(!count){assert.match(root.textContent,/No Dispatch records/);return;}
+            if(!count){assert.match(root.textContent,/No installations found/);return;}
             assert.equal(root.querySelectorAll('[data-job-section]').length,6);
             assert.equal(root.querySelector('[data-assignment-job]'),null);
             if(count>1){
@@ -76,7 +76,7 @@ test('Operations native readers and selectable UI handle zero, one, ten and sixt
                 assert.ok(completed.every(job=>Date.parse(job.due_at)<Date.now()),'completed sample installations must not be scheduled in the future');
                 const search=root.querySelector('[data-operations-search]');
                 search.value='No matching household';search.dispatchEvent(new w.Event('input',{bubbles:true}));
-                assert.equal(buttons().length,0);assert.match(root.textContent,/Other pages may contain/);
+                assert.equal(buttons().length,0);assert.match(root.textContent,/Check other pages or change the filters/);
                 search.value='';search.dispatchEvent(new w.Event('input',{bubbles:true}));
             }
             root.querySelector('[data-operations-view="schedule"]').click();await settle();
@@ -90,7 +90,7 @@ test('Operations native readers and selectable UI handle zero, one, ten and sixt
             }
             if(count>25){
                 root.querySelector('[data-operations-action="next"]').click();await settle();
-                assert.match(root.querySelector('[data-operations-page]').textContent,/60 matching records · page 2/);
+                assert.match(root.querySelector('[data-operations-page]').textContent,/60 installations · page 2/);
                 assert.equal(buttons().length,25);
             }
             root.querySelector('[data-operations-context="audit"]').click();

@@ -21,6 +21,13 @@
     const quoteLines = w => Array.isArray(quoteCopy(w)?.content?.lines) ? quoteCopy(w).content.lines : [];
     const serviceTitle = w => [...new Set(quoteLines(w).map(line=>line.service).filter(value=>typeof value==='string'))].join(' · ') || 'Service details pending';
     const summaryPanel = (title,status,body,tone='info') => `<section class="field-workflow__summary-panel"><header><h5>${esc(title)}</h5><span class="field-sales__badge" data-tone="${tone}">${esc(status)}</span></header>${body}</section>`;
+    const paymentFeeLabel = w => {
+        const rows = Array.isArray(w.processingFeeEvidence) ? w.processingFeeEvidence : w.processingFeeEvidence ? [w.processingFeeEvidence] : [];
+        return rows.length && rows.every(row => {
+            const evidence = row?.evidence || row;
+            return evidence?.verified === true && evidence.source === 'stripe.balance_transaction';
+        }) ? 'Stripe payment fees' : 'Card payment fees';
+    };
     function exactCost(quantity,unitCents,amountCents){
         const [whole,fraction='']=quantity.split('.');
         const millionths=BigInt(whole)*1000000n+BigInt(fraction.padEnd(6,'0'));
@@ -184,33 +191,33 @@
             const prep = w.preparation?.record;
             const readyLabel = value => ({ready:'Ready',blocked:'Blocked',not_required:'Not required',unreviewed:'Not reviewed'})[value] || 'Not recorded';
             const panel = (label,heading,body) => `<section class="field-workflow__panel" data-context-view data-tab-label="${label}"><h4>${heading}</h4>${body}</section>`;
-            const overview = `<div class="field-workflow__overview">
-                ${summaryPanel('Approved quote summary',docs.some(d=>d.kind==='quote')?'Published copy':'Copy not published',facts([
-                    ['Scope',esc(serviceTitle(w))],['Approved quote total',money(w.totalCents)],['Total verified payments (net)',money(w.netPaidCents)],['Copy approved',date(quote?.approvedAt)]
+            const overview = `<div class="field-workflow__overview field-workflow__overview--order">
+                ${summaryPanel('Customer quote',docs.some(d=>d.kind==='quote')?'Customer copy ready':'Copy being prepared',facts([
+                    ['Service quoted',esc(serviceTitle(w))],['Approved quote total',money(w.totalCents)],['Customer payments after refunds',money(w.netPaidCents)],['Quote approved',date(quote?.approvedAt)]
                 ]),docs.some(d=>d.kind==='quote')?'success':'info')}
-                ${summaryPanel('Customer agreement',w.acceptedAt?'Accepted':'Acceptance pending',facts([
-                    ['Customer copy',agreement?'Published':'Not published'],['Accepted',date(w.acceptedAt)],['Delivery records',esc(w.deliveryEvidence?.length ?? 0)]
+                ${summaryPanel('Customer acceptance',w.acceptedAt?'Accepted':'Acceptance pending',facts([
+                    ['Agreement copy',agreement?'Available':'Being prepared'],['Customer accepted',date(w.acceptedAt)],['Document delivery evidence',esc(w.deliveryEvidence?.length ?? 0)]
                 ]),w.acceptedAt?'success':'info')}
-                ${summaryPanel('Scheduling status',w.completedAt?'Completed':w.state==='scheduled'?'Scheduled':'Not scheduled',facts([
-                    ['Installation date',w.reservation?.starts_at?date(w.reservation.starts_at):'Not established'],['Installation team',w.technicianId?'Assigned':'Not assigned'],['Completion',date(w.completedAt)]
+                ${summaryPanel('Installation appointment',w.completedAt?'Completed':w.state==='scheduled'?'Scheduled':'Not scheduled',facts([
+                    ['Scheduled installation',w.reservation?.starts_at?date(w.reservation.starts_at):'Not established'],['Installation team',w.technicianId?'Assigned':'Not assigned'],['Installed on',date(w.completedAt)]
                 ]),w.completedAt?'success':'info')}
-                ${summaryPanel('Installation readiness',w.proof?.complete===true?'Proof complete':'Review required',facts([
-                    ['Scope review',prep?.scope_reviewed===true?'Reviewed':prep?.scope_reviewed===false?'Not reviewed':'Not recorded'],['Materials',readyLabel(prep?.materials)],['Customer access',readyLabel(prep?.access)],['Installation proof',w.proof?.complete===true?'Requirements satisfied':'Not complete']
+                ${summaryPanel('Installation checklist',w.proof?.complete===true?'Evidence complete':'Review required',facts([
+                    ['Service scope',prep?.scope_reviewed===true?'Reviewed':prep?.scope_reviewed===false?'Not reviewed':'Not recorded'],['Installation materials',readyLabel(prep?.materials)],['Property access',readyLabel(prep?.access)],['Completion evidence',w.proof?.complete===true?'Requirements satisfied':'Not complete']
                 ]),w.proof?.complete===true?'success':'info')}
-                ${summaryPanel('Actual costs approval',w.costsComplete===true?'Approved':'Approval pending',facts([
-                    ['Cost review',w.costsComplete===true?'Approved by management':'Actual-cost approval required'],['Approved on',date(w.costApprovedAt)],['Processing fee',money(w.processingFeeCents)]
+                ${summaryPanel('Installation cost review',w.costsComplete===true?'Approved':'Approval pending',facts([
+                    ['Cost approval',w.costsComplete===true?'Approved by management':'Management review required'],['Costs approved',date(w.costApprovedAt)],[paymentFeeLabel(w),money(w.processingFeeCents)]
                 ]),w.costsComplete===true?'success':'info')}
-                ${summaryPanel('Commission qualification', 'Separate earnings review',facts([
-                    ['Installation',w.completedAt?'Completed':'Not completed'],['Actual costs',w.costsComplete===true?'Approved':'Not approved'],['Qualification','See Earnings for authoritative qualification and amount']
-                ]))}</div><p class="field-workflow__note">Readiness reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')} No approval or payment is inferred from this summary.</p>`;
+                ${summaryPanel('Sales commission review', 'See Earnings',facts([
+                    ['Installation',w.completedAt?'Completed':'Not completed'],['Installation costs',w.costsComplete===true?'Approved':'Not approved'],['Eligibility & amount','Review in Earnings']
+                ]))}</div>${holds.length ? `<p class="field-workflow__note">Needs attention: ${esc(holds.join('; '))}</p>` : ''}`;
             const quoteBody = `<p class="field-workflow__note">${docs.some(d=>d.kind==='quote')?'Published approved customer copy.':'Approved source copy awaiting publication.'} Original copies and hashes remain in Audit.</p>
                 ${facts([['Approved revenue',money(w.totalCents)],['Approved copy date',date(quote?.approvedAt)]])}
                 ${quoteLines(w).map(line=>`<section class="field-workflow__summary-panel"><header><h5>${esc(line.description || line.service || 'Quoted service')}</h5><strong>${money(line.totalCents)}</strong></header>${facts([['Service',esc(line.service || 'Not supplied')],['Quantity',esc(line.quantity ?? 'Not supplied')]])}${['scope','equipment','exclusions'].filter(key=>Array.isArray(line[key])&&line[key].length).map(key=>`<h5>${({scope:'Included scope',equipment:'Equipment',exclusions:'Exclusions'})[key]}</h5><ul>${line[key].map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`).join('')}</section>`).join('') || '<p>Structured quote line details were not supplied. No scope or amount has been substituted.</p>'}`;
             const docsBody = `<div class="field-workflow__overview">${docs.map(doc=>summaryPanel(doc.label || ({quote:'Approved quote',agreement:'Customer agreement',notice:'Customer notice'})[doc.kind] || 'Customer document','Published',facts([['Approved',date(doc.approvedAt)],['Copy type',esc(({quote:'Quote',agreement:'Agreement',notice:'Notice'})[doc.kind] || 'Customer copy')]]))).join('') || '<p>No approved customer copies published.</p>'}</div>
-                ${facts([['Agreement accepted',date(w.acceptedAt)],['Delivery records',esc(w.deliveryEvidence?.length ?? 0)],['Cancellation deadline',date(w.cancellationDeadline)]])}
+                ${facts([['Customer accepted agreement',date(w.acceptedAt)],['Document delivery evidence',esc(w.deliveryEvidence?.length ?? 0)],['Cancellation deadline',date(w.cancellationDeadline)]])}
                 <p class="field-workflow__note">Approved policy and delivery evidence control clearance. Published copies do not establish acceptance.</p>
                 <h5>Publish and record delivery</h5>${actions.documents}<section class="field-workflow__review"><h5>Cancellation & refund review</h5>${actions.cancellation}</section>`;
-            const costsBody = `${facts([['Actual processing fee',money(w.processingFeeCents)],['Actual technician hours',esc(w.hours ?? 'Not recorded')+' — wages are separate from commission'],['Actual costs approval',w.costsComplete===true?'Approved by management':'Not approved'],['Approved on',date(w.costApprovedAt)]])}
+            const costsBody = `${facts([[paymentFeeLabel(w),money(w.processingFeeCents)],['Technician labor hours',esc(w.hours ?? 'Not recorded')+' — technician pay is separate from sales commission'],['Installation cost approval',w.costsComplete===true?'Approved by management':'Not approved'],['Costs approved',date(w.costApprovedAt)]])}
                 <p>${w.costsComplete===true?'Actual costs approved by management. Commission qualification and amount still require their separate Earnings review.':'Technician costs are not approved costs. Commission remains in review until management approves evidenced actual costs.'}</p>
                 <p class="field-workflow__note">No estimated margin is presented. Earnings retains the authoritative actual commission basis.</p>${(w.expenses || []).map(row=>`<p>${esc(({equipment:'Equipment',materials:'Installation materials',wages:'Technician wages'})[row.category] || 'Reviewed actual cost')}: <strong>${money(row.amountCents)}</strong></p>`).join('')}${costReview(w)}`;
             return `<div data-context-panels aria-label="${esc(recordTitle(w,index,options.customerNames))} order actions">

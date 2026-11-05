@@ -55,6 +55,34 @@ function fixture(t, withSync = false) {
   };
   return { w, root, module, session, state, calls, click, enter, save };
 }
+test('Audit defaults to styled complete fields, preserves exact source JSON and safely switches representations', async t => {
+  const f = fixture(t);
+  f.state.records = [{ source: 'h2s_dispatch_job_assignments', id: 'fixture-record', fields: {
+    nested: { '<img src=x>': 'Literal <svg/onload=alert(1)>', accepted: true, unavailable: null, confirmed: false, count: 0,
+      related: [{ reference: 'Source reference' }, 'Text entry', null], empty: [] }
+  } }];
+  await f.enter(); await f.click('[data-operations-context="audit"]');
+  const fields = f.root.querySelector('[data-operations-evidence-fields]'), raw = f.root.querySelector('[data-operations-evidence]');
+  assert.equal(fields.hidden, false); assert.equal(raw.hidden, true);
+  assert.ok(fields.querySelectorAll('.management-operations__audit-group > h4').length > 2);
+  const audit = JSON.parse(raw.textContent);
+  const values = value => value !== null && typeof value === 'object' ? Object.values(value).flatMap(values)
+    : [value == null ? 'Not supplied' : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value)];
+  assert.deepEqual([...fields.querySelectorAll('dd')].map(el => el.textContent).sort(), values(audit).sort());
+  assert.match(fields.textContent, /Literal <svg\/onload=alert\(1\)>/);
+  assert.equal(fields.querySelector('img,svg,script'), null);
+  assert.match(f.root.querySelector('[data-operations-view="reconciliation"]').textContent, /Installation & payout review/);
+  assert.doesNotMatch(f.root.querySelector('[data-operations-list]').parentElement.querySelector('h3').textContent, /Records to check/);
+  await f.click('[data-evidence-format="json"]');
+  assert.equal(fields.hidden, true); assert.equal(raw.hidden, false);
+  assert.equal(f.root.querySelector('[data-evidence-format="json"]').getAttribute('aria-pressed'), 'true');
+  await f.module.open();
+  assert.equal(f.root.querySelector('[data-operations-evidence]').hidden, false);
+  assert.deepEqual(JSON.parse(f.root.querySelector('[data-operations-evidence]').textContent), audit);
+  await f.click('[data-evidence-format="fields"]');
+  assert.equal(f.root.querySelector('[data-operations-evidence-fields]').hidden, false);
+  assert.ok(f.calls.every(call => call.options.method === 'GET'));
+});
 test('scheduling mode renders uncertainty, paginates server-wide filters and preserves established workflows with GET only', async t => {
   const f = fixture(t); await f.module.open(); await f.click('[data-operations-view="schedule"]');
   assert.match(f.root.textContent, /Some information is missing/); assert.match(f.root.querySelector('[data-operations-audit]').textContent, /do not confirm a customer booking/);
@@ -253,11 +281,17 @@ test('selected-job reads reject late selections, mismatched identities and revok
       payment:{status:'paid',detail:'Synthetic verified order'}}]})});
   pending.get('three')(result('three'));await tick();
   assert.equal(f.root.querySelector('[data-selected-title]').textContent,'Verified three');
+  assert.equal(f.root.querySelector('[data-selected-read-status]').dataset.selectedReadState,'ready');
+  assert.equal(f.root.querySelector('[data-selected-read-status]').hidden,true);
+  assert.doesNotMatch(f.root.textContent,/Job details loaded|jobs shown/);
   pending.get('two')(result('two'));pending.get('one')(result('one'));await tick();
   assert.equal(f.root.querySelector('[data-selected-title]').textContent,'Verified three');
   await f.click('[data-operation-record="two"]');
+  assert.equal(f.root.querySelector('[data-selected-read-status]').dataset.selectedReadState,'loading');
+  assert.equal(f.root.querySelector('[data-selected-read-status]').hidden,false);
   pending.get('two')(result('wrong-job'));await tick();
   assert.match(f.root.textContent,/No other job was substituted/);
+  assert.equal(f.root.querySelector('[data-selected-read-status]').dataset.selectedReadState,'error');
   assert.doesNotMatch(f.root.querySelector('[data-operations-detail]').textContent,/Verified wrong-job/);
   await f.click('[data-selected-retry]');
   pending.get('two')({ok:false,status:403,json:async()=>({ok:false,error:'Permission revoked'})});await tick();

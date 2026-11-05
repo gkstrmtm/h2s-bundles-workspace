@@ -128,7 +128,7 @@ test('unauthorized and failed reads clear private records, announce errors, and 
     assert.equal(f.root.querySelector('[data-operations-action="retry"]').hidden, false);
     f.w.fetch = async () => ({ ok: true, json: async () => payload([]) });
     click(f, '[data-operations-action="retry"]'); await new Promise(resolve => setImmediate(resolve));
-    assert.match(f.root.textContent, /No Dispatch records found/);
+    assert.match(f.root.textContent, /No installations found/);
     assert.equal(f.root.querySelector('[data-operations-status]').getAttribute('role'), 'status');
     f.w.fetch = async () => { throw Error('Fixture network failure'); };
     assert.equal(await f.module.open(), false); assert.match(f.root.textContent, /Fixture network failure/);

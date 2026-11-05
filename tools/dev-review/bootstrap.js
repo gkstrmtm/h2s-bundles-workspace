@@ -80,7 +80,7 @@
                             const record=[...root.querySelectorAll('[data-operation-record]')].find(item=>item.dataset.operationRecord===command.operationsJobId);
                             if(!record)return;
                             if(record.getAttribute('aria-pressed')!=='true'){record.click();return;}
-                            if(root.querySelector('[data-selected-read-status]')?.textContent.includes('Checking selected job'))return;
+                            if(root.querySelector('[data-selected-read-state="loading"]'))return;
                         }
                         if(['overview','schedule','technician','readiness','payments','completion'].includes(command.operationsSection)){
                             const section=root.querySelector('[data-job-section="'+command.operationsSection+'"]');

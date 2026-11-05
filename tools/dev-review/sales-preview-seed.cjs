@@ -8,9 +8,9 @@ async function seedSalesPreview(engine,photo){
         return result;
     }
     const initial=await engine.status();
-    const create=(name,phone,services)=>call('field-sales',{action:'create',fullName:name,phone,address:'100 Synthetic Review Lane',city:'Review City',market:'residential',
+    const create=(name,phone,services)=>call('field-sales',{action:'create',fullName:name,phone,address:'214 Cedar Grove Lane',city:'Greenville',market:'residential',
         services,notes:'SYNTHETIC visual review only. No real person or property.',followUpAt:new Date().toISOString()},'sales');
-    const first=await create('SYNTHETIC · Morgan & Jordan Wellington, TV installation','+15551112223',[initial.suggestions.serviceId]);
+    const first=await create('Morgan & Jordan Wellington','+15551112223',[initial.suggestions.serviceId]);
     const leadId=first.leadId;
     const draft=await call('field-sales-transactions',{action:'quote',leadId,catalogId:initial.suggestions.catalogId,lines:initial.suggestions.lines},'sales');
     const submitted=await call('field-sales-transactions',{action:'submit',leadId,quoteId:draft.id},'sales');
@@ -25,7 +25,7 @@ async function seedSalesPreview(engine,photo){
     const prepared=await call('field-sales-transactions',{action:'agreement',...record},'sales');
     const token=new URLSearchParams(new URL(prepared.agreementUrl).hash.slice(1)).get('token');
     const agreement=await call('field-sales-agreement',null,token);
-    await call('field-sales-agreement',{name:'SYNTHETIC Morgan Wellington',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
+    await call('field-sales-agreement',{name:'Morgan Wellington',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
         quoteHash:agreement.quote.quote_hash,policyVersion:agreement.agreement.policy_snapshot.version},token);
     await call('field-sales-agreement',{action:'checkout',kind:'deposit'},token);
     await engine.control('provider_capture',{sessionId:(await engine.status()).provider.sessionId,feeCents:151});
@@ -61,8 +61,8 @@ async function seedSalesPreview(engine,photo){
     hints=(await engine.status()).suggestions;
     const run=await call('field-sales-earnings',{action:'create_run',settlementPolicyId:hints.settlement.settlementPolicyId,runDate:hints.settlement.runDate});
     await call('field-sales-earnings',{action:'approve_run',runId:run.runId,evidence:'SYNTHETIC Friday review only; no transfer'});
-    const intake=await create('SYNTHETIC · Avery Chen, camera consultation','+15551112224',['cameras_included']);
-    const quoteLead=await create('SYNTHETIC · Taylor Brooks, living-room TV','+15551112225',['tv_mounting']);
+    const intake=await create('Avery Chen','+15551112224',['cameras_included']);
+    const quoteLead=await create('Taylor Brooks','+15551112225',['tv_mounting']);
     const reviewDraft=await call('field-sales-transactions',{action:'quote',leadId:quoteLead.leadId,catalogId:initial.suggestions.catalogId,lines:initial.suggestions.lines},'sales');
     return {completedLeadId:leadId,assessmentLeadId:intake.leadId,quoteLeadId:quoteLead.leadId,draftQuoteId:reviewDraft.id,jobId,runId:run.runId,
         note:'Synthetic payment receipts, storage and Friday review only. No external transfer or production records.'};

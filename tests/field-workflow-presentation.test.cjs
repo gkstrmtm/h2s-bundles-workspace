@@ -375,14 +375,14 @@ test('approved reference hierarchy uses real quote scope, six purposeful summari
     const tabs=[...detail.querySelector('[role="tablist"]').children],overview=panelFor(f,tabs[0]);
     const summaries=[...overview.querySelectorAll('.field-workflow__summary-panel')];
     assert.deepEqual(summaries.map(panel=>panel.querySelector('h5').textContent),[
-        'Approved quote summary','Customer agreement','Scheduling status','Installation readiness','Actual costs approval','Commission qualification'
+        'Customer quote','Customer acceptance','Installation appointment','Installation checklist','Installation cost review','Sales commission review'
     ]);
     assert.match(summaries[0].textContent,/\$100\.01/);
     assert.match(summaries[1].textContent,/Acceptance pending/);
     assert.doesNotMatch(summaries[1].textContent,/Signed|AcceptedAccepted/);
-    assert.match(summaries[3].textContent,/Scope reviewReviewed.*MaterialsBlocked.*Customer accessReady/s);
+    assert.match(summaries[3].textContent,/Service scopeReviewed.*Installation materialsBlocked.*Property accessReady/s);
     assert.match(summaries[4].textContent,/Approval pending/);
-    assert.match(summaries[5].textContent,/Separate earnings review/);
+    assert.match(summaries[5].textContent,/See Earnings/);
     assert.doesNotMatch(overview.textContent,/private-quote-hash|Private legal text|00000000-|JSON|integer cents/);
     tabs[1].click();const quote=panelFor(f,tabs[1]);
     assert.match(quote.textContent,/Exterior camera setup/);assert.match(quote.textContent,/Approved scope <img src=x>/);
@@ -438,6 +438,29 @@ test('reviewed cost summaries are currency; exact correction inputs and immutabl
     assert.equal(f.calls.length,1);
 });
 
+test('payment fee labels name Stripe only for complete verified provider evidence without changing amounts or gates',async t=>{
+    const verified={verified:true,source:'stripe.balance_transaction',balanceTransactionId:'txn_fixture'};
+    for(const [evidence,amount,label] of [
+        [verified,0,'Stripe payment fees'],
+        [[{checkoutId:id(40),evidence:verified}],65,'Stripe payment fees'],
+        [null,null,'Card payment fees'],
+        [[],0,'Card payment fees'],
+        [[null],65,'Card payment fees'],
+        [{...verified,verified:false},65,'Card payment fees'],
+        [{...verified,source:'unsupported_provider'},65,'Card payment fees'],
+        [[{evidence:verified},{evidence:{reference:'Unverified fee'}}],65,'Card payment fees']
+    ]){
+        const d=workflow();d.workflows[0].processingFeeEvidence=evidence;d.workflows[0].processingFeeCents=amount;
+        const f=browser(t,'field-workflow.js','ADMIN',d);await settle();
+        const detail=f.root.querySelector('.field-workflow__order-detail');
+        const fees=[...detail.querySelectorAll('dt')].filter(el=>/payment fees/.test(el.textContent));
+        assert.equal(fees.length,2);
+        assert.ok(fees.every(el=>el.textContent===label));
+        assert.ok(fees.every(el=>el.nextElementSibling.textContent===(amount===null?'Evidence pending':amount===0?'$0.00':'$0.65')));
+        assert.equal(f.root.querySelector('[data-workflow-form="assign"] button').disabled,true);
+        assert.equal(f.calls.length,1);assert.equal(f.calls.filter(call=>call.body).length,0);
+    }
+});
 test('management puts tabs directly after one concise status band and next action; full financial evidence stays inside Overview',async t=>{
     const f=browser(t,'field-workflow.js','ADMIN',workflow(),{representativeNames:{[id(4)]:'Jordan Representative'}});await settle();
     const record=f.root.querySelector('.field-workflow__order-detail');
@@ -454,7 +477,7 @@ test('management puts tabs directly after one concise status band and next actio
     assert.equal(views.firstElementChild.getAttribute('role'),'tablist');
     const overview=views.querySelector('[role="tabpanel"]');
     assert.equal(overview.hidden,false);
-    const paid=[...overview.querySelectorAll('dt')].find(el=>el.textContent==='Total verified payments (net)');
+    const paid=[...overview.querySelectorAll('dt')].find(el=>el.textContent==='Customer payments after refunds');
     assert.equal(paid.nextElementSibling.textContent,'$25.01');
     assert.equal(overview.querySelectorAll('.field-workflow__summary-panel').length,6);
     assert.equal(f.calls.length,1);

@@ -26,15 +26,15 @@
     let assignmentDialog = null, assignmentController = null, assignmentVersion = 0, assignmentAttempt = null;
     let view = 'overview', planningFilter = 'all', reviewToken = null;
     let sync = null, syncState = null;
-    let search = '', detailTab = 'record', detailData = null, detailError = '', detailController = null, detailVersion = 0;
+    let search = '', detailTab = 'record', evidenceFormat = 'fields', detailData = null, detailError = '', detailController = null, detailVersion = 0;
     const selected = { overview: null, schedule: null, reconciliation: null };
     const reviewDrafts = new Map();
     const reviewInputs = new Map();
-    const views = { overview: 'Dispatch', schedule: 'Scheduling', reconciliation: 'Record checks' };
+    const views = { overview: 'Dispatch', schedule: 'Scheduling', reconciliation: 'Installation & payout review' };
     const planningLabels = {
-        schedule: { all: 'All jobs', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled jobs', attention: 'Management attention', conflicts: 'Observed conflicts' },
-        reconciliation: { all: 'All checks', orphan_assignment: 'Assignment without a job', technician_identity: 'Technician details',
-            legacy_relationship: 'Older job records', assignment_conflict: 'Conflicting assignments', payout_association: 'Technician payouts', source_unavailable: 'Missing information' },
+        schedule: { all: 'All installations', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled installations', attention: 'Management attention', conflicts: 'Observed conflicts' },
+        reconciliation: { all: 'All issues', orphan_assignment: 'Unmatched technician assignments', technician_identity: 'Technician identity',
+            legacy_relationship: 'Older installation links', assignment_conflict: 'Assignment conflicts', payout_association: 'Technician payouts', source_unavailable: 'Missing information' },
     };
     const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
         char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -49,7 +49,7 @@
         }
         return `${new Date(value).toISOString()} (recorded instant; local timezone unresolved)`;
     };
-    const labels = { all: 'All records', upcoming: 'Upcoming installations', assignments: 'Assignment review',
+    const labels = { all: 'All installations', upcoming: 'Upcoming installations', assignments: 'Assignment review',
         readiness: 'Preparation review', payments: 'Payment exceptions', payouts: 'Payout review' };
     const done = job => ['completed', 'done', 'cancelled', 'canceled'].includes(job.rawStatus);
     function isDirty() {
@@ -182,7 +182,7 @@
     }
     function frame() {
         root.innerHTML = `<header class="management-operations__header"><div><h2>Operations</h2>
-            <p>${view === 'reconciliation' ? 'Historical record review.' : 'Installations, scheduling and follow-up.'}</p></div>
+            <p>${view === 'reconciliation' ? 'Match installation history, technician assignments and payouts.' : 'Installations, scheduling and follow-up.'}</p></div>
             <button type="button" data-operations-action="retry" hidden>Retry read</button></header>
             <p data-operations-sync role="status" aria-live="polite"></p>
             <div class="management-operations__filters" role="group" aria-label="Operations view">${Object.entries(views).map(([key, label]) =>
@@ -199,7 +199,7 @@
                 </label>
             </div>
             <div data-operations-jobs class="management-operations__workbench">
-                <section class="management-operations__list" aria-label="${view === 'reconciliation' ? 'Reconciliation cases' : 'Installation jobs'}"><h3>${view === 'reconciliation' ? 'Records to check' : 'Installation jobs'}</h3><div data-operations-list></div>
+                <section class="management-operations__list" aria-label="${view === 'reconciliation' ? 'Installation and payout issues' : 'Installations'}"><h3>${view === 'reconciliation' ? 'Installation & payout issues' : 'Installations'}</h3><div data-operations-list></div>
                     <footer class="management-operations__footer"><span data-operations-page></span><div>
                         <button type="button" data-operations-action="previous" disabled>Previous</button>
                         <button type="button" data-operations-action="next" disabled>Next</button></div></footer>
@@ -214,7 +214,13 @@
                         <dl data-operations-secondary-metrics></dl>
                         <p>Unknown evidence is not zero or clearance. Recorded starts and technician acceptance do not confirm a customer booking. Preparation is not payment or availability clearance.</p>
                         <p>No scheduling, payment, payout or automatic repair changes are made here. Session review drafts are not shared, repair instructions or approvals.</p>
-                        <h3>Selected record references</h3><pre data-operations-evidence></pre>
+                        <h3>Installation and payout sources</h3>
+                        <div class="management-operations__filters" role="group" aria-label="Evidence display">
+                            <button type="button" data-evidence-format="fields" aria-pressed="${evidenceFormat === 'fields'}">Readable fields</button>
+                            <button type="button" data-evidence-format="json" aria-pressed="${evidenceFormat === 'json'}">Source JSON</button>
+                        </div>
+                        <div data-operations-evidence-fields ${evidenceFormat === 'json' ? 'hidden' : ''}></div>
+                        <pre class="management-operations__source-json" data-operations-evidence ${evidenceFormat === 'fields' ? 'hidden' : ''}></pre>
                     </section>
                 </section>
             </div>`;
@@ -229,7 +235,7 @@
         });
         const preparationMetric = measured(data.jobs.filter(job => job.kind !== 'consultation'), job => evidence(job.preparation) !== null, job => !job.preparation.value.ready);
         const paymentMetric = measured(data.jobs, job => ['paid', 'unpaid', 'not_applicable'].includes(job.payment.status), job => job.payment.status === 'unpaid');
-        root.querySelector('[data-operations-summary-title]').textContent = `This page · ${data.jobs.length} jobs`;
+        root.querySelector('[data-operations-summary-title]').textContent = `This page · ${data.jobs.length} installations`;
         root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Loaded jobs', data.jobs.length, `${jobs.length} match the selected page filter; not a business-wide total.`)
             + metric('Active-job assignment review', assignmentMetric.count, assignmentMetric.detail)
             + metric('Preparation blockers', preparationMetric.count, preparationMetric.detail)
@@ -237,18 +243,18 @@
         root.querySelector('[data-operations-metrics]').innerHTML = operationalMetrics(data.jobs);
         root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. Latest records, at most 25 per page. Counts cover loaded records only, not the business. Filters apply to this page only.`;
         root.querySelector('[data-operations-status]').textContent = data.jobs.length
-            ? `${jobs.length} of ${data.jobs.length} jobs shown · filters and search apply to this page.`
-            : 'No Dispatch records found.';
+            ? `${jobs.length} of ${data.jobs.length} installations · filters and search apply to this page.`
+            : 'No installations found.';
         renderWorkbench(jobs);
-        root.querySelector('[data-operations-page]').textContent = `Latest records, page ${Math.floor(offset / 25) + 1}`;
+        root.querySelector('[data-operations-page]').textContent = `Latest installations · page ${Math.floor(offset / 25) + 1}`;
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
         root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
     }
     function renderPlanning() {
         const status = root.querySelector('[data-operations-status]');
-        status.textContent = data.complete ? 'Available records loaded.' : 'Some information is missing. See Audit for details.';
+        status.textContent = data.complete ? '' : 'Some information is missing. See Audit for details.';
         root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. ${data.scope}`;
-        root.querySelector('[data-operations-summary-title]').textContent = view === 'schedule' ? `This page · ${data.jobs.length} jobs` : 'Review overview';
+        root.querySelector('[data-operations-summary-title]').textContent = view === 'schedule' ? `This page · ${data.jobs.length} installations` : 'Installation & payout review';
         const scopeDetail = data.complete ? 'Complete bounded read; not an organization-wide total.' : 'Known in bounded read; additional issues may be unknown.';
         root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Jobs in bounded read', data.summary.jobs ?? 'Unknown', scopeDetail)
             + metric('Observed reconciliation issues', data.summary.issues ?? 'Unknown', scopeDetail)
@@ -256,8 +262,8 @@
                 : metric('Loaded review cases', data.issues.length, 'Session classifications do not resolve production issues.'))
             + metric('Evidence coverage', data.complete ? 'Bounded read complete' : 'Incomplete / unknown', 'Separate reads, not an atomic snapshot.');
         root.querySelector('[data-operations-metrics]').innerHTML = view === 'schedule' ? operationalMetrics(data.jobs, true)
-            : metric('Matching records', data.page.total ?? 'Unknown', scopeDetail)
-                + metric('On this page', data.issues.length, 'Review records on this page.')
+            : metric('Matching issues', data.page.total ?? 'Unknown', scopeDetail)
+                + metric('On this page', data.issues.length, 'Installation and payout issues on this page.')
                 + metric('Notes saved', data.issues.filter(issue => reviewDrafts.get(issue.id)?.fingerprint === issue.fingerprint).length, 'Private session notes, not resolved production cases.');
         if (view === 'schedule') {
             renderWorkbench(data.jobs);
@@ -265,7 +271,7 @@
             renderWorkbench(data.issues);
             root.querySelector('[data-review-export]').disabled = reviewDrafts.size === 0;
         }
-        root.querySelector('[data-operations-page]').textContent = `${data.page.total ?? 'Unknown number of'} matching records · page ${Math.floor(offset / 25) + 1}`;
+        root.querySelector('[data-operations-page]').textContent = `${data.page.total ?? 'Unknown number of'} ${view === 'schedule' ? 'installations' : 'review issues'} · page ${Math.floor(offset / 25) + 1}`;
         root.querySelector('[data-operations-page]').title = 'Category filters cover the available dataset (up to 1000 rows per source). Search and summary counts cover this page. This is not a company-wide total.';
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
         root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
@@ -278,7 +284,7 @@
     }
     function casePresentation(issue) {
         const descriptions = {
-            orphan_assignment: ['Assignment without a job', 'A technician assignment could not be matched to an installation in the available records.', 'Find the original installation and confirm who was assigned.'],
+            orphan_assignment: ['Unmatched technician assignment', 'A technician assignment could not be matched to an installation in the available records.', 'Find the original installation and confirm who was assigned.'],
             technician_identity: ['Technician details need checking', 'The assignment does not identify one verified technician.', 'Confirm the technician using the original assignment and technician profile.'],
             legacy_relationship: ['Older job record needs matching', 'This installation is not connected to one verified older job record.', 'Compare the order and older installation record, then note which records belong together.'],
             assignment_conflict: ['Assignments need checking', 'The recorded assignments do not establish one clear technician for this job.', 'Check the active offers and confirm which assignment should apply.'],
@@ -373,10 +379,10 @@
             <header><h3 data-selected-title tabindex="-1">${escape(customer.customerName || 'Customer not verified')}</h3>
                 <p>${escape(customer.service || 'Service not verified')} · ${escape(readable(job.rawStatus))}</p>
                 <p>${escape(humanReference(customer.reference) || 'Order reference not verified')}</p>
-                <button type="button" data-return-job-list>Choose another job</button></header>
+                <button type="button" data-return-job-list>Choose another installation</button></header>
             <div class="management-operations__next"><strong>Next step</strong>
                 <button type="button" data-job-focus="${target}">${escape(action)}</button></div>
-            ${planning ? `<p data-selected-read-status title="Scheduling and job details are separate reads. Audit contains source timestamps." role="${detailError ? 'alert' : 'status'}">${escape(detailError || (record ? 'Job details loaded.' : 'Loading job details…'))}
+            ${planning ? `<p data-selected-read-status data-selected-read-state="${detailError ? 'error' : record ? 'ready' : 'loading'}" role="${detailError ? 'alert' : 'status'}" ${record && !detailError ? 'hidden' : ''}>${escape(detailError || (record ? '' : 'Loading installation details…'))}
                 ${detailError ? '<button type="button" data-selected-retry>Retry selected job read</button>' : ''}</p>` : ''}
             <div class="management-operations__sections">
                 ${section('overview', 'Overview', [['Customer', customer.customerName || 'Not verified'], ['Service', customer.service || 'Not verified'],
@@ -407,6 +413,18 @@
                         ? 'View payout records in Audit' : 'Not verified']])}
             </div></article>`;
     }
+    function auditFields(value, path = []) {
+        const names = { readAt: 'Retrieved at', sources: 'Data sources', selectedRecord: 'Selected installation or issue', selectedDispatchEvidence: 'Payment and equipment sources' };
+        const label = key => names[key] || readable(String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2'));
+        const entries = Object.entries(value), fields = [], groups = [];
+        for (const [key, entry] of entries) {
+            const name = Array.isArray(value) ? `Entry ${Number(key) + 1}` : label(key);
+            if (entry !== null && typeof entry === 'object') groups.push(auditFields(entry, [...path, name]));
+            else fields.push(`<div><dt>${escape(name)}</dt><dd>${escape(entry == null ? 'Not supplied' : typeof entry === 'boolean' ? entry ? 'Yes' : 'No' : entry)}</dd></div>`);
+        }
+        return (fields.length || !entries.length ? `<section class="management-operations__audit-group"><h4>${escape(path.length ? path.join(' / ') : 'Source overview')}</h4>${fields.length
+            ? `<dl>${fields.join('')}</dl>` : `<p>${Array.isArray(value) ? 'No entries' : 'No fields'}</p>`}</section>` : '') + groups.join('');
+    }
     function renderWorkbench(rows) {
         const query = search.trim().toLocaleLowerCase();
         const matchesSearch = item => {
@@ -430,13 +448,18 @@
                     <span>${escape(technician(row))}</span>
                     <span title="${escape(preparation(row))}">Preparation: ${prep ? prep.ready ? 'ready' : 'blocked' : 'not verified'} · Payment: ${escape(payment ? readable(payment.status) : 'not checked')}</span>
                     <span class="management-operations__record-next">${escape(nextAction(row))}</span>` : `<span>${escape(caseStatus(reviewDrafts.get(row.id)?.fingerprint === row.fingerprint ? reviewDrafts.get(row.id).status : row.status))} · ${escape(row.records.length)} related records</span>`}</button>`;
-        }).join('') : '<p class="management-operations__empty">No records match on this page. Other pages may contain matching records.</p>');
+        }).join('') : `<p class="management-operations__empty">No ${view === 'reconciliation' ? 'issues' : 'installations'} match on this page. Check other pages or change the filters.</p>`);
         list.scrollTop = scrollTop;
         const focusTitle = root.querySelector('[data-selected-title]') === document.activeElement;
         root.querySelector('[data-operations-detail]').innerHTML = item ? view === 'reconciliation' ? renderCase(item) : renderJob(item)
             : '<p class="management-operations__empty">Select a record from the loaded list. The previous selection is not in this filtered page.</p>';
-        root.querySelector('[data-operations-evidence]').textContent = JSON.stringify({ readAt: data.readAt, sources: data.sources || null,
-            selectedRecord: item || null, selectedDispatchEvidence: view === 'schedule' && item?.jobId === detailData?.job?.jobId ? detailData : null }, null, 2);
+        const audit = { readAt: data.readAt, sources: data.sources || null,
+            selectedRecord: item || null, selectedDispatchEvidence: view === 'schedule' && item?.jobId === detailData?.job?.jobId ? detailData : null };
+        root.querySelector('[data-operations-evidence]').textContent = JSON.stringify(audit, null, 2);
+        root.querySelector('[data-operations-evidence-fields]').innerHTML = auditFields({
+            selectedRecord: audit.selectedRecord, selectedDispatchEvidence: audit.selectedDispatchEvidence,
+            readAt: audit.readAt, sources: audit.sources
+        });
         if (focusTitle) root.querySelector('[data-selected-title]')?.focus({ preventScroll: true });
     }
     async function readSelectedJob() {
@@ -477,7 +500,7 @@
     }
     function reset() {
         detailVersion++; detailController?.abort(); detailController = null;
-        detailData = null; detailError = ''; search = ''; detailTab = 'record';
+        detailData = null; detailError = ''; search = ''; detailTab = 'record'; evidenceFormat = 'fields';
         for (const key of Object.keys(selected)) selected[key] = null;
         sync?.invalidate();
         syncState = null;
@@ -691,7 +714,12 @@
     root.addEventListener('click', event => {
         const button = event.target.closest('button');
         if (!button || !root.contains(button) || button.disabled) return;
-        if (button.dataset.operationsContext) {
+        if (button.dataset.evidenceFormat && ['fields', 'json'].includes(button.dataset.evidenceFormat)) {
+            evidenceFormat = button.dataset.evidenceFormat;
+            root.querySelector('[data-operations-evidence-fields]').hidden = evidenceFormat !== 'fields';
+            root.querySelector('[data-operations-evidence]').hidden = evidenceFormat !== 'json';
+            root.querySelectorAll('[data-evidence-format]').forEach(control => control.setAttribute('aria-pressed', String(control.dataset.evidenceFormat === evidenceFormat)));
+        } else if (button.dataset.operationsContext) {
             detailTab = button.dataset.operationsContext;
             root.querySelector('[data-operations-detail]').hidden = detailTab !== 'record';
             root.querySelector('[data-operations-audit]').hidden = detailTab !== 'audit';

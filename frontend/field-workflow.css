@@ -54,6 +54,12 @@
 #h2s-app .field-sales .field-workflow__tab { border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 8px; font-size: 13px; }
 #h2s-app .field-sales .field-workflow__tab[aria-selected="true"] { border-bottom-color: var(--azure); color: var(--azure); background: var(--bg, var(--surface)); text-decoration: none; }
 #h2s-app .field-sales .field-workflow__overview { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; align-items: start; }
+#h2s-app .field-sales .field-workflow__overview--order { grid-auto-rows: 1fr; align-items: stretch; }
+#h2s-app .field-sales .field-workflow__overview--order > .field-workflow__summary-panel { min-block-size: 196px; }
+#h2s-app .field-sales .field-workflow__order-detail { container-type: inline-size; }
+@container (max-width: 640px) {
+    #h2s-app .field-sales .field-workflow__overview { grid-template-columns: minmax(0,1fr); }
+}
 #h2s-app .field-sales .field-workflow__summary-panel { padding: 12px; margin: 0; min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
 #h2s-app .field-sales .field-workflow__summary-panel > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
 #h2s-app .field-sales .field-workflow__summary-panel h5,

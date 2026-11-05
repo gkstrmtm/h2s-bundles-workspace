@@ -78,6 +78,34 @@ test('standalone sales mounts without dashboard sidebar and exposes five genuine
     await f.navigate('earnings');assert.equal(f.mounts.at(-1).kind,'earnings');assert.equal(f.mounts.at(-1).options.customerNames[leadId],f.data.opportunities[0].full_name);
     const before=f.calls.length;await f.navigate('unapproved-route');assert.equal(f.calls.length,before);
 });
+test('Contact next is a semantic chronological customer table with real lead actions and no closed or future contacts',async t=>{
+    const f=fixture(t),base=f.data.opportunities[0],older='oldest-customer';
+    f.data.opportunities=[
+        {...base,full_name:'Later customer',follow_up_at:'2020-02-01T10:00:00Z'},
+        {...base,lead_id:older,full_name:'Earlier customer <img src=x>',services:['camera','tv'],follow_up_at:'2020-01-01T10:00:00Z'},
+        {...base,lead_id:'closed',status:'closed',follow_up_at:'2019-01-01T10:00:00Z'},
+        {...base,lead_id:'future',follow_up_at:'2099-01-01T10:00:00Z'},
+        {...base,lead_id:'undated',follow_up_at:null}
+    ];
+    await f.navigate('home');
+    const table=f.root().querySelector('table.field-sales__followup-table'),region=table.parentElement;
+    assert.equal(region.getAttribute('role'),'region');assert.equal(region.tabIndex,0);
+    assert.match(table.querySelector('caption').textContent,/earliest due first/);
+    assert.deepEqual([...table.querySelectorAll('thead th')].map(el=>el.textContent),['Customer','Service','Contact due','Next step']);
+    assert.ok([...table.querySelectorAll('thead th')].every(el=>el.scope==='col'));
+    const rows=[...table.querySelectorAll('tbody tr')];
+    assert.equal(rows.length,2);
+    assert.deepEqual(rows.map(row=>row.querySelector('button').dataset.salesLead),[older,leadId]);
+    assert.equal(rows[0].querySelector('th').scope,'row');
+    assert.match(rows[0].textContent,/Security Camera Installation.*TV Mounting/s);
+    assert.equal(table.querySelector('img'),null);
+    rows[0].querySelector('button').click();await settle();
+    assert.ok(f.calls.at(-1).url.includes(`leadId=${older}`));
+    assert.equal(f.calls.filter(call=>call.init.method==='POST').length,0);
+    f.data.opportunities=[];await f.navigate('home');
+    assert.equal(f.root().querySelector('.field-sales__followup-table'),null);
+    assert.match(f.root().textContent,/No overdue customer follow-ups/);
+});
 test('initial navigate activates the standalone shell and loads only the requested destination without aborting a Home read',async t=>{
     const f=fixture(t);
     await f.navigate('orders');
