@@ -6,6 +6,23 @@
     const money = value => value === null || value === undefined ? 'Pricing required' : new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(Number(value)/100);
     const stateLabel = value => ({draft:'Draft',published:'Published',retired:'Retired',pending_approval:'Awaiting approval',approved:'Approved',rejected:'Not approved',expired:'Expired',superseded:'Replaced by a newer revision',open:'Open',paid:'Paid',complete:'Complete',completed:'Complete',payment_exception:'Payment review needed',pending:'Pending',processing:'Processing',failed:'Failed',cancelled:'Cancelled',refunded:'Refunded',partially_refunded:'Partially refunded',deposit:'Deposit',balance:'Remaining balance',full:'Full payment',payment_pending:'Awaiting payment',scheduled:'Scheduled',unpaid:'Unpaid',no_payment_required:'No payment required'}[value] || 'Review needed');
     function reset() { generation++; active?.controller.abort(); global.H2SFieldWorkflow?.reset(); if (active) active.root.replaceChildren(); active = null; }
+    // Retain only the unsaved builder DOM, never immutable quote/review state.
+    function captureDraft() {
+        if (!active?.valid() || !active.options.leadId) return null;
+        const form = active.root.querySelector('[data-commerce-create]');
+        if (!form) return null;
+        const catalog = active.data.catalogs.find(item => item.catalog_id === form.elements.catalogId.value);
+        return {leadId: active.options.leadId, form, rows: active.rows,
+            catalog: active.draftBlocked ? active.options.draft.catalog : JSON.stringify(catalog)};
+    }
+    function canLeave() {
+        if (!active) return true;
+        if (active.busy || active.attempt) {
+            active.status('Finish or retry the pending transaction action before leaving. Refresh quotes explicitly discards an interrupted retry.', true);
+            return false;
+        }
+        return true;
+    }
     function mount(root, options) {
         reset(); const id = generation, started = options.getSession()?.token, startedRole=options.getSession()?.role;
         const state = { root, options, controller: new AbortController(), data: null, current: null, busy: false, attempt: null, attemptEndpoint:null, catalog:null, catalogError:null, rows: 1 };
@@ -20,6 +37,7 @@
             const target = root.querySelector('[data-commerce-status]'); if (!target || !valid()) return;
             target.textContent = message; target.setAttribute('role', error ? 'alert' : 'status');
         }
+        state.valid = valid; state.status = status;
         async function api(body,endpoint='field-sales-transactions') {
             if (!valid()) throw Error('Session changed; private transaction response discarded.');
             const response = await global.fetch(`${apiRoot(options.apiBase)}/${endpoint}${body || !options.leadId || endpoint!=='field-sales-transactions' ? '' : '?leadId='+encodeURIComponent(options.leadId)}`,
@@ -92,6 +110,17 @@
                     <div class="field-sales__wide" data-commerce-lines></div><button type="button" data-commerce-add>Add service line</button>
                     <button type="submit" class="field-sales__primary">Calculate & save quote draft</button></form>`);
                 rows();
+            }
+            if (options.draft?.leadId === options.leadId && options.draft.form) {
+                const fresh = root.querySelector('[data-commerce-create]'), draft = options.draft;
+                if (fresh) fresh.replaceWith(draft.form); else root.append(draft.form);
+                state.rows = draft.rows;
+                const current = d.catalogs.find(item => item.catalog_id === draft.form.elements.catalogId.value);
+                state.draftBlocked = JSON.stringify(current) !== draft.catalog;
+                draft.form.querySelectorAll('input,select,textarea,button').forEach(control => { control.disabled = state.draftBlocked; });
+                if (state.draftBlocked) {
+                    status('Pricing configuration changed. Your unsaved scope is retained. Refresh quotes to explicitly discard it and load current choices.', true);
+                }
             }
             root.insertAdjacentHTML('beforeend', `<h4>Saved quotes</h4><div class="field-sales__toolbar">${d.quotes.map(q=>`<button type="button" data-commerce-quote="${esc(q.quote_id)}">Revision ${esc(q.revision)} · ${esc(stateLabel(q.state))} · ${money(q.snapshot.totalCents)}</button>`).join('') || '<p class="field-sales__empty">No saved quotes for this customer. Complete the service scope above to create a draft.</p>'}</div><div data-commerce-review></div>`);
             state.current = d.quotes.find(q=>q.quote_id===state.current?.quote_id) || d.quotes[0];
@@ -192,6 +221,7 @@
             status('Saving/verifying on the server. An interrupted action retains its exact retry key.');
             try {
                 const action=state.attempt.action,result=await api(state.attempt,state.attemptEndpoint);if(!valid())return;state.attempt=null;state.attemptEndpoint=null;
+                if(action==='quote'){options.draft=null;options.onDraftDiscard?.();}
                 if(result.id&&['quote','submit','approve','reject'].includes(action))state.current={quote_id:result.id};
                 if(result.agreementUrl){const href=safeLink(result.agreementUrl),target=root.querySelector('[data-commerce-handoff]');target.replaceChildren();const a=document.createElement('a');a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='Open/share finite secure customer link';target.append(a);
                     if(result.expiresAt){const expiry=document.createElement('p');expiry.textContent='Secure handoff expires '+new Date(result.expiresAt).toLocaleString()+'. '+(result.scope==='accepted_documents_balance'?'Customer copies and eligible remaining balance.':'Exact approved customer agreement.');target.append(expiry);}
@@ -203,6 +233,7 @@
         }
         root.addEventListener('change',event=>{
             if(!valid()||state.busy)return;
+            if(state.draftBlocked && event.target.closest('[data-commerce-create]'))return;
             if(event.target.matches('[data-commerce-catalog]')){state.rows=1;root.querySelector('[data-commerce-lines]').replaceChildren();rows();}
             if(event.target.matches('[data-commerce-offer]'))inputs(event.target.closest('[data-commerce-line]'));
         });
@@ -215,7 +246,10 @@
         });
         root.addEventListener('click',event=>{
             if(!valid()||state.busy)return;const b=event.target.closest('button');if(!b)return;
-            if(b.hasAttribute('data-commerce-refresh')){state.attempt=null;load();}
+            if(b.hasAttribute('data-commerce-refresh')){
+                if((root.querySelector('[data-commerce-create]') || state.attempt) && !global.confirm('Refresh quotes and discard the unsaved builder and any interrupted retry?'))return;
+                options.draft=null;options.onDraftDiscard?.();state.draftBlocked=false;state.attempt=null;load();
+            }
             if(b.hasAttribute('data-commerce-add')){if(state.rows>=30){status('Maximum 30 service lines.',true);return;}state.rows++;rows();}
             if(b.hasAttribute('data-commerce-remove')){if(state.rows===1){status('At least one service line is required.',true);return;}b.closest('[data-commerce-line]').remove();state.rows--;[...root.querySelectorAll('[data-commerce-line] legend')].forEach((el,i)=>el.textContent='Service line '+(i+1));}
             if(b.dataset.commerceQuote){state.current=state.data.quotes.find(q=>q.quote_id===b.dataset.commerceQuote);review();}
@@ -243,6 +277,7 @@
                     if(body.action==='create_draft'){body.definition=JSON.parse(body.definition);if(!body.definition||typeof body.definition!=='object'||Array.isArray(body.definition))throw Error('Provide a catalog definition object.');if(!body.sourceEvidence.trim())throw Error('Source evidence is required.');body.sourceEvidence={reference:body.sourceEvidence};}
                     write(body,'field-sales-catalog');
                 }else if(form.matches('[data-commerce-create]')){
+                    if(state.draftBlocked)throw Error('Pricing configuration changed. Refresh quotes before creating a new draft.');
                     const lines=[...form.querySelectorAll('[data-commerce-line]')].map(row=>{
                         const [serviceId,offerId]=row.querySelector('[data-commerce-offer]').value.split(':');
                         return {serviceId,offerId,quantity:Number(row.querySelector('[name="quantity"]').value),options:[...row.querySelectorAll('[data-option]:checked')].map(el=>el.value),
@@ -259,5 +294,5 @@
         });
         load();
     }
-    global.H2SFieldCommerce={mount,reset};
+    global.H2SFieldCommerce={mount,reset,captureDraft,canLeave};
 })(window);

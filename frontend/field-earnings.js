@@ -20,6 +20,63 @@
             return matches;
         };
         const admin = () => options.getSession()?.role === 'ADMIN';
+        // Keep this module independently mountable. Panels move existing controls;
+        // switching views never renders records, replaces forms or requests data.
+        function preparePanels() {
+            const tabLabels = {
+                'Commission qualification':'Qualification',
+                'Earned commissions':'Commissions',
+                'Accounting adjustments':'Adjustments',
+                'Friday payment review':'Friday review'
+            };
+            root.querySelectorAll('details:not(.field-workflow__audit)').forEach(disclosure => {
+                const panel = document.createElement('section'), heading = document.createElement('h4');
+                panel.className = disclosure.className + ' field-workflow__panel';
+                heading.textContent = disclosure.querySelector(':scope > summary').textContent;
+                disclosure.querySelector(':scope > summary').remove();
+                panel.append(heading,...disclosure.childNodes);
+                disclosure.replaceWith(panel);
+            });
+            const group = root.querySelector('[data-earnings-records]'), panels = [...group.children];
+            const tabs = document.createElement('div');
+            tabs.className = 'field-workflow__tabs'; tabs.setAttribute('role','tablist');
+            tabs.setAttribute('aria-label','Earnings review views');
+            panels.forEach((panel,index) => {
+                const key = `field-earnings-${id}-${index}`, tab = document.createElement('button');
+                tab.type = 'button'; tab.className = 'field-workflow__tab'; tab.id = key+'-tab';
+                const heading = panel.querySelector('h4').textContent;
+                tab.textContent = tabLabels[heading] || heading;
+                tab.setAttribute('role','tab'); tab.setAttribute('aria-controls',key+'-panel');
+                tab.setAttribute('aria-selected',String(index===0)); tab.tabIndex = index===0 ? 0 : -1;
+                panel.id = key+'-panel'; panel.classList.add('field-workflow__panel');
+                panel.setAttribute('role','tabpanel'); panel.setAttribute('aria-labelledby',tab.id);
+                panel.tabIndex = 0; panel.hidden = index!==0; tabs.append(tab);
+            });
+            group.prepend(tabs);
+        }
+        function activatePanel(tab, focus = false) {
+            for (const item of tab.parentElement.children) {
+                const selected = item===tab;
+                item.setAttribute('aria-selected',String(selected)); item.tabIndex = selected ? 0 : -1;
+                root.querySelector('#'+item.getAttribute('aria-controls')).hidden = !selected;
+            }
+            if (focus) tab.focus();
+        }
+        root.onkeydown = event => {
+            const tab = event.target.closest('.field-workflow__tab');
+            if (!tab || !valid()) return;
+            const tabs = [...tab.parentElement.children], index = tabs.indexOf(tab);
+            const next = {ArrowRight:(index+1)%tabs.length,ArrowLeft:(index+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1}[event.key];
+            if (next===undefined) return;
+            event.preventDefault(); event.stopPropagation(); activatePanel(tabs[next],true);
+        };
+        root.addEventListener('invalid',event => {
+            if (!valid()) return;
+            const panel = event.target.closest('[role="tabpanel"]');
+            if (panel?.hidden) activatePanel(root.querySelector('#'+panel.getAttribute('aria-labelledby')));
+            const audit = event.target.closest('details.field-workflow__audit');
+            if (audit) audit.open = true;
+        },{capture:true,signal:state.controller.signal});
         const title = (row,index,prefix='Order') => row.customerName || row.customer?.name || options.customerNames?.[row.leadId] || `${prefix} ${index+1}`;
         function status(text, error = false) {
             if (!valid()) return;
@@ -77,6 +134,7 @@
                     ${ids.map(rep=>`<option value="${esc(rep)}"${rep===state.representativeId?' selected':''}>${esc(state.representativeLabels.get(rep))}</option>`).join('')}</select></label>`);
             }
             renderRecords(root.querySelector('[data-earnings-records]'));
+            preparePanels();
         }
         function renderRecords(target) {
             const d = state.data;
@@ -131,7 +189,7 @@
                     <details class="field-sales__wide field-workflow__audit"><summary>Admin evidence details — beneficiaries reconciliation (required)</summary><label>Verified beneficiaries & integer amounts (JSON)<textarea name="beneficiaries" required>${esc(JSON.stringify(row.beneficiaries,null,2))}</textarea></label></details>
                     <label class="field-sales__wide">Independent reconciliation evidence<textarea name="evidence" required maxlength="4000"></textarea></label>
                     <label class="field-sales__wide field-sales__check"><input name="independentReconciliation" type="checkbox" required>I independently reconciled the amount, beneficiaries and external reference.</label>
-                    <button type="submit">Record reconciled settlement evidence</button></form>` : '<p>Settlement recording remains blocked until an approved run is exported and independently reconciled.</p>'}</details>` : ''}</article>`;
+                    <button type="submit">Record settlement evidence</button></form>` : '<p>Settlement recording remains blocked until an approved run is exported and independently reconciled.</p>'}</details>` : ''}</article>`;
         }
         async function load() {
             if (!valid()) return;
@@ -161,7 +219,9 @@
             finally { state.busy = false; }
         }
         root.onclick = event => {
-            const b = event.target.closest('button'); if (!b || !valid() || state.busy) return;
+            const b = event.target.closest('button'); if (!b || !valid()) return;
+            if (b.matches('.field-workflow__tab')) { activatePanel(b,true); return; }
+            if (state.busy) return;
             if (b.hasAttribute('data-earnings-refresh')) { state.attempt = null; load(); }
             if (b.dataset.earningsReview) write({action:'review_order',quoteId:b.dataset.earningsReview});
         };

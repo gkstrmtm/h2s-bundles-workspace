@@ -83,6 +83,10 @@ test('read-only view renders evidence, escapes content, filters loaded page, and
     assert.match(f.root.textContent, /Preparation ready \(not payment clearance\)/);
     assert.match(f.root.textContent, /Filters apply to this page only/);
     assert.match(f.root.textContent, /2 mounts/);
+    assert.match(f.root.querySelector('article > p:nth-of-type(2)').textContent, /ORD-FIXTURE/);
+    assert.doesNotMatch(f.root.querySelector('article > p:nth-of-type(2)').textContent, /fixture-job/);
+    const audit = f.root.querySelector('details');
+    assert.equal(audit.open, false); assert.match(audit.textContent, /fixture-job/);
     click(f, '[data-operations-filter="payments"]');
     assert.equal(f.root.querySelectorAll('article').length, 0);
     click(f, '[data-operations-filter="payouts"]');

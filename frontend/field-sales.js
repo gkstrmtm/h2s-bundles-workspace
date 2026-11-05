@@ -12,7 +12,36 @@
     const workflowStyle = document.createElement('link'); workflowStyle.rel = 'stylesheet';
     workflowStyle.href = global.__h2sResolveDashSiblingAsset?.('field-workflow.css') || './field-workflow.css'; document.head.append(workflowStyle);
     let options, data, detail, mode = 'dashboard', token = '', version = 0, controller, attempt, busy = false, preparing = false, quoteLead = null, assessmentDraft = {};
-    const urls = new Set(), hiddenNav = new Map();
+    const urls = new Set(), hiddenNav = new Map(), draftViews = new Map(), quoteDrafts = new Map();
+    let renderedKey = null, mountedDirty = false, savedForm = null, actorRole = null;
+    const viewKey = () => mode === 'detail' && detail ? `detail:${detail.opportunity.lead_id}` : mode;
+    // Keep actual form nodes, including browser-owned FileLists, only in this session's memory.
+    function retainDraft() {
+        const content = root.querySelector('[data-sales-content]');
+        if (content && renderedKey && /^(new|representatives|detail:)/.test(renderedKey)) {
+            draftViews.set(renderedKey, { forms: [...content.querySelectorAll('[data-sales-form]')], answers: assessmentDraft });
+        }
+    }
+    function retainQuoteDraft() {
+        const draft = global.H2SFieldCommerce?.captureDraft?.();
+        if (draft) quoteDrafts.set(draft.leadId, draft);
+    }
+    function safeToLeave() {
+        if (busy || preparing) { status('Wait for the current save or photo preparation to finish.'); return false; }
+        if (attempt) { status('Retry the interrupted save before leaving, or explicitly Refresh to discard it.', true); return false; }
+        if (global.H2SFieldCommerce?.canLeave?.() === false) return false;
+        if (mountedDirty && !global.confirm('Leave this destination and discard its unsaved changes, including any selected files?')) return false;
+        mountedDirty = false;
+        retainDraft(); retainQuoteDraft();
+        return true;
+    }
+    const navIcon = id => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${({
+        dashboard:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-8H9v8H4a1 1 0 0 1-1-1Z"/>',
+        opportunities:'<circle cx="9" cy="8" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/>',
+        quotes:'<path d="M6 3h9l4 4v14H6ZM14 3v5h5M9 12h7m-7 4h5"/>',
+        orders:'<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M9 5V3h6v2m-7 8 3 3 5-6"/>',
+        commissions:'<rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 10h18m-5 5h2"/>'
+    })[id]}</svg>`;
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     const session = () => options?.getSession();
     const allowed = () => ['ADMIN', 'SALES'].includes(session()?.role) && !!session()?.token;
@@ -35,7 +64,7 @@
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
-        ++version; controller?.abort(); release(); data = detail = attempt = quoteLead = null; busy = preparing = false; mode = 'dashboard'; token = ''; root.replaceChildren(); nav.hidden = true;
+        ++version; controller?.abort(); release(); draftViews.clear(); quoteDrafts.clear(); renderedKey = savedForm = actorRole = null; assessmentDraft = {}; mountedDirty = false; data = detail = attempt = quoteLead = null; busy = preparing = false; mode = 'dashboard'; token = ''; root.replaceChildren(); nav.hidden = true;
         delete document.getElementById('h2s-app').dataset.fieldSales;
         for (const [element, hidden] of hiddenNav) element.hidden = hidden; hiddenNav.clear();
     }
@@ -72,17 +101,24 @@
         const rank = service => /tv|television/i.test(service.definition.label) ? 0 : /camera|security/i.test(service.definition.label) ? 1 : 2;
         return [...data.services].sort((a,b) => rank(a)-rank(b)).map(service => {
             const available = service.definition.markets.includes(market);
-            return `<label class="field-sales__service"${available ? '' : ' hidden'}><input type="checkbox" name="services" value="${esc(service.service_id)}"${selected.includes(service.service_id) ? ' checked' : ''}${available ? '' : ' disabled'}><span><strong>${esc(service.definition.label)}</strong><small>${rank(service) < 2 ? 'Popular service · ' : ''}Select to assess equipment and installation</small></span></label>`;
+            const name = service.definition.label;
+            const description = service.definition.description || (/tv|television/i.test(name) ? 'Screen size, wall type and mounting location'
+                : /camera|security/i.test(name) ? 'Camera locations, coverage and wiring'
+                : /network|wi-?fi/i.test(name) ? 'Coverage, connection points and equipment'
+                : /doorbell/i.test(name) ? 'Doorway, existing wiring and device'
+                : service.definition.questions?.slice(0, 2).map(question => question.label).join(' · ') || `${name} requirements`);
+            return `<label class="field-sales__service"${available ? '' : ' hidden'}><input type="checkbox" name="services" aria-label="${esc(name)}" value="${esc(service.service_id)}"${selected.includes(service.service_id) ? ' checked' : ''}${available ? '' : ' disabled'}><span><strong>${esc(name)}</strong><small>${esc(description)}</small></span></label>`;
         }).join('');
     }
     function render() {
+        retainQuoteDraft();
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
         release(); assessmentDraft = {};
         root.innerHTML = `<header class="field-sales__header"><div><span class="field-sales__eyebrow">Home2Smart</span><h2>${admin() ? 'Field Sales management' : 'Field Sales'}</h2></div><div class="field-sales__toolbar"><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</div></header>
             <nav class="field-sales__nav" aria-label="Field Sales views">${[['dashboard', 'Home'], ['opportunities', 'Leads'], ['quotes', 'Quotes'], ['orders','Orders'], ['commissions','Earnings']]
-                .map(([id, title]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${primaryMode() === id}"${primaryMode() === id ? ' aria-current="page"' : ''}>${title}</button>`).join('')}</nav>
+                .map(([id, title]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${primaryMode() === id}"${primaryMode() === id ? ' aria-current="page"' : ''}>${navIcon(id)}<span>${title}</span></button>`).join('')}</nav>
             ${admin() ? `<nav class="field-sales__management-nav" aria-label="Management views">${[['representatives','Representatives'],['transactions','Quotes & Payments'],['performance','Performance']].map(([id,title])=>`<button type="button" data-sales-mode="${id}" aria-pressed="${mode===id}">${title}</button>`).join('')}</nav>` : ''}
             <p data-sales-status role="status" aria-live="polite"></p><div data-sales-content></div>`;
         if (!data) return;
@@ -129,21 +165,21 @@
                 <fieldset class="field-sales__wide field-sales__form"><legend>3 · Next contact</legend>
                 <label class="field-sales__wide">Notes<textarea name="notes" maxlength="2000"></textarea></label>
                 <label>Follow-up (device timezone)<input type="datetime-local" name="followUpAt"></label></fieldset><div class="field-sales__wide field-sales__toolbar"><button type="submit" class="field-sales__primary">Save & continue to assessment</button></div></form>
-                ${admin() ? `<details><summary>Link a verified existing Customer Queue inquiry</summary><p>Verify the exact lead ID and source evidence. Names or phone similarity do not prove identity.</p>
+                ${admin() ? `<section class="field-sales__section" aria-label="Link existing inquiry"><h4>Link a verified existing Customer Queue inquiry</h4><p>Verify the exact lead ID and source evidence. Names or phone similarity do not prove identity.</p>
                 <form data-sales-form="attach" class="field-sales__form"><label>Existing lead UUID<input name="leadId" required></label>
                 <label>Representative<select name="ownerId" required><option value="">Choose</option>${representatives()}</select></label>
                 <label class="field-sales__wide">Identity verification evidence<textarea name="evidence" required maxlength="2000"></textarea></label>
-                <button type="submit">Link existing inquiry</button></form></details>` : ''}`;
+                <button type="submit">Link existing inquiry</button></form></section>` : ''}`;
         } else if (mode === 'representatives' && admin()) {
             content.innerHTML = `<h3>Representative accounts</h3><p>New accounts are disabled. Creation does not enroll a representative for login.</p>
                 ${(data.representatives || []).map(rep => `<article><strong>${esc(rep.display_name)}</strong> / ${esc(rep.username)} / ${rep.active ? 'active' : 'disabled'}
                 <button type="button" data-rep-state="${esc(rep.user_id)}" data-active="${!rep.active}">${rep.active ? 'Disable and revoke sessions' : 'Explicitly enable account'}</button>
                 <p>Approved commission start: ${esc(rep.commission_start_date || 'Not configured — tenure review required')} / ${esc(rep.commission_start_evidence || 'Evidence pending')}</p>
-                <details><summary>Representative commission terms</summary><form data-sales-form="representative_terms" class="field-sales__form">
+                <section class="field-sales__section" aria-label="Representative commission terms"><h4>Representative commission terms</h4><form data-sales-form="representative_terms" class="field-sales__form">
                     <input type="hidden" name="userId" value="${esc(rep.user_id)}"><input type="hidden" name="termsRevision" value="${esc(rep.commission_terms_revision ?? 0)}">
                     <label>Approved commission start date (blank explicitly unsets tenure)<input name="commissionStartDate" type="date" value="${esc(rep.commission_start_date || '')}"></label>
                     <label class="field-sales__wide">Start-event approval evidence<textarea name="commissionStartEvidence" required maxlength="2000">${esc(rep.commission_start_evidence || '')}</textarea></label>
-                    <button type="submit">Record approved representative terms</button></form></details></article>`).join('')}
+                    <button type="submit">Record approved representative terms</button></form></section></article>`).join('')}
                 <form data-sales-form="account_create" class="field-sales__form"><label>Display name<input name="displayName" required maxlength="120"></label>
                 <label>Username (letters/digits)<input name="username" required pattern="[A-Za-z][A-Za-z0-9]{2,31}"></label>
                 <label class="field-sales__wide">Temporary credential: save securely before creating; never share a session token<input name="pin" readonly value="${esc(global.crypto.randomUUID().replaceAll('-', ''))}"></label>
@@ -157,6 +193,7 @@
                 detail.photos.some(photo => photo.service_id === service.service_id && photo.label === label && photo.state === 'ready')));
             content.innerHTML = `<div class="field-sales__toolbar"><button type="button" data-sales-mode="opportunities">Back to leads</button><button type="button" data-sales-build-quote="${esc(op.lead_id)}">Open customer quotes</button></div>
                 <h3>${esc(detail.lead.full_name)}</h3><p>${esc(detail.lead.phone)} · ${esc(detail.lead.project_address)} · ${esc(detail.lead.project_city)}</p>
+                <p class="field-sales__note">Lead · <strong>Assessment</strong> · Quote · Acceptance · Orders · Earnings. Save the assessment, then open customer quotes. Approval, acceptance and payment remain separate steps.</p>
                 <span class="field-sales__badge">${esc(label(op.status))}</span>
                 ${admin() ? `<details><summary>Identity & ownership audit</summary><p class="field-sales__id">Shared lead ${esc(op.lead_id)} / ${esc(op.status)} / revision ${esc(op.revision)}</p>
                 <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p></details>` : ''}
@@ -171,8 +208,8 @@
                 <label class="field-sales__wide">Photo permission evidence / customer statement<textarea name="consentNote" maxlength="1000">${esc(op.consent_note)}</textarea></label></fieldset>
                 <div class="field-sales__wide field-sales__toolbar"><button type="submit" name="submit" value="false">Save assessment draft</button><button type="submit" name="submit" value="true" class="field-sales__primary">Submit for management review</button></div></form>
                 <h3>Property photographs</h3><p>Save permission first. Photos stay private. Missing photos require management review, not invented evidence.</p>
-                <form data-sales-form="photo" class="field-sales__form"><label>Service<select name="serviceId">${data.services.filter(s => op.services.includes(s.service_id)).map(s => `<option value="${esc(s.service_id)}">${esc(s.definition.label)}</option>`).join('')}</select></label>
-                <label>Photo label<select name="label"></select></label>
+                <form data-sales-form="photo" class="field-sales__form"><label>Service<select name="serviceId" required>${data.services.filter(s => op.services.includes(s.service_id)).map(s => `<option value="${esc(s.service_id)}">${esc(s.definition.label)}</option>`).join('')}</select></label>
+                <label>Photo label<select name="label" required></select></label>
                 <label>Photograph<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required></label><button type="submit"${consent ? '' : ' disabled'}>Upload labeled photo</button></form>
                 <div data-sales-photos>${detail.photos.map(p => `<article>${esc(serviceName(p.service_id))} · ${esc(p.label)} · ${p.state === 'ready' ? 'Ready' : 'Processing or review needed'}
                     ${consent && p.state === 'ready' ? `<button type="button" data-sales-photo="${esc(p.file_id)}">View private photo</button>` : ''}</article>`).join('')}</div>
@@ -205,12 +242,51 @@
                 <p>${esc(row.phone)} · ${esc(row.address)} · ${row.market==='commercial'?'Commercial':'Residential'}</p><p>${esc(row.services.map(serviceName).join(' · ') || 'Service interests not selected')}</p>
                 <p class="field-sales__note">Next contact: ${esc(date(row.follow_up_at))}</p></article>`).join('') || '<div class="field-sales__empty"><h4>Your next customer starts here</h4><p>Add a prospect, or ask management to assign an existing inquiry.</p></div>'}</div><p data-sales-no-results hidden>No leads match these filters.</p>`;
         }
+        const key = viewKey(), retained = draftViews.get(key);
+        if (retained) {
+            const freshForms = [...content.querySelectorAll('[data-sales-form]')];
+            assessmentDraft = retained.answers;
+            for (const form of retained.forms) {
+                const fresh = freshForms.find(candidate => candidate.dataset.salesForm === form.dataset.salesForm &&
+                    candidate.elements.userId?.value === form.elements.userId?.value);
+                if (!fresh) continue;
+                if (form === savedForm) {
+                    if (form.dataset.salesForm === 'save') assessmentDraft = {};
+                } else fresh.replaceWith(form);
+            }
+            if (mode === 'detail') {
+                // Refresh server-authoritative availability without clearing a selected FileList.
+                const photoForm = content.querySelector('[data-sales-form="photo"]');
+                if (photoForm) {
+                    const serviceId = photoForm.elements.serviceId.value, photoLabel = photoForm.elements.label.value;
+                    const fileSelected = photoForm.elements.photo.files.length > 0;
+                    const available = data.services.filter(service => detail.opportunity.services.includes(service.service_id));
+                    const serviceAvailable = available.some(service => service.service_id === serviceId);
+                    photoForm.elements.serviceId.innerHTML = (fileSelected && !serviceAvailable ? '<option value="" selected disabled>Choose a service for the retained photo</option>' : '') +
+                        available.map(service => `<option value="${esc(service.service_id)}"${service.service_id === serviceId ? ' selected' : ''}>${esc(service.definition.label)}</option>`).join('');
+                    photoLabels();
+                    const labelAvailable = serviceAvailable && [...photoForm.elements.label.options].some(option => option.value === photoLabel);
+                    if (labelAvailable) photoForm.elements.label.value = photoLabel;
+                    else if (fileSelected) photoForm.elements.label.insertAdjacentHTML('afterbegin','<option value="" selected disabled>Choose a label for the retained photo</option>');
+                    photoForm.querySelector('button').disabled = !detail.opportunity.photo_consent || !available.length;
+                    if (fileSelected && (!serviceAvailable || !labelAvailable)) status('Your selected photo is retained. Choose its service and label before uploading.');
+                }
+                if ((!admin() && detail.opportunity.status === 'closed') ||
+                    detail.opportunity.services.some(id => !data.services.some(service => service.service_id === id))) {
+                    content.querySelectorAll('form :is(input,select,textarea,button)').forEach(control => { control.disabled = true; });
+                }
+            }
+        }
+        savedForm = null;
+        renderedKey = key;
+        if (retained) retainDraft();
         global.h2sInitDateInputs?.();
     }
     function commerce(target, leadId) {
         if (!global.H2SFieldCommerce) { target.textContent = 'Quote/payment module unavailable. Assessment remains available.'; return; }
-        global.H2SFieldCommerce.mount(target, { apiBase: options.apiBase, getSession: session, leadId, ...identityNames(),
-            openLead: id => load(id), onSessionEnded: () => reset() });
+        global.H2SFieldCommerce.mount(target, { apiBase: options.apiBase, getSession: session, leadId, draft: quoteDrafts.get(leadId), ...identityNames(),
+            onDraftDiscard: () => quoteDrafts.delete(leadId),
+            openLead: id => navigate('assessment', id), onSessionEnded: () => reset() });
     }
     function questions() {
         const target = root.querySelector('[data-sales-questions]'); if (!target) return;
@@ -232,8 +308,10 @@
     }
     async function load(leadId) {
         if (!allowed()) { reset(); return; }
-        if (token && token !== session().token) reset();
-        token = session().token; const id = ++version; controller?.abort(); controller = new AbortController();
+        if (token && (token !== session().token || actorRole !== session().role)) reset();
+        retainDraft();
+        renderedKey = null;
+        token = session().token; actorRole = session().role; const id = ++version; controller?.abort(); controller = new AbortController();
         data = detail = null; render(); status('Loading assigned Field Sales records...');
         try {
             const result = await json('field-sales'); if (id !== version) return; data = result;
@@ -259,6 +337,8 @@
         finally { image.close(); }
     }
     root.addEventListener('change', event => {
+        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
+            !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
         if (event.target.name === 'services') questions();
         if (event.target.name === 'market') {
             for (const input of root.querySelectorAll('[name="services"]')) {
@@ -269,6 +349,7 @@
         if (event.target.name === 'serviceId') photoLabels();
         if (event.target.matches('[data-sales-owner]')) filterLeads();
         if (event.target.matches('[data-sales-quote-lead]')) {
+            if (!safeToLeave()) { event.target.value = quoteLead || ''; event.target.dispatchEvent(new Event('change', {bubbles:false})); return; }
             quoteLead = event.target.value || null;
             const target = root.querySelector('[data-sales-quote-builder]'), lead = data.opportunities.find(row=>row.lead_id===quoteLead);
             global.H2SFieldCommerce?.reset(); target.replaceChildren();
@@ -281,7 +362,23 @@
         for (const row of rows) row.hidden = (!!owner && row.dataset.owner !== owner) || !row.dataset.search.includes(search);
         const empty = root.querySelector('[data-sales-no-results]'); if (empty) empty.hidden = !rows.length || rows.some(row=>!row.hidden);
     }
-    root.addEventListener('input', event=>{ if(event.target.matches('[data-sales-search]')) filterLeads(); });
+    root.addEventListener('input', event=>{
+        if(event.target.matches('[data-sales-search]')) filterLeads();
+        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
+            !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
+    });
+    function hasUnsavedDraft() {
+        const nodes = [root, ...[...draftViews.values()].flatMap(draft => draft.forms), ...[...quoteDrafts.values()].map(draft => draft.form)];
+        const changed = nodes.some(node => node.querySelectorAll && [...node.querySelectorAll('form input,form select,form textarea')].some(control =>
+            control.type === 'file' ? control.files.length > 0
+                : ['checkbox','radio'].includes(control.type) ? control.checked !== control.defaultChecked
+                : control.tagName === 'SELECT' ? control.selectedIndex !== Math.max(0, [...control.options].findIndex(option => option.defaultSelected))
+                : control.value !== control.defaultValue));
+        return changed || mountedDirty || busy || preparing || !!attempt;
+    }
+    global.addEventListener('beforeunload', event => {
+        if (hasUnsavedDraft()) { event.preventDefault(); event.returnValue = ''; }
+    });
     root.addEventListener('submit', async event => {
         const form = event.target.closest('[data-sales-form]'); if (!form) return; event.preventDefault();
         if (busy || preparing) return;
@@ -304,20 +401,30 @@
             }
             preparing = false;
             const result = await write(path, body);
-            if (result) { const lead = result.leadId || (detail?.opportunity.lead_id); if (action === 'account_create') { status('Disabled account created. Save the temporary credential securely before Refresh; it is not recoverable. Refresh to enable explicitly.'); form.querySelector('button').disabled = true; await refreshRepresentatives(); } else await load(lead); }
+            if (result) { const lead = result.leadId || (detail?.opportunity.lead_id); if (action === 'account_create') { status('Disabled account created. Save the temporary credential securely before Refresh; it is not recoverable. Refresh to enable explicitly.'); form.querySelector('button').disabled = true; await refreshRepresentatives(); } else {
+                if (action === 'create') { draftViews.delete(renderedKey); renderedKey = null; }
+                savedForm = form; await load(lead);
+            } }
         } catch (error) { if (generation === version) status(error.message, true); }
         finally { if (generation === version) preparing = false; }
     });
     async function refreshRepresentatives() { const fresh = await json('field-sales'); data = fresh; }
     root.addEventListener('click', async event => {
         const button = event.target.closest('button'); if (!button) return;
-        if (button.hasAttribute('data-sales-logout')) { options.onLogout(); return; }
+        if (button.hasAttribute('data-sales-logout')) {
+            if (hasUnsavedDraft() && !global.confirm('Sign out and discard all unsaved changes and selected files?')) return;
+            options.onLogout(); return;
+        }
         if (busy || preparing) return;
         try {
-            if (button.hasAttribute('data-sales-refresh')) { attempt = null; await load(detail?.opportunity.lead_id); }
-            if (button.dataset.salesMode) { mode = button.dataset.salesMode; detail = null; attempt = null; await load(); }
-            if (button.dataset.salesBuildQuote) { quoteLead = button.dataset.salesBuildQuote; mode = 'quotes'; detail = null; attempt = null; await load(); }
-            if (button.dataset.salesLead) { attempt = null; await load(button.dataset.salesLead); }
+            if (button.hasAttribute('data-sales-refresh')) {
+                if (!global.confirm('Refresh and discard unsaved changes in this destination, including selected files and any interrupted save?')) return;
+                quoteDrafts.delete(quoteLead); global.H2SFieldCommerce?.reset();
+                draftViews.delete(renderedKey); renderedKey = null; mountedDirty = false; attempt = null; await load(detail?.opportunity.lead_id);
+            }
+            if (button.dataset.salesMode) { if (!safeToLeave()) return; mode = button.dataset.salesMode; detail = null; attempt = null; await load(); }
+            if (button.dataset.salesBuildQuote) { if (!safeToLeave()) return; quoteLead = button.dataset.salesBuildQuote; mode = 'quotes'; detail = null; attempt = null; await load(); }
+            if (button.dataset.salesLead) { if (!safeToLeave()) return; attempt = null; await load(button.dataset.salesLead); }
             if (button.dataset.repState) { const result = await write('field-sales', { action: 'account_state', userId: button.dataset.repState, active: button.dataset.active === 'true' }); if (result) await load(); }
             if (button.dataset.salesPhoto) {
                 const generation = version, started = session()?.token;
@@ -340,17 +447,25 @@
     }
     function activate() {
         if (!allowed()) { reset(); return Promise.resolve(); }
+        if (token && (token !== session().token || actorRole !== session().role)) reset();
+        if (!safeToLeave()) return Promise.resolve();
         activateShell();
-        return load();
+        return load(detail?.opportunity.lead_id);
     }
     function navigate(view, leadId) {
         const views = {home:'dashboard',leads:'opportunities',new:'new',quotes:'quotes',orders:'orders',earnings:'commissions',assessment:'detail'};
         if (!Object.hasOwn(views, view) || !allowed()) return Promise.resolve();
+        if (token && (token !== session().token || actorRole !== session().role)) reset();
+        if (!safeToLeave()) return Promise.resolve();
         activateShell();
-        mode = views[view]; detail = null; attempt = null; quoteLead = view === 'quotes' ? leadId || null : null;
+        mode = views[view]; detail = null; attempt = null; if (view === 'quotes' && leadId) quoteLead = leadId;
         if (view === 'assessment' && !leadId) mode = 'opportunities';
         return load(view === 'assessment' ? leadId : undefined);
     }
     nav.addEventListener('click', () => { if (session()?.role === 'SALES') activate(); else global.switchToTab('fieldsales'); });
-    global.H2SFieldSales = { configure(value) { options = value; nav.hidden = !allowed() || !adminNav || document.body.dataset.salesApp === 'true'; }, open: () => load(), activate, navigate, reset };
+    global.H2SFieldSales = { configure(value) { options = value; nav.hidden = !allowed() || !adminNav || document.body.dataset.salesApp === 'true'; }, open: () => {
+        if (!allowed()) { reset(); return Promise.resolve(); }
+        if (token && (token !== session().token || actorRole !== session().role)) reset();
+        return safeToLeave() ? load(detail?.opportunity.lead_id) : Promise.resolve();
+    }, activate, navigate, reset };
 })(window);

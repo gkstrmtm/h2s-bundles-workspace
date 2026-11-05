@@ -29,6 +29,13 @@ function detailData() {
         photos:[{service_id:'tv',label:'Installation area',state:'ready',file_id:'private-file-id'}],
         history:[{created_at:'2026-01-01',actor_name:'Management',action:'private_action',payload:{private_audit:'must not appear for SALES'}}]};
 }
+function quoteData() {
+    return {ok:true,enabled:true,policyReady:false,depositConfigured:false,agreements:[],orders:[],payments:[],quotes:[],
+        catalogs:[{catalog_id:'catalog-fixture',status:'published',version:'Approved version',definition:{services:[
+            {id:'tv',label:'TV Mounting',markets:['residential'],offers:[{id:'customer-tv',label:'Customer-owned TV',enabled:true,minimum:1,maximum:5,
+                scope:['Wall mounting'],equipment:[],questions:[{id:'wall',label:'Wall construction',type:'select',required:true,options:['Drywall','Brick']}],options:[]}]}
+        ]}}]};
+}
 function fixture(t, {role='SALES', commerce=false}={}) {
     const dom = new JSDOM('<body data-sales-app="true"><main id="h2s-app"><div class="app-content"></div></main></body>',{runScripts:'outside-only',url:'https://fixture.invalid/sales.html'});
     t.after(()=>dom.window.close());
@@ -174,7 +181,233 @@ test('ADMIN keeps identity and raw audit evidence inside disclosure and represen
         assert.ok(element,text);assert.equal(element.open,false);
     }
     assert.ok(f.root().querySelector('[data-sales-form="assign"]'));
-    await f.navigate('new');assert.ok(f.root().querySelector('[data-sales-form="attach"]').closest('details'));
+    await f.navigate('new');
+    const attach=f.root().querySelector('[data-sales-form="attach"]');
+    assert.equal(attach.closest('details'),null);
+    assert.ok(attach.closest('[aria-label="Link existing inquiry"]'));
+});
+test('compact navigation pairs decorative 16px line SVGs with visible labels and current-page state',async t=>{
+    const f=fixture(t);await f.navigate('home');
+    const buttons=[...f.root().querySelectorAll('.field-sales__nav button')];
+    for (const button of buttons) {
+        const svg=button.querySelector('svg');
+        assert.ok(svg);assert.equal(svg.getAttribute('width'),'16');assert.equal(svg.getAttribute('height'),'16');
+        assert.equal(svg.getAttribute('aria-hidden'),'true');assert.equal(svg.getAttribute('focusable'),'false');
+        assert.equal(svg.getAttribute('fill'),'none');assert.ok(button.querySelector('span').textContent);
+    }
+    assert.equal(buttons.filter(button=>button.hasAttribute('aria-current')).length,1);
+    const css=source('field-sales.css');
+    assert.match(css,/height: 52px/);assert.match(css,/button,input,select,textarea,summary,a\):focus-visible/);
+    // Fixed nav = 52px item + 8px top/bottom + 1px border; safe area is shared with the 80px clearance.
+    assert.ok(52+8+8+1<80);
+});
+test('whole-card native service labels have specific concise descriptions and configured future fallback',async t=>{
+    const f=fixture(t);
+    f.data.services.push(service('future','Future configured service'));
+    f.data.services.at(-1).definition.description='Site access and installation constraints';
+    await f.navigate('new');
+    const cards=[...f.root().querySelectorAll('.field-sales__service')];
+    for(const card of cards) {
+        assert.equal(card.tagName,'LABEL');
+        const input=card.querySelector('input');
+        assert.equal(input.type,'checkbox');
+        assert.equal(input.getAttribute('aria-label'),card.querySelector('strong').textContent);
+    }
+    assert.match(cards.find(card=>card.textContent.includes('TV Mounting')).querySelector('small').textContent,/Screen size/);
+    assert.match(cards.find(card=>card.textContent.includes('Camera')).querySelector('small').textContent,/coverage/);
+    assert.match(cards.at(-1).textContent,/Site access and installation constraints/);
+    assert.doesNotMatch(f.root().textContent,/Popular service|Select to assess/);
+    const card=cards[0];card.click();await settle();assert.equal(card.querySelector('input').checked,true);
+});
+test('answers, notes, permission and the original photo input survive service toggles and every representative destination roundtrip',async t=>{
+    const f=fixture(t);await f.navigate('assessment',leadId);
+    const form=f.root().querySelector('[data-sales-form="save"]');
+    form.elements.notes.value='Unsaved private assessment';
+    form.elements.consentNote.value='Unsaved permission';
+    form.elements.photoConsent.checked=true;
+    form.elements.followUpAt.value='2026-11-06T10:30';
+    f.root().querySelector('[data-question="units"]').value='5';
+    const photo=f.root().querySelector('[name="photo"]');
+    const file=new f.w.File(['synthetic pixels'],'fixture.jpg',{type:'image/jpeg'});
+    Object.defineProperty(photo,'files',{value:[file]});
+    f.change(form.querySelector('[name="services"][value="tv"]'),false);
+    assert.equal(form.elements.notes.value,'Unsaved private assessment');
+    f.change(form.querySelector('[name="services"][value="tv"]'),true);
+    assert.equal(f.root().querySelector('[data-question="units"]').value,'5');
+    for(const destination of ['home','leads','quotes','orders','earnings']) {
+        await f.navigate(destination);await f.navigate('assessment',leadId);
+        assert.equal(f.root().querySelector('[data-sales-form="save"]'),form);
+        assert.equal(form.elements.notes.value,'Unsaved private assessment');
+        assert.equal(form.elements.consentNote.value,'Unsaved permission');
+        assert.equal(form.elements.photoConsent.checked,true);
+        assert.equal(form.elements.followUpAt.value,'2026-11-06T10:30');
+        assert.equal(f.root().querySelector('[data-question="units"]').value,'5');
+        assert.equal(f.root().querySelector('[name="photo"]'),photo);
+        assert.equal(photo.files[0],file);
+    }
+    assert.equal(f.w.localStorage.length,0);
+    const unload=new f.w.Event('beforeunload',{cancelable:true});
+    f.w.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true);
+    f.w.H2SFieldSales.reset();
+    await f.navigate('assessment',leadId);
+    assert.notEqual(f.root().querySelector('[name="photo"]'),photo);
+    assert.equal(f.root().querySelector('[data-sales-form="save"]').elements.notes.value,'Saved note');
+});
+test('new prospect input survives navigation without introducing duplicate customer inputs',async t=>{
+    const f=fixture(t);await f.navigate('new');
+    const form=f.root().querySelector('[data-sales-form="create"]');
+    form.elements.fullName.value='Unsaved customer';form.elements.notes.value='Contact tomorrow';
+    f.change(form.querySelector('[name="services"][value="tv"]'),true);
+    await f.navigate('home');await f.navigate('new');
+    assert.equal(f.root().querySelector('[data-sales-form="create"]'),form);
+    assert.equal(form.elements.fullName.value,'Unsaved customer');
+    assert.equal(form.elements.notes.value,'Contact tomorrow');
+    assert.equal(form.querySelector('[name="services"][value="tv"]').checked,true);
+    assert.equal(f.root().querySelectorAll('[name="fullName"]').length,1);
+});
+test('mounted destinations require an explicit dirty boundary before destroying their form or selected files',async t=>{
+    const f=fixture(t);await f.navigate('quotes',leadId);
+    const target=f.root().querySelector('[data-sales-quote-builder]');
+    target.innerHTML='<form><textarea>Saved</textarea><input type="file"></form>';
+    const textarea=target.querySelector('textarea');
+    textarea.value='Unsaved quote details';textarea.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    let confirmations=0;f.w.confirm=()=>{confirmations++;return false;};
+    await f.navigate('home');
+    assert.equal(confirmations,1);assert.equal(f.root().querySelector('textarea'),textarea);
+    f.w.confirm=()=>true;
+    await f.navigate('home');assert.equal(f.root().querySelector('[aria-current="page"]').textContent,'Home');
+});
+test('saving permission retains an unuploaded file; uploading it retains unsaved assessment answers and notes with fresh server revision',async t=>{
+    const f=fixture(t);await f.navigate('assessment',leadId);
+    const photo=f.root().querySelector('[name="photo"]');
+    const file=new f.w.File(['synthetic pixels'],'fixture.jpg',{type:'image/jpeg'});
+    Object.defineProperty(photo,'files',{value:[file]});
+    f.respond(async(url,init)=>{
+        if(init.method==='POST') {
+            const body=JSON.parse(init.body);
+            if(body.action==='save') {f.detail.opportunity.photo_consent=true;f.detail.opportunity.revision=8;}
+            if(body.action==='photo') {
+                f.detail.opportunity.revision=9;
+                f.detail.photos.push({service_id:'tv',label:'Newly uploaded photo',state:'ready',file_id:'new-private-photo'});
+            }
+            return Response.json({ok:true,leadId});
+        }
+        return Response.json(url.includes('?leadId=')?f.detail:f.data);
+    });
+    let form=f.root().querySelector('[data-sales-form="save"]');form.elements.photoConsent.checked=true;
+    f.submit(form,form.querySelector('[value="false"]'));await settle();
+    assert.equal(f.root().querySelector('[name="photo"]'),photo);assert.equal(photo.files[0],file);
+    assert.equal(f.root().querySelector('[data-sales-form="photo"] button').disabled,false);
+    form=f.root().querySelector('[data-sales-form="save"]');
+    form.elements.notes.value='Keep this while uploading';
+    form.querySelector('[data-question="units"]').value='6';
+    f.w.createImageBitmap=async()=>({width:10,height:10,close(){}});
+    f.w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
+    f.w.HTMLCanvasElement.prototype.toDataURL=()=> 'data:image/jpeg;base64,c3ludGhldGlj';
+    const upload=f.root().querySelector('[data-sales-form="photo"]');
+    f.submit(upload,upload.querySelector('button'));await settle();
+    assert.equal(f.root().querySelector('[data-sales-form="save"]'),form);
+    assert.equal(form.elements.notes.value,'Keep this while uploading');
+    assert.equal(form.querySelector('[data-question="units"]').value,'6');
+    assert.match(f.root().querySelector('[data-sales-photos]').textContent,/Newly uploaded photo/);
+    assert.equal(f.root().querySelector('[name="photo"]').files.length,0,'only the successfully uploaded file is cleared');
+    f.submit(form,form.querySelector('[value="false"]'));await settle();
+    const body=f.calls.filter(call=>call.body?.action==='save').at(-1).body;
+    assert.equal(body.revision,9);assert.equal(body.notes,'Keep this while uploading');assert.equal(body.answers.tv.units,6);
+});
+test('changing saved services never silently relabels a selected photo and Refresh/Sign out require explicit discard',async t=>{
+    const f=fixture(t);await f.navigate('assessment',leadId);
+    const photo=f.root().querySelector('[name="photo"]');
+    const file=new f.w.File(['synthetic pixels'],'fixture.jpg',{type:'image/jpeg'});
+    Object.defineProperty(photo,'files',{value:[file]});
+    const form=f.root().querySelector('[data-sales-form="save"]');
+    f.change(form.querySelector('[name="services"][value="tv"]'),false);
+    f.change(form.querySelector('[name="services"][value="camera"]'),true);
+    f.respond(async(url,init)=>{
+        if(init.method==='POST') {f.detail.opportunity.services=['camera'];f.detail.opportunity.photo_consent=true;return Response.json({ok:true,leadId});}
+        return Response.json(url.includes('?leadId=')?f.detail:f.data);
+    });
+    f.submit(form,form.querySelector('[value="false"]'));await settle();
+    const upload=f.root().querySelector('[data-sales-form="photo"]');
+    assert.equal(upload.elements.photo,photo);assert.equal(photo.files[0],file);
+    assert.equal(upload.elements.serviceId.value,'');assert.equal(upload.checkValidity(),false);
+    assert.match(f.root().querySelector('[data-sales-status]').textContent,/photo is retained/);
+    f.change(upload.elements.serviceId,'camera');
+    assert.equal(upload.elements.label.value,'Installation area');
+    assert.equal(upload.elements.serviceId.checkValidity(),true);assert.equal(upload.elements.label.checkValidity(),true);
+    const before=f.calls.length;let confirmations=0;
+    f.w.confirm=()=>{confirmations++;return false;};
+    f.root().querySelector('[data-sales-refresh]').click();await settle();
+    f.root().querySelector('[data-sales-logout]').click();await settle();
+    assert.equal(confirmations,2);assert.equal(f.calls.length,before);
+    assert.equal(f.root().querySelector('[name="photo"]'),photo);
+    assert.equal(photo.files[0],file);
+});
+test('real quote builder quantity, qualification and exception notes survive Quotes → Orders → Quotes without touching immutable quote contracts',async t=>{
+    const f=fixture(t,{commerce:true}),transactions=quoteData();
+    f.respond(async(url,init)=>Response.json(url.includes('field-sales-transactions')?(init.method==='POST'?{ok:true,id:'new-quote'}:transactions):f.data));
+    await f.navigate('quotes',leadId);
+    const form=f.root().querySelector('[data-commerce-create]');
+    const quantity=form.querySelector('[name="quantity"]'),note=form.querySelector('[name="exceptionNote"]');
+    quantity.value='4';quantity.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    note.value='Unsaved unusual wall condition';note.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    f.change(form.querySelector('[data-q="wall"]'),'Brick');
+    form.querySelector('[data-commerce-add]').click();
+    form.querySelectorAll('[name="quantity"]')[1].value='2';
+    f.w.confirm=()=>assert.fail('the retained builder must not ask to discard its draft');
+    await f.navigate('orders');
+    const unload=new f.w.Event('beforeunload',{cancelable:true});
+    f.w.dispatchEvent(unload);assert.equal(unload.defaultPrevented,true,'detached quote scope remains an unsaved draft');
+    await f.navigate('quotes'); // Retain the selected customer, too.
+    const restored=f.root().querySelector('[data-commerce-create]');
+    assert.equal(restored,form);
+    assert.equal(f.root().querySelector('[data-sales-quote-lead]').value,leadId);
+    assert.equal(restored.querySelector('[name="quantity"]').value,'4');
+    assert.equal(restored.querySelector('[name="exceptionNote"]').value,'Unsaved unusual wall condition');
+    assert.equal(restored.querySelector('[data-q="wall"]').value,'Brick');
+    assert.equal(restored.querySelectorAll('[name="quantity"]')[1].value,'2');
+    assert.equal(f.calls.filter(call=>call.url.includes('field-sales-transactions')&&!call.body).length,2,'saved quote records are re-read');
+    f.submit(restored,restored.querySelector('[type="submit"]'));await settle();
+    const body=f.calls.find(call=>call.body?.action==='quote').body;
+    assert.equal(body.leadId,leadId);assert.equal(body.catalogId,'catalog-fixture');assert.ok(body.operationId);
+    assert.equal(body.lines[0].quantity,4);assert.equal(body.lines[0].exceptionNote,'Unsaved unusual wall condition');
+    assert.equal(body.lines[0].answers.wall,'Brick');assert.equal(body.lines[1].quantity,2);
+    assert.equal(body.amountCents,undefined);assert.equal(body.totalCents,undefined);
+    assert.deepEqual(Object.keys(body.lines[0]).sort(),['answers','exceptionNote','offerId','options','quantity','serviceId']);
+    assert.equal(f.w.localStorage.length,0);
+    f.w.H2SFieldSales.reset();await f.navigate('quotes',leadId);
+    assert.equal(f.root().querySelector('[name="quantity"]').value,'1');
+    assert.equal(f.root().querySelector('[name="exceptionNote"]').value,'');
+});
+test('changed pricing retains but blocks the unsaved quote scope until explicit discard, and interrupted quote actions cannot be abandoned silently',async t=>{
+    const f=fixture(t,{commerce:true}),transactions=quoteData();let interrupted=false;
+    f.respond(async(url,init)=>{
+        if(url.includes('field-sales-transactions')) {
+            if(init.method==='POST'&&interrupted)throw Error('Synthetic interrupted quote');
+            return Response.json(transactions);
+        }
+        return Response.json(f.data);
+    });
+    await f.navigate('quotes',leadId);
+    const form=f.root().querySelector('[data-commerce-create]');form.querySelector('[name="quantity"]').value='3';
+    form.querySelector('[name="exceptionNote"]').value='Keep old scope for review';
+    await f.navigate('orders');
+    transactions.catalogs[0].version='Changed approved version';
+    await f.navigate('quotes');
+    assert.equal(f.root().querySelector('[data-commerce-create]'),form);
+    assert.equal(form.querySelector('[name="quantity"]').value,'3');
+    assert.equal(form.querySelector('[type="submit"]').disabled,true);
+    assert.match(f.root().querySelector('[data-commerce-status]').textContent,/Pricing configuration changed/);
+    const count=f.calls.length;f.submit(form,form.querySelector('[type="submit"]'));await settle();assert.equal(f.calls.length,count);
+    f.w.confirm=()=>false;f.root().querySelector('[data-commerce-refresh]').click();await settle();
+    assert.equal(f.root().querySelector('[data-commerce-create]'),form);
+    f.w.confirm=()=>true;f.root().querySelector('[data-commerce-refresh]').click();await settle();
+    const fresh=f.root().querySelector('[data-commerce-create]');
+    assert.notEqual(fresh,form);assert.equal(fresh.querySelector('[name="quantity"]').value,'1');
+    interrupted=true;f.submit(fresh,fresh.querySelector('[type="submit"]'));await settle();
+    await f.navigate('orders');
+    assert.ok(f.root().querySelector('[data-commerce-create]'));
+    assert.match(f.root().querySelector('[data-commerce-status]').textContent,/retry.*pending transaction/i);
 });
 test('late representative data is discarded across session change, and reset returns canonical Home',async t=>{
     const f=fixture(t);let done;
@@ -214,8 +447,8 @@ test('actual quote builder posts the existing qualified immutable-quote contract
 });
 test('sales styling uses scoped H2S brand tokens, compact shared classes and the existing dropdown rather than a replacement',()=>{
     const css=source('field-sales.css');
-    assert.match(css,/--sales-accent: var\(--h2s-primary, #1493ff\)/);
-    assert.match(css,/--sales-heading: var\(--h2s-cobalt, #0a2a5a\)/);
+    assert.match(css,/--sales-accent: var\(--azure, var\(--h2s-primary, #2563eb\)\)/);
+    assert.match(css,/--sales-heading: var\(--cobalt, var\(--h2s-cobalt, #1a365d\)\)/);
     for(const name of ['summary','metric','badge','section','toolbar','empty'])assert.match(css,new RegExp('field-sales__'+name));
     assert.match(css,/dashboard-custom-select-trigger/);
     assert.match(css,/grid-template-columns: repeat\(5,minmax\(0,1fr\)\)/);
@@ -234,10 +467,46 @@ test('mobile sales pane overrides inherited zero padding and transform containme
         const rules=Array.from(dom.window.document.styleSheets[0].cssRules);
         const mobile=rules.find(rule=>rule.conditionText==='(max-width:767px)');
         assert.ok(mobile);
-        const clearance=Array.from(mobile.cssRules).find(rule=>rule.selectorText==='#h2s-app .field-sales.pane.active');
+        const clearance=Array.from(mobile.cssRules).find(rule=>rule.selectorText==='body[data-sales-app="true"] #h2s-app .field-sales.pane.active');
         assert.ok(clearance);
         assert.equal(clearance.style.getPropertyPriority('padding-bottom'),'important');
         assert.equal(clearance.style.getPropertyValue('padding-bottom'),'calc(80px + env(safe-area-inset-bottom, 0px))');
         assert.match(css,/scroll-margin-bottom: calc\(88px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+        const mobileNav=Array.from(mobile.cssRules).find(rule=>rule.selectorText==='body[data-sales-app="true"] #h2s-app .field-sales nav.field-sales__nav');
+        assert.ok(mobileNav,'mobile grid selector must beat the shared .field-sales nav flex selector');
+        assert.equal(mobileNav.style.getPropertyValue('display'),'grid');
+        assert.equal(mobileNav.style.getPropertyValue('grid-template-columns'),'repeat(5,minmax(0,1fr))');
+        assert.equal(mobileNav.style.getPropertyValue('padding'),'8px 4px calc(8px + env(safe-area-inset-bottom, 0px))');
+        const mobileButton=Array.from(mobile.cssRules).find(rule=>rule.selectorText==='body[data-sales-app="true"] #h2s-app .field-sales__nav button');
+        const itemHeight=parseFloat(mobileButton.style.getPropertyValue('height'));
+        assert.ok(itemHeight>=44);
+        assert.equal(mobileButton.style.getPropertyValue('white-space'),'nowrap');
+        const navHeight=itemHeight+8+8+parseFloat(mobileNav.style.getPropertyValue('border-top'));
+        // Both totals add the same safe-area value: it cancels without weakening the clearance.
+        assert.ok(navHeight<80,`${navHeight}px navigation remains below 80px content clearance`);
     } finally {dom.window.close();}
+});
+test('320/390 management navigation stays in flow while only the independent sales app gets the fixed safe-area footer',()=>{
+    const sheet=new JSDOM(`<style>${source('field-sales.css')}</style>`);
+    try {
+        const rules=[...sheet.window.document.styleSheets[0].cssRules];
+        for(const width of [320,390]) {
+            // JSDOM does not evaluate media queries; explicitly activate the matching mobile rules.
+            const active=rules.flatMap(rule=>rule.conditionText==='(max-width:767px)'&&width<=767?[...rule.cssRules]:rule.selectorText?[rule]:[]);
+            const css=active.map(rule=>rule.cssText).join('\n');
+            for(const standalone of [false,true]) {
+                const dom=new JSDOM(`<body${standalone?' data-sales-app="true"':''}><style>${css}</style><main id="h2s-app"><section class="pane field-sales active"><nav class="field-sales__nav"><button>Earnings</button></nav></section></main></body>`);
+                try {
+                    const nav=dom.window.document.querySelector('nav'),style=dom.window.getComputedStyle(nav);
+                    assert.equal(style.position,standalone?'fixed':'',`${width}px ${standalone?'standalone':'management'} positioning`);
+                    assert.equal(style.display,standalone?'grid':'flex');
+                    const footerRules=active.filter(rule=>rule.style.getPropertyValue('padding-bottom').includes('safe-area')||rule.style.getPropertyValue('scroll-margin-bottom'));
+                    assert.ok(footerRules.length>=2);
+                    const pane=dom.window.document.querySelector('.field-sales'),button=nav.querySelector('button');
+                    assert.equal(footerRules.some(rule=>pane.matches(rule.selectorText)),standalone);
+                    assert.equal(footerRules.some(rule=>button.matches(rule.selectorText)),standalone);
+                } finally {dom.window.close();}
+            }
+        }
+    } finally {sheet.window.close();}
 });

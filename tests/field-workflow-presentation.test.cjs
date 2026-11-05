@@ -60,6 +60,27 @@ test('SALES orders show readable progress, customer context and exact currency w
     assert.equal(f.root.querySelector('pre,textarea,form,.field-workflow__audit'),null);
     assert.equal(f.calls.length,1);
 });
+test('current balance distinguishes zero from positive blocked collection without implying payment, settlement or credit clearance',async t=>{
+    for(const [balanceCents,canBalance,expected] of [
+        [0,false,'No balance due'],
+        [0,true,'No balance due'],
+        [7500,false,'$75.00 — not ready for collection'],
+        [7500,true,'$75.00 — available after installation'],
+        [null,false,'Evidence pending'],
+        [undefined,true,'Evidence pending'],
+        [-100,false,'-$1.00 — credit balance under management review'],
+        [-100,true,'-$1.00 — credit balance under management review']
+    ]){
+        const d=workflow();d.workflows[0].balanceCents=balanceCents;d.workflows[0].gates.canBalance=canBalance;
+        const f=browser(t,'field-workflow.js','ADMIN',d);await settle();
+        const label=[...f.root.querySelectorAll('dt')].find(el=>el.textContent==='Current net balance');
+        assert.equal(label.nextElementSibling.textContent,expected);
+        assert.doesNotMatch(label.nextElementSibling.textContent,/settled|payment verified|refund approved/i);
+        assert.equal(f.root.querySelector('[data-workflow-form="reschedule"] button').disabled,true);
+        assert.equal(f.root.querySelector('[data-workflow-form="assign"] button').disabled,true);
+        assert.equal(f.calls.length,1);assert.equal(f.calls.filter(call=>call.body).length,0);
+    }
+});
 test('ADMIN evidence remains intact but expandable; private native proof candidates are not newly disclosed',async t=>{
     const d=workflow(),f=browser(t,'field-workflow.js','ADMIN',d);await settle();
     assert.doesNotMatch(nonAuditText(f.root),/00000000-|synthetic-document-hash|Synthetic customer copy/);
@@ -162,4 +183,167 @@ test('workflow-specific CSS remains token-based and scoped without decorative el
         walk(dom.window.document.styleSheets[0].cssRules);
     }finally{dom.window.close();}
     assert.match(css,/var\(--cobalt\)/);assert.match(css,/var\(--azure\)/);
+});
+
+function panelFor(f,tab){return f.root.querySelector('#'+tab.getAttribute('aria-controls'));}
+function assertTabState(f,tabs,selected){
+    for(const tab of tabs){
+        const active=tab===selected,panel=panelFor(f,tab);
+        assert.ok(panel);assert.equal(panel.getAttribute('role'),'tabpanel');
+        assert.equal(panel.getAttribute('aria-labelledby'),tab.id);
+        assert.equal(panel.tabIndex,0);
+        assert.equal(tab.getAttribute('aria-selected'),String(active));
+        assert.equal(tab.tabIndex,active?0:-1);assert.equal(panel.hidden,!active);
+        assert.equal(tab.type,'button');
+    }
+}
+test('order action and enrollment tabs provide labelled panels, roving focus and wrapping keyboard navigation without requests',async t=>{
+    const f=browser(t,'field-workflow.js','ADMIN',workflow());await settle();
+    const groups=[...f.root.querySelectorAll('[role="tablist"]')];
+    assert.equal(groups.length,2);
+    assert.match(groups[0].getAttribute('aria-label'),/Avery Customer/);
+    assert.deepEqual([...groups[0].children].map(el=>el.textContent),[
+        'Overview','Documents & readiness','Scheduling & team','Cancellation & refunds'
+    ]);
+    assert.match(groups[1].getAttribute('aria-label'),/enrollment and policy/);
+    assert.deepEqual([...groups[1].children].map(el=>el.textContent),['Enroll sale','Policy management']);
+    const headings=[
+        'Order review & supporting records','Customer documents & installation readiness',
+        'Existing calendar and managed assignment','Cancellation or refund review — not automatic refund',
+        'New order enrollment — exact quote and approved policies','Versioned legal, commission and settlement policies'
+    ];
+    for(const heading of headings)assert.ok([...f.root.querySelectorAll('[role="tabpanel"] > h4')].some(el=>el.textContent===heading),'Descriptive panel heading retained: '+heading);
+    const key=(tab,value)=>tab.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true}));
+    for(const group of groups){
+        const tabs=[...group.children];assertTabState(f,tabs,tabs[0]);
+        tabs[0].focus();key(tabs[0],'ArrowLeft');
+        assertTabState(f,tabs,tabs.at(-1));assert.equal(f.w.document.activeElement,tabs.at(-1));
+        key(tabs.at(-1),'ArrowRight');assertTabState(f,tabs,tabs[0]);
+        key(tabs[0],'End');assertTabState(f,tabs,tabs.at(-1));
+        key(tabs.at(-1),'Home');assertTabState(f,tabs,tabs[0]);
+        tabs[1].click();assertTabState(f,tabs,tabs[1]);
+        assert.equal(f.w.document.activeElement,tabs[1]);
+        assert.equal(panelFor(f,tabs[1]).querySelector('details:not(.field-workflow__audit)'),null);
+    }
+    const ids=[...f.root.querySelectorAll('[id]')].map(el=>el.id);assert.equal(new Set(ids).size,ids.length);
+    assert.equal(f.root.querySelector('details:not(.field-workflow__audit),details details'),null);
+    for(const el of f.root.querySelectorAll('.field-workflow__next,.field-workflow__facts,.field-sales__summary')){
+        // The primary order summary and next action are never within a switched panel.
+        if(el.closest('[role="tabpanel"]'))continue;
+        assert.equal(el.closest('[hidden]'),null);
+    }
+    assert.equal(f.root.querySelector('.field-workflow__next').closest('[role="tabpanel"]'),null);
+    assert.equal(f.root.querySelector('.field-workflow__facts').closest('[role="tabpanel"]'),null);
+    assert.equal(f.calls.length,1);
+});
+
+test('all order forms, native selects/dates, evidence and cost attestations retain their exact nodes and unsaved state across tabs',async t=>{
+    const d=workflow();Object.assign(d.workflows[0],{completedAt:'2026-01-01',costsComplete:false,technicianExpenses:[
+        {category:'equipment',quantity:1,unitCents:1200,amountCents:1200,evidence:{reference:'Fixture receipt'}},
+        {category:'materials',quantity:0,unitCents:0,amountCents:0,evidence:{reference:'Fixture zero review'}}
+    ]});
+    const f=browser(t,'field-workflow.js','ADMIN',d);await settle();
+    const forms=[...f.root.querySelectorAll('form')];
+    assert.ok(forms.some(form=>form.dataset.workflowForm==='cost_review'));
+    const costTab=[...f.root.querySelectorAll('[role="tab"]')].find(tab=>tab.textContent==='Actual costs');
+    assert.ok(costTab);
+    assert.equal(panelFor(f,costTab).querySelector('h4').textContent,'Review technician actual costs before commission calculation');
+    const values=[...f.root.querySelectorAll('input,select,textarea')].map((el,index)=>{
+        if(el.tagName==='SELECT'&&el.options.length>1)el.selectedIndex=el.options.length-1;
+        else if(el.type==='checkbox')el.checked=true;
+        else if(el.type==='datetime-local')el.value='2026-11-06T09:30';
+        else if(el.type==='number')el.value='123';
+        else if(el.type!=='hidden'&&!el.readOnly)el.value='Unsaved fixture '+index;
+        return {el,value:el.value,checked:el.checked};
+    });
+    const audits=[...f.root.querySelectorAll('.field-workflow__audit')];audits[0].open=true;
+    for(let i=0;i<2;i++)for(const tab of f.root.querySelectorAll('[role="tab"]'))tab.click();
+    for(const {el,value,checked} of values){
+        assert.ok(f.root.contains(el));assert.equal(el.value,value);assert.equal(el.checked,checked);
+    }
+    for(const form of forms)assert.ok(f.root.contains(form));
+    assert.equal(audits[0].open,true);
+    assert.equal(f.root.querySelectorAll('select').length,values.filter(({el})=>el.tagName==='SELECT').length);
+    const select=f.root.querySelector('[name="materials"]'),active=f.root.querySelector('[role="tab"][aria-selected="true"]');
+    select.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+    assert.equal(active.getAttribute('aria-selected'),'true','Native select arrows must not navigate tabs');
+    assert.equal(f.calls.length,1);assert.equal(f.calls.filter(c=>c.body).length,0);
+});
+
+test('earnings tabs keep financial summary visible and preserve settlement, adjustment and run-creation edits without re-rendering',async t=>{
+    const f=browser(t,'field-earnings.js','ADMIN',earnings());await settle();
+    const tabs=[...f.root.querySelector('[role="tablist"]').children];
+    assert.deepEqual(tabs.map(tab=>tab.textContent),['Qualification','Commissions','Adjustments','Friday review']);
+    assert.deepEqual(tabs.map(tab=>panelFor(f,tab).querySelector('h4').textContent),[
+        'Commission qualification','Earned commissions','Accounting adjustments','Friday payment review'
+    ]);
+    assertTabState(f,tabs,tabs[0]);
+    assert.equal(f.root.querySelector('details:not(.field-workflow__audit),details details'),null);
+    assert.match(f.root.textContent,/Qualification review details/);
+    const summary=f.root.querySelector('[aria-label="Verified earnings summary"]'),summaryHTML=summary.outerHTML;
+    assert.equal(summary.closest('[role="tabpanel"]'),null);
+    const settlement=f.root.querySelector('[data-earnings-form="record_settlement"]');
+    assert.equal(settlement.querySelector('button').textContent,'Record settlement evidence');
+    assert.match(settlement.textContent,/I independently reconciled the amount, beneficiaries and external reference/);
+    assert.match(panelFor(f,tabs[3]).textContent,/Only matching independent settlement evidence can establish paid status/);
+    settlement.elements.method.value='Existing approved method';settlement.elements.reference.value='Unsaved independent reference';
+    settlement.elements.settledAt.value='2026-11-06T10:30';settlement.elements.amountCents.value='39500';
+    settlement.elements.independentReconciliation.checked=true;settlement.elements.evidence.value='Unsaved independent evidence';
+    const adjustment=f.root.querySelector('[data-earnings-form="review_adjustment"]');
+    adjustment.elements.amountCents.value='-101';adjustment.elements.reason.value='Unsaved correction';
+    const creation=f.root.querySelector('[data-earnings-form="create_run"]');
+    creation.elements.runDate.value='2026-11-13';
+    const before=[settlement,adjustment,creation].map(form=>[form,[...new f.w.FormData(form)]]);
+    for(const tab of tabs){
+        tab.focus();tab.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));
+        const next=tabs[(tabs.indexOf(tab)+1)%tabs.length];assertTabState(f,tabs,next);
+        assert.equal(f.w.document.activeElement,next);assert.equal(summary.closest('[hidden]'),null);
+    }
+    for(const [form,entries] of before){assert.ok(f.root.contains(form));assert.deepEqual([...new f.w.FormData(form)],entries);}
+    assert.equal(summary.outerHTML,summaryHTML);
+    assert.equal(f.root.querySelector('[data-earnings-form="record_settlement"]'),settlement);
+    assert.equal(f.calls.length,1);
+});
+
+test('native validation reveals the original hidden panel and does not steal focus or submit an operation',async t=>{
+    for(const [module,data,field] of [
+        ['field-workflow.js',workflow(),'[data-workflow-form="delivery_record"] [name="recipient"]'],
+        ['field-earnings.js',earnings(),'[data-earnings-form="record_settlement"] [name="method"]']
+    ]){
+        const f=browser(t,module,'ADMIN',data);await settle();
+        const input=f.root.querySelector(field),panel=input.closest('[role="tabpanel"]');
+        assert.equal(panel.hidden,true);
+        input.dispatchEvent(new f.w.Event('invalid',{cancelable:true}));
+        assert.equal(panel.hidden,false);
+        const tab=f.root.querySelector('#'+panel.getAttribute('aria-labelledby'));
+        assert.equal(tab.getAttribute('aria-selected'),'true');
+        input.focus();assert.equal(f.w.document.activeElement,input);
+        assert.equal(f.calls.length,1);
+    }
+});
+
+test('required admin evidence opens only on validation, retaining its original control and entered evidence',async t=>{
+    for(const [module,data,field] of [
+        ['field-workflow.js',workflow(),'[data-workflow-form="enroll"] [name="quoteId"]'],
+        ['field-earnings.js',earnings(),'[data-earnings-form="record_settlement"] [name="beneficiaries"]']
+    ]){
+        const f=browser(t,module,'ADMIN',data);await settle();
+        const input=f.root.querySelector(field),audit=input.closest('.field-workflow__audit'),value=input.value;
+        assert.equal(audit.open,false);
+        input.dispatchEvent(new f.w.Event('invalid',{cancelable:true}));
+        assert.equal(audit.open,true);assert.equal(input.value,value);
+        assert.equal(input.closest('[role="tabpanel"]').hidden,false);
+        assert.equal(f.calls.length,1);
+    }
+});
+
+test('SALES has contextual earnings views but no admin workflow actions or evidence panels',async t=>{
+    const f=browser(t,'field-workflow.js','SALES',workflow());await settle();
+    assert.equal(f.root.querySelector('[role="tablist"],form,.field-workflow__audit'),null);
+    const g=browser(t,'field-earnings.js','SALES',earnings());await settle();
+    for(const tab of g.root.querySelectorAll('[role="tab"]')){
+        tab.click();assert.equal(panelFor(g,tab).hidden,false);
+        assert.equal(g.root.querySelector('form,pre,textarea,.field-workflow__audit'),null);
+    }
+    assert.equal(g.calls.length,1);
 });

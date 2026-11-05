@@ -1,5 +1,113 @@
 # Field Sales interface review
 
+## Current coordinated UX refinement
+
+Continues from `5762901c38ea113f015fd48582f48c86eae9c0cf` on
+`retro-dev`. The independent representative application and management dashboard
+remain separate. Pricing, permissions, payment/commission calculations, scheduling
+authority, technician workflows and production feature gates are unchanged.
+
+### Changes delivered
+
+| Former primary disclosure | Replacement |
+|---|---|
+| Order review & supporting records | Order Overview with visible status, financial summary and next action |
+| Customer documents & installation readiness | Documents & readiness tab |
+| Existing calendar and managed assignment | Scheduling & team tab |
+| Cancellation or refund review | Cancellation & refunds tab |
+| Run review and independent settlement | Friday review tab with contextual run actions and explicit settlement prerequisites |
+
+Orders also expose conditional Actual costs and separate Enroll sale / Policy
+management views. Earnings use Qualification, Commissions, Adjustments and Friday
+review tabs. Linked ARIA panels support arrows, Home/End and roving focus; switching
+panels keeps existing form nodes rather than rebuilding unsaved inputs.
+Administrator-only technical evidence remains secondary. Unrelated applications'
+disclosures are not removed.
+
+- Representative mobile navigation has five equal-width icon/text destinations,
+  active/focus states, 44px-or-larger targets, safe-area padding and content
+  clearance. Fixed positioning is scoped to the independent sales application;
+  management navigation stays in flow and no longer collides with its timer.
+- Service selection uses full-label selectable cards, visible multi-select states
+  and service-specific descriptions. Existing service and assessment rules remain.
+- Intake, assessment answers/notes, pending photo inputs and quote quantities/
+  exception notes survive internal navigation in session memory. Existing
+  permission/save/upload requirements still apply; retention is not backend save.
+  Account/reset boundaries clear private drafts; changed catalogs are not blindly
+  restored.
+- Orders show customer names and contextual actions. Zero balance reads
+  **No balance due**, without asserting settlement; positive blocked, unknown and
+  credit balances retain distinct safe wording.
+- Operations keeps its established dedicated views. Primary job/team references
+  are readable; exact identifiers remain in technical evidence. Unsubmitted
+  reconciliation input survives view/filter changes but cannot become approved or
+  exportable without existing actions. Changed evidence invalidates stale input.
+- Review-only `managementOrders` opens the actual dashboard Orders destination.
+  Width presets now remain exact inside narrow editors instead of silently
+  clamping: the external review wrapper can scroll horizontally for a 1280px
+  application viewport. This is not application-level horizontal overflow.
+
+### Validation
+
+Final combined default-concurrency run: **201 tests, 200 passed, one pre-existing
+failure**, no skipped/cancelled tests. Exact PowerShell command:
+
+```powershell
+$files=@(Get-ChildItem 'tests\field*.test.cjs' | ForEach-Object {$_.FullName}) + @(Get-ChildItem 'backend\tests\*field*.test.cjs' | ForEach-Object {$_.FullName}) + @('backend\tests\sales_app_ui.test.cjs','backend\tests\dashboard_controls.test.cjs','backend\tests\task_creator.test.cjs','backend\tests\management_operations_ui.test.cjs','backend\tests\management_planning_ui.test.cjs','tools\dev-review\walkthrough-fixture.test.cjs','tools\dev-review\walkthrough-navigation.test.cjs','tools\dev-review\sales-preview.test.cjs')
+node --test @files
+```
+
+The existing optional-script test in
+[management_operations_ui.test.cjs](../backend/tests/management_operations_ui.test.cjs)
+expects Operations to be the first queued script, but the committed baseline first
+loads required shared controls. The same failure was reproduced before edits
+(9 passed / 1 failed). It was not suppressed or modified to claim a green suite.
+
+After the final review-wrapper sizing correction,
+`node --test tools\dev-review\sales-preview.test.cjs` passed **2/2**.
+Changed JavaScript syntax checks and scoped whitespace checks passed.
+The new bounded real-shared-controls regression also passed in the full run;
+startup/render watchdogs accommodate concurrent JSDOM initialization while the
+16-pass observer-settling limit remains unchanged.
+
+Actual application evidence:
+
+- Eight views at 320, 390, 768 and 1280: **32/32 exact child viewport widths**,
+  zero application document-wide horizontal overflow. Representative mobile
+  navigation had equal item widths, icons and targets of at least 44px.
+- Visible integrated-browser pointer interactions exercised Home, Leads,
+  New prospect, entire-card service selection, required-field blocking/focus,
+  the shared customer dropdown and Quotes / Orders roundtrips. Quote quantity
+  and exception notes remained intact.
+- Assessment service toggles and Home / Leads / assessment roundtrips preserved
+  camera quantity and notes. Order and Friday panel switches preserved the same
+  unsaved input nodes; order keyboard navigation and cancellation/refund form
+  availability were checked without submitting destructive actions.
+- Friday review retained explicit approved-but-not-paid status and correctly
+  blocked settlement without independent prerequisites. No export, cancellation,
+  refund or settlement was submitted during these navigation checks.
+
+### Remaining limitations
+
+- Long multi-service assessments and detailed financial/legal evidence still
+  require scrolling, particularly at 320px. Assessment progress describes saved
+  records, not unsubmitted draft answers. Management remains desktop-first; its
+  unchanged floating timer can obscure content in narrow management viewports.
+- Hidden VS Code editor documents defer animation frames and can temporarily show
+  native selects or stall pointer automation. Visible/focused browser checks
+  confirmed shared dropdown enhancement and retained quote inputs at all four
+  widths; no speculative production workaround was added.
+- Legacy dashboard adapters outside the isolated fixture still return explicit
+  503 responses, and external decorative assets may be CSP-blocked. Operations
+  reconciliation retention is regression-tested with isolated UI fixtures, not
+  certification of unavailable production integrations.
+- External payment/storage responses and actor sessions remain synthetic.
+  Real account access, photographic edge cases, physical export download delivery,
+  bank settlement and production activation are not newly certified.
+
+No deployment, real payment/account activation or payout is authorized by this
+refinement. The sections below document the earlier standalone-interface baseline.
+
 ## Scope and safety
 
 Development presentation changes on `retro-dev`; no deployment, production data,

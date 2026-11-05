@@ -74,6 +74,40 @@ test('ADMIN oversight/reps/exact inquiry attach; VA cannot read; default-off is 
   f.setActor({ token: 'admin', role: 'ADMIN' }); f.respond(async () => Response.json({ ok: true, enabled: false }));
   f.w.H2SFieldSales.open(); await settle(); assert.match(f.w.document.querySelector('[data-sales-status]').textContent, /disabled/);
 });
+test('configured future-service cards and ADMIN linking/terms remain accessible primary workflows', async t => {
+  const f = fixture(t, 'ADMIN'); await f.w.H2SFieldSales.navigate('new'); await settle();
+  const card = f.w.document.querySelector('.field-sales__service');
+  assert.equal(card.tagName, 'LABEL');
+  assert.equal(card.querySelector('input').getAttribute('aria-label'), 'Future configurable service');
+  assert.match(card.querySelector('small').textContent, /Fixture quantity.*Equipment preference/);
+  assert.doesNotMatch(card.textContent, /Popular service|Select to assess/);
+  const attach = f.w.document.querySelector('[data-sales-form="attach"]');
+  assert.equal(attach.closest('details'), null);
+  assert.ok(attach.closest('section[aria-label="Link existing inquiry"]'));
+  f.click('[data-sales-mode="representatives"]'); await settle();
+  const terms = f.w.document.querySelector('[data-sales-form="representative_terms"]');
+  assert.equal(terms.closest('details'), null);
+  assert.equal(terms.elements.userId.value, 'rep');
+  assert.equal(terms.elements.termsRevision.value, '0');
+  assert.equal(terms.elements.commissionStartEvidence.required, true);
+});
+test('assessment DOM draft survives navigation without transferring across the same-token role boundary', async t => {
+  const f = fixture(t, 'ADMIN'); await f.w.H2SFieldSales.navigate('assessment', lead); await settle();
+  const form = f.w.document.querySelector('[data-sales-form="save"]');
+  form.querySelector('[data-question="quantity"]').value = '7'; form.elements.notes.value = 'Private unsaved admin note';
+  const checkbox = form.querySelector('[name="services"]');
+  checkbox.checked = false; checkbox.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+  checkbox.checked = true; checkbox.dispatchEvent(new f.w.Event('change', { bubbles: true }));
+  assert.equal(form.querySelector('[data-question="quantity"]').value, '7');
+  await f.w.H2SFieldSales.navigate('home'); await f.w.H2SFieldSales.navigate('assessment', lead); await settle();
+  assert.equal(f.w.document.querySelector('[data-sales-form="save"]'), form);
+  assert.equal(form.elements.notes.value, 'Private unsaved admin note');
+  f.setActor({ token: 'h2s-sales:fixture', role: 'SALES' });
+  await f.w.H2SFieldSales.navigate('assessment', lead); await settle();
+  assert.notEqual(f.w.document.querySelector('[data-sales-form="save"]'), form);
+  assert.doesNotMatch(f.w.document.querySelector('#field-sales-pane').textContent, /Private unsaved admin note|Identity & ownership audit/);
+  assert.equal(f.w.document.querySelector('[data-sales-form="assign"]'), null);
+});
 test('uncertain save retains exact operation and payload on retry; malformed/offline responses are explicit', async t => {
   const f = fixture(t); f.w.H2SFieldSales.open(); await settle(); f.click('[data-sales-lead]'); await settle();
   f.respond(async () => { throw Error('Synthetic connection loss'); });

@@ -26,6 +26,7 @@
     let assignmentDialog = null, assignmentController = null, assignmentVersion = 0, assignmentAttempt = null;
     let view = 'overview', planningFilter = 'all', reviewToken = null;
     const reviewDrafts = new Map();
+    const reviewInputs = new Map();
     const views = { overview: 'Dispatch records', schedule: 'Scheduling visibility', reconciliation: 'Reconciliation review' };
     const planningLabels = {
         schedule: { all: 'All jobs', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled jobs', attention: 'Management attention', conflicts: 'Observed conflicts' },
@@ -92,7 +93,7 @@
                 : 'No ledger entries recorded for verified job/technician' : job.payouts.detail;
             return `<article class="management-operations__job"><h3>${escape(order?.service || 'Service requires reconciliation')}</h3>
                 <p>${escape(order?.customerName || 'Customer not verified')} / ${escape(order?.address || 'Address not verified')}</p>
-                <p class="management-operations__identity">${escape(job.jobId)} / ${escape(order?.reference || job.order.detail)} / ${escape(job.kind)}</p>
+                <p>${escape(order?.reference || job.order.detail || 'Order reference unverified')} / ${escape(job.kind === 'installation' ? 'Installation' : job.kind === 'consultation' ? 'Consultation' : 'Job record')}</p>
                 <dl><div><dt>Job / schedule</dt><dd>${escape(job.rawStatus)} / ${escape(date(job.scheduledAt))}</dd></div>
                 <div><dt>Technician assignment</dt><dd>${escape(assignedText)}${assignments?.length > 1 ? ' / Conflicting assignments' : ''}</dd></div>
                 <div><dt>Preparation</dt><dd>${escape(preparation ? preparation.ready ? 'Preparation ready (not payment clearance)'
@@ -101,7 +102,8 @@
                     : job.equipment.detail)}${equipment?.scope ? `<pre>${escape(equipment.scope)}</pre>` : ''}</dd></div>
                 <div><dt>Payment verification</dt><dd>${escape(job.payment.status)} / ${escape(job.payment.detail)}</dd></div>
                 <div><dt>Technician payout</dt><dd>${escape(payoutText)}</dd></div></dl>
-                <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button></article>`;
+                <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button>
+                <details><summary>Technical record references</summary><p class="management-operations__identity">Job ${escape(job.jobId)}</p></details></article>`;
         }).join('') : `<p class="management-operations__empty">${data.jobs.length ? 'No records match this filter on this page.' : 'There are no jobs to display.'}</p>`;
         root.querySelector('[data-operations-page]').textContent = `Latest records, page ${Math.floor(offset / 25) + 1}`;
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
@@ -114,11 +116,11 @@
         if (view === 'schedule') {
             content.innerHTML = data.jobs.length ? data.jobs.map(job => `<article class="management-operations__job">
                 <h3>${escape(job.service || 'Unresolved service')}</h3>
-                <p class="management-operations__identity">${escape(job.jobId)} / ${escape(job.orderReference || 'Order unresolved')}</p>
+                <p>${escape(job.orderReference || 'Order unresolved')}</p>
                 <dl><div><dt>Installation window / ${escape(job.rawStatus)}</dt><dd>${escape(job.window.state)}: ${escape(scheduleDate(job.window.start, job.window.timezone))}
                     to ${escape(job.window.end ? scheduleDate(job.window.end, job.window.timezone) : 'End not recorded')} / ${escape(job.window.timezone || 'Timezone unresolved')}</dd></div>
                 <div><dt>Technician assignments</dt><dd>${escape(job.assignments.length ? job.assignments.map(a =>
-                    `${a.identity.name || a.pro_id || 'Unknown reference'} / ${a.state || 'unknown'} / ${a.identity.status}`).join('; ') : 'No unclosed assignment')}</dd></div>
+                    `${a.identity.name || 'Technician identity unresolved'} / ${a.state || 'unknown'} / ${a.identity.status}`).join('; ') : 'No unclosed assignment')}</dd></div>
                 <div><dt>Customer reservation</dt><dd>${escape(job.reservationEvidence)}. Assignment acceptance is not appointment confirmation.</dd></div>
                 <div><dt>Availability evidence</dt><dd>${escape(job.availability.length ? job.availability.map(a => `${a.status}: ${a.detail}`).join('; ') : 'No verified technician to evaluate')}
                     ${job.availability.some(a => a.dispatchCapacity.length) ? 'Dispatch capacity rows exist; no cross-directory identity or capacity clearance is inferred.' : ''}</dd></div>
@@ -127,7 +129,7 @@
                 <div><dt>Observed scheduling conflicts</dt><dd>${escape(job.conflicts.length ? job.conflicts.map(c => `${c.code}: ${c.detail} (${c.reference})`).join('; ')
                     : 'None observed in available evidence; not availability clearance.')}</dd></div></dl>
                 ${job.attention.length ? `<p><strong>Management attention:</strong> ${escape(job.attention.join(' '))}</p>` : ''}
-                <details><summary>Source evidence</summary><pre>${escape(JSON.stringify({ reservation: job.reservation,
+                <details><summary>Source evidence</summary><pre>${escape(JSON.stringify({ jobId: job.jobId, assignments: job.assignments, reservation: job.reservation,
                     availability: job.availability, legacyLink: job.legacyLink }, null, 2))}</pre></details>
                 <button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button></article>`).join('')
                 : '<p class="management-operations__empty">No jobs match this scheduling filter.</p>';
@@ -135,18 +137,19 @@
             content.innerHTML = data.issues.length ? data.issues.map(issue => {
                 const prior = reviewDrafts.get(issue.id), draft = prior?.fingerprint === issue.fingerprint ? prior : null;
                 const classification = draft?.status || issue.status;
+                const pending = reviewInputs.get(issue.id), input = pending?.fingerprint === issue.fingerprint ? pending : null;
                 return `<article class="management-operations__job">
                     <h3>${escape(planningLabels.reconciliation[issue.category] || issue.category)}</h3>
-                    <p class="management-operations__identity">${escape(issue.id)} / evidence ${escape(issue.fingerprint)}</p>
                     <p><strong>${escape(classification.replaceAll('_', ' '))}${draft ? ' (session draft, not resolution)' : ''}</strong></p>
                     ${prior && !draft ? '<p role="status">Earlier draft is stale: supporting evidence changed. Review again.</p>' : ''}
+                    ${pending && !input ? '<p role="status">Unsubmitted inputs refer to older evidence. Review current records before re-entering them.</p>' : ''}
                     <p>${escape(issue.reason)}</p><p><strong>Proposed remediation:</strong> ${escape(issue.remediation)}</p>
-                    <details><summary>Affected records and supporting evidence</summary><pre>${escape(JSON.stringify(issue.records, null, 2))}</pre></details>
+                    <details><summary>Affected records and supporting evidence</summary><pre>${escape(JSON.stringify({ issueId: issue.id, fingerprint: issue.fingerprint, records: issue.records }, null, 2))}</pre></details>
                     <form id="review-${escape(issue.fingerprint)}" data-review-issue="${escape(issue.id)}" class="management-review">
-                        <label>Session review classification<select name="classification" data-custom-select="off">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
-                            `<option value="${value}"${value === classification ? ' selected' : ''}>${value.replaceAll('_', ' ')}</option>`).join('')}</select></label>
-                        <label>Evidence reference (required for reviewed)<input name="evidence" maxlength="2000" value="${escape(draft?.evidence || '')}"></label>
-                        <label class="management-review__notes">Review notes<textarea name="notes" maxlength="2000">${escape(draft?.notes || '')}</textarea></label>
+                        <label>Session review classification<select name="classification">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
+                            `<option value="${value}"${value === (input?.classification || classification) ? ' selected' : ''}>${value.replaceAll('_', ' ')}</option>`).join('')}</select></label>
+                        <label>Evidence reference (required for reviewed)<input name="evidence" maxlength="2000" value="${escape(input?.evidence ?? draft?.evidence ?? '')}"></label>
+                        <label class="management-review__notes">Review notes<textarea name="notes" maxlength="2000">${escape(input?.notes ?? draft?.notes ?? '')}</textarea></label>
                         <button type="submit">Keep session draft</button><p data-review-status role="status"></p>
                     </form></article>`;
             }).join('') : '<p class="management-operations__empty">No issues match this category. Unavailable evidence is listed separately; reviewed drafts do not clear operational issues.</p>';
@@ -164,7 +167,7 @@
         requestId++;
         if (controller) controller.abort();
         controller = null; data = null; offset = 0;
-        reviewDrafts.clear(); reviewToken = null;
+        reviewDrafts.clear(); reviewInputs.clear(); reviewToken = null;
         frame();
         root.querySelector('[data-operations-status]').textContent = 'Open Operations with an ADMIN dashboard account to load records.';
     }
@@ -291,7 +294,7 @@
     async function load() {
         const session = options?.getSession();
         if (!session?.isAdmin || !session.token) { reset(); return; }
-        if (reviewToken && reviewToken !== session.token) reviewDrafts.clear();
+        if (reviewToken && reviewToken !== session.token) { reviewDrafts.clear(); reviewInputs.clear(); }
         reviewToken = session.token;
         if (controller) controller.abort();
         const localController = controller = new AbortController(), id = ++requestId;
@@ -310,7 +313,7 @@
             if (!current()) return;
             const result = await response.json();
             if (!current()) return;
-            if ([401, 403].includes(response.status)) { reviewDrafts.clear(); reviewToken = null; }
+            if ([401, 403].includes(response.status)) { reviewDrafts.clear(); reviewInputs.clear(); reviewToken = null; }
             if (!response.ok || !result.ok) throw new Error(result.error || 'Operations read failed.');
             if (!Array.isArray(result.jobs) || !result.page || result.readOnly !== true) throw new Error('Operations response is incomplete.');
             if (view !== 'overview' && (result.view !== view || !Array.isArray(result.issues) || !result.summary
@@ -361,6 +364,17 @@
         else if (button.dataset.operationsAction === 'next') { offset += 25; load(); }
         else if (button.dataset.operationsAction === 'previous') { offset = Math.max(0, offset - 25); load(); }
     });
+    function rememberReviewInput(event) {
+        const form = event.target.closest('form[data-review-issue]');
+        const session = options?.getSession();
+        if (!form || !session?.isAdmin || session.token !== reviewToken) return;
+        const issue = data?.issues?.find(value => value.id === form.dataset.reviewIssue);
+        if (!issue) return;
+        reviewInputs.set(issue.id, { fingerprint: issue.fingerprint, classification: form.elements.classification.value,
+            evidence: form.elements.evidence.value, notes: form.elements.notes.value });
+    }
+    root.addEventListener('input', rememberReviewInput);
+    root.addEventListener('change', rememberReviewInput);
     root.addEventListener('submit', event => {
         const form = event.target.closest('form[data-review-issue]');
         if (!form) return;
@@ -380,6 +394,7 @@
             reviewerId: data.reviewOwnerId, changedAt, readAt: data.readAt, approval: false,
             records: issue.records.map(record => ({ source: record.source, id: record.id })),
             history: [...(previous?.history || []), { status, evidence, notes, fingerprint: issue.fingerprint, changedAt, reviewerId: data.reviewOwnerId }] });
+        reviewInputs.delete(issue.id);
         renderPlanning();
         const saved = document.getElementById(`review-${issue.fingerprint}`);
         saved.querySelector('[data-review-status]').textContent = 'Draft kept in this session only. Export before signing out.';

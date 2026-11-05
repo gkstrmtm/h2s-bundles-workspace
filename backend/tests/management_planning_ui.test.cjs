@@ -81,6 +81,40 @@ test('review classifications are explicit session drafts, require supporting evi
   assert.equal(packet.reviews[0].reviewerId, 'fixture-admin'); assert.equal(packet.reviews[0].history.length, 1);
   assert.doesNotMatch(text, /fixture-only-session|Authorization/); assert.equal(f.w.localStorage.length, 0);
 });
+  test('unsubmitted review inputs survive view and filter changes without becoming approved or exportable drafts', async t => {
+    const f = fixture(t); await f.enter();
+    const form = f.root.querySelector('form[data-review-issue]');
+    form.elements.classification.value = 'needs_investigation';
+    form.elements.evidence.value = 'Original source reference';
+    form.elements.notes.value = 'Unsubmitted review notes';
+    form.elements.notes.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    await f.click('[data-operations-view="schedule"]');
+    await f.click('[data-operations-view="reconciliation"]');
+    let restored = f.root.querySelector('form[data-review-issue]');
+    assert.equal(restored.elements.notes.value, 'Unsubmitted review notes');
+    assert.equal(restored.elements.evidence.value, 'Original source reference');
+    assert.equal(restored.elements.classification.value, 'needs_investigation');
+    assert.equal(f.root.querySelector('[data-review-export]').disabled, true);
+    assert.doesNotMatch(f.root.querySelector('article > p').textContent, /session draft/);
+    await f.click('[data-planning-filter="orphan_assignment"]');
+    restored = f.root.querySelector('form[data-review-issue]');
+    assert.equal(restored.elements.notes.value, 'Unsubmitted review notes');
+    assert.equal(restored.querySelector('select').dataset.customSelect, undefined);
+    assert.equal(f.w.localStorage.length, 0);
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
+  });
+  test('unsubmitted inputs are invalidated with explicit feedback on changed evidence and cleared across accounts', async t => {
+    const f = fixture(t); await f.enter();
+    const note = f.root.querySelector('[name="notes"]');
+    note.value = 'Private unsubmitted note'; note.dispatchEvent(new f.w.Event('input', { bubbles: true }));
+    f.state.fingerprint = 'c'.repeat(64); await f.click('[data-operations-action="refresh"]');
+    assert.equal(f.root.querySelector('[name="notes"]').value, '');
+    assert.match(f.root.textContent, /Unsubmitted inputs refer to older evidence/);
+    f.state.fingerprint = 'a'.repeat(64);
+    f.session.token = 'different-account'; await f.module.open();
+    assert.equal(f.root.querySelector('[name="notes"]').value, '');
+    assert.doesNotMatch(f.root.textContent, /Private unsubmitted note/);
+  });
 test('draft evidence invalidation, account changes, permission errors and reset cannot leak or silently approve earlier reviews', async t => {
   const f = fixture(t); await f.enter(); f.save();
   f.state.fingerprint = 'b'.repeat(64); await f.click('[data-operations-action="refresh"]');

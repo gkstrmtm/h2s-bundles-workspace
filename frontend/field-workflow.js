@@ -27,6 +27,73 @@
             return matches;
         };
         const admin = () => options.getSession()?.role === 'ADMIN';
+        // Upgrade only this mounted work surface. Move existing nodes, never clone forms:
+        // native-backed controls, listeners and unsaved values must survive navigation.
+        function preparePanels() {
+            const tabLabels = {
+                'Order review & supporting records':'Overview',
+                'Customer documents & installation readiness':'Documents & readiness',
+                'Existing calendar and managed assignment':'Scheduling & team',
+                'Cancellation or refund review — not automatic refund':'Cancellation & refunds',
+                'Review technician actual costs before commission calculation':'Actual costs',
+                'New order enrollment — exact quote and approved policies':'Enroll sale',
+                'Versioned legal, commission and settlement policies':'Policy management'
+            };
+            root.querySelectorAll('details:not(.field-workflow__audit)').forEach(disclosure => {
+                const panel = document.createElement('section'), heading = document.createElement('h4');
+                panel.className = disclosure.className + ' field-workflow__panel';
+                panel.setAttribute('data-context-view','');
+                heading.textContent = disclosure.querySelector(':scope > summary').textContent;
+                disclosure.querySelector(':scope > summary').remove();
+                panel.append(heading,...disclosure.childNodes);
+                disclosure.replaceWith(panel);
+            });
+            root.querySelectorAll('[data-context-panels]').forEach((group,groupIndex) => {
+                const panels = [...group.children].filter(el => el.matches('[data-context-view]'));
+                if (!panels.length) return;
+                const tabs = document.createElement('div');
+                tabs.className = 'field-workflow__tabs';
+                tabs.setAttribute('role','tablist');
+                tabs.setAttribute('aria-label',group.getAttribute('aria-label'));
+                panels.forEach((panel,index) => {
+                    const key = `field-workflow-${id}-${groupIndex}-${index}`, tab = document.createElement('button');
+                    tab.type = 'button'; tab.className = 'field-workflow__tab'; tab.id = key+'-tab';
+                    const heading = panel.querySelector('h4').textContent;
+                    tab.textContent = tabLabels[heading] || heading;
+                    tab.setAttribute('role','tab'); tab.setAttribute('aria-controls',key+'-panel');
+                    tab.setAttribute('aria-selected',String(index===0)); tab.tabIndex = index===0 ? 0 : -1;
+                    panel.id = key+'-panel'; panel.setAttribute('role','tabpanel');
+                    panel.setAttribute('aria-labelledby',tab.id); panel.tabIndex = 0; panel.hidden = index!==0;
+                    tabs.append(tab);
+                });
+                group.prepend(tabs);
+            });
+        }
+        function activatePanel(tab, focus = false) {
+            const tabs = tab.closest('.field-workflow__tabs');
+            for (const item of tabs.children) {
+                const selected = item===tab;
+                item.setAttribute('aria-selected',String(selected)); item.tabIndex = selected ? 0 : -1;
+                root.querySelector('#'+item.getAttribute('aria-controls')).hidden = !selected;
+            }
+            if (focus) tab.focus();
+        }
+        root.onkeydown = event => {
+            const tab = event.target.closest('.field-workflow__tab');
+            if (!tab || !valid()) return;
+            const tabs = [...tab.parentElement.children], index = tabs.indexOf(tab);
+            const next = {ArrowRight:(index+1)%tabs.length,ArrowLeft:(index+tabs.length-1)%tabs.length,Home:0,End:tabs.length-1}[event.key];
+            if (next===undefined) return;
+            event.preventDefault(); event.stopPropagation(); activatePanel(tabs[next],true);
+        };
+        // A required field in another tab must be reachable by native validation.
+        root.addEventListener('invalid',event => {
+            if (!valid()) return;
+            const panel = event.target.closest('[role="tabpanel"]');
+            if (panel?.hidden) activatePanel(root.querySelector('#'+panel.getAttribute('aria-labelledby')));
+            const audit = event.target.closest('details.field-workflow__audit');
+            if (audit) audit.open = true;
+        },{capture:true,signal:state.controller.signal});
         function status(text, error = false) {
             if (!valid()) return;
             const el = root.querySelector('[data-workflow-status]');
@@ -90,17 +157,21 @@
         }
         function order(w,index) {
             const holds = Array.isArray(w.holds) ? w.holds : ['Readiness evidence unavailable'];
+            const balanceText = !Number.isSafeInteger(w.balanceCents) ? 'Evidence pending'
+                : w.balanceCents === 0 ? 'No balance due'
+                : w.balanceCents < 0 ? `${money(w.balanceCents)} — credit balance under management review`
+                : `${money(w.balanceCents)}${w.gates?.canBalance ? ' — available after installation' : ' — not ready for collection'}`;
             return `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(recordTitle(w,index,options.customerNames))}</h4>
                 <span class="field-sales__badge">${esc(human(w.state))}</span></header>
                 ${admin()&&(w.representativeName||options.representativeNames?.[w.representativeId])?`<p class="field-workflow__note">Credited representative: ${esc(w.representativeName||options.representativeNames[w.representativeId])}</p>`:''}
                 ${timeline(w)}
                 <p class="field-workflow__next"><strong>Next step</strong> ${esc(nextAction(w))}</p>
                 <dl class="field-workflow__facts"><dt>Exact 25% deposit</dt><dd>${money(w.depositCents)}</dd><dt>Verified net paid</dt><dd>${money(w.netPaidCents)}</dd>
-                <dt>Current net balance</dt><dd>${money(w.balanceCents)}${w.gates?.canBalance ? ' — available after installation' : ' — not ready for collection'}</dd>
+                <dt>Current net balance</dt><dd>${balanceText}</dd>
                 <dt>Cancellation deadline</dt><dd>${date(w.cancellationDeadline)}${admin()?' — approved policy and delivery evidence control clearance':''}</dd>
                 <dt>Installation team</dt><dd>${w.technicianId?'Assigned':'Not assigned'}</dd>
                 <dt>Completion</dt><dd>${date(w.completedAt)}</dd></dl>
-                ${admin()?`<details class="field-workflow__review"><summary>Order review & supporting records</summary>
+                ${admin()?`<div data-context-panels aria-label="${esc(recordTitle(w,index,options.customerNames))} order actions"><details class="field-workflow__review"><summary>Order review & supporting records</summary>
                 <p>Review reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')}</p>
                 <dl class="field-workflow__facts"><dt>Actual processing fee</dt><dd>${money(w.processingFeeCents)}</dd>
                 <dt>Actual technician hours</dt><dd>${esc(w.hours ?? 'Not recorded')} — wages are separate from commission</dd></dl>
@@ -112,7 +183,7 @@
                 ${(w.documents || []).map(doc => `<section><h4>${esc(doc.label)} / ${esc(doc.kind)}</h4><p class="field-sales__id">${esc(doc.artifactId)} / ${esc(doc.contentHash)}</p><pre>${esc(contentText(doc.content))}</pre></section>`).join('') || '<p>No approved immutable copies published.</p>'}
                 <pre>${esc(JSON.stringify({...w,proof:undefined},null,2))}</pre></details></details>
                 ${(w.refunds||[]).length?`<p class="field-workflow__note">Refund reconciliation requires management review. Reserved or provider-pending amounts are not confirmed refunds; verify the provider record or retry the identical operation.</p>`:''}
-                ${management(w, holds)}`:''}</article>`;
+                ${management(w, holds)}</div>`:''}</article>`;
         }
         function installationProof(w){
             if(!admin())return '';
@@ -168,7 +239,7 @@
                 <div class="field-sales__metric"><span>Completed</span><strong>${d.workflows.filter(w=>w.completedAt).length}</strong></div></div>
                 <p class="field-workflow__note">25% deposit, then the remaining net balance after installation. A deposit does not confirm an installation appointment.</p>
                 <section class="field-sales__section" aria-label="Order records">${d.workflows.map(order).join('') || '<div class="field-sales__empty"><h4>No orders yet</h4><p>Accepted new sales will appear here after management enrollment. Existing Dispatch orders stay in Dispatch.</p></div>'}</section>`);
-            if (admin()) root.insertAdjacentHTML('beforeend', `<details><summary>New order enrollment — exact quote and approved policies</summary>
+            if (admin()) root.insertAdjacentHTML('beforeend', `<div data-context-panels aria-label="Order enrollment and policy management"><details><summary>New order enrollment — exact quote and approved policies</summary>
                 ${form('enroll',null,`<details class="field-sales__wide field-workflow__audit"><summary>Admin linkage details — approved quote, lead & commission credit</summary><p>Use the exact approved records. These identifiers establish order ownership and cannot be substituted.</p><label>Exact approved quote ID<input name="quoteId" value="${esc(options.quoteId || '')}" required></label>
                     <input type="hidden" name="revision" value="0">
                     <label>Shared lead ID<input name="leadId" value="${esc(options.leadId || '')}" required></label><label>Immutable commission credit representative ID<input name="representativeId" required></label></details>
@@ -181,7 +252,8 @@
                         form('policy_approve',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}"><input type="hidden" name="expectedDefinitionHash" value="${esc(p.definitionHash||'')}">${evidence}`,'Explicitly approve policy version',!p.definitionHash) +
                         form('policy_delete_draft',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Delete unapproved draft') : p.status === 'approved' ? form('policy_retire',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}">`,'Retire policy for future enrollment') : ''}</details></article>`).join('')}
                     <details class="field-workflow__audit"><summary>Admin policy authoring — create an unapproved version</summary>${form('policy_create',null,`<label>New policy UUID<input name="policyId" required></label><label>Policy kind<select name="kind"><option value="legal">Legal</option><option value="commission">Commission</option><option value="settlement">Settlement</option></select></label>
-                        <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details></details>`);
+                        <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details></details></div>`);
+            preparePanels();
         }
         async function load() {
             if (!valid()) return;
@@ -207,7 +279,9 @@
             } finally { state.busy = false; }
         }
         root.onclick = event => {
-            const b = event.target.closest('button'); if (!b || !valid() || state.busy) return;
+            const b = event.target.closest('button'); if (!b || !valid()) return;
+            if (b.matches('.field-workflow__tab')) { activatePanel(b,true); return; }
+            if (state.busy) return;
             if (b.hasAttribute('data-workflow-refresh')) { state.attempt = null; load(); }
             if (b.hasAttribute('data-workflow-retry')) retry();
         };
