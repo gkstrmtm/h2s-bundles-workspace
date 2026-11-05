@@ -1,7 +1,7 @@
 import { getSupabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/adminAuth';
 import { salesActor, salesAccess, salesChecked, serviceDefinitions, ownedOpportunity, assessment, followUp,
-  newCredentials, representativeTerms, BusinessError, identifier, readJson, text } from '@/lib/fieldSales';
+  newCredentials, representativeTerms, opportunityPage, BusinessError, identifier, readJson, text } from '@/lib/fieldSales';
 export const dynamic = 'force-dynamic';
 const headers = (request: Request) => ({ ...corsHeaders(request), 'Cache-Control': 'private, no-store', Vary: 'Authorization, Origin' });
 function failure(request: Request, error: unknown) {
@@ -16,11 +16,21 @@ export async function GET(request: Request) {
     if (process.env.H2S_FIELD_SALES_ENABLED !== 'true') return Response.json({ ok: true, enabled: false, actor: { role: actor.role, userId: actor.userId } }, { headers: headers(request) });
     await salesAccess(actor.userId);
     const query = new URL(request.url).searchParams;
-    for (const key of query.keys()) if (key !== 'leadId' || query.getAll(key).length !== 1) throw new BusinessError('Unsupported Field Sales parameter.');
+    for (const key of query.keys()) if (!['leadId','search','ownerId','customerId','limit','cursor','due','includeFollowUps','dueCursor'].includes(key)
+      || query.getAll(key).length !== 1) throw new BusinessError('Unsupported Field Sales parameter.');
     const leadId = query.has('leadId') ? identifier(query.get('leadId')) : null;
+    if (leadId && query.size !== 1) throw new BusinessError('Customer detail does not accept list filters.');
+    if (query.has('includeFollowUps') && query.get('includeFollowUps') !== 'true') throw new BusinessError('Invalid follow-up request.');
+    if (query.has('dueCursor') && (query.get('includeFollowUps') !== 'true' || query.has('due'))) throw new BusinessError('Follow-up cursor requires the combined Home view.');
     const records = leadId ? await ownedOpportunity(actor.userId, leadId)
-      : salesChecked(await getSupabase().rpc('field_sales_read', { p_actor: actor.userId, p_lead_id: null }));
-    return Response.json({ ok: true, enabled: true, actor: { role: actor.role, userId: actor.userId }, services: await serviceDefinitions(), ...records }, { headers: headers(request) });
+      : await opportunityPage(actor.userId, query);
+    const dueQuery = new URLSearchParams([...query].filter(([key]) => !['cursor','due','includeFollowUps','dueCursor'].includes(key)));
+    dueQuery.set('due','true');
+    if (query.has('dueCursor')) dueQuery.set('cursor',query.get('dueCursor')!);
+    const due = !leadId && query.get('includeFollowUps') === 'true'
+      ? await opportunityPage(actor.userId, dueQuery) : null;
+    return Response.json({ ok: true, enabled: true, actor: { role: actor.role, userId: actor.userId }, services: await serviceDefinitions(), ...records,
+      ...(due ? {followUps:due.opportunities,followUpTotal:due.total,followUpCursor:due.nextCursor} : {}) }, { headers: headers(request) });
   } catch (error) { return failure(request, error); }
 }
 export async function POST(request: Request) {
@@ -44,6 +54,11 @@ export async function POST(request: Request) {
     } else if (action === 'account_state') {
       if (actor.role !== 'ADMIN' || typeof body.active !== 'boolean') throw new BusinessError('Administrator and explicit active state required.', 403);
       payload = { userId: identifier(body.userId), active: body.active };
+    } else if (action === 'repeat') {
+      const source = await ownedOpportunity(actor.userId, identifier(body.leadId));
+      payload = {leadId:identifier(body.leadId),ownerId:actor.role === 'SALES' ? actor.userId : identifier(body.ownerId),
+        evidence:text(body.evidence,2000),notes:text(body.notes ?? '',2000,false),followUpAt:followUp(body.followUpAt ?? null),
+        ...assessment({...body,answers:{},submit:false},await serviceDefinitions(),source.lead.attribution?.market || 'commercial')};
     } else if (action === 'create' || action === 'attach') {
       if (action === 'attach' && actor.role !== 'ADMIN') throw new BusinessError('Only management may verify an existing inquiry.', 403);
       const ownerId = actor.role === 'SALES' ? actor.userId : identifier(body.ownerId);

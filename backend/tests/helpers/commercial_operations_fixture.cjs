@@ -11,7 +11,7 @@ function evaluate(relative, imports, globals = {}) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
   }).outputText);
   const module = { exports: {} };
-  vm.runInNewContext(compiled.get(filename), { module, exports: module.exports, console, URL, Request, Response, Date, Intl,
+  vm.runInNewContext(compiled.get(filename), { module, exports: module.exports, console, URL, URLSearchParams, Request, Response, Date, Intl,
     setTimeout, clearTimeout, process: { env: { STRIPE_SECRET_KEY: 'sk_test_fixture_only', STRIPE_WEBHOOK_SECRET:'fixture_webhook_only' } },
     require(name) { assert.ok(Object.hasOwn(imports,name), `Unmocked dependency blocked: ${name}`); return imports[name]; }, ...globals }, { filename });
   return module.exports;

@@ -30005,7 +30005,9 @@ async function loadRecommendationsForFilter() {
                 const username = escapeHtml(usernameNorm || rawUsername);
                 const display = escapeHtml(String(u.Display_Name || u.displayName || ''));
                 const email = escapeHtml(String(u.Email || u.email || ''));
-                const roleRaw = String(u.Role || u.role || 'VA').trim().toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA';
+                const normalizedRole = String(u.Role || u.role || 'VA').trim().toUpperCase();
+                const roleRaw = ['ADMIN', 'SALES'].includes(normalizedRole) ? normalizedRole : 'VA';
+                const isSales = roleRaw === 'SALES';
                 const role = escapeHtml(roleRaw);
                 const disabled = !!(u.Is_Disabled || u.isDisabled);
                 const isSelf = usernameNorm && normalizeUsername(currentUser || '') === usernameNorm;
@@ -30031,20 +30033,21 @@ async function loadRecommendationsForFilter() {
                             ${selfHint}
                         </div>
                         <div class="accounts-admin-metric accounts-admin-metric--role" data-label="Role">
-                            <select id="${roleSelectId}" class="form-select accounts-admin-role-select" ${isSelf ? 'disabled' : ''}>
+                            ${isSales ? '<span>SALES</span><div class="accounts-admin-inline-note">Managed role · read-only</div>' : `<select id="${roleSelectId}" class="form-select accounts-admin-role-select" ${isSelf ? 'disabled' : ''}>
                                 <option value="VA" ${roleRaw === 'VA' ? 'selected' : ''}>VA</option>
                                 <option value="ADMIN" ${roleRaw === 'ADMIN' ? 'selected' : ''}>ADMIN</option>
-                            </select>
+                            </select>`}
                         </div>
                         <div class="accounts-admin-metric" data-label="Tasks">${escapeHtml(tasksText)}</div>
                         <div class="accounts-admin-metric" data-label="Hours">${escapeHtml(hoursText)}</div>
                         <div class="accounts-admin-actions">
                             <div class="accounts-admin-actions__status">${statusChip}</div>
                             <div class="accounts-admin-actions__buttons">
-                                <button class="accounts-admin-btn accounts-admin-btn--primary" ${isSelf ? 'disabled title="You cannot change your own role here."' : ''} onclick="updateDashboardUserRole('${id}', '${escapeHtml(roleSelectId)}', '${username}')">Save Role</button>
+                                ${isSales ? `<button class="accounts-admin-btn" onclick="resetDashboardUserPin('${id}', true)">Reset credential</button>
+                                <span class="accounts-admin-inline-note">Disable/reactivate in Field Sales → Representatives. Share credentials securely; no email invite.</span>` : `<button class="accounts-admin-btn accounts-admin-btn--primary" ${isSelf ? 'disabled title="You cannot change your own role here."' : ''} onclick="updateDashboardUserRole('${id}', '${escapeHtml(roleSelectId)}', '${username}')">Save Role</button>
                                 <button class="accounts-admin-btn" onclick="sendDashboardLoginInviteForUser('${id}')">Send Login</button>
                                 <button class="accounts-admin-btn" onclick="resetDashboardUserPin('${id}')">Reset PIN</button>
-                                <button class="accounts-admin-btn accounts-admin-btn--danger" onclick="toggleDashboardUserDisabled('${id}', ${disabled ? 'false' : 'true'})">${toggleLabel}</button>
+                                <button class="accounts-admin-btn accounts-admin-btn--danger" onclick="toggleDashboardUserDisabled('${id}', ${disabled ? 'false' : 'true'})">${toggleLabel}</button>`}
                             </div>
                         </div>
                     </div>
@@ -30222,12 +30225,22 @@ async function loadRecommendationsForFilter() {
             }
         }
 
-        async function resetDashboardUserPin(userId) {
+        async function resetDashboardUserPin(userId, isSales = false) {
             try {
+                const body = { userId };
+                if (isSales) {
+                    const supplied = prompt('Managed SALES recovery: supply a strong unique credential (at least 16 characters). All existing sessions will be revoked. Disabled accounts remain disabled; reactivate separately in Field Sales → Representatives.');
+                    if (supplied === null) return;
+                    body.pin = String(supplied).trim();
+                    if (body.pin.length < 16) {
+                        showToast('Supply a strong credential of at least 16 characters', 'error');
+                        return;
+                    }
+                }
                 const resp = await fetch(`${API_URL}?action=resetDashboardUserPin`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId })
+                    body: JSON.stringify(body)
                 });
                 const data = await resp.json().catch(() => null);
                 if (!data || !data.ok) {
@@ -30237,7 +30250,9 @@ async function loadRecommendationsForFilter() {
                 }
                 const payload = data.resetDashboardUserPin || data;
                 const pin = payload && payload.pin ? String(payload.pin) : '';
-                if (pin) {
+                if (isSales) {
+                    showToast('Credential reset; existing sessions revoked. Account activation unchanged. Share securely.', 'success');
+                } else if (pin) {
                     prompt('PIN Reset Successful! Copy the new PIN below to share manually:', pin);
                 } else {
                     showToast('PIN reset successfully', 'success');

@@ -131,6 +131,9 @@ async function initialize(origin, scenario) {
     f.env.H2S_FIELD_SALES_ORIGIN = origin;
     f.env.SUPABASE_SERVICE_ROLE_KEY = 'synthetic-isolated-client-only';
     await f.enable();
+    await f.db.query('update "Dashboard_Users" set "Display_Name"=$2 where "User_ID"=$1',[id(20),'Alex Rivera']);
+    await f.db.query('update "Dashboard_Users" set "Display_Name"=$2 where "User_ID"=$1',[id(9),'Morgan Reed']);
+    await f.db.query('update "Dashboard_Users" set "Email"=(select email from h2s_pros where pro_id=$1) where "User_ID"=$2',[id(500),id(9)]);
     await f.db.exec(fs.readFileSync(path.join(__dirname, '..', '..', 'backend', 'migrations',
       '048_field_sales_catalog_administration.sql'), 'utf8'));
     await f.db.exec('update field_sales_catalog_admin_settings set enabled=true');

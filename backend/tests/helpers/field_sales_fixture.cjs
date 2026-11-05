@@ -1,7 +1,7 @@
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), vm = require('node:vm'), ts = require('typescript');
 const { createBusinessFixture, id } = require('./commercial_business_fixture.cjs');
 const { evaluate } = require('./commercial_operations_fixture.cjs');
-async function createSalesFixture() {
+async function createSalesFixture({ legacy = false } = {}) {
   const f = await createBusinessFixture();
   await f.db.exec(`alter table "Dashboard_Users" add column "Pin_Salt" text,add column "Pin_Hash" text,
     add column "Created_At" timestamptz default now(),add column "Updated_At" timestamptz default now(),
@@ -17,6 +17,11 @@ async function createSalesFixture() {
   const migrations = name => fs.readFileSync(path.join(__dirname, '..', '..', 'migrations', name), 'utf8');
   await f.db.exec(migrations('037_residential_inquiries.sql'));
   await f.db.exec(migrations('043_field_sales.sql'));
+  if (!legacy) {
+    await f.db.exec(migrations('045_field_sales_launch_contracts.sql'));
+    await f.db.exec(migrations('049_field_sales_opportunities.sql'));
+    await f.db.exec(migrations('050_field_sales_credentials.sql'));
+  }
   const env = { H2S_FIELD_SALES_ENABLED: 'true', SUPABASE_URL: 'https://fixture.invalid', SUPABASE_URL_MGMT: 'https://fixture.invalid' };
   const from = f.client.from.bind(f.client), rpc = f.client.rpc.bind(f.client);
   f.client.from = table => {
@@ -34,7 +39,10 @@ async function createSalesFixture() {
     return b;
   };
   const casts = { field_sales_access: ['uuid'], field_sales_read: ['uuid', 'uuid'], field_sales_command: ['uuid', 'uuid', 'text', 'jsonb'],
-    field_sales_photo: ['uuid', 'uuid', 'uuid', 'jsonb', 'boolean'] };
+    field_sales_photo: ['uuid', 'uuid', 'uuid', 'jsonb', 'boolean'],
+    field_sales_page: ['uuid','text','uuid','uuid','boolean','integer','timestamptz','uuid','timestamptz'],
+    field_sales_reset_credentials:['uuid','uuid','text','text'],
+    field_sales_create_session:['uuid','text','text','timestamptz','text'] };
   const calls = [];
   f.client.rpc = async (name, args) => {
     if (!casts[name]) return rpc(name, args);

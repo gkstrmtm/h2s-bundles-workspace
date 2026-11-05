@@ -113,12 +113,24 @@ test('lead follow-ups are oldest first and customer names never become staff att
   const f=fixture(t);
   f.listing.opportunities.unshift({...f.listing.opportunities[0],lead_id:'later',full_name:'SYNTHETIC Customer only',originating_user_id:'unknown-origin',follow_up_at:'2025-01-01T00:00:00Z'});
   await f.w.H2SFieldSales.navigate('home');await settle();
-  const rows=[...f.w.document.querySelectorAll('.field-sales__followup button')];
+  const table=f.w.document.querySelector('table.field-sales__followup-table');
+  assert.deepEqual([...table.querySelectorAll('thead th')].map(cell=>cell.textContent),['Customer','Service','Contact due','Next step']);
+  const rows=[...table.querySelectorAll('tbody [data-sales-lead]')];
   assert.equal(rows[0].dataset.salesLead,lead);assert.equal(rows[1].dataset.salesLead,'later');
   const facts=[...f.w.document.querySelectorAll('.field-sales__lead-card')].find(card=>card.textContent.includes('SYNTHETIC Customer only')).querySelector('dl').textContent;
   assert.match(facts,/Originating salespersonProfile name unavailable/);
   assert.match(facts,/Assigned salespersonFixture rep/);
   assert.doesNotMatch(facts,/SYNTHETIC Customer only|unknown-origin/);
+  rows[0].click();await settle();
+  assert.ok(f.calls.some(call=>call.url.includes('?leadId='+lead)));
+  const form=f.w.document.querySelector('[data-sales-form="save"]');
+  assert.ok(form,'Customer selection opens the real assessment form');
+  form.elements.followUpAt.value='2026-11-12T10:30';
+  form.dispatchEvent(new f.w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:form.querySelector('[value="false"]')}));
+  await settle();
+  const save=f.calls.find(call=>call.body?.action==='save');
+  assert.equal(save.body.leadId,lead);
+  assert.equal(save.body.followUpAt,new f.w.Date('2026-11-12T10:30').toISOString());
 });
 test('assessment DOM draft survives navigation without transferring across the same-token role boundary', async t => {
   const f = fixture(t, 'ADMIN'); await f.w.H2SFieldSales.navigate('assessment', lead); await settle();

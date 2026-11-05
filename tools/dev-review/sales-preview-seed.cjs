@@ -1,6 +1,6 @@
 'use strict';
 const crypto=require('node:crypto');
-async function seedSalesPreview(engine,photo){
+async function seedSalesPreview(engine,photo,{readiness=false}={}){
     async function call(name,body,actor='admin',query=''){
         const response=await engine.request(name,body?'POST':'GET',body?{operationId:crypto.randomUUID(),...body}:null,actor,query);
         const result=await response.json();
@@ -64,7 +64,37 @@ async function seedSalesPreview(engine,photo){
     const intake=await create('Avery Chen','+15551112224',['cameras_included']);
     const quoteLead=await create('Taylor Brooks','+15551112225',['tv_mounting']);
     const reviewDraft=await call('field-sales-transactions',{action:'quote',leadId:quoteLead.leadId,catalogId:initial.suggestions.catalogId,lines:initial.suggestions.lines},'sales');
-    return {completedLeadId:leadId,assessmentLeadId:intake.leadId,quoteLeadId:quoteLead.leadId,draftQuoteId:reviewDraft.id,jobId,runId:run.runId,
+    let ownerInstallationLeadId=null;
+    if(readiness){
+        const returning=await call('field-sales',{action:'repeat',leadId,ownerId:initial.suggestions.enrollment.representativeId,
+            services:['cameras_included'],evidence:'Verified returning household; separate camera service',notes:'Isolated company installation review'});
+        ownerInstallationLeadId=returning.leadId;
+        let camera=await call('field-sales-transactions',{action:'quote',leadId:returning.leadId,catalogId:initial.suggestions.catalogId,
+            lines:[{serviceId:'cameras_included',offerId:'package',quantity:2,answers:{installation:'wireless'},options:[]}]},'sales');
+        camera=await call('field-sales-transactions',{action:'submit',leadId:returning.leadId,quoteId:camera.id},'sales');
+        const second={leadId:returning.leadId,quoteId:camera.id};
+        async function manage(body){
+            const read=await call('field-sales-workflow',null,'admin','?lead_id='+second.leadId),w=read.workflows.find(w=>w.quoteId===second.quoteId);
+            return call('field-sales-workflow',{...second,revision:w?.revision||0,...body});
+        }
+        await manage({action:'enroll',...initial.suggestions.enrollment});
+        const current=(await call('field-sales-workflow',null,'admin','?lead_id='+second.leadId)).workflows[0];
+        await manage({action:'documents_publish',artifacts:current.requiredArtifacts,evidence:{reference:'Isolated approved camera copies'}});
+        const agreement=await call('field-sales-transactions',{action:'agreement',...second},'sales');
+        const secondToken=new URLSearchParams(new URL(agreement.agreementUrl).hash.slice(1)).get('token');
+        const facts=await call('field-sales-agreement',null,secondToken);
+        await call('field-sales-agreement',{name:'Morgan Wellington',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
+            quoteHash:facts.quote.quote_hash,policyVersion:facts.agreement.policy_snapshot.version},secondToken);
+        await call('field-sales-agreement',{action:'checkout',kind:'deposit'},secondToken);
+        await engine.control('provider_capture',{sessionId:(await engine.status()).provider.sessionId,feeCents:151});
+        await manage({action:'schedule',...initial.suggestions.schedule});
+        await manage({action:'preparation',...initial.suggestions.preparation});
+        const company=await call('field-sales-company-installation',null);
+        if(!company.candidates.length)throw Error('Isolated company identity is unavailable');
+        await call('field-sales-company-installation',{action:'authorize_self',proId:company.candidates[0].proId,evidence:{reference:'Verified isolated company owner identity'}});
+        for(let n=0;n<30;n++)await create(['Jordan','Riley','Casey','Avery','Morgan'][Math.floor(n/6)]+' '+['Ellis','Bennett','Chen','Brooks','Rivera','Foster'][n%6],'+1555222'+String(n).padStart(4,'0'),['tv_mounting']);
+    }
+    return {completedLeadId:leadId,assessmentLeadId:intake.leadId,quoteLeadId:quoteLead.leadId,draftQuoteId:reviewDraft.id,jobId,runId:run.runId,ownerInstallationLeadId,
         note:'Synthetic payment receipts, storage and Friday review only. No external transfer or production records.'};
 }
 module.exports={seedSalesPreview};

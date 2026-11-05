@@ -5,7 +5,6 @@ const {attachEarningsRoutes}=require('./field_earnings_fixture.cjs');
 async function createWorkflowFixture(){
   const f=await createCommerceFixture();
   const migration=name=>fs.readFileSync(path.join(__dirname,'..','..','migrations',name),'utf8');
-  await f.db.exec(migration('045_field_sales_launch_contracts.sql'));
   await f.db.exec(`alter table h2s_pros add column email text unique;
     create table h2s_dispatch_job_artifacts(artifact_id uuid primary key default gen_random_uuid(),job_id text not null,
       pro_id uuid,type text not null,url text not null,caption text,created_at timestamptz not null default now(),updated_at timestamptz default now());
@@ -15,6 +14,7 @@ async function createWorkflowFixture(){
   await f.db.exec(migration('042_management_offer_reliability.sql'));
   await f.db.exec(migration('046_field_sales_workflow.sql'));
   await f.db.exec(migration('047_field_sales_earnings.sql'));
+  await f.db.exec(migration('051_field_sales_company_installation.sql'));
   f.env.H2S_FIELD_WORKFLOW_ENABLED='true';
   f.env.H2S_FIELD_AGREEMENT_HANDOFF_MINUTES='60';
   const original=f.client.rpc.bind(f.client),casts={
@@ -25,6 +25,8 @@ async function createWorkflowFixture(){
     field_sales_workflow_reserve_refund:['uuid','uuid','uuid','bigint','jsonb'],field_sales_workflow_refund_result:['uuid','uuid','jsonb'],
     field_sales_workflow_renew_handoff:['uuid','uuid','uuid','text','integer'],
     field_sales_identity_command:['uuid','uuid','jsonb'],
+    field_sales_company_context:['uuid','uuid'],
+    field_sales_company_command:['uuid','uuid','uuid','integer','text','jsonb'],
   };
   f.client.rpc=async(name,args)=>{
     if(!casts[name])return original(name,args);
@@ -94,6 +96,7 @@ async function createWorkflowFixture(){
     portal_upload_signature:evaluate('app\\api\\portal_upload_signature\\route.ts',imports,globals),
     portal_get_artifacts:evaluate('app\\api\\portal_get_artifacts\\route.ts',imports,globals),
     'field-sales-photos':evaluate('app\\api\\field-sales-photos\\route.ts',imports,globals)};
+  routes['field-sales-company-installation']=evaluate('app\\api\\field-sales-company-installation\\route.ts',imports,globals);
   const request=(name,method='GET',body,actor='a',query='')=>{
     if(!routes[name]?.[method])throw Error('Unsupported isolated workflow fixture route: '+name);
     return routes[name][method](new Request('https://fixture.invalid/api/'+name+query,{

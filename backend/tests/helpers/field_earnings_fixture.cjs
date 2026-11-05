@@ -41,7 +41,6 @@ async function createEarningsFixture(){
   await f.enable();await f.publish();await f.legal();
   const root=path.join(__dirname,'..','..','migrations'),launch=path.join(root,'045_field_sales_launch_contracts.sql');
   if(!fs.existsSync(launch))throw Error('045 launch contracts must exist before integrated earnings certification');
-  await f.db.exec(fs.readFileSync(launch,'utf8'));
   await f.db.exec(`alter table h2s_pros add column email text unique;
     alter table h2s_dispatch_job_assignments add column offer_sent_at timestamptz,add column accepted_at timestamptz,add column declined_at timestamptz;
     create table if not exists h2s_dispatch_job_artifacts(

@@ -14,11 +14,31 @@
     let options, data, detail, mode = 'dashboard', token = '', version = 0, controller, attempt, busy = false, preparing = false, quoteLead = null, assessmentDraft = {};
     const urls = new Set(), hiddenNav = new Map(), draftViews = new Map(), quoteDrafts = new Map();
     let renderedKey = null, mountedDirty = false, savedForm = null, actorRole = null, sync = null, editVersion = 0;
+    let filters = {search:'',owner:''}, pages = [null], pageIndex = 0, duePages = [null], dueIndex = 0, searchTimer;
+    let customerHistory = null, historyPages = [null], historyIndex = 0;
+    function listPath(cursor = pages[pageIndex], due = false) {
+        const query = new URLSearchParams();
+        if (filters.search) query.set('search',filters.search);
+        if (filters.owner) query.set('ownerId',filters.owner);
+        if (cursor) query.set('cursor',cursor);
+        if (due) query.set('due','true');
+        else if (mode === 'dashboard') {
+            query.set('includeFollowUps','true');
+            if (duePages[dueIndex]) query.set('dueCursor',duePages[dueIndex]);
+        }
+        return 'field-sales' + (query.size ? '?' + query : '');
+    }
+    const searchControls = () => `<div class="field-sales__toolbar"><label class="field-sales__search">Find a lead<input type="search" data-sales-search value="${esc(filters.search)}" placeholder="Customer, phone or address" autocomplete="off"></label>
+        ${admin() ? `<label>Representative<select data-sales-owner><option value="">All representatives</option>${(data.representatives || []).map(rep=>`<option value="${esc(rep.user_id)}"${filters.owner===rep.user_id?' selected':''}>${esc(rep.display_name)}</option>`).join('')}</select></label>` : ''}</div>`;
+    function pager(kind,next,total) {
+        const index = kind==='due' ? dueIndex : kind==='history' ? historyIndex : pageIndex;
+        return `<div class="field-sales__toolbar" role="group" aria-label="${kind==='due'?'Follow-up':kind==='history'?'Customer history':'Lead'} pages"><button type="button" data-sales-page="${kind}" data-direction="-1"${index ? '' : ' disabled'}>Previous</button><span>Page ${index+1} · ${esc(total)} matching opportunities</span><button type="button" data-sales-page="${kind}" data-direction="1"${next?'':' disabled'}>Next</button></div>`;
+    }
     const viewKey = () => mode === 'detail' && detail ? `detail:${detail.opportunity.lead_id}` : mode;
     // Keep actual form nodes, including browser-owned FileLists, only in this session's memory.
     function retainDraft() {
         const content = root.querySelector('[data-sales-content]');
-        if (content && renderedKey && /^(new|representatives|detail:)/.test(renderedKey)) {
+        if (content && renderedKey && /^(new|repeat|representatives|detail:)/.test(renderedKey)) {
             draftViews.set(renderedKey, { forms: [...content.querySelectorAll('[data-sales-form]')], answers: assessmentDraft });
         }
     }
@@ -56,7 +76,7 @@
         return closed || (Number.isFinite(aTime) ? aTime : Infinity) - (Number.isFinite(bTime) ? bTime : Infinity)
             || String(a.created_at || '').localeCompare(String(b.created_at || ''));
     });
-    const representative = id => (data?.representatives || []).find(rep => rep.user_id === id)?.display_name || 'Profile name unavailable';
+    const representative = id => (data?.representatives || []).find(rep => rep.user_id === id)?.display_name || (!admin()&&id===data?.actor?.userId?'You':'Profile name unavailable');
     const attribution = row => `<div><dt>Originating salesperson</dt><dd>${esc(row.originating_user_id ? representative(row.originating_user_id) : 'Historical origin unverified')}</dd></div><div><dt>Assigned salesperson</dt><dd>${esc(representative(row.owner_user_id))}</dd></div>`;
     const serviceName = id => data.services.find(service => service.service_id === id)?.definition.label || 'Service unavailable';
     const identityNames = () => ({
@@ -77,6 +97,8 @@
     function release() { for (const url of urls) global.URL.revokeObjectURL(url); urls.clear(); }
     function reset() {
         sync?.destroy(); sync = null;
+        clearTimeout(searchTimer); filters={search:'',owner:''}; pages=[null];pageIndex=0;duePages=[null];dueIndex=0;
+        customerHistory=null;historyPages=[null];historyIndex=0;
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
@@ -168,7 +190,7 @@
         } else if (mode === 'quotes' || mode === 'commerce') {
             const leads = data.opportunities || [];
             content.innerHTML = `<section class="field-sales__quote-workspace"><div class="field-sales__section-heading"><h3>Customer quotes</h3>${admin() ? '<button type="button" data-sales-mode="transactions">Review all quotes & payments</button>' : ''}</div><p class="field-sales__note">Choose an assigned lead to build or review their quote.</p>
-                <label>Customer<select data-sales-quote-lead><option value="">Choose an existing lead</option>${leads.map(row=>`<option value="${esc(row.lead_id)}"${quoteLead===row.lead_id?' selected':''}>${esc(row.full_name)}${row.address?' · '+esc(row.address):''}</option>`).join('')}</select></label>
+                ${searchControls()}<label>Customer opportunity<select data-sales-quote-lead><option value="">Choose an existing lead</option>${leads.map(row=>`<option value="${esc(row.lead_id)}"${quoteLead===row.lead_id?' selected':''}>${esc(row.full_name)}${row.address?' · '+esc(row.address):''} · ${esc(row.services.map(serviceName).join(' / '))}</option>`).join('')}</select></label>${pager('list',data.nextCursor,data.total ?? leads.length)}
                 ${!leads.length ? '<div class="field-sales__empty"><p>No assigned leads yet.</p><button type="button" data-sales-mode="new">Add a prospect</button></div>' : ''}
                 ${leads.length ? `<div class="field-sales__empty" data-sales-quote-empty${leads.some(row=>row.lead_id===quoteLead) ? ' hidden' : ''}><h4>Choose a customer to get started</h4><p>Their service scope and saved quote revisions will appear here.</p></div>` : ''}
                 <div data-sales-quote-builder></div></section>`;
@@ -177,6 +199,15 @@
                 target.dataset.market = selectedLead.market;
                 commerce(target, quoteLead);
             } else quoteLead = null;
+        } else if (mode === 'repeat' && detail) {
+            content.innerHTML = `<h3>Additional service for ${esc(detail.lead.full_name)}</h3><p class="field-sales__note">New opportunity under the same customer. Previous agreements, payments and commission credit stay unchanged.</p>
+                <form data-sales-form="repeat" class="field-sales__form">
+                ${admin()?`<label>Assigned representative<select name="ownerId" required>${representatives(detail.opportunity.owner_user_id)}</select></label>`:''}
+                <fieldset class="field-sales__wide"><legend>New service interests</legend><div class="field-sales__services">${interests([],detail.lead.attribution.market)}</div></fieldset>
+                <label class="field-sales__wide">Customer identity confirmation<textarea name="evidence" required minlength="3" maxlength="2000" placeholder="How you verified this is the same customer"></textarea></label>
+                <label class="field-sales__wide">New service notes<textarea name="notes" maxlength="2000"></textarea></label>
+                <label>Follow-up (device timezone)<input type="datetime-local" name="followUpAt"></label>
+                <button type="submit">Create separate opportunity</button></form>`;
         } else if (mode === 'new') {
             content.innerHTML = `<div class="field-sales__toolbar"><button type="button" data-sales-mode="opportunities">Back to leads</button></div><h3>New prospect</h3><p>Start with the customer and property. Assess selected services after saving.</p><form data-sales-form="create" class="field-sales__form">
                 <fieldset class="field-sales__wide field-sales__form"><legend>1 · Customer & property</legend>
@@ -216,11 +247,14 @@
                 .map(question => op.assessments[service.service_id]?.answers?.[question.id]));
             const expectedPhotos = selected.flatMap(service => service.definition.photos.map(label =>
                 detail.photos.some(photo => photo.service_id === service.service_id && photo.label === label && photo.state === 'ready')));
-            content.innerHTML = `<div class="field-sales__toolbar"><button type="button" data-sales-mode="opportunities">Back to leads</button><button type="button" data-sales-build-quote="${esc(op.lead_id)}">Open customer quotes</button></div>
+            content.innerHTML = `<div class="field-sales__toolbar"><button type="button" data-sales-mode="opportunities">Back to leads</button><button type="button" data-sales-build-quote="${esc(op.lead_id)}">Open customer quotes</button><button type="button" data-sales-repeat>Additional service for this customer</button></div>
                 <section class="field-sales__customer-summary" aria-label="Customer assessment summary"><div class="field-sales__record-heading"><h3>${esc(detail.lead.full_name)}</h3>
                 <span class="field-sales__badge" data-tone="${leadTone(op.status)}">${esc(label(op.status))}</span></div>
                 <p>${esc([detail.lead.project_address, detail.lead.project_city].filter(Boolean).join(' · ') || 'Property address not provided')}</p>
                 <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(detail.lead.phone || 'Not provided')}</dd></div>${attribution(op)}<div><dt>Technician</dt><dd>See installation assignment in Orders</dd></div><div><dt>Next step</dt><dd>${esc(nextStep(op.status))}</dd></div></dl></section>
+                ${customerHistory ? `<section class="field-sales__section" aria-label="Customer opportunities"><h4>Customer service history</h4><p class="field-sales__note">${admin()?'All authorized opportunities for this customer.':'Only opportunities assigned to you are shown.'}</p>
+                    ${customerHistory.opportunities.map(row=>`<article class="field-sales__photo-card"><div><strong>${esc(row.services.map(serviceName).join(' · '))}</strong><p>${esc(label(row.status))} · ${esc(date(row.created_at))}</p></div><button type="button" data-sales-lead="${esc(row.lead_id)}"${row.lead_id===op.lead_id?' disabled':''}>${row.lead_id===op.lead_id?'Current opportunity':'View opportunity'}</button></article>`).join('')}
+                    ${pager('history',customerHistory.nextCursor,customerHistory.total)}</section>` : ''}
                 ${admin() ? `<details><summary>Identity & ownership audit</summary><p class="field-sales__id">Shared lead ${esc(op.lead_id)} / ${esc(op.status)} / revision ${esc(op.revision)}</p>
                 <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p></details>` : ''}
                 <p class="field-sales__note">Assessment progress: ${required.filter(answer => answer !== undefined && answer !== '').length}/${required.length} required answers;
@@ -255,23 +289,22 @@
                 content.querySelectorAll('form[data-sales-form="save"] button, form[data-sales-form="photo"] button').forEach(button => { button.disabled = true; });
             }
         } else {
-            const rows = chronological(data.opportunities || []), due = rows.filter(row => row.follow_up_at && Date.parse(row.follow_up_at) <= Date.now() && row.status !== 'closed');
+            const rows = data.opportunities || [], due = data.followUps || chronological(rows.filter(row => row.follow_up_at && Date.parse(row.follow_up_at) <= Date.now() && row.status !== 'closed'));
             const active = rows.filter(row=>row.status !== 'closed'), followUpsToday = rows.filter(row=>row.follow_up_at && new Date(row.follow_up_at).toDateString()===new Date().toDateString() && row.status!=='closed');
             content.innerHTML = `<div class="field-sales__toolbar field-sales__section-heading"><h3>${mode==='dashboard' ? (admin() ? 'Sales overview' : 'Your day in sales') : 'Customer leads'}</h3><button type="button" data-sales-mode="new" class="field-sales__primary">New prospect</button></div>
                 ${mode==='dashboard' ? `<div class="field-sales__summary" aria-label="Loaded lead activity">
-                    ${[[active.length,'Active leads'],[due.length,'Follow-ups due'],[followUpsToday.length,'Follow-ups today'],[rows.filter(row=>row.status==='ready_for_review').length,'Awaiting review']].map(([value,title])=>`<div class="field-sales__metric"><span>${title}</span><strong>${value}</strong></div>`).join('')}</div>` : ''}
-                <p class="field-sales__note">${rows.length} of ${esc(data.total ?? rows.length)} assigned leads loaded. ${data.total > rows.length ? 'Activity counts cover only the latest loaded leads, not your complete history.' : 'Activity counts reflect your current loaded leads.'}</p>
+                    ${[[data.summary?.active ?? active.length,'Active leads'],[data.summary?.due ?? due.length,'Follow-ups due'],[data.summary?.upcoming ?? followUpsToday.length,data.summary?'Upcoming 24h':'Follow-ups today'],[data.summary?.awaitingReview ?? rows.filter(row=>row.status==='ready_for_review').length,'Awaiting review']].map(([value,title])=>`<div class="field-sales__metric"><span>${title}</span><strong>${value}</strong></div>`).join('')}</div>` : ''}
+                <p class="field-sales__note">${rows.length} of ${esc(data.total ?? rows.length)} matching opportunities on this page. ${data.summary?'Activity counts cover all matching authorized opportunities.':'Activity counts reflect your current loaded leads.'}</p>
                 ${mode === 'dashboard' ? `<section class="field-sales__section"><h4>Contact next</h4>${due.length ? `<div class="field-sales__table-region" role="region" aria-label="Customer follow-ups" tabindex="0"><table class="field-sales__followup-table">
                     <caption>Overdue follow-ups · earliest due first</caption><thead><tr><th scope="col">Customer</th><th scope="col">Service</th><th scope="col">Contact due</th><th scope="col">Next step</th></tr></thead>
-                    <tbody>${due.map(row=>`<tr><th scope="row"><button type="button" class="field-sales__customer-link" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button></th><td>${esc(row.services.map(serviceName).join(' · ') || 'Service assessment needed')}</td><td>${esc(date(row.follow_up_at))}</td><td>${esc(nextStep(row.status))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="field-sales__empty">No overdue customer follow-ups in the available leads.</p>'}</section><p class="field-sales__note">${active.filter(row=>['new','assessing','needs_information'].includes(row.status)).length} loaded leads need assessment or details. Open Quotes for approvals and customer signatures; Orders for installation and payment actions.</p>` : ''}
-                <div class="field-sales__toolbar"><label class="field-sales__search">Find a lead<input type="search" data-sales-search placeholder="Customer, phone or address" autocomplete="off"></label>
-                ${admin() ? `<label>Representative<select data-sales-owner><option value="">All representatives</option>${(data.representatives || []).map(rep => `<option value="${esc(rep.user_id)}">${esc(rep.display_name)}</option>`).join('')}</select></label>` : ''}</div>
+                    <tbody>${due.map(row=>`<tr><th scope="row"><button type="button" class="field-sales__customer-link" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button></th><td>${esc(row.services.map(serviceName).join(' · ') || 'Service assessment needed')}</td><td>${esc(date(row.follow_up_at))}</td><td>${esc(nextStep(row.status))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="field-sales__empty">No overdue customer follow-ups match these filters.</p>'}${pager('due',data.followUpCursor,data.followUpTotal ?? due.length)}</section>` : ''}
+                ${searchControls()}
                 <div data-sales-list>${rows.map(row => `<article class="field-sales__lead-card" data-owner="${esc(row.owner_user_id)}" data-search="${esc([row.full_name,row.phone,row.address].join(' ').toLowerCase())}">
                 <div class="field-sales__record-heading"><button type="button" class="field-sales__customer-link" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span class="field-sales__badge" data-tone="${leadTone(row.status)}">${esc(label(row.status))}</span></div>
                 <p class="field-sales__service-label">${esc(row.services.map(serviceName).join(' · ') || 'Service interests not selected')}</p>
                 <p class="field-sales__note">${esc(row.address || 'Property address not provided')}</p>
                 <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(row.phone || 'Not provided')}</dd></div><div><dt>Property</dt><dd>${row.market==='commercial'?'Commercial':'Residential'}</dd></div>${attribution(row)}<div><dt>Next contact</dt><dd>${esc(nextContact(row.follow_up_at))}</dd></div><div class="field-sales__next-step"><dt>Next step</dt><dd>${esc(nextStep(row.status))}</dd></div></dl>
-                <div class="field-sales__card-actions"><button type="button" data-sales-lead="${esc(row.lead_id)}">View assessment<span aria-hidden="true"> ›</span></button></div></article>`).join('') || '<div class="field-sales__empty"><h4>Your next customer starts here</h4><p>Add a prospect, or ask management to assign an existing inquiry.</p></div>'}</div><p class="field-sales__empty" data-sales-no-results hidden>No leads match these filters. Try another name, phone or address.</p>`;
+                <div class="field-sales__card-actions"><button type="button" data-sales-lead="${esc(row.lead_id)}">View assessment<span aria-hidden="true"> ›</span></button></div></article>`).join('') || `<div class="field-sales__empty"><h4>${filters.search||filters.owner?'No matching opportunities':'Your next customer starts here'}</h4><p>${filters.search||filters.owner?'Try another customer, phone or address.':'Add a prospect, or ask management to assign an existing inquiry.'}</p></div>`}</div>${pager('list',data.nextCursor,data.total ?? rows.length)}<p class="field-sales__empty" data-sales-no-results hidden>No leads match these filters. Try another name, phone or address.</p>`;
         }
         const key = viewKey(), retained = draftViews.get(key);
         if (retained) {
@@ -341,6 +374,14 @@
         if(typeof result.enabled!=='boolean'||result.enabled&&(!Array.isArray(result.opportunities)||!Array.isArray(result.services)))throw Error('Field Sales response incomplete. No empty result or current synchronization is assumed.');
         return result;
     }
+    async function includeSelectedQuote(result) {
+        if (quoteLead && ['quotes','commerce'].includes(mode) && !result.opportunities.some(row=>row.lead_id===quoteLead)) {
+            const selected=await json('field-sales?leadId='+encodeURIComponent(quoteLead));
+            if (selected.opportunity?.lead_id!==quoteLead || selected.lead?.lead_id!==quoteLead) throw Error('Selected customer opportunity was not verified.');
+            result.opportunities.push({...selected.opportunity,full_name:selected.lead.full_name,address:selected.lead.project_address,market:selected.lead.attribution.market});
+        }
+        return result;
+    }
     async function load(leadId) {
         if (!allowed()) { reset(); return; }
         if (token && (token !== session().token || actorRole !== session().role)) reset();
@@ -350,24 +391,27 @@
         data = detail = null; render(); status('Loading assigned Field Sales records...');
         root.querySelector('[data-sales-status]').classList.add('field-sales__loading');
         try {
-            const result = checkedRecords(await json('field-sales')); if (id !== version) return; data = result;
+            const result = checkedRecords(await json(listPath())); if (id !== version) return; data = result;
             if (leadId && result.enabled) { const record = await json(`field-sales?leadId=${encodeURIComponent(leadId)}`); if (id !== version) return; detail = record; mode = 'detail'; }
+            if (detail?.lead.customer_id) customerHistory = await json('field-sales?customerId='+encodeURIComponent(detail.lead.customer_id)+(historyPages[historyIndex]?'&cursor='+encodeURIComponent(historyPages[historyIndex]):''));
+            if (result.enabled) await includeSelectedQuote(data);
+            if (id !== version) return;
             render();
-        } catch (error) { console.error('Field Sales read failed.'); if (id === version) { data = detail = null; render(); status(error.message, true); } }
+        } catch (error) { console.error('Field Sales read failed.'); if (id === version) { data = detail = null; render(); status(error.message, true); root.querySelector('[data-sales-content]').innerHTML='<button type="button" data-sales-retry-read>Retry loading opportunities</button>'; } }
         ensureSync();
     }
     async function synchronize() {
         const id = version, edits = editVersion, lead = detail?.opportunity.lead_id;
-        const fresh = checkedRecords(await json('field-sales'));
+        const fresh = checkedRecords(await json(listPath()));
         const record = lead && fresh.enabled ? await json(`field-sales?leadId=${encodeURIComponent(lead)}`) : null;
+        const history = record?.lead.customer_id ? await json('field-sales?customerId='+encodeURIComponent(record.lead.customer_id)+(historyPages[historyIndex]?'&cursor='+encodeURIComponent(historyPages[historyIndex]):'')) : null;
         if (id !== version || edits !== editVersion || hasUnsavedDraft() || global.H2SDataSync?.interacting(root)) return false;
         const search = root.querySelector('[data-sales-search]')?.value, owner = root.querySelector('[data-sales-owner]')?.value;
-        data = fresh; detail = record;
+        data = fresh; detail = record; customerHistory = history;
         draftViews.delete(renderedKey);
         render();
         if (search !== undefined && root.querySelector('[data-sales-search]')) root.querySelector('[data-sales-search]').value = search;
         if (owner !== undefined && root.querySelector('[data-sales-owner]')) root.querySelector('[data-sales-owner]').value = owner;
-        filterLeads();
         return true;
     }
     function ensureSync() {
@@ -408,7 +452,7 @@
             }
         }
         if (event.target.name === 'serviceId') photoLabels();
-        if (event.target.matches('[data-sales-owner]')) filterLeads();
+        if (event.target.matches('[data-sales-owner]')) {filters.owner=event.target.value;resetPages();reloadPage();}
         if (event.target.matches('[data-sales-quote-lead]')) {
             if (!safeToLeave()) { event.target.value = quoteLead || ''; event.target.dispatchEvent(new Event('change', {bubbles:false})); return; }
             quoteLead = event.target.value || null;
@@ -418,15 +462,28 @@
             if (lead) { target.dataset.market = lead.market; commerce(target, quoteLead); }
         }
     });
-    function filterLeads() {
-        const search = root.querySelector('[data-sales-search]')?.value.trim().toLowerCase() || '', owner = root.querySelector('[data-sales-owner]')?.value || '';
-        const rows = [...root.querySelectorAll('[data-sales-list] article')];
-        for (const row of rows) row.hidden = (!!owner && row.dataset.owner !== owner) || !row.dataset.search.includes(search);
-        const empty = root.querySelector('[data-sales-no-results]'); if (empty) empty.hidden = !rows.length || rows.some(row=>!row.hidden);
+    function resetPages(){pages=[null];pageIndex=0;duePages=[null];dueIndex=0;}
+    async function reloadPage(kind='list') {
+        if (!allowed() || busy || preparing) return;
+        const id=++version;controller?.abort();controller=new AbortController();
+        status('Loading matching opportunities...');
+        const focused=root.querySelector('[data-sales-search]')===document.activeElement;
+        try {
+            const fresh=checkedRecords(await json(kind==='due'?listPath(duePages[dueIndex],true):listPath()));
+            if(kind!=='due'&&fresh.enabled)await includeSelectedQuote(fresh);
+            if(id!==version)return;
+            if(kind==='due')data={...data,followUps:fresh.opportunities,followUpCursor:fresh.nextCursor,followUpTotal:fresh.total};
+            else data=fresh;
+            retainDraft();render();
+            if(focused)root.querySelector('[data-sales-search]')?.focus();
+        }catch(error){console.error('Field Sales page read failed.');if(id===version){data=detail=null;render();status(error.message,true);root.querySelector('[data-sales-content]').innerHTML='<button type="button" data-sales-retry-read>Retry loading opportunities</button>';}}
     }
     root.addEventListener('input', event=>{
         editVersion++;
-        if(event.target.matches('[data-sales-search]')) filterLeads();
+        if(event.target.matches('[data-sales-search]')) {
+            filters.search=event.target.value.trim();resetPages();clearTimeout(searchTimer);
+            searchTimer=setTimeout(()=>reloadPage(),300);
+        }
         if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
             !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
     });
@@ -448,7 +505,8 @@
         const generation = version, started = session()?.token;
         try {
             const action = form.dataset.salesForm, values = Object.fromEntries(new FormData(form)), body = { ...values, action };
-            if (['create', 'save'].includes(action)) { body.services = [...form.querySelectorAll('[name="services"]:checked')].map(el => el.value); body.followUpAt = instant(values.followUpAt); }
+            if (['create', 'save','repeat'].includes(action)) { body.services = [...form.querySelectorAll('[name="services"]:checked')].map(el => el.value); body.followUpAt = instant(values.followUpAt); }
+            if(action==='repeat')body.leadId=detail.opportunity.lead_id;
             let path = 'field-sales';
             if (action === 'save') {
                 Object.assign(body, { leadId: detail.opportunity.lead_id, revision: detail.opportunity.revision,
@@ -465,7 +523,7 @@
             preparing = false;
             const result = await write(path, body);
             if (result) { const lead = result.leadId || (detail?.opportunity.lead_id); if (action === 'account_create') { form.querySelector('button').disabled = true; await refreshRepresentatives(); retainDraft(); render(); status('Disabled account created. Save the retained temporary credential securely; it is not recoverable. Activation remains a separate explicit management action.'); } else {
-                if (action === 'create') { draftViews.delete(renderedKey); renderedKey = null; }
+                if (['create','repeat'].includes(action)) { draftViews.delete(renderedKey); renderedKey = null; }
                 savedForm = form; await load(lead);
             } }
         } catch (error) { if (generation === version) status(error.message, true); }
@@ -480,6 +538,18 @@
         }
         if (busy || preparing) return;
         try {
+            if(button.hasAttribute('data-sales-repeat')){if(!safeToLeave())return;mode='repeat';render();return;}
+            if(button.dataset.salesPage){
+                if(!safeToLeave())return;
+                const kind=button.dataset.salesPage,forward=button.dataset.direction==='1';
+                if(kind==='history'){
+                    if(forward){historyPages[++historyIndex]=customerHistory.nextCursor;}else historyIndex--;
+                    await load(detail.opportunity.lead_id);return;
+                }
+                if(kind==='due'){if(forward)duePages[++dueIndex]=data.followUpCursor;else dueIndex--;}
+                else {if(forward)pages[++pageIndex]=data.nextCursor;else pageIndex--;}
+                await reloadPage(kind);return;
+            }
             if (button.hasAttribute('data-sales-discard-attempt')) {
                 if (!global.confirm('Discard the interrupted action? Your form stays available. A prior server result may still exist; review current records before submitting another action.')) return;
                 attempt = null; status('Interrupted retry discarded. Your form is retained; review current records before another save.');
@@ -493,7 +563,7 @@
             if (button.hasAttribute('data-sales-retry-read')) await load(detail?.opportunity.lead_id);
             if (button.dataset.salesMode) { if (!safeToLeave()) return; mode = button.dataset.salesMode; detail = null; attempt = null; await load(); }
             if (button.dataset.salesBuildQuote) { if (!safeToLeave()) return; quoteLead = button.dataset.salesBuildQuote; mode = 'quotes'; detail = null; attempt = null; await load(); }
-            if (button.dataset.salesLead) { if (!safeToLeave()) return; attempt = null; await load(button.dataset.salesLead); }
+            if (button.dataset.salesLead) { if (!safeToLeave()) return; attempt = null;historyPages=[null];historyIndex=0;customerHistory=null; await load(button.dataset.salesLead); }
             if (button.dataset.repState) { const result = await write('field-sales', { action: 'account_state', userId: button.dataset.repState, active: button.dataset.active === 'true' }); if (result) await load(); }
             if (button.dataset.salesPhoto) {
                 const generation = version, started = session()?.token;

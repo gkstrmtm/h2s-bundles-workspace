@@ -5430,7 +5430,7 @@
                 } catch (error) {
                     console.error('Operations module unavailable; existing dashboard remains available.', error);
                 }
-                for (const filename of ['field-workflow.js', 'field-earnings.js']) {
+                for (const filename of ['field-installation.js', 'company-installation.js', 'field-workflow.js', 'field-earnings.js']) {
                     try {
                         await loadScript(filename);
                     } catch (error) {

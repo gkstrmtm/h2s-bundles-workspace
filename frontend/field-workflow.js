@@ -8,7 +8,7 @@
     const labels = {enrolled:'Agreement in progress',deposit_pending:'Deposit pending',deposit_paid:'Deposit received',ready:'Ready for scheduling',scheduled:'Installation scheduled',completed:'Installation completed',cancelled:'Cancelled',refund_review:'Refund under review',legal_review:'Agreement under review',accepted:'Agreement accepted',awaiting_deposit:'Awaiting deposit'};
     const human = value => labels[value] || 'Order under review';
     const policyLabel = (p,index=0) => `${({legal:'Customer agreement',commission:'Commission',settlement:'Friday settlement'})[p.kind] || 'Policy'} · ${p.version || p.definition?.version ? 'Version '+(p.version || p.definition.version) : p.approved_at ? 'Approved '+new Date(p.approved_at).toLocaleDateString() : 'Record '+(index+1)+' (version not supplied)'}`;
-    const recordTitle = (w,index,names) => w.customerName || w.customer?.name || names?.[w.leadId] || `Order ${index + 1}`;
+    const recordTitle = (w,index,names) => w.customerName || w.customer?.name || quoteCopy(w)?.content?.customer?.name || names?.[w.leadId] || `Order ${index + 1}`;
     const staffName = (value,identity) => {
         const name = typeof value==='string' ? value.trim() : '';
         return name && name.toLowerCase()!==String(identity || '').toLowerCase()
@@ -34,11 +34,11 @@
         return millionths*BigInt(unitCents)===BigInt(amountCents)*1000000n;
     }
     let current, generation = 0;
-    function reset() { generation++; current?.sync?.destroy(); current?.controller.abort(); current?.root.replaceChildren(); current = null; }
+    function reset() { generation++; current?.sync?.destroy(); current?.companyViews?.forEach(view=>view.destroy()); current?.controller.abort(); current?.root.replaceChildren(); current = null; }
     function mount(root, options) {
         reset();
         const started = options.getSession()?.token, startedRole=options.getSession()?.role, id = generation;
-        const state = {root,controller:new AbortController(),data:null,busy:false,attempt:null,dirty:false,edits:0,read:0};
+        const state = {root,controller:new AbortController(),data:null,busy:false,attempt:null,dirty:false,edits:0,read:0,companyViews:[]};
         current = state;
         const valid = () => {
             const matches=current===state&&id===generation&&!!started&&options.getSession()?.token===started&&options.getSession()?.role===startedRole&&['ADMIN','SALES'].includes(startedRole);
@@ -154,7 +154,7 @@
             if(w.gates?.canBalance)return 'Customer: verify and pay the outstanding post-installation net balance.';
             if(w.completedAt)return w.balanceCents>0?'Management: resolve payment clearance before post-install balance collection.':'Management: review actual costs, earned commission and the eligible Friday settlement run.';
             if(w.state==='scheduled'){
-                if(!w.technicianId)return w.gates?.canAssign?'Management: select an authorized technician for the existing managed assignment.':'Management: resolve scheduled job preparation before assigning a technician.';
+                if(!w.technicianId)return w.gates?.canAssign?'Management: arrange your authorized company installer in Scheduling.':'Management: resolve scheduled job preparation before assigning an installer.';
                 return w.gates?.canComplete?'Assigned technician: record actual materials, hours and completion in the existing pro job detail.':'Management: resolve assigned-job readiness before technician completion.';
             }
             if(w.gates?.canSchedule)return 'Management: confirm an eligible installation in the existing company calendar.';
@@ -224,7 +224,7 @@
                 ${panel('Overview','Order overview',overview)}
                 ${panel('Quote','Approved quote',quoteBody)}
                 ${panel('Customer Docs','Customer documents & acceptance',docsBody)}
-                ${panel('Scheduling','Scheduling & installation readiness',`<h5>Readiness review</h5>${actions.readiness}${installationProof(w)}<h5>Company calendar & managed assignment</h5>${actions.scheduling}`)}
+                ${panel('Scheduling','Scheduling & installation readiness',`<h5>Readiness review</h5>${actions.readiness}<h5>Owner / company installation</h5><div data-company-installation="${esc(w.quoteId)}"></div>${installationProof(w)}<h5>Company calendar & managed assignment</h5>${actions.scheduling}`)}
                 ${panel('Costs & Margin','Actual costs & margin review',costsBody)}
                 ${panel('Commission Review','Commission qualification review',`<p>Qualification and the commission amount are established in Earnings, not calculated on this order screen.</p>${facts([['Installation completed',date(w.completedAt)],['Verified net paid',money(w.netPaidCents)],['Actual costs',w.costsComplete===true?'Approved by management':'Awaiting management approval']])}<p>Technician wages are separate. A completed installation or verified deposit alone does not establish earned commission or a paid Friday run.</p>`)}
                 ${panel('Audit','Technical evidence & audit',`<p class="field-workflow__note">Secondary technical records. Original identifiers, immutable copies, source evidence and revisions are retained here.</p>
@@ -279,6 +279,7 @@
                 ${!rows.length?'<p>Technician actual-cost rows unavailable. Approval is blocked; do not substitute zero costs.</p>':''}</details>`;
         }
         function render() {
+            state.companyViews.forEach(view=>view.destroy());state.companyViews=[];
             const d = state.data;
             root.innerHTML = '<div class="field-sales__toolbar"><h3>Orders & next actions</h3>'+(admin()?'<button type="button" data-workflow-discard-draft>Discard review inputs</button>':'')+'</div><p data-workflow-status role="status" aria-live="polite"></p>';
             if (!d.enabled) { status('Sales workflow disabled. Legal, scheduling and completion actions are unavailable.'); return; }
@@ -306,6 +307,19 @@
                     <details class="field-workflow__audit"><summary>Admin policy authoring — create an unapproved version</summary>${form('policy_create',null,`<label>New policy UUID<input name="policyId" required></label><label>Policy kind<select name="kind"><option value="legal">Legal</option><option value="commission">Commission</option><option value="settlement">Settlement</option></select></label>
                         <label class="field-sales__wide">Policy definition JSON<textarea name="definition" required></textarea></label>`,'Create unapproved policy draft')}</details></details></div>`);
             preparePanels();
+            for(const target of root.querySelectorAll('[data-company-installation]')){
+                const w=state.data.workflows.find(row=>row.quoteId===target.dataset.companyInstallation);
+                if(global.H2SCompanyInstallation)state.companyViews.push(global.H2SCompanyInstallation.mount(target,{
+                    serviceNames:Object.fromEntries(quoteLines(w).map(line=>[line.serviceId,line.service])),
+                    apiBase:options.apiBase,getSession:options.getSession,jobId:w.jobId,revision:w.revision,
+                    canClaim:w.gates?.canAssign===true&&!w.technicianId,
+                    onChanged:()=>{
+                        const unsaved=[...root.querySelectorAll('form input,form select,form textarea')].filter(el=>!el.closest('[data-company-installation]')).some(el=>
+                            el.type==='checkbox'?el.checked!==el.defaultChecked:el.tagName==='SELECT'?el.selectedIndex!==Math.max(0,[...el.options].findIndex(o=>o.defaultSelected)):el.value!==el.defaultValue);
+                        if(!unsaved){state.dirty=false;load();}else status('Company installation updated. Other unsaved review inputs are preserved; finish or discard them before reading updated order summaries.');
+                    }}));
+                else target.textContent='Company installation module unavailable. No completion is assumed.';
+            }
         }
         const dirty = () => state.dirty || state.busy || !!state.attempt || global.H2SDataSync?.interacting(root);
         async function load(background = false) {

@@ -10,6 +10,7 @@
     // Parent binds only a server-verified enrolled job in the existing pro-auth job detail.
     // Never mounts on a legacy job, and never intercepts the legacy completion handler.
     function mount(root, options) {
+        const endpoint=options.company===true?'field-sales-company-installation':'field-sales-installation';
         const session = options.getSession(), started = session?.token;
         if (!started || !options.jobId || !(options.enrolled === true || options.quoteId || options.probeEnabled === true)) {
             root.replaceChildren(); const skipped={enabled:false,enrolled:null,skipped:true};return {ready:Promise.resolve(skipped),refresh:async()=>skipped,destroy() {root.replaceChildren();}};
@@ -24,12 +25,13 @@
         root.classList.add('field-sales','field-installation');
         root.innerHTML = '<p data-installation-status role="status">Verifying exact enrolled job and assigned technician…</p>';
         function render() {
-        root.innerHTML = `<h3>New sales installation evidence</h3><p data-installation-status role="status" aria-live="polite">Record actual equipment/materials and hours, not estimates. Management reviews costs separately before commission calculation. Final customer balance is collected after completion, not required to complete installation.</p>
-            <div data-installation-proof></div><button type="button" data-installation-refresh>Refresh saved installation proof</button>
+        root.innerHTML = `<h3>${options.company===true?'Installation evidence & actual costs':'New sales installation evidence'}</h3><p data-installation-status role="status" aria-live="polite">Record actual equipment/materials and hours, not estimates. Management reviews costs separately before commission calculation. Final customer balance is collected after completion, not required to complete installation.</p>
+            <div data-installation-proof></div>${options.company===true?'':'<button type="button" data-installation-refresh>Refresh saved installation proof</button>'}
             <form data-installation-form class="field-sales__form">
                 <div class="field-sales__wide" data-installation-expenses></div>
                 <button type="button" data-installation-add>Add actual expense line</button>
                 <label>Actual technician hours<input name="hours" type="number" step="0.01" min="0.01" max="10000" required></label>
+                ${options.company===true?'<label>Actual installation date (device timezone)<input name="performedAt" type="datetime-local" required></label>':''}
                 <label class="field-sales__wide">Completion / service evidence<textarea name="evidence" required maxlength="6000"></textarea></label>
                 <button type="submit" disabled>Record installation completion</button></form>`;
             rows = 1; add('equipment'); rows = 2; add('materials');
@@ -42,7 +44,7 @@
                 proofDrafts.set(row.dataset.proofKey,{artifactIds:[...row.querySelectorAll('[data-proof-artifact]:checked')].map(e=>e.value),affirmed:row.querySelector('[name="affirmed"]')?.checked===true,reference:row.querySelector('[name="checklistEvidence"]')?.value||''});
             }
             target.innerHTML=proof?`<p>Saved installation photos: ${esc(proof.photoCount)} / customer signatures: ${esc(proof.signatureCount)}</p>
-                <p>${proof.complete===true?'Installation proof verified for this assigned job.':esc((proof.missing||[]).join('; ')||'Installation proof is incomplete.')}</p>
+                <p>${proof.complete===true?'Installation proof verified for this assigned job.':options.company===true?'Complete the required photographs, signature and onsite checks below.':esc((proof.missing||[]).join('; ')||'Installation proof is incomplete.')}</p>
                 ${Array.isArray(proof.requirements)&&proof.requirements.length?proofForm(proof):''}`:'<p>Installation proof verification unavailable. Completion remains blocked.</p>';
             const submit=root.querySelector('[data-installation-form] button[type="submit"]');
             if(submit)submit.disabled=reading||proofDirty||attempt?.action==='proof_record'||workflow?.canComplete!==true||proof?.complete!==true;
@@ -50,22 +52,22 @@
             if(workflow?.completedAt||completionConfirmed){
                 root.querySelectorAll('[data-installation-form] input,[data-installation-form] select,[data-installation-form] textarea,[data-installation-form] button').forEach(el=>el.disabled=true);
                 status('Installation already completed. Customer net balance and management cost review are verified separately.');
-            }else if(proofDirty||attempt?.action==='proof_record')status('Evidence selections are not yet server-confirmed. Save selected proof (an interrupted retry keeps the identical operation), then refresh server readiness.');
-            else if(proof?.complete!==true)status((proof?.missing||['Verify installation photos and customer signature']).join('; ')+'. Use existing job uploads, refresh, then bind evidence and affirm configured checklists. Text cannot replace saved photos/signatures.');
+            }else if(proofDirty||attempt?.action==='proof_record')status(options.company===true?'Save the selected evidence and onsite checks before completing this installation. Interrupted saves retain the same operation.':'Evidence selections are not yet server-confirmed. Save selected proof (an interrupted retry keeps the identical operation), then refresh server readiness.');
+            else if(proof?.complete!==true)status(options.company===true?'Upload photographs and the customer signature above, then save the required evidence selections and onsite checks below.':(proof?.missing||['Verify installation photos and customer signature']).join('; ')+'. Use existing job uploads, refresh, then bind evidence and affirm configured checklists. Text cannot replace saved photos/signatures.');
             else if(workflow?.canComplete!==true)status('Photo/signature proof is saved, but assigned-job/readiness gates still block completion. Final balance is not a completion gate.');
             else status('Saved photo/signature proof verified. Record actual costs and hours before submitting completion.');
         }
         function proofForm(proof){
-            return `<form data-installation-proof-form><h4>Pinned service completion requirements</h4>
-                <p>Use evidence captured through this job's existing upload/signature controls. Each configured requirement needs distinct evidence; baseline photo/signature checks may reuse it. Saving replaces all configured selections and checklist affirmations. Partial saves do not clear unmet requirements.</p>
+            return `<form data-installation-proof-form><h4>${options.company===true?'Required installation evidence':'Pinned service completion requirements'}</h4>
+                <p>${options.company===true?'Select the saved evidence for each required view and confirm the onsite checks. Every required item must be complete before recording the installation.':'Use evidence captured through this job\'s existing upload/signature controls. Each configured requirement needs distinct evidence; baseline photo/signature checks may reuse it. Saving replaces all configured selections and checklist affirmations. Partial saves do not clear unmet requirements.'}</p>
                 ${proof.requirements.map((r,index)=>{
                     const key=JSON.stringify([r.serviceId,r.id]),draft=proofDrafts.get(key),selected=draft?.artifactIds||r.artifactIds||[];
                     const candidates=(proof.candidates||[]).filter(c=>c.type===r.type);
                     return `<fieldset data-proof-requirement="${index}" data-proof-key="${esc(key)}"><legend>${esc(r.label)}</legend>
-                        <p>Service ${esc(r.serviceId)} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Still required: '+esc(r.missingCount)}</p>
+                        <p>${options.company===true?esc(options.serviceNames?.[r.serviceId]||'Approved installation service'):('Service '+esc(r.serviceId))} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Still required: '+esc(r.missingCount)}</p>
                         ${r.type==='checklist'?`<label class="field-installation__check"><input type="checkbox" name="affirmed"${(draft?draft.affirmed:r.affirmed===true)?' checked':''}>I personally verified: ${esc(r.label)}</label>
                             <label>Checklist completion evidence<textarea name="checklistEvidence" minlength="3" maxlength="4000">${esc(draft?draft.reference:r.evidence?.reference||'')}</textarea></label>`:
-                            ['photo','signature'].includes(r.type)?`${candidates.map(c=>`<label class="field-installation__check"><input type="checkbox" data-proof-artifact value="${esc(c.artifactId)}"${selected.includes(c.artifactId)?' checked':''}>${esc(c.type)} / ${esc(c.createdAt)} / ${esc(c.artifactId)}</label>`).join('')||'<p>No matching native proof available. Use the existing job upload/signature control, then refresh.</p>'}`:'<p>Unsupported requirement type. Completion remains subject to server clearance.</p>'}
+                            ['photo','signature'].includes(r.type)?`${candidates.map((c,i)=>`<label class="field-installation__check"><input type="checkbox" data-proof-artifact value="${esc(c.artifactId)}"${selected.includes(c.artifactId)?' checked':''}>${options.company===true?`${c.type==='photo'?'Photograph':'Customer signature'} ${i+1} · ${esc(new Date(c.createdAt).toLocaleString())}`:`${esc(c.type)} / ${esc(c.createdAt)} / ${esc(c.artifactId)}`}</label>`).join('')||(options.company===true?'<p>Upload the required image above. Saved evidence appears here automatically.</p>':'<p>No matching native proof available. Use the existing job upload/signature control, then refresh.</p>')}`:'<p>Unsupported requirement type. Completion remains subject to server clearance.</p>'}
                         </fieldset>`;
                 }).join('')}<button type="submit">Save selected installation proof</button></form>`;
         }
@@ -125,7 +127,7 @@
                     attempt={job_id:options.jobId,operationId:global.crypto.randomUUID(),workflowRevision:workflow.revision,action:'proof_record',bindings,checklists};
                 }
                 busy=true;proofDirty=true;status('Saving scoped proof selections. Completion still requires fresh server clearance.');
-                const response=await global.fetch(`${apiRoot(options.apiBase)}/field-sales-installation`,{method:'POST',cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Authorization:'Bearer '+started,'Content-Type':'application/json'},body:JSON.stringify(attempt)});
+                const response=await global.fetch(`${apiRoot(options.apiBase)}/${endpoint}`,{method:'POST',cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Authorization:'Bearer '+started,'Content-Type':'application/json'},body:JSON.stringify(attempt)});
                 if(!valid())return;const result=await response.json();if(!valid())return;
                 if(!response.ok||result.ok!==true||result.enrolled!==true||result.proofRecorded!==true||!Number.isSafeInteger(result.revision))throw Error(result.error||'Configured installation proof not confirmed.');
                 attempt=null;proofDirty=false;proofDrafts.clear();busy=false;await load();
@@ -155,10 +157,15 @@
                     const hours = Number(f.elements.hours.value); if (!f.elements.hours.value||!Number.isFinite(hours) || hours < 0.01 || hours > 10000) throw Error('Record actual hours from 0.01 to 10000, matching the installation authority.');
                     if(workflow?.canComplete!==true)throw Error('Completion unavailable under current server gates.');
                     const reference=f.elements.evidence.value.trim();if(!reference)throw Error('Completion evidence is required.');
-                    attempt = {job_id:options.jobId,operationId:global.crypto.randomUUID(),workflowRevision:workflow.revision,expenses,hours,evidence:{reference}};
+                    let performedAt;
+                    if(options.company===true){
+                        if(!f.elements.performedAt.value)throw Error('Record the actual installation date.');
+                        performedAt=new Date(f.elements.performedAt.value).toISOString();
+                    }
+                    attempt = {job_id:options.jobId,operationId:global.crypto.randomUUID(),workflowRevision:workflow.revision,expenses,hours,evidence:{reference},...(performedAt?{performedAt}:{})};
                 }
                 busy = true; status('Recording evidence with the scoped completion authority. An interrupted retry keeps identical inputs.');
-                const response = await global.fetch(`${apiRoot(options.apiBase)}/field-sales-installation`, {
+                const response = await global.fetch(`${apiRoot(options.apiBase)}/${endpoint}`, {
                     method:'POST',cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal,
                     headers:{Authorization:'Bearer '+started,'Content-Type':'application/json'},body:JSON.stringify({...attempt,token:started})
                 });
@@ -181,7 +188,7 @@
             root.querySelectorAll('[data-installation-proof-form] input,[data-installation-proof-form] textarea,[data-installation-proof-form] button').forEach(el=>el.disabled=true);
             status('Verifying saved photo/signature proof and the exact assigned-job completion gates…');
             try {
-                const response=await global.fetch(`${apiRoot(options.apiBase)}/field-sales-installation?job_id=${encodeURIComponent(options.jobId)}`,{cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Authorization:'Bearer '+started}});
+                const response=await global.fetch(`${apiRoot(options.apiBase)}/${endpoint}?job_id=${encodeURIComponent(options.jobId)}`,{cache:'no-store',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Authorization:'Bearer '+started}});
                 if(!valid())return {disposed:true};
                 const result=await response.json();if(!valid())return {disposed:true};
                 if(version!==readVersion)return {superseded:true};
@@ -192,10 +199,11 @@
                 }
                 workflow=result.workflow;
                 if(!workflow||workflow.jobId!==options.jobId||!Number.isSafeInteger(workflow.revision)||options.quoteId&&workflow.quoteId!==options.quoteId)throw Error('Installation relationship mismatch. No completion can be submitted.');
+                if(options.company===true)root.querySelector('[data-installation-refresh]')?.remove();
                 reading=false;if(root.querySelector('[data-installation-form]'))updateProof();else render();
                 const capability={enabled:true,enrolled:true,workflow};options.onCapability?.(capability);return capability;
             }catch(error){
-                if(valid()&&version===readVersion){workflow=null;console.error('Field installation read failed:',error.message);updateProof();status(error.message,true);options.onUnavailable?.(error);return {unavailable:true};}
+                if(valid()&&version===readVersion){workflow=null;console.error('Field installation read failed:',error.message);updateProof();status(error.message,true);if(options.company===true&&!root.querySelector('[data-installation-refresh]'))root.insertAdjacentHTML('beforeend','<button type="button" data-installation-refresh>Retry saved installation evidence</button>');options.onUnavailable?.(error);return {unavailable:true};}
                 return valid()?{superseded:true}:{disposed:true};
             }finally{if(version===readVersion)reading=false;}
         }

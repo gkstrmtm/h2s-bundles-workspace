@@ -1,7 +1,8 @@
 const test = require('node:test'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const fs = require('node:fs'), path = require('node:path');
 const { createSalesFixture, id } = require('./helpers/field_sales_fixture.cjs');
-const migration = () => fs.readFileSync(path.join(__dirname, '..', 'migrations', '045_field_sales_launch_contracts.sql'), 'utf8');
+const migration = () => ['045_field_sales_launch_contracts.sql','049_field_sales_opportunities.sql']
+  .map(name => fs.readFileSync(path.join(__dirname, '..', 'migrations', name), 'utf8')).join('\n');
 const prospect = n => ({ action: 'create', fullName: 'Synthetic launch customer', phone: '+155500015' + String(n).padStart(2, '0'),
   address: '100 Fixture Lane', city: 'Fixture City', market: 'residential', services: ['tv_mounting', 'cameras_owned'], notes: '' });
 const post = (f, body, actor = 'admin') => f.request('field-sales', 'POST', { operationId: crypto.randomUUID(), ...body }, actor);
@@ -18,7 +19,7 @@ function identityRpc(f) {
   };
 }
 test('launch migration leaves activation and historical identity untouched; new origin is immutable', async t => {
-  const f = await createSalesFixture(); t.after(() => f.db.close()); await f.enable();
+  const f = await createSalesFixture({legacy:true}); t.after(() => f.db.close()); await f.enable();
   const old = await (await post(f, prospect(1), 'a')).json();
   const baseline = (await f.db.query('select created_by,created_at from field_sales_opportunities where lead_id=$1', [old.leadId])).rows[0];
   await f.db.exec(migration()); identityRpc(f);
@@ -46,7 +47,7 @@ test('launch migration leaves activation and historical identity untouched; new 
   assert.equal(listing.opportunities[0].originating_user_id, id(20));
 });
 test('management start evidence is revisioned, idempotent, isolated and explicitly unsettable', async t => {
-  const f = await createSalesFixture(); t.after(() => f.db.close()); await f.db.exec(migration()); identityRpc(f);
+  const f = await createSalesFixture({legacy:true}); t.after(() => f.db.close()); await f.db.exec(migration()); identityRpc(f);
   const body = { action: 'representative_terms', operationId: crypto.randomUUID(), userId: id(20),
     commissionStartDate: '2026-11-04', commissionStartEvidence: 'Synthetic approved start evidence', termsRevision: 0 };
   assert.equal((await post(f, body)).status, 503);
@@ -76,7 +77,7 @@ test('management start evidence is revisioned, idempotent, isolated and explicit
   assert.deepEqual(permissions, { anonymous: false, direct_read: false, direct_update: false });
 });
 test('five synthetic representatives retain own customer records without a headcount cap or production enrollment', async t => {
-  const f = await createSalesFixture(); t.after(() => f.db.close()); await f.db.exec(migration()); await f.enable();
+  const f = await createSalesFixture({legacy:true}); t.after(() => f.db.close()); await f.db.exec(migration()); await f.enable();
   for (const [index, alias] of ['c', 'd', 'e'].entries()) {
     const userId = crypto.randomUUID(); f.actors[alias] = userId;
     assert.equal((await post(f, { action: 'account_create', operationId: userId, username: 'SYNTHETIC' + alias.toUpperCase(),

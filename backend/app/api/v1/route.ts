@@ -9362,7 +9362,14 @@ export async function POST(request: Request) {
                 const nowIso = new Date().toISOString();
                 const expiresAt = new Date(Date.now() + (role === 'SALES' ? 8 * 60 * 60 * 1000 : DASHBOARD_SESSION_TTL_DAYS * 24 * 60 * 60 * 1000)).toISOString();
 
-                const { error: sessionError } = await db.from('Dashboard_Sessions').insert({
+                // Serialize SALES issuance with credential reset so an already-verified old PIN cannot mint a late session.
+                const { error: sessionError } = role === 'SALES' ? await db.rpc('field_sales_create_session', {
+                  p_user: user.User_ID,
+                  p_pin_hash: user.Pin_Hash,
+                  p_token_hash: tokenHash,
+                  p_expires_at: expiresAt,
+                  p_device: device
+                }) : await db.from('Dashboard_Sessions').insert({
                   User_ID: user.User_ID,
                   Token_Hash: tokenHash,
                   Device: device,
@@ -9372,6 +9379,9 @@ export async function POST(request: Request) {
                 });
 
                 if (sessionError) {
+                  if (role === 'SALES' && sessionError.code === '42501') {
+                    return NextResponse.json({ ok: false, error: 'Credentials changed or access disabled. Sign in again.' }, { status: 401, headers: corsHeaders(request) });
+                  }
                   const availabilityError = getDashboardAuthAvailabilityError(sessionError);
                   return NextResponse.json(
                     { ok: false, error: availabilityError?.error || `Failed to create session: ${sessionError.message}` },
@@ -10622,6 +10632,9 @@ export async function POST(request: Request) {
                   return NextResponse.json({ ok: false, error: auth.error }, { status: auth.status, headers: corsHeaders(request) });
                 }
 
+                if (String(body?.role || '').trim().toUpperCase() === 'SALES') {
+                  return NextResponse.json({ ok: false, error: 'Create SALES accounts through managed Field Sales accounts.' }, { status: 400, headers: corsHeaders(request) });
+                }
                 const username = normalizeDashboardUsername(body?.username);
                 const displayName = String(body?.displayName || body?.name || '').trim();
                 const email = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
@@ -10683,6 +10696,9 @@ export async function POST(request: Request) {
                 const userId = String(body?.userId || '').trim();
                 const username = normalizeDashboardUsername(body?.username);
                 const roleRaw = String(body?.role || '').trim();
+                if (roleRaw.toUpperCase() === 'SALES') {
+                  return NextResponse.json({ ok: false, error: 'SALES roles are managed through Field Sales accounts.' }, { status: 400, headers: corsHeaders(request) });
+                }
                 const hasRole = !!roleRaw;
                 const role = hasRole ? (roleRaw.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'VA') : null;
 
@@ -10707,7 +10723,7 @@ export async function POST(request: Request) {
 
                 const db = tasksDb;
                 const nowIso = new Date().toISOString();
-                let q = db.from('Dashboard_Users').update({ Role: role, Updated_At: nowIso });
+                let q = db.from('Dashboard_Users').update({ Role: role, Updated_At: nowIso }).in('Role', ['ADMIN', 'VA']);
                 q = userId ? q.eq('User_ID', userId) : q.eq('Username', username);
 
                 const { data: rows, error } = await q
@@ -10720,7 +10736,7 @@ export async function POST(request: Request) {
 
                 const updated = Array.isArray(rows) && rows.length ? rows[0] : null;
                 if (!updated) {
-                  return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404, headers: corsHeaders(request) });
+                  return NextResponse.json({ ok: false, error: 'User not found or role is managed through Field Sales accounts.' }, { status: 404, headers: corsHeaders(request) });
                 }
 
                 result = { user: updated };
@@ -10738,12 +10754,30 @@ export async function POST(request: Request) {
                 const userId = String(body?.userId || '').trim();
                 const username = normalizeDashboardUsername(body?.username);
                 let pin = String(body?.pin || '').trim();
-                const pinWasGenerated = !pin;
-                if (!pin) pin = generateNumericPin(8);
 
                 if (!userId && !username) {
                   return NextResponse.json({ ok: false, error: 'userId or username is required' }, { status: 400, headers: corsHeaders(request) });
                 }
+                const db = tasksDb;
+                let targetQuery = db.from('Dashboard_Users').select('User_ID, Role').limit(1);
+                targetQuery = userId ? targetQuery.eq('User_ID', userId) : targetQuery.eq('Username', username);
+                const { data: target, error: targetError } = await targetQuery.maybeSingle();
+                if (targetError) {
+                  return NextResponse.json({ ok: false, error: `Failed to load user: ${targetError.message}` }, { status: 500, headers: corsHeaders(request) });
+                }
+                if (!target) {
+                  return NextResponse.json({ ok: false, error: 'User not found' }, { status: 404, headers: corsHeaders(request) });
+                }
+                const isSales = target.Role === 'SALES';
+                const sessionAdmin = isSales ? await getDashboardAuthUserFromSession(request) : null;
+                if (isSales && sessionAdmin?.role !== 'ADMIN') {
+                  return NextResponse.json({ ok: false, error: 'An ADMIN account session is required for SALES recovery.' }, { status: 403, headers: corsHeaders(request) });
+                }
+                if (isSales && (typeof body?.pin !== 'string' || pin.length < 16)) {
+                  return NextResponse.json({ ok: false, error: 'Supply a strong SALES credential of at least 16 characters.' }, { status: 400, headers: corsHeaders(request) });
+                }
+                const pinWasGenerated = !pin;
+                if (!pin) pin = generateNumericPin(8);
                 if (!pin || pin.length < 4) {
                   return NextResponse.json({ ok: false, error: 'pin must be at least 4 characters' }, { status: 400, headers: corsHeaders(request) });
                 }
@@ -10754,9 +10788,19 @@ export async function POST(request: Request) {
                 const hashB64 = await pbkdf2Sha256Base64Url(pin, saltBytes);
                 const nowIso = new Date().toISOString();
 
-                const db = tasksDb;
-                let q = db.from('Dashboard_Users').update({ Pin_Salt: saltB64, Pin_Hash: hashB64, Updated_At: nowIso });
-                q = userId ? q.eq('User_ID', userId) : q.eq('Username', username);
+                if (isSales) {
+                  const { data: updated, error } = await db.rpc('field_sales_reset_credentials', {
+                    p_actor: sessionAdmin!.userId, p_user: target.User_ID, p_pin_salt: saltB64, p_pin_hash: hashB64
+                  });
+                  if (error) {
+                    return NextResponse.json({ ok: false, error: `Failed to reset SALES credential: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
+                  }
+                  result = { user: updated, pinWasGenerated: false, sessionsRevoked: true };
+                  extraPayload.resetDashboardUserPin = result;
+                  break;
+                }
+                const q = db.from('Dashboard_Users').update({ Pin_Salt: saltB64, Pin_Hash: hashB64, Updated_At: nowIso })
+                  .eq('User_ID', target.User_ID).in('Role', ['ADMIN', 'VA']);
 
                 const { data: rows, error } = await q
                   .select('User_ID, Username, Display_Name, Email, Role, Is_Disabled, Updated_At')
@@ -10784,6 +10828,9 @@ export async function POST(request: Request) {
                 }
 
                 const inputEmail = typeof body?.email === 'string' && body.email.trim() ? body.email.trim().toLowerCase() : null;
+                if (String(body?.role || '').trim().toUpperCase() === 'SALES') {
+                  return NextResponse.json({ ok: false, error: 'SALES accounts use managed credential recovery, not email invites.' }, { status: 400, headers: corsHeaders(request) });
+                }
                 const inputUsername = normalizeDashboardUsername(body?.username);
                 const inputDisplayName = typeof body?.displayName === 'string' ? body.displayName.trim() : '';
                 const hasExplicitRole = body?.role !== undefined && body?.role !== null && String(body.role).trim() !== '';
@@ -10857,6 +10904,10 @@ export async function POST(request: Request) {
                     return NextResponse.json({ ok: false, error: `Failed to find user by username: ${error.message}` }, { status: 500, headers: corsHeaders(request) });
                   }
                   user = data || null;
+                }
+
+                if (user?.Role === 'SALES') {
+                  return NextResponse.json({ ok: false, error: 'SALES accounts use managed credential recovery, not email invites.' }, { status: 400, headers: corsHeaders(request) });
                 }
 
                 // Create if missing

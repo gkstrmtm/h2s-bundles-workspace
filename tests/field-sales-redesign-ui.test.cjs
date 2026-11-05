@@ -24,7 +24,7 @@ function salesData() {
         ]};
 }
 function detailData() {
-    return {ok:true,enabled:true,lead:{full_name:'Synthetic customer',phone:'555-0100',project_address:'10 Example Road',project_city:'Example City',attribution:{market:'residential'}},
+    return {ok:true,enabled:true,lead:{lead_id:leadId,full_name:'Synthetic customer',phone:'555-0100',project_address:'10 Example Road',project_city:'Example City',attribution:{market:'residential'}},
         opportunity:{lead_id:leadId,revision:7,status:'assessing',services:['tv'],assessments:{tv:{answers:{equipment:'Customer',units:2}}},photo_consent:false,notes:'Saved note',consent_note:'',originating_user_id:'private-origin',owner_user_id:'private-owner-id',created_by:'private-creator'},
         photos:[{service_id:'tv',label:'Installation area',state:'ready',file_id:'private-file-id'}],
         history:[{created_at:'2026-01-01',actor_name:'Management',action:'private_action',payload:{private_audit:'must not appear for SALES'}}]};
@@ -57,6 +57,59 @@ function fixture(t, {role='SALES', commerce=false}={}) {
         submit(form,button){form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:button}));}
     };
 }
+test('Home preserves its selected due page during automatic synchronization',async t=>{
+    const f=fixture(t);let synchronization;
+    f.w.H2SDataSync={register(options){synchronization=options;return {destroy(){}};},signal(value){return value;},interacting(){return false;},feedback(){}};
+    f.respond(async url=>{
+        const q=new URL(url).searchParams;
+        if(q.get('due')==='true'||q.has('dueCursor'))return Response.json({...f.data,opportunities:q.has('due')?[{...f.data.opportunities[0],full_name:'Older due customer'}]:f.data.opportunities,
+            followUps:[{...f.data.opportunities[0],full_name:'Older due customer'}],total:40,followUpTotal:40});
+        return Response.json({...f.data,followUps:[f.data.opportunities[0]],followUpCursor:'next-due-page',followUpTotal:40});
+    });
+    test('lead pages retain server ordering and identify the authenticated owner without exposing a staff directory',async t=>{
+        const f=fixture(t),base=f.data.opportunities[0];
+        f.data.actor={role:'SALES',userId:base.owner_user_id};
+        f.data.opportunities=[{...base,full_name:'Newest opportunity',follow_up_at:'2026-01-01T10:00:00Z'},
+            {...base,lead_id:'older-opportunity',full_name:'Older opportunity',follow_up_at:'2000-01-01T10:00:00Z'}];
+        await f.navigate('leads');
+        assert.deepEqual([...f.root().querySelectorAll('[data-sales-list] .field-sales__record-heading button')].map(e=>e.textContent),['Newest opportunity','Older opportunity']);
+        assert.match(f.root().querySelector('[data-sales-list]').textContent,/Assigned salespersonYou/);
+        assert.equal(f.root().querySelector('[data-sales-owner]'),null);
+    });
+    await f.navigate('home');
+    f.root().querySelector('[data-sales-page="due"][data-direction="1"]').click();await settle();
+    assert.match(f.root().querySelector('.field-sales__followup-table').textContent,/Older due customer/);
+    await synchronization.refresh();
+    assert.match(f.calls.at(-1).url,/dueCursor=next-due-page/);
+    assert.match(f.root().querySelector('.field-sales__followup-table').textContent,/Older due customer/);
+    assert.match(f.root().querySelector('[aria-label="Follow-up pages"]').textContent,/Page 2/);
+});
+test('failed page retrieval removes stale totals and customers and offers a genuine retry',async t=>{
+    const f=fixture(t);f.data.nextCursor='next-page';f.data.total=101;
+    await f.navigate('leads');
+    f.respond(async()=>Response.json({ok:false,error:'Storage unavailable'},{status:503}));
+    f.root().querySelector('[data-sales-page="list"][data-direction="1"]').click();await settle();
+    assert.match(f.root().querySelector('[role="alert"]').textContent,/Storage unavailable/);
+    assert.doesNotMatch(f.root().textContent,/101 matching|Another customer/);
+    const retry=f.root().querySelector('[data-sales-retry-read]');assert.ok(retry);
+    f.respond(async()=>Response.json({...f.data,opportunities:[],total:0,nextCursor:null}));
+    retry.click();await settle();assert.match(f.root().textContent,/0 matching opportunities/);
+});
+test('verified returning customer opens a separate repeat-opportunity form and preserves the source identity',async t=>{
+    const f=fixture(t);f.detail.lead.customer_id=leadId;
+    f.respond(async(url,init)=>Response.json(init.method==='POST'?{ok:true,leadId:'returning-sale'}:
+        url.includes('customerId=')?{...f.data,opportunities:[f.data.opportunities[0]],total:1}:url.includes('leadId=')?f.detail:f.data));
+    await f.navigate('assessment',leadId);
+    assert.match(f.root().querySelector('[aria-label="Customer opportunities"]').textContent,/Only opportunities assigned to you/);
+    f.root().querySelector('[data-sales-repeat]').click();await settle();
+    const form=f.root().querySelector('[data-sales-form="repeat"]');assert.ok(form);
+    form.elements.evidence.value='Confirmed returning household in person';
+    const selected=form.querySelector('[name="services"][value="camera"]');selected.checked=true;
+    f.submit(form);await settle();
+    const command=f.calls.find(call=>call.body?.action==='repeat').body;
+    assert.equal(command.leadId,leadId);assert.deepEqual(command.services,['camera']);assert.equal(command.ownerId,undefined);
+    assert.equal(f.detail.opportunity.revision,7);
+});
 test('standalone sales mounts without dashboard sidebar and exposes five genuine canonical destinations',async t=>{
     const f=fixture(t);
     const activation=f.w.H2SFieldSales.activate();
@@ -137,7 +190,7 @@ test('Home labels same-day lead contacts as follow-ups, never installation booki
     assert.doesNotMatch(f.root().querySelector('.field-sales__summary').textContent,/Scheduled today|installation|booking/i);
     assert.equal(f.mounts.length,0); // Home has loaded lead contacts, not an installation schedule.
     assert.equal(f.calls.length,1);
-    assert.equal(f.calls[0].url,'https://fixture.invalid/api/field-sales');
+    assert.equal(f.calls[0].url,'https://fixture.invalid/api/field-sales?includeFollowUps=true');
 });
 test('intake preserves configured services, native validation, market gating and exact create identity contract',async t=>{
     const f=fixture(t);await f.navigate('new');
@@ -189,17 +242,28 @@ test('assessment progressively shows configured questions, retains draft answers
     assert.ok(f.root().querySelector('[data-sales-build-quote]'));
 });
 test('quotes choose only actual assigned leads and mount existing commerce; filters combine query and management owner',async t=>{
-    const f=fixture(t);await f.navigate('quotes','unassigned-lead');
+    const f=fixture(t);await f.navigate('quotes');
     assert.equal(f.mounts.length,0);
     const select=f.root().querySelector('[data-sales-quote-lead]');
+    assert.equal([...select.options].some(option=>option.value==='unassigned-lead'),false);
     assert.equal(select.options.length,4);f.change(select,leadId);
     assert.equal(f.mounts.at(-1).options.leadId,leadId);
     assert.equal(f.mounts.at(-1).options.apiBase,'https://fixture.invalid/api/');
+    f.respond(async url=>{
+        const search=new URL(url).searchParams.get('search')?.toLowerCase()||'';
+        const opportunities=f.data.opportunities.filter(row=>[row.full_name,row.phone,row.address].join(' ').toLowerCase().includes(search));
+        return Response.json({...f.data,opportunities,total:opportunities.length});
+    });
     await f.navigate('leads');
     const search=f.root().querySelector('[data-sales-search]');search.value='555-0101';search.dispatchEvent(new f.w.Event('input',{bubbles:true}));
-    assert.equal([...f.root().querySelectorAll('[data-sales-list] article')].filter(row=>!row.hidden).length,1);
-    search.value='No matching customer';search.dispatchEvent(new f.w.Event('input',{bubbles:true}));
-    assert.equal(f.root().querySelector('[data-sales-no-results]').hidden,false);
+    await new Promise(resolve=>setTimeout(resolve,350));await settle();
+    assert.equal(new URL(f.calls.at(-1).url).searchParams.get('search'),'555-0101');
+    assert.equal(f.root().querySelectorAll('[data-sales-list] article').length,1);
+    const freshSearch=f.root().querySelector('[data-sales-search]');
+    freshSearch.value='No matching customer';freshSearch.dispatchEvent(new f.w.Event('input',{bubbles:true}));
+    await new Promise(resolve=>setTimeout(resolve,350));await settle();
+    assert.equal(f.root().querySelectorAll('[data-sales-list] article').length,0);
+    assert.match(f.root().querySelector('[data-sales-list]').textContent,/No matching opportunities/);
 });
 test('ADMIN keeps identity and raw audit evidence inside disclosure and representative tools stay role scoped',async t=>{
     const f=fixture(t,{role:'ADMIN'});await f.navigate('assessment',leadId);

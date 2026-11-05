@@ -34,7 +34,7 @@ const worktree = process.env.H2S_REVIEW_WORKTREE === 'true';
 const reviewedAssets=new Set(['frontend/sales.html','frontend/sales-app.js','frontend/sales-app.css','frontend/dashboard-controls.js','frontend/dashboard-sync.js',
     'frontend/forecast-assistant.js','frontend/forecast-assistant.css',
     'frontend/dash.html','frontend/dash.js','frontend/dash.css','frontend/field-sales.js','frontend/field-sales.css','frontend/field-commerce.js',
-    'frontend/field-workflow.js','frontend/field-workflow.css','frontend/field-earnings.js','frontend/management-operations.js',
+    'frontend/field-workflow.js','frontend/field-workflow.css','frontend/field-installation.js','frontend/company-installation.js','frontend/field-earnings.js','frontend/management-operations.js',
     'frontend/management-operations.css','frontend/field-agreement.html','frontend/field-agreement.js','frontend/commercial-business.js']);
 function committed(relative) {
     if(worktree&&reviewedAssets.has(relative))return fs.readFileSync(path.join(workspace,...relative.split('/')));
@@ -64,7 +64,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
 (async () => {
     const engine = await createWalkthrough({ origin });
     const gallery=process.env.H2S_REVIEW_SALES_GALLERY==='true'
-        ?await require('./sales-preview-seed.cjs').seedSalesPreview(engine,samplePhoto()):null;
+        ?await require('./sales-preview-seed.cjs').seedSalesPreview(engine,samplePhoto(),{readiness:process.env.H2S_REVIEW_READINESS_GALLERY==='true'}):null;
     const dashboard = require('./dashboard-preview-fixture.cjs').createDashboardPreview({ jobCount: Number(process.env.H2S_REVIEW_OPERATIONS_JOBS || 1) });
     const handler = async (req, res) => {
         try {

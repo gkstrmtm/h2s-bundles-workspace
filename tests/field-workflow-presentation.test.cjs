@@ -50,6 +50,14 @@ function nonAuditText(root){
     clone.querySelectorAll('.field-workflow__audit').forEach(el=>el.remove());
     return clone.textContent;
 }
+test('orders outside the current lead page retain their own immutable customer name',async t=>{
+    const data=workflow();delete data.workflows[0].customerName;
+    data.workflows[0].documents[0].content.customer={name:'Returning household from approved quote'};
+    const f=browser(t,'field-workflow.js','ADMIN',data,{customerNames:{[id(99)]:'Unrelated current page'}});
+    await settle();
+    assert.match(f.root.querySelector('.field-workflow__record h4').textContent,/Returning household from approved quote/);
+    assert.doesNotMatch(f.root.querySelector('.field-workflow__record h4').textContent,/Unrelated|Order 1/);
+});
 test('SALES orders show readable progress, customer context and exact currency without IDs, evidence or policy jargon',async t=>{
     const f=browser(t,'field-workflow.js','SALES',workflow());await settle();
     assert.match(f.root.textContent,/Avery Customer <img src=x>/);assert.equal(f.root.querySelector('img'),null);

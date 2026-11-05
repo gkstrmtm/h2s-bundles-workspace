@@ -2,6 +2,19 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {createWalkthrough}=require('./walkthrough-fixture.cjs');
 const {seedSalesPreview}=require('./sales-preview-seed.cjs');
 const fs=require('node:fs'),path=require('node:path'),{JSDOM}=require('jsdom');
+test('readiness gallery exposes bounded lead pages, independent repeat history and a real company installation awaiting acceptance',async t=>{
+    const engine=await createWalkthrough({origin:'https://127.0.0.1:9443'});t.after(()=>engine.close());
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYs8AAAAASUVORK5CYII=','base64');
+    const gallery=await seedSalesPreview(engine,png,{readiness:true});
+    const page=await(await engine.request('field-sales','GET',null,'sales')).json();
+    assert.equal(page.total,34);assert.equal(page.opportunities.length,25);assert.ok(page.nextCursor);
+    const history=await(await engine.request('field-sales','GET',null,'admin','?customerId='+gallery.completedLeadId)).json();
+    assert.equal(history.total,2);
+    const workflow=await(await engine.request('field-sales-workflow','GET',null,'admin','?lead_id='+gallery.ownerInstallationLeadId)).json();
+    const w=workflow.workflows[0];assert.ok(w.jobId);assert.equal(w.completedAt,null);
+    const company=await(await engine.request('field-sales-company-installation','GET',null,'admin','?job_id='+w.jobId)).json();
+    assert.equal(company.authorized,true);assert.equal(company.enrolled,false);
+});
 test('eight-screen review seeds only isolated records through actual contracts and stops before bank settlement',async t=>{
     const engine=await createWalkthrough({origin:'https://127.0.0.1:9443'});t.after(()=>engine.close());
     const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYs8AAAAASUVORK5CYII=','base64');

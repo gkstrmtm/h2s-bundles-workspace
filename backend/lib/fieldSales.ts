@@ -113,6 +113,35 @@ export function newCredentials(pin: unknown) {
 export async function ownedOpportunity(actorId: string, leadId: string) {
   return salesChecked(await getSupabase().rpc('field_sales_read', { p_actor: actorId, p_lead_id: leadId }));
 }
+export async function opportunityPage(actorId: string, query: URLSearchParams) {
+  const search = text(query.get('search') ?? '', 120, false).trim();
+  const owner = query.has('ownerId') ? identifier(query.get('ownerId')) : null;
+  const customer = query.has('customerId') ? identifier(query.get('customerId')) : null;
+  const due = query.get('due') === 'true';
+  if (query.has('due') && !['true','false'].includes(query.get('due')!)) throw new BusinessError('Invalid follow-up filter.');
+  const rawLimit = query.get('limit') ?? '25';
+  if (!/^[1-9][0-9]{0,2}$/.test(rawLimit) || Number(rawLimit) > 100) throw new BusinessError('Page size must be 1-100.');
+  const limit = Number(rawLimit);
+  const fingerprint = createHash('sha256').update(JSON.stringify({search,owner,customer,due,limit})).digest('hex');
+  let after: string | null = null, afterId: string | null = null, asOf = new Date().toISOString();
+  if (query.has('cursor')) {
+    if (!/^[A-Za-z0-9_-]{1,2048}$/.test(query.get('cursor')!)) throw new BusinessError('Invalid page cursor. Start from the first page.');
+    let cursor: unknown;
+    try { cursor = JSON.parse(Buffer.from(query.get('cursor')!, 'base64url').toString('utf8')); }
+    catch { throw new BusinessError('Invalid page cursor. Start from the first page.'); }
+    if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) throw new BusinessError('Invalid page cursor.');
+    const value = cursor as Record<string, unknown>;
+    if (value.fingerprint !== fingerprint || typeof value.at !== 'string' || typeof value.asOf !== 'string'
+      || !Number.isFinite(Date.parse(value.at)) || !Number.isFinite(Date.parse(value.asOf))) throw new BusinessError('Page filters changed. Start from the first page.');
+    after = value.at; afterId = identifier(value.id); asOf = value.asOf;
+  }
+  const result = salesChecked(await getSupabase().rpc('field_sales_page', {
+    p_actor: actorId,p_search:search,p_owner:owner,p_customer:customer,p_due:due,p_limit:limit,
+    p_after:after,p_after_id:afterId,p_as_of:asOf,
+  }));
+  return {...result, nextCursor: result.nextCursor
+    ? Buffer.from(JSON.stringify({...result.nextCursor,asOf,fingerprint})).toString('base64url') : null};
+}
 export function photoContent(body: Record<string, unknown>) {
   const match = /^data:(image\/jpeg|image\/png|image\/webp);base64,((?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?)$/.exec(text(body.data, 4194400));
   if (!match) throw new BusinessError('Use a JPEG, PNG or WebP photograph.');
