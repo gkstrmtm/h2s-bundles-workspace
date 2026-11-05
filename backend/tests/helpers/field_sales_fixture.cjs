@@ -65,7 +65,7 @@ async function createSalesFixture() {
       const credentials = sales.newCredentials('temporary-fixture-password-' + actor);
       await f.db.query(`insert into "Dashboard_Users"("User_ID","Username","Display_Name","Role","Is_Disabled","Pin_Salt","Pin_Hash")
         values($1,$2,$2,'SALES',false,$3,$4)`, [uid, 'SALES' + actor.toUpperCase(), credentials.pinSalt, credentials.pinHash]);
-      await f.db.query('insert into field_sales_representatives values($1,true,now())', [uid]);
+      await f.db.query('insert into field_sales_representatives(user_id,active,updated_at) values($1,true,now())', [uid]);
     }
   }
   const v1Path = path.join(__dirname, '..', '..', 'app', 'api', 'v1', 'route.ts'), source = fs.readFileSync(v1Path, 'utf8');

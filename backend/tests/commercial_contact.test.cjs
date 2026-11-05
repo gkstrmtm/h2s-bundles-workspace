@@ -306,7 +306,7 @@ test('manual request tokens cannot approve or directly create an appointment', a
 test('actual queue GET keeps administrator authorization and dashboard wiring', async () => {
   const filename = path.resolve(__dirname, '..', 'app', 'api', 'v1', 'route.ts');
   const ast = ts.createSourceFile(filename, fs.readFileSync(filename, 'utf8'), ts.ScriptTarget.Latest, true);
-  const selected = ['requireAdminToken', 'GET'].map(name => {
+  const selected = ['getBearerToken', 'requireAdminToken', 'GET'].map(name => {
     const node = ast.statements.find(item => ts.isFunctionDeclaration(item) && item.name?.text === name);
     assert.ok(node, `Missing queue integration function: ${name}`);
     return node.getText(ast);
@@ -319,7 +319,7 @@ test('actual queue GET keeps administrator authorization and dashboard wiring', 
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   vm.runInNewContext(compiled, {
-    module, exports: module.exports, URL, console,
+    module, exports: module.exports, URL, console, DASHBOARD_SESSION_TOKEN_HEADER: 'authorization',
     NextResponse: { json: (body, options) => Response.json(body, options) },
     getConfiguredAnyAdminKey: () => 'fixture-admin-key',
     getDashboardAuthUserFromSession: async request => {

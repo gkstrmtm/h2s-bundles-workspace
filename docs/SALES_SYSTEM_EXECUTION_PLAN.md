@@ -2,7 +2,7 @@
 
 Authority: [alignment audit](SALES_SYSTEM_ALIGNMENT.md). Persistent status: [progress tracker](SALES_SYSTEM_PROGRESS.md).
 
-**Awaiting plan approval.** This is one connected delivery plan, not another sequence of numbered development phases. All new application work is outstanding. Plan approval does not authorize production migrations, account enrollment, payments, assignment writes, deployment, email or historical repairs.
+**Development implementation approved November 4, 2026.** This is one connected delivery plan, not another sequence of numbered development phases. See the tracker for actual completion evidence. Approval does not authorize production migrations, account enrollment, payments, assignment writes, deployment, email or historical repairs.
 
 ## Target and scope
 

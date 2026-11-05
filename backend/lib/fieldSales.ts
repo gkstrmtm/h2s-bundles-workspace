@@ -88,6 +88,21 @@ export function followUp(value: unknown) {
   if (!/T.*(?:Z|[+-]\d\d:\d\d)$/.test(result) || !Number.isFinite(Date.parse(result))) throw new BusinessError('Follow-up requires an explicit timezone.');
   return new Date(result).toISOString();
 }
+export function representativeTerms(body: Record<string, unknown>) {
+  const date = body.commissionStartDate;
+  if (date !== null && (typeof date !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)
+    || date.startsWith('0000-') || !Number.isFinite(Date.parse(date + 'T00:00:00Z'))
+    || new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date)) {
+    throw new BusinessError('Enter a valid commission start date or explicitly mark it unknown.');
+  }
+  if (!Number.isSafeInteger(body.termsRevision) || Number(body.termsRevision) < 0 || Number(body.termsRevision) > 2147483646) {
+    throw new BusinessError('Current representative terms revision required.');
+  }
+  const evidence = text(body.commissionStartEvidence, 2000);
+  if (evidence.length < 3) throw new BusinessError('Management evidence is required for commission identity changes.');
+  return { userId: identifier(body.userId), commissionStartDate: date, commissionStartEvidence: evidence,
+    termsRevision: body.termsRevision };
+}
 export function newCredentials(pin: unknown) {
   const value = text(pin, 128);
   if (value.length < 16) throw new BusinessError('Use a temporary credential of at least 16 characters.');

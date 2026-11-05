@@ -10,6 +10,7 @@ export type QuoteCatalog = { catalog_id: string; version: string; status: 'draft
   definition: { currency: 'usd'; validForMinutes: number | null; services: { id: string; label: string; markets: string[]; offers: QuoteOffer[] }[] } };
 const slug = /^[a-z][a-z0-9_-]{0,79}$/;
 const money = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 100000000;
+const label = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 2000;
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 100 && value.every(item => typeof item === 'string' && item.length > 0 && item.length <= 2000);
 export function validateQuoteCatalog(catalog: QuoteCatalog): QuoteCatalog {
   const d = catalog?.definition;
@@ -21,21 +22,21 @@ export function validateQuoteCatalog(catalog: QuoteCatalog): QuoteCatalog {
   const unique = (ids: string[]) => new Set(ids).size === ids.length && ids.every(id => typeof id === 'string' && slug.test(id));
   if (!unique(d.services.map(s => s?.id))) throw new BusinessError('Service identifiers are invalid.', 503);
   for (const service of d.services) {
-    if (!service || !service.label || !strings(service.markets) || service.markets.some(m => !['residential','commercial'].includes(m))
+    if (!service || !label(service.label) || !strings(service.markets) || service.markets.some(m => !['residential','commercial'].includes(m))
       || !Array.isArray(service.offers) || !service.offers.length || !unique(service.offers.map(o => o?.id))) throw new BusinessError('Service configuration is incomplete.', 503);
     for (const o of service.offers) {
-      if (!o || !o.label || typeof o.enabled !== 'boolean' || typeof o.starting !== 'boolean' || !['per_unit','package'].includes(o.basis)
+      if (!o || !label(o.label) || typeof o.enabled !== 'boolean' || typeof o.starting !== 'boolean' || !['per_unit','package'].includes(o.basis)
         || (o.unitCents !== null && !money(o.unitCents)) || !Number.isSafeInteger(o.minimum) || !Number.isSafeInteger(o.maximum)
         || o.minimum < 1 || o.maximum < o.minimum || o.maximum > 10000 || !strings(o.equipment) || !strings(o.scope) || !strings(o.exclusions)
         || !Array.isArray(o.questions) || !Array.isArray(o.options) || !Array.isArray(o.qualifications)
         || !unique(o.questions.map(q => q?.id)) || !unique(o.options.map(option => option?.id))
-        || o.questions.some(q => !q || typeof q.label !== 'string' || typeof q.required !== 'boolean' || !['text','number','select'].includes(q.type)
+        || o.questions.some(q => !q || !label(q.label) || typeof q.required !== 'boolean' || !['text','number','select'].includes(q.type)
           || (q.type === 'select' && (!strings(q.options) || !q.options.length))
           || (q.type === 'number' && ((q.min !== undefined && !Number.isFinite(q.min)) || (q.max !== undefined && !Number.isFinite(q.max)) || (q.min ?? 0) > (q.max ?? 100000))))
-        || o.options.some(option => !option || !option.label || !money(option.amountCents) || typeof option.perUnit !== 'boolean' || !strings(option.equipment)
+        || o.options.some(option => !option || !label(option.label) || !money(option.amountCents) || typeof option.perUnit !== 'boolean' || !strings(option.equipment)
           || (option.replacesEquipment !== undefined && (!strings(option.replacesEquipment) || option.replacesEquipment.some(item => !o.equipment.includes(item)))))
         || o.qualifications.some(rule => !rule || !o.questions.some(q => q.id === rule.question) || !Array.isArray(rule.allowed)
-          || !rule.allowed.length || rule.allowed.some(v => typeof v !== 'string' && (typeof v !== 'number' || !Number.isFinite(v))) || !rule.reason)) {
+          || !rule.allowed.length || rule.allowed.some(v => typeof v !== 'string' && (typeof v !== 'number' || !Number.isFinite(v))) || !label(rule.reason))) {
         throw new BusinessError('Offer, equipment or qualification configuration is invalid.', 503);
       }
     }

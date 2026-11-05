@@ -1,7 +1,7 @@
 import { getSupabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/adminAuth';
 import { salesActor, salesAccess, salesChecked, serviceDefinitions, ownedOpportunity, assessment, followUp,
-  newCredentials, BusinessError, identifier, readJson, text } from '@/lib/fieldSales';
+  newCredentials, representativeTerms, BusinessError, identifier, readJson, text } from '@/lib/fieldSales';
 export const dynamic = 'force-dynamic';
 const headers = (request: Request) => ({ ...corsHeaders(request), 'Cache-Control': 'private, no-store', Vary: 'Authorization, Origin' });
 function failure(request: Request, error: unknown) {
@@ -28,6 +28,13 @@ export async function POST(request: Request) {
     const actor = await salesActor(request); await salesAccess(actor.userId);
     const body = await readJson(request), action = text(body.action, 30), operationId = identifier(body.operationId);
     const db = getSupabase();
+    if (action === 'representative_terms') {
+      if (actor.role !== 'ADMIN') throw new BusinessError('Administrator required.', 403);
+      const result = salesChecked(await db.rpc('field_sales_identity_command', {
+        p_actor: actor.userId, p_operation: operationId, p_payload: representativeTerms(body),
+      }));
+      return Response.json({ ok: true, ...result }, { headers: headers(request) });
+    }
     let payload: Record<string, unknown>;
     if (action === 'account_create') {
       if (actor.role !== 'ADMIN') throw new BusinessError('Administrator required.', 403);

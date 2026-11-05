@@ -2,15 +2,15 @@
 
 Single persistent tracker for the [execution plan](SALES_SYSTEM_EXECUTION_PLAN.md), grounded in the [alignment audit](SALES_SYSTEM_ALIGNMENT.md).
 
-**Current state: audit/planning complete; application execution not approved or started.**
+**Current state: development execution approved November 4, 2026; integrated engineering underway. Production actions remain unauthorized.**
 
-Audit baseline: `retro-dev`, `0176651f6bfb43c4050b2773bc4d697746ffaf39`. This delivery changes planning documentation only; its commit is available through these files' Git history. Original specification PDF unavailable; supplied requirements govern remaining work.
+Audit baseline: `retro-dev`, `0176651f6bfb43c4050b2773bc4d697746ffaf39`. Approved execution starts from verified planning commit `19227325e42d36c1e8d84a804ceecb265c774c66`. Original specification PDF unavailable; supplied requirements govern remaining work.
 
 ## Status and evidence rules
 
 - `COMPLETE`: required outcome and tests/demo are recorded; distinguish code/test completion from production activation.
 - `IN_PROGRESS`: approved implementation actually underway.
-- `OUTSTANDING`: not implemented. All new batches currently require plan approval.
+- `OUTSTANDING`: not implemented; engineering scope is approved, while policy/production gates remain separate.
 - `BLOCKED`: name the missing prerequisite/authorization; do not block unrelated ready work.
 - Never record mock responses as native integration proof, exported/approved compensation as paid, or plan approval as deployment authority.
 - After approval, update this document for each meaningful integrated delivery with commit, exact tests/results, runtime/demo evidence, remaining defects and policy/activation gates. Keep one tracker rather than new phase plans.
@@ -32,19 +32,19 @@ Audit baseline: `retro-dev`, `0176651f6bfb43c4050b2773bc4d697746ffaf39`. This de
 
 | ID | Status / approval | Integrated dependency | Exact outstanding outcome | Completion evidence |
 |---|---|---|---|---|
-| `launch-contracts` | OUTSTANDING / awaiting plan approval | Existing foundations | Stable original/current/credited rep identities; enrolled-order relationships; draft approved-catalog matrix; explicit policy interfaces; isolated grants/storage/session proof; test/type baseline resolution. | No implementation commit/tests/demo yet. |
-| `sale-to-deposit` | OUTSTANDING / awaiting plan approval | `launch-contracts` | Approved customer copies/notices/delivery/deadlines, new-workflow 25%, verified receipts/fees, disabled controlled live path and actionable customer/rep UI. | No implementation commit/tests/demo yet. |
-| `fulfillment-to-balance` | OUTSTANDING / awaiting plan approval | `launch-contracts`, `sale-to-deposit` | Existing calendar/job enrollment, legal/deposit/readiness gates, canonical scoped assignment, actual expenses/hours/completion, then verified net balance. | No implementation commit/tests/demo yet. |
-| `commission-Friday` | OUTSTANDING / awaiting plan approval | `launch-contracts`; integrated completion depends on `fulfillment-to-balance` | Actual-cost wage-excluding 55/50/45 ledger/adjustments, qualification, rep/manager reporting, reviewed Friday allocation/export/settlement. Math/run fixtures can start earlier. | No implementation commit/tests/demo yet. |
-| `pilot-certification` | OUTSTANDING / awaiting plan approval | All batches | Five-rep TV/camera journey, isolated native/test-Stripe/private-storage proof, full mobile/error checks, rollback and explicit launch checklist. | No implementation commit/tests/demo yet. |
+| `launch-contracts` | IN_PROGRESS / engineering approved | Existing foundations | Stable original/current/credited rep identities; enrolled-order relationships; draft approved-catalog matrix; explicit policy interfaces; isolated grants/storage/session proof; test/type baseline resolution. | Additive identities/start evidence and catalog administration implemented; focused validation underway. |
+| `sale-to-deposit` | IN_PROGRESS / engineering approved | `launch-contracts` | Approved customer copies/notices/delivery/deadlines, new-workflow 25%, verified receipts/fees, disabled controlled live path and actionable customer/rep UI. | Integrated authority and existing customer/rep surfaces being implemented; no completion claim yet. |
+| `fulfillment-to-balance` | IN_PROGRESS / engineering approved | `launch-contracts`, `sale-to-deposit` | Existing calendar/job enrollment, legal/deposit/readiness gates, canonical scoped assignment, actual expenses/hours/completion, then verified net balance. | New-order-only authority and actual-evidence completion integration underway. |
+| `commission-Friday` | IN_PROGRESS / engineering approved | `launch-contracts`; integrated completion depends on `fulfillment-to-balance` | Actual-cost wage-excluding 55/50/45 ledger/adjustments, qualification, rep/manager reporting, reviewed Friday allocation/export/settlement. Math/run fixtures can start earlier. | Independent math, policy/ledger/run contracts underway; no real compensation initiated. |
+| `pilot-certification` | OUTSTANDING / engineering approved | All batches | Five-rep TV/camera journey, isolated native/test-Stripe/private-storage proof, full mobile/error checks, rollback and explicit launch checklist. | Waiting for integrated implementation. Native PostgreSQL tools are unavailable on this machine; no external test credentials supplied. |
 
-**In progress:** none. **New application work completed by this audit:** none.
+**In progress:** launch contracts, workflow authority, independent earnings contracts and existing-surface UI integration. No batch is certified complete yet.
 
 ### Policy and activation gates
 
 | Gate | Status | Blocks |
 |---|---|---|
-| Plan approval | BLOCKED / awaiting review | All new application implementation. |
+| Plan approval | COMPLETE / approved November 4, 2026 | Authorizes all independent engineering in the unified plan, not production actions. |
 | M1 approved offer/scope/equipment/tax/area matrix | BLOCKED / approval outstanding | Real payable catalog/transactions; draft fixtures may proceed after plan approval. |
 | M2 approved legal documents/applicability/delivery/cancellation calendar | BLOCKED / approval outstanding | Real agreements, clearance and installation; synthetic policy/artifact contracts may proceed. |
 | M3 approved tenure event/credit/actual-cost accounting | BLOCKED / approval outstanding | Real compensation snapshots/accounting; specified rate/wage-exclusion tests may proceed. |
@@ -58,7 +58,18 @@ Historical identity/payout inconsistencies remain separately reviewable; they ar
 
 ## Validation evidence
 
-Fresh audit results, November 4, 2026; isolated data, external database opt-ins cleared. No application files changed.
+### Approved engineering evidence
+
+- Launch identity/date/catalog/legacy regression command:
+  `node --test --test-concurrency=2 backend\tests\field_sales_launch_contracts.test.cjs backend\tests\field_sales_catalog_admin.test.cjs backend\tests\field_sales.test.cjs backend\tests\commercial_contact.test.cjs`: **30/30 passed**.
+- `node --test backend\tests\field_sales_session_integration.test.cjs`: **1/1 passed**. Actual dashboard login token hashing/expiry and the shared authentication module feed the actual Sales API against isolated SQL records, including cross-owner, expired/disabled and legacy-route denial. This is not certification against deployed Supabase.
+- Strict ES2020 launch dependency-graph check and full configured backend check on the exact selected-index source snapshot: **passed** (`node node_modules\typescript\bin\tsc --noEmit --project backend\tsconfig.json --incremental false`, working directory isolated index snapshot, no environment files copied). The earlier ES5 target was corrected; whole integrated-project validation remains required as concurrent work finishes.
+- Catalog administration is separately default-off in environment and database. Draft creation/publication/retirement requires ADMIN, version/digest and explicit approval evidence; no production catalog was touched.
+- Immutable new-lead originating representative reuses existing `created_by`; historical origins remain unknown. Representative start dates are explicit, revisioned and audited; no tenure/rate event is guessed.
+
+### Historical audit baseline
+
+Audit results, November 4, 2026, before implementation; isolated data, external database opt-ins cleared.
 
 ### Focused contracts
 
