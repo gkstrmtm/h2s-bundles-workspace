@@ -1,7 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { createSalesFixture } = require('./helpers/field_sales_fixture.cjs');
 const { evaluate } = require('./helpers/commercial_operations_fixture.cjs');
-test('real dashboard login tokens authenticate shared sales routes and retain default legacy role isolation', async t => {
+test('five real synthetic dashboard login tokens authenticate owned sales records and retain legacy isolation', async t => {
   const f = await createSalesFixture(); t.after(() => f.db.close()); await f.enable();
   const auth = evaluate('lib\\dashboardAuth.ts', {
     'node:crypto': crypto, '@/lib/supabase': { getSupabase: () => f.client, getSupabaseMgmt: () => f.client },
@@ -18,6 +18,27 @@ test('real dashboard login tokens authenticate shared sales routes and retain de
   assert.match(a.token, /^h2s-sales:/); assert.match(b.token, /^h2s-sales:/);
   const request = (token, query = '') => new Request('https://fixture.invalid/api/field-sales' + query,
     { headers: { authorization: 'Bearer ' + token } });
+  const command = (token, body) => route.POST(new Request('https://fixture.invalid/api/field-sales', {
+    method: 'POST', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify({ operationId: crypto.randomUUID(), ...body })
+  }));
+  const credentials = f.sales.newCredentials('synthetic-management-password');
+  await f.db.query('update "Dashboard_Users" set "Pin_Salt"=$1,"Pin_Hash"=$2 where "User_ID"=$3',
+    [credentials.pinSalt, credentials.pinHash, f.actors.admin]);
+  const manager = await f.auth.dashboardLogin(new Request('https://fixture.invalid'),
+    { username: 'ADMIN_FIXTURE', pin: 'synthetic-management-password' });
+  assert.ok(manager.token, manager.error);
+  const tokens = [a.token, b.token];
+  for (const alias of ['c', 'd', 'e']) {
+    const userId = crypto.randomUUID(), pin = 'synthetic-isolated-password-' + alias;
+    assert.equal((await command(manager.token, { action: 'account_create', operationId: userId,
+      username: 'SYNTHETIC' + alias.toUpperCase(), displayName: 'Synthetic representative ' + alias, pin })).status, 200);
+    assert.equal((await command(manager.token, { action: 'account_state', userId, active: true })).status, 200);
+    const loggedIn = await f.auth.dashboardLogin(new Request('https://fixture.invalid'),
+      { username: 'SYNTHETIC' + alias.toUpperCase(), pin });
+    assert.match(loggedIn.token, /^h2s-sales:/);
+    tokens.push(loggedIn.token);
+  }
   assert.equal(await auth.getDashboardAuthUserFromSession(request(a.token)), null, 'Default legacy auth does not opt into SALES');
   const shared = await auth.getDashboardAuthUserFromSession(request(a.token), { allowSales: true, touchSession: false });
   assert.equal(shared.userId, f.actors.a); assert.equal(shared.role, 'SALES');
@@ -31,6 +52,23 @@ test('real dashboard login tokens authenticate shared sales routes and retain de
   assert.equal((await route.GET(request(a.token, '?leadId=' + leadId))).status, 200);
   assert.equal((await route.GET(request(b.token, '?leadId=' + leadId))).status, 404);
   assert.equal((await route.GET(request('altered-' + a.token))).status, 401);
+  const leads = [leadId];
+  for (let index = 1; index < tokens.length; index++) {
+    const result = await command(tokens[index], { action: 'create', fullName: 'Synthetic session customer ' + index,
+      phone: '+155500019' + String(index + 1).padStart(2, '0'), address: '100 Fixture Lane',
+      city: 'Fixture City', market: index === 4 ? 'commercial' : 'residential',
+      services: ['tv_mounting', 'cameras_included'], notes: '' });
+    assert.equal(result.status, 200);
+    leads.push((await result.json()).leadId);
+  }
+  for (let owner = 0; owner < tokens.length; owner++) {
+    assert.equal((await auth.getDashboardAuthUserFromSession(request(tokens[owner]),
+      { allowSales: true, touchSession: false })).role, 'SALES');
+    for (let viewer = 0; viewer < tokens.length; viewer++) {
+      assert.equal((await route.GET(request(tokens[viewer], '?leadId=' + leads[owner]))).status,
+        owner === viewer ? 200 : 404);
+    }
+  }
   assert.equal((await f.auth.guardGET(new Request('https://fixture.invalid/api/v1?action=commercialQueue',
     { headers: { authorization: 'Bearer ' + a.token } }))).status, 403);
   await f.db.query('update "Dashboard_Sessions" set "Expires_At"=$1 where "User_ID"=$2', ['2000-01-01', f.actors.a]);

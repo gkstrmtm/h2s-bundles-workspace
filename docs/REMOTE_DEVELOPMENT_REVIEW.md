@@ -2,6 +2,12 @@
 
 ## Snapshot and non-negotiable boundary
 
+**Current unified implementation supersedes the Phase 7 inventory below.**
+Use [SALES_SYSTEM_PROGRESS.md](SALES_SYSTEM_PROGRESS.md) and
+[SALES_SYSTEM_DELIVERY.md](SALES_SYSTEM_DELIVERY.md) for current engineering,
+validation, operations and activation blockers. No production actions are
+authorized by development approval.
+
 Development branch: `retro-dev`. This preservation follows Phase 7 commit
 `55e47c24ede81a9246e2b6e2c7d254b5ba83fcda` and preserves reviewed, previously
 uncommitted Home2Smart work. Use `git log` for the final preservation commits.
@@ -46,11 +52,12 @@ automated/isolated validation, not proven production operation.
 | Reconciliation | Orphan references, portal/directory identity mismatches, missing reviewed job relationships, conflicting states and payout associations with evidence/remediation suggestions. | Implemented/tested. Review classifications are browser-session drafts/exportable untrusted input, not persistent shared audit records or production repairs. |
 | Field Sales | Restricted mobile shell, representative management, owned prospects, follow-ups, configurable assessments, consent-controlled private photos, opportunities and management review. | Implemented/tested; production-inactive. No representative was activated. Not a standalone CRM. |
 | Customer Queue / public intake | Residential and commercial inquiries share `commercial_leads`; existing return/review links, staff tools and scheduling relationships are reused. Preserved work includes shared address entry/provenance, residential attribution, funnel and media refinements. | Implemented/tested with fixtures. Optional Places integration and real-world delivery/runtime behavior remain unverified. Address selection alone is not booking/coverage proof. |
-| Quotes | Server-calculated cents, quantities/options/qualification, draft/exception workflow, ADMIN approval, immutable versioned quote snapshots and expiry. | Implemented/tested; inactive. No approved payable production catalog is seeded by migration 044. Catalog publication still requires an approved operating procedure. |
-| Agreements | Exact quote/policy linkage, customer acceptance evidence, version/hash, timestamp and expiry. | Implemented/tested mechanics; inactive. Legal language, cancellation information and electronic delivery remain unapproved. Synthetic policy text is not a usable customer agreement. |
-| Payments and customer orders | Server-created test Checkout, canonical amount/identity verification, retries/idempotency, failure/refund reconciliation, remaining balance and duplicate-order protection. | Implemented/tested against fixtures and a fake provider using actual Stripe SDK signature verification. No real Stripe account round trip; no live-key support or activated transactions. |
-| Fulfillment | Verified sale can create the existing customer order with explicit management-review handoff. | Implemented/tested order linkage. Automatic scheduling/assignment is intentionally absent; safe approved fulfillment remains incomplete. No commissions. |
-| Existing technician portal | Existing login, jobs, offer responses, availability, completion/proof and payout dependencies remain the integration boundary. | Contracts regression-tested where covered; no portal UI change is included in this preservation. Historical identity/payout repair remains blocked. |
+| Quotes | Server-calculated cents, quantities/options/qualification, draft/exception workflow, ADMIN approval, immutable snapshots/expiry and digest-bound catalog administration. | Implemented/tested; inactive. No approved payable production catalog is seeded; publication requires management approval and separate gates. |
+| Agreements | Exact approved quote/policy/copy linkage, acceptance/retrieval evidence, cancellation-calendar clearance and finite accepted-document/balance link renewal. | Implemented/tested mechanics; inactive. Legal language/calendar/delivery remain unapproved. Test documents are not customer agreements. |
+| Payments and customer orders | Enrolled25% deposit/75% complement, authoritative Checkout, canonical verification, actual processing fees, idempotent events/orders, refunds and net balances. | Actual APIs/SQL and SDK signatures tested with synthetic provider/data. Controlled live capability exists but is disabled; no native Stripe account proof or actual transactions. |
+| Fulfillment | Explicit enrollment joins existing calendar/preparation/job/pro authorities; legal/deposit/readiness-gated management actions, retained photo/signature proof, technician actual costs/hours, completion before balance. | Implemented/tested; inactive. No automatic/global assignment or historical repair. Native artifacts/grants and hosting provenance remain unverified. |
+| Sales commissions / Friday review | Immutable55/50/45 actual-cost earnings, qualification after completion/final capture, reviewed corrections/dispute holds, unique run allocation, abandonment/recovery, export and independent settlement evidence. | Implemented/tested; inactive. No estimated payable costs, wage deduction, proposed bonus or outgoing transfer. Export is not payment. Policy/classification/settlement approvals remain blocked. |
+| Existing technician portal | Existing login/jobs/offers/proof/payout behavior retained; clean root source has a narrowly enrolled-only actual-cost enhancement. | Actual source/contract tests pass. Dirty mirrors untouched; deployed portal-source provenance and native runtime still require authorization/certification. |
 | Pricing/configuration | Comprehensive offline v1/v2 proposals, schemas, equipment and camera definitions; generic backend sales service definitions and versioned commerce catalogs. | Offline proposals validated, not published. Existing storefront pricing is a separate authority requiring reconciliation/approval. |
 
 ### Backend, identity and authorization
@@ -81,7 +88,7 @@ automated/isolated validation, not proven production operation.
 | Managed assignments | `H2S_MANAGEMENT_ASSIGNMENTS_ENABLED=true` **and** `h2s_management_assignment_config.enabled=true`; identity, eligibility and approved repair blockers still apply. |
 | Field Sales | `H2S_FIELD_SALES_ENABLED=true`, `field_sales_settings.enabled`, active representative plus enabled SALES dashboard account; shared-project contract. |
 | Transactions | `H2S_FIELD_TRANSACTIONS_ENABLED=true`, enabled transaction settings, approved/published catalog and approved agreement policy. Signing requires `H2S_FIELD_AGREEMENT_TOKEN_KEY` of at least 32 characters and approved `H2S_FIELD_SALES_ORIGIN`. |
-| Stripe bridge | Separate `H2S_FIELD_STRIPE_TEST_SECRET_KEY` beginning `sk_test_` and test webhook configuration; this implementation is test-only. Deposit policy is unset until approved. |
+| Stripe bridge | Separate test configuration and a separately controlled, default-off live path. Enrolled25/75 is the intended structure; legacy deposit policy/checkout behavior is unchanged. Approved legal/compensation policy and independent live authorization remain mandatory. See the delivery contract before configuration. |
 
 These are code/default-off requirements and prior handoff boundaries, not a fresh
 inspection of production environment values.
@@ -132,10 +139,17 @@ make a review checkout resemble production.
    reconciliation review is not durable multi-user case storage; field-sales
    offline synchronization is not implemented. Catalog/policy administration and
    real notification/electronic delivery need approved procedures.
-8. **Baseline validation debt.** The current broad suite has one independently
-   reproduced preexisting fixture failure; the configured ES5 TypeScript target
-   has nine independently reproduced diagnostics. See validation below; no
-   unrelated repair was performed.
+8. **Historical validation debt resolved within approved engineering.**
+   Coupled missing-auth/workflow fixture dependencies were corrected. The
+   configured target is ES2020; full isolated types/Next build pass. Current
+   coupled regressions pass332/332 across38 files, including the configured
+   five-representative pilot1/1.
+   The later baseline section is historical evidence, not the current result.
+9. **Known model boundary.** One lead has one opportunity and one accepted,
+   non-cancelled contract; duplicate phones fail409. The five-rep pilot sells
+   TV and cameras together rather than inventing ten identities for five
+   customers. A new sale after that customer's completed contract needs an
+   additive repeat-opportunity model; it is not currently implemented.
 
 ## Remote review without production credentials
 
@@ -176,14 +190,18 @@ rerun the checked-in helper rather than exposing it publicly or deploying it.
 | Customer Queue | `/dash.html?reviewTab=commercialqueue` |
 
 The helper serves actual saved frontend files and actual fixture-backed
-sales/commerce handlers and Operations/Queue projections. It does not proxy
+sales/commerce/workflow/earnings handlers and Operations/Queue projections. It does not proxy
 production, load environment files or bypass production authentication.
 Synthetic authentication exists only inside this separate loopback process.
 Stripe, webhook processing, assignment writes, email/SMS, account administration
 and unsupported legacy writes fail explicitly. Synthetic drafts/assessments/
 photos/quotes/agreements can change only disposable in-memory data. State resets
-on restart. Five quote revisions, one unaccepted agreement and **zero payments/
-sales orders** are initially seeded; no successful sale is fabricated.
+on restart. Quote drafts and an unaccepted agreement remain inspectable; one
+additional order has an actual-handler-processed **synthetic25% deposit** using
+fake provider receipts before test keys are removed. Installation, earned
+entries and settlement are not fabricated. New workflow/installation/earnings/
+catalog writes and customer/staff checkout/refresh fail423. Preview records,
+prices and policy text are disposable fixtures, not approved business data.
 
 External API/media connections are blocked; permitted public font/script CDNs
 still need internet. Some legacy screens need unavailable dependencies and are

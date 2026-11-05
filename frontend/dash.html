@@ -5450,6 +5450,13 @@
                 } catch (error) {
                     console.error('Operations module unavailable; existing dashboard remains available.', error);
                 }
+                for (const filename of ['field-workflow.js', 'field-earnings.js']) {
+                    try {
+                        await loadScript(filename);
+                    } catch (error) {
+                        console.error(`Field Sales module unavailable: ${filename}; existing dashboard remains available.`, error);
+                    }
+                }
                 try {
                     await loadScript('field-sales.js');
                 } catch (error) {

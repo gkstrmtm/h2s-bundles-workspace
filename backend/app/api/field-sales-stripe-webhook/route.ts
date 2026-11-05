@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import { getSupabase } from '@/lib/supabase';
-import { fieldStripe, requireTransactions, recordSession, paymentRecord, salesChecked, flow, identifier, BusinessError } from '@/lib/fieldCommerce';
+import { stripeForMode, requireTransactions, recordSession, paymentRecord, salesChecked, flow, identifier, BusinessError } from '@/lib/fieldCommerce';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const supported = new Set(['checkout.session.completed','checkout.session.async_payment_succeeded','checkout.session.async_payment_failed',
@@ -9,14 +9,25 @@ const supported = new Set(['checkout.session.completed','checkout.session.async_
 export async function POST(request: Request) {
   try {
     requireTransactions();
-    const secret = process.env.H2S_FIELD_STRIPE_TEST_WEBHOOK_SECRET, signature = request.headers.get('stripe-signature');
-    if (!secret) throw new BusinessError('Field payment reconciliation is not configured; event must retry.', 503);
+    const signature = request.headers.get('stripe-signature');
     if (!signature) throw new BusinessError('Stripe signature required.', 400);
-    const stripe = fieldStripe();
-    let event: Stripe.Event;
-    try { event = stripe.webhooks.constructEvent(await request.text(), signature, secret); }
-    catch { throw new BusinessError('Invalid Stripe signature.', 400); }
-    if (event.livemode !== false) throw new BusinessError('Live Stripe events are not accepted by this phase.', 400);
+    const raw = await request.text();
+    let event: Stripe.Event | undefined, stripe: Stripe | undefined;
+    const modes = ['test', ...(process.env.H2S_FIELD_STRIPE_LIVE_ENABLED === 'true' ? ['live'] : [])] as Array<'test' | 'live'>;
+    let configured = false;
+    for (const mode of modes) {
+      const secret = mode === 'live' ? process.env.H2S_FIELD_STRIPE_LIVE_WEBHOOK_SECRET : process.env.H2S_FIELD_STRIPE_TEST_WEBHOOK_SECRET;
+      if (!secret) continue;
+      configured = true;
+      const candidate = stripeForMode(mode);
+      try {
+        const verified = candidate.webhooks.constructEvent(raw, signature, secret);
+        if (verified.livemode !== (mode === 'live')) throw new BusinessError('Stripe event mode does not match the configured signature authority.', 400);
+        event = verified; stripe = candidate; break;
+      } catch (error) { if (error instanceof BusinessError) throw error; }
+    }
+    if (!configured) throw new BusinessError('Field payment reconciliation is not configured; event must retry.', 503);
+    if (!event || !stripe) throw new BusinessError('Invalid Stripe signature.', 400);
     if (!supported.has(event.type)) return Response.json({ received: true, ignored: true });
     const object = event.data.object;
     if (!('id' in object) || typeof object.id !== 'string') throw new BusinessError('Stripe event object identity is missing.', 400);
@@ -32,6 +43,7 @@ export async function POST(request: Request) {
     }
     if (!checkoutId) return Response.json({ received: true, ignored: true });
     const { payment } = await paymentRecord(checkoutId);
+    if (event.livemode !== (payment.stripe_mode === 'live')) throw new BusinessError('Event mode does not match the reserved provider mode.', 409);
     let sessionId = event.type.startsWith('checkout.session.') ? object.id : payment.session_id;
     if (!sessionId) {
       const intentId = event.type.startsWith('payment_intent.') ? object.id : null;

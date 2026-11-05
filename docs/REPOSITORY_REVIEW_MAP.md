@@ -53,18 +53,26 @@ source, not permission to deploy or run database mutations.
 | Server pricing authority | [backend/lib/fieldQuote.ts](../backend/lib/fieldQuote.ts) | Integer cents, approved/published catalog snapshots, configurable quantities/options/qualification and immutable revisions. Frontend totals are not authoritative. |
 | Transaction commands | [api/field-sales-transactions](../backend/app/api/field-sales-transactions/route.ts) | [fieldCommerce.ts](../backend/lib/fieldCommerce.ts), [044](../backend/migrations/044_field_sales_transactions.sql); ownership, approval and transaction gates. |
 | Customer agreement | [frontend/field-agreement.html](../frontend/field-agreement.html) | [field-agreement.js](../frontend/field-agreement.js), [api/field-sales-agreement](../backend/app/api/field-sales-agreement/route.ts); exact quote hash, policy version, acceptance and expiry. Legal/delivery approval remains a blocker. |
-| New test-only payment bridge | [api/field-sales-stripe-webhook](../backend/app/api/field-sales-stripe-webhook/route.ts) | [fieldCommerce.ts](../backend/lib/fieldCommerce.ts), [fieldStripeRouting.ts](../backend/lib/fieldStripeRouting.ts); canonical provider verification, idempotent events and orders. No live-key support. |
+| Gated payment bridge | [api/field-sales-stripe-webhook](../backend/app/api/field-sales-stripe-webhook/route.ts) | [fieldCommerce.ts](../backend/lib/fieldCommerce.ts), [fieldStripeRouting.ts](../backend/lib/fieldStripeRouting.ts); canonical verification, actual fee evidence and idempotent receipts. Controlled live-mode capability is inactive; native test-account certification remains outstanding. |
 | Existing Stripe webhook | [api/stripe-webhook](../backend/app/api/stripe-webhook/route.ts) | Preserves legacy processing; signed field-sales events have a separate flow discriminator. Do not route new payments into old fulfillment inadvertently. |
 | Current storefront | [frontend/bundles.html](../frontend/bundles.html) | [bundles.js](../frontend/bundles.js), [api/bundles-data](../backend/app/api/bundles-data/route.ts); backend also has existing public bundle assets. Not interchangeable with the offline comprehensive pricing proposal. |
 | Comprehensive proposed pricing | [config/pricing/home2smart.v2.json](../config/pricing/home2smart.v2.json) | [v1 baseline](../config/pricing/home2smart.v1.json), [baseline schema](../config/pricing/baseline.schema.json), [pricing README](../config/pricing/README.md). Neither file is publication approval. |
 | Proposed equipment / camera configurations | [equipment.v1.json](../config/pricing/equipment.v1.json) | [equipment schema](../config/pricing/equipment.schema.json), [residential-cameras.v1.json](../config/pricing/residential-cameras.v1.json), [camera schema](../config/pricing/residential-cameras.schema.json); proposed prices, supplier assumptions and inactive offers stay inactive. |
 | Draft catalog preparation | [backend/tools/prepare_field_sales_catalog.cjs](../backend/tools/prepare_field_sales_catalog.cjs) | GET-only/supplied-snapshot preparation; draft output, not a catalog publication command. |
+| Catalog administration | [api/field-sales-catalog](../backend/app/api/field-sales-catalog/route.ts) | [048](../backend/migrations/048_field_sales_catalog_administration.sql); separate default-off ADMIN draft/publication/retirement, exact digest and approval evidence. |
+| Integrated order/clearance/fulfillment UI | [frontend/field-workflow.js](../frontend/field-workflow.js) | [field-workflow.css](../frontend/field-workflow.css), existing Field Sales/commerce mounts; documents, policies, legal/deposit/readiness holds, scheduling and reviewed actual costs. |
+| Workflow authority | [api/field-sales-workflow](../backend/app/api/field-sales-workflow/route.ts) | [fieldWorkflow.ts](../backend/lib/fieldWorkflow.ts), [046](../backend/migrations/046_field_sales_workflow.sql); exact enrollment, approved policy versions, shared calendar and new-order-only assignment. |
+| Earnings/performance and Friday review | [frontend/field-earnings.js](../frontend/field-earnings.js) | [api/field-sales-earnings](../backend/app/api/field-sales-earnings/route.ts), [fieldEarnings.ts](../backend/lib/fieldEarnings.ts), [047](../backend/migrations/047_field_sales_earnings.sql). Immutable actual-cost earnings, corrections, draft abandonment, export and independent manual settlement proof; no outgoing transfer. |
 
 Commerce relationships: `commercial_leads.lead_id` -> `field_sales_opportunities`
 -> versioned `field_sales_quotes` -> `field_sales_agreements` ->
 `field_sales_checkouts` / `field_sales_payment_events` -> `field_sales_orders`
--> `h2s_orders.id`. Fulfillment is explicit management review, not automatic
-assignment or a commission/payout pipeline.
+-> `h2s_orders.id` -> explicitly enrolled workflow -> existing reservation/job/pro
+-> retained installation proof and actual-cost review -> verified balance
+-> immutable earnings -> reviewed Friday allocation/export/reconciled settlement.
+No automatic assignment or outgoing salesperson payment. One accepted contract
+per lead remains the existing model; repeating a completed customer's sale is
+not implemented by creating duplicate phone identities.
 
 ## Owner uploads and public media
 
@@ -81,7 +89,20 @@ assignment or a commission/payout pipeline.
 
 ## Technician dependencies: preserve, do not redesign
 
-- Existing UI: [backend/public/portal.html](../backend/public/portal.html).
+- Verified integrated source: [portal.html](../portal.html), with the existing
+  modal loading [field-installation.js](../frontend/field-installation.js) and
+  [field-workflow.css](../frontend/field-workflow.css).
+  [api/field-sales-installation](../backend/app/api/field-sales-installation/route.ts)
+  is assigned-pro-only; actual costs/hours and canonical saved photo/signature
+  proof are required. Published per-service requirements are pinned by
+  [fieldQuote.ts](../backend/lib/fieldQuote.ts); native artifact bindings and
+  affirmative checks in046 support partial/full proof saves and retained
+  completion. The shared4,456,448-byte cap also rejects impossible proof quotes.
+  Unenrolled jobs retain the legacy path.
+- [backend/public/portal.html](../backend/public/portal.html) and
+  [frontend/portal.html](../frontend/portal.html) contained unrelated edits and
+  were not overwritten. Production alias/mirror provenance must be established
+  before activating the enhancement; source validation is not hosted validation.
 - Existing contracts: [portal_login](../backend/app/api/portal_login/route.ts),
   [portal_me](../backend/app/api/portal_me/route.ts),
   [portal_jobs](../backend/app/api/portal_jobs/route.ts),
@@ -111,12 +132,28 @@ assignment or a commission/payout pipeline.
   [041](../backend/migrations/041_management_assignment.sql)/[042](../backend/migrations/042_management_offer_reliability.sql)
   managed offers/reviewed links; [043](../backend/migrations/043_field_sales.sql)
   Field Sales; [044](../backend/migrations/044_field_sales_transactions.sql)
-  transactions.
+  transactions; [045](../backend/migrations/045_field_sales_launch_contracts.sql)
+  immutable origin and audited representative start dates;
+  [046](../backend/migrations/046_field_sales_workflow.sql) lifecycle/actual proof;
+  [047](../backend/migrations/047_field_sales_earnings.sql) earnings/Friday ledger;
+  [048](../backend/migrations/048_field_sales_catalog_administration.sql)
+  catalog administration.
+  The production-authorized runner scope remains through039; 040 is a draft and
+  041-048 are not registered/authorized by this implementation. Native preflight,
+  checksum approval and additive migration ordering must precede registration.
+  046 requires the existing `h2s_dispatch_job_artifacts` authority and its exact
+  retention/grant relationships, not an invented replacement proof table.
 
 | Validation area | Exact test entry points |
 |---|---|
 | Operations / scheduling / assignment | [management_operations.test.cjs](../backend/tests/management_operations.test.cjs), [management_planning.test.cjs](../backend/tests/management_planning.test.cjs), [management_assignments.test.cjs](../backend/tests/management_assignments.test.cjs), [managed_offer_response.test.cjs](../backend/tests/managed_offer_response.test.cjs), and corresponding API/UI suites in [backend/tests](../backend/tests). |
 | Sales / ownership / photographs | [field_sales.test.cjs](../backend/tests/field_sales.test.cjs), [field_sales_ui.test.cjs](../backend/tests/field_sales_ui.test.cjs). |
+| Identity, publication and actual sessions | [field_sales_launch_contracts.test.cjs](../backend/tests/field_sales_launch_contracts.test.cjs), [field_sales_catalog_admin.test.cjs](../backend/tests/field_sales_catalog_admin.test.cjs), [field_sales_session_integration.test.cjs](../backend/tests/field_sales_session_integration.test.cjs). |
+| Whole five-representative operation | [sales_system_pilot.test.cjs](../backend/tests/sales_system_pilot.test.cjs): five combined TV/camera orders, ten standalone service drafts, five shared lead identities, five rate boundaries, verified deposits/balances, saved proof/actual expenses and Friday export. Actual APIs/SQL; synthetic provider/data, not native certification. |
+| Workflow, fees and finite accepted links | [field_workflow.test.cjs](../backend/tests/field_workflow.test.cjs), [field_workflow_expiry.test.cjs](../backend/tests/field_workflow_expiry.test.cjs), [field_workflow_fees.test.cjs](../backend/tests/field_workflow_fees.test.cjs). |
+| Configurable completion proof / feasibility | [field_completion_catalog.test.cjs](../backend/tests/field_completion_catalog.test.cjs), [field_workflow_proof_requirements.test.cjs](../backend/tests/field_workflow_proof_requirements.test.cjs); actual client proof-save integration in [field-costs-authority-ui.test.cjs](../tests/field-costs-authority-ui.test.cjs). |
+| Ledger, corrections and Friday recovery | [field_earnings.test.cjs](../backend/tests/field_earnings.test.cjs), [field_earnings_math.test.cjs](../backend/tests/field_earnings_math.test.cjs). |
+| Integrated client commands and actual pro host | [field-sales-integration-ui.test.cjs](../tests/field-sales-integration-ui.test.cjs), [field-costs-authority-ui.test.cjs](../tests/field-costs-authority-ui.test.cjs), [field-portal-wiring.test.cjs](../tests/field-portal-wiring.test.cjs). |
 | Quotes / agreements / payment reconciliation | [field_commerce.test.cjs](../backend/tests/field_commerce.test.cjs), [field_commerce_ui.test.cjs](../backend/tests/field_commerce_ui.test.cjs), [stripe_order_metadata.test.cjs](../backend/tests/stripe_order_metadata.test.cjs). |
 | Intake / address / tracking | [residential_funnel.test.cjs](../backend/tests/residential_funnel.test.cjs), [shared_address.test.cjs](../backend/tests/shared_address.test.cjs), [residential_tracking.test.cjs](../backend/tests/residential_tracking.test.cjs), [commercial_contact.test.cjs](../backend/tests/commercial_contact.test.cjs). |
 | Dashboard / media | [dashboard_controls.test.cjs](../backend/tests/dashboard_controls.test.cjs), [dashboard_presentation.test.cjs](../backend/tests/dashboard_presentation.test.cjs), [media_placements.test.cjs](../backend/tests/media_placements.test.cjs), [media_refresh.test.cjs](../backend/tests/media_refresh.test.cjs). |

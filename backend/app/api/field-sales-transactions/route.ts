@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const actor = await commerceActor(request), query = new URL(request.url).searchParams;
     for (const key of query.keys()) if (key !== 'leadId' || query.getAll(key).length !== 1) throw new BusinessError('Unsupported transaction parameter.');
     const result = await transactionRead(actor.userId, query.has('leadId') ? identifier(query.get('leadId')) : null);
-    return Response.json({ ok: true, enabled: true, mode: 'test_only', ...result }, { headers: headers(request) });
+    return Response.json({ ok: true, enabled: true, mode: process.env.H2S_FIELD_STRIPE_MODE === 'live' ? 'server_reserved' : 'test_only', ...result }, { headers: headers(request) });
   } catch (error) { return failure(request, error); }
 }
 export async function POST(request: Request) {

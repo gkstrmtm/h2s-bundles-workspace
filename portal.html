@@ -6,6 +6,7 @@
 <meta name="description" content="Home2Smart professional portal for job management and scheduling">
 <meta name="theme-color" content="#0a2a5a">
 <title>Pro Portal | Home2Smart</title>
+<link rel="stylesheet" href="./frontend/field-workflow.css">
 <meta name="build-id" content="NUCLEAR-FIX-2026-01-14-2332">
 <!-- VERSION: 2026-01-27-234022 -->
 
@@ -7757,6 +7758,7 @@ a:focus-visible{
     </div>
     <div class="hr"></div>
     <div id="invite-wrap" style="display:none"></div>
+    <div id="md-field-installation" hidden></div>
     <div class="row" style="margin-top:12px;gap:12px">
       <button id="md-accept" class="btn-modal btn-modal--primary" type="button">Accept</button>
       <button id="md-cancel-job" class="btn-modal" type="button" style="display:none;background:#ef4444;color:white;border:none">Cancel Job</button>
@@ -9601,6 +9603,8 @@ $("closeMenu").addEventListener("click", closeMenu);
 $("menu").addEventListener("click", e => { if (e.target === $("menu")) closeMenu(); });
 
 function doSignOut() {
+  destroyFieldInstallation();
+  fieldInstallationEnrollments.clear();
   stopJobPolling(); // Stop real-time updates
   
   // Cleanup real-time subscriptions
@@ -9998,6 +10002,102 @@ function switchTab(which) {
 
 /* ===== DASHBOARD (pro) ===== */
 let currentJobsData = { offers: [], upcoming: [], completed: [] }; // Store job data globally
+let fieldInstallationMount = null;
+const fieldInstallationEnrollments = new Set();
+
+function fieldInstallationHint(job) {
+  const hint = job?.metadata_json?.field_sales_workflow;
+  return hint?.enrolled === true ? hint : null;
+}
+
+function fieldInstallationSession() {
+  return {
+    token: isAdmin ? '' : (localStorage.getItem(LS_TOKEN) || sessionStorage.getItem(LS_TOKEN) || window.token || '')
+  };
+}
+
+function destroyFieldInstallation() {
+  const previous = fieldInstallationMount;
+  fieldInstallationMount = null;
+  if (previous?.component) previous.component.destroy();
+  const slot = $("md-field-installation");
+  if (slot) {
+    slot.replaceChildren();
+    slot.hidden = true;
+  }
+}
+
+function mountFieldInstallation(job) {
+  destroyFieldInstallation();
+  const slot = $("md-field-installation");
+  const hint = fieldInstallationHint(job);
+  if (!slot || !hint) return;
+  const jobId = String(job.job_id || job.id || '');
+  fieldInstallationEnrollments.add(jobId);
+  slot.hidden = false;
+  if (!hint.quoteId || typeof window.H2SFieldInstallation?.mount !== 'function') {
+    slot.textContent = 'Installation reporting is unavailable. Do not use legacy completion for this enrolled sale; contact management.';
+    console.error('[Field Installation] Missing enrolled-job quote or reporting module.');
+    return;
+  }
+  const getSession = fieldInstallationSession;
+  const binding = { jobId, token: getSession().token, component: null };
+  fieldInstallationMount = binding;
+  const current = () => fieldInstallationMount === binding && binding.token === getSession().token;
+  binding.component = window.H2SFieldInstallation.mount(slot, {
+    apiBase: VERCEL_API, getSession, jobId, quoteId: hint.quoteId,
+    onCapability: capability => {
+      if (!current()) return;
+      slot.hidden = capability.enabled === true && capability.enrolled === false;
+      if (!capability.enabled) {
+        slot.textContent = 'Installation reporting is disabled. This enrolled sale cannot use legacy completion.';
+      }
+    },
+    onUnavailable: error => {
+      if (!current()) return;
+      slot.hidden = false;
+      console.error('[Field Installation] Enrolled installation reporting unavailable.', error);
+      toast('Installation reporting unavailable. Contact management; legacy completion is blocked.');
+    },
+    onCompleted: async () => {
+      if (!current()) return;
+      destroyFieldInstallation();
+      $("modal").style.display = "none";
+      $("modal").setAttribute("aria-hidden", "true");
+      toast('Installation recorded. Customer balance and management cost review remain separate.');
+      try {
+        await loadJobs();
+        if (binding.token !== getSession().token) return;
+        await loadPayouts();
+      } catch (error) {
+        console.error('[Field Installation] Saved installation list refresh failed.', error);
+        toast('Installation saved, but job lists could not refresh. Reload before continuing.');
+      }
+    }
+  });
+  binding.component.ready.catch(error => {
+    if (!current()) return;
+    slot.hidden = false;
+    slot.textContent = 'Installation reporting failed to load. Contact management; legacy completion is blocked.';
+    console.error('[Field Installation] Reporting initialization failed.', error);
+  });
+}
+
+function routeFieldInstallationCompletion(jobId) {
+  const job = currentJobsData.upcoming.find(item => String(item.job_id || item.id) === String(jobId));
+  if (!fieldInstallationHint(job) && !fieldInstallationEnrollments.has(String(jobId))) return false;
+  if (!fieldInstallationSession().token) {
+    toast('An active assigned technician session is required for this installation.');
+    return true;
+  }
+  if (!job || !fieldInstallationHint(job)) {
+    toast('Enrolled installation details unavailable. Refresh the job list; legacy completion is blocked.');
+    return true;
+  }
+  showJobDetails(job);
+  $("md-field-installation")?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  return true;
+}
 
 // ? PAGINATION STATE & HELPERS
 let paginationState = {
@@ -11004,11 +11104,13 @@ function showJobDetails(job) {
   // Show modal
   $("modal").style.display = "grid";
   $("modal").setAttribute("aria-hidden", "false");
+  mountFieldInstallation(job);
 }
 
 // Offer-focused details with payout breakdown and Accept action
 function showOfferDetails(job) {
   if (!job) { toast("Job details not available"); return; }
+  destroyFieldInstallation();
 
   // Normalize field/type variations before any rendering decisions.
   job = normalizeJobFields(job);
@@ -13392,6 +13494,7 @@ async function renderUpcoming(list) {
       }
       
       // Both requirements met - Final confirmation
+      if (routeFieldInstallationCompletion(jobId)) return;
       const modal = document.createElement('div');
       modal.className = 'modal';
       modal.style.cssText = 'position:fixed;inset:0;background:rgba(10,42,90,.95);backdrop-filter:blur(10px);z-index:25000;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -14799,12 +14902,14 @@ $("replyModal").addEventListener("click", e => {
 
 /* ===== JOB DETAILS MODAL HANDLERS ===== */
 $("md-close").addEventListener("click", () => {
+  destroyFieldInstallation();
   $("modal").style.display = "none";
   $("modal").setAttribute("aria-hidden", "true");
 });
 
 $("modal").addEventListener("click", e => {
   if (e.target === $("modal")) {
+    destroyFieldInstallation();
     $("modal").style.display = "none";
     $("modal").setAttribute("aria-hidden", "true");
   }
@@ -22276,6 +22381,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 // ==== END DYNAMIC BUILD ID + BACKEND HEALTH ====
 </script>
+<script src="./frontend/field-installation.js"></script>
 </body>
 </html>
 

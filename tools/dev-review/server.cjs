@@ -3,7 +3,7 @@ const workspace=path.resolve(__dirname,'..','..'),frontend=path.join(workspace,'
 const port=Number(process.env.H2S_REVIEW_PORT||50267);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('H2S_REVIEW_PORT must be an integer from 1024 to 65535.');
 const origin='http://127.0.0.1:'+port;
-const {createCommerceFixture,id}=require(path.join(workspace,'backend','tests','helpers','field_commerce_fixture.cjs'));
+const {createWorkflowFixture,id}=require(path.join(workspace,'backend','tests','helpers','field_workflow_fixture.cjs'));
 const {evaluate}=require(path.join(workspace,'backend','tests','helpers','commercial_operations_fixture.cjs'));
 const {createFixture:createQueueFixture}=require(path.join(workspace,'backend','tests','helpers','commercial_contact_fixture.cjs'));
 global.fetch=async()=>{throw Error('Outbound network is disabled in local review');};
@@ -34,7 +34,10 @@ function png(){
     return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',zlib.deflateSync(raw)),chunk('IEND',Buffer.alloc(0))]);
 }
 (async()=>{
-    const f=await createCommerceFixture();f.env.H2S_FIELD_SALES_ORIGIN=origin;await f.enable();await f.publish();await f.legal();
+    const f=await createWorkflowFixture();f.env.H2S_FIELD_SALES_ORIGIN=origin;await f.enable();
+    let workflowRecord=await f.enrolled();
+    workflowRecord=await f.documents(workflowRecord);workflowRecord=await f.accept(workflowRecord);
+    await f.collect(workflowRecord);
     const queueProjection=createQueueFixture();
     delete f.env.H2S_FIELD_STRIPE_TEST_SECRET_KEY;delete f.env.H2S_FIELD_STRIPE_TEST_WEBHOOK_SECRET;
     const imports={'@/lib/supabase':{getSupabase:()=>f.client},'@/lib/adminAuth':{corsHeaders:()=>({})},'@/lib/fieldSales':f.sales};
@@ -65,7 +68,8 @@ function png(){
       create table if not exists h2s_dispatch_pros(pro_id uuid,status text);
       create table if not exists h2s_dispatch_pros_availability(avail_id text,pro_id text,date_local text,type text,weekday text,start_time_local text,end_time_local text);
       create table if not exists h2s_dispatch_pro_capacity(capacity_id text,pro_id text,date_local text,time_slot text,max_jobs integer,booked_jobs integer,available_spots integer,blocked boolean);
-      update h2s_orders set customer_name='SYNTHETIC installation customer',service_name=case when order_id='APPT-COM-FIXTURE' then 'SYNTHETIC commercial consultation' else 'SYNTHETIC TV installation' end,address='100 Synthetic Review Lane',status='pending',session_id=null,payment_intent_id=null;
+      update h2s_orders set customer_name='SYNTHETIC installation customer',service_name=case when order_id='APPT-COM-FIXTURE' then 'SYNTHETIC commercial consultation' else 'SYNTHETIC TV installation' end,address='100 Synthetic Review Lane',status='pending',session_id=null,payment_intent_id=null
+        where not exists(select 1 from field_sales_orders f where f.order_id=h2s_orders.id);
       update h2s_pros set name='SYNTHETIC '||name;
       insert into h2s_dispatch_job_assignments(job_id,pro_id,state) values('unresolved-local-job','unresolved-local-technician','pending');`);
     const start=new Date(Date.now()+86400000),end=new Date(start.getTime()+7200000);
@@ -91,7 +95,7 @@ function png(){
             if(requestOrigin&&requestOrigin!=='http://'+host){json(res,403,{ok:false,error:'Cross-origin requests are blocked'});return;}
             res.setHeader('Cache-Control','no-store');
             res.setHeader('Content-Security-Policy',"default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' data: https://fonts.gstatic.com https://cdnjs.cloudflare.com; img-src 'self' data: blob:; media-src 'self' blob: data:; frame-src 'self'; form-action 'self'; base-uri 'self'; object-src 'none'");
-            if(url.pathname==='/review-status'){json(res,200,{mode:'LOCAL_SYNTHETIC_ONLY',started,pid:process.pid,productionNetwork:false,stripe:false,assignmentWrites:false,notifications:false,sourceFilesModified:false,leadIds:leads,blocked});return;}
+            if(url.pathname==='/review-status'){json(res,200,{mode:'LOCAL_SYNTHETIC_ONLY',started,pid:process.pid,productionNetwork:false,stripe:false,syntheticDepositSeeded:true,workflowWrites:false,assignmentWrites:false,notifications:false,sourceFilesModified:false,leadIds:leads,workflowLeadId:workflowRecord.leadId,blocked});return;}
             let body='';if(req.method!=='GET'&&req.method!=='HEAD'){for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>9*1024*1024)throw Error('Request too large');}}
             const payload=body?JSON.parse(body):{},token=(req.headers.authorization||'').replace(/^Bearer /i,''),actor=token.startsWith('h2s-sales:')?'a':token==='local-review-admin'?'admin':null;
             if(url.pathname.startsWith('/api/')){
@@ -134,7 +138,8 @@ function png(){
                 }
                 const route=name==='field-sales'?sales:name==='field-sales-photos'?photos:f.routes[name];
                 if(route){
-                    if(name==='field-sales-stripe-webhook'||name==='field-sales-transactions'&&['checkout','refresh_payment'].includes(payload.action)){block(res,name,'Stripe/payment activity is disabled, including synthetic Checkout.');return;}
+                    if(name==='field-sales-stripe-webhook'||['field-sales-transactions','field-sales-agreement'].includes(name)&&['checkout','refresh_payment'].includes(payload.action)){block(res,name,'Stripe/payment activity is disabled, including synthetic Checkout.');return;}
+                    if(['field-sales-workflow','field-sales-installation','field-sales-earnings','field-sales-catalog'].includes(name)&&req.method!=='GET'){block(res,name,'Workflow, installation, catalog and payout mutations are disabled for inspection.');return;}
                     if(name==='field-sales'&&req.method==='POST'&&!['create','save','review'].includes(payload.action)){block(res,name,'Account administration and representative reassignment are disabled in this review.');return;}
                     const headers={...req.headers};if(actor)headers.authorization='Bearer '+actor;
                     const out=await route[req.method](new Request('http://'+host+req.url,{method:req.method,headers,...(body?{body}:{})}));
@@ -143,9 +148,9 @@ function png(){
                 block(res,name,'No isolated adapter exists for this endpoint. Production is never used as a fallback.');return;
             }
             if(url.pathname==='/'){
-                const links=[['Management dashboard','/dash.html'],['Operations','/dash.html?reviewTab=operations'],['Field Sales (representative mobile shell)','/dash.html?reviewRole=SALES'],['Quotes & Payments (ADMIN review)','/dash.html?reviewTab=quotes'],['Field Sales management','/dash.html?reviewTab=fieldsales'],['Customer agreement (synthetic unaccepted terms)','/review-agreement'],['Dispatch comparison','/dispatch.html'],['Customer Queue','/dash.html?reviewTab=commercialqueue']];
+                const links=[['Management dashboard','/dash.html'],['Operations','/dash.html?reviewTab=operations'],['Field Sales (representative mobile shell)','/dash.html?reviewRole=SALES'],['Quotes & Payments (ADMIN review)','/dash.html?reviewTab=quotes'],['Orders / clearance / fulfillment (select Orders)','/dash.html?reviewTab=fieldsales'],['Performance / Commissions / Friday review (select the named view)','/dash.html?reviewTab=fieldsales'],['Customer agreement (synthetic unaccepted terms)','/review-agreement'],['Dispatch comparison','/dispatch.html'],['Customer Queue','/dash.html?reviewTab=commercialqueue']];
                 const pages=fs.readdirSync(frontend).filter(n=>n.endsWith('.html')).sort();
-                res.setHeader('Content-Type','text/html');res.end('<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Home2Smart Local Visual Review</title><h1>Home2Smart local visual review</h1><p>Current saved working tree. Synthetic, in-memory records only. No production connection or deployment.</p><p><strong>Stripe, assignment writes, email/SMS, account administration and legacy mutations are blocked.</strong> Field Sales prospect/assessment/photo and quote/approval/agreement changes affect only disposable synthetic data. Test prices and placeholder legal text are not approved Home2Smart offers. No paid states are simulated.</p><ul>'+links.map(([label,href])=>'<li><a target="_blank" rel="noopener" href="'+href+'">'+label+'</a></li>').join('')+'</ul><h2>Limits</h2><p>Original interfaces and scripts are served, not replacement mockups. Legacy lists have minimal synthetic/empty read data; unsupported actions explicitly fail. Real integrations, externally hosted media and external API connections are not available. Unsaved editor buffers are not accessible to this server; they have been left untouched. Synthetic state resets if this server stops.</p><p><a href="/review-status">Live safety / blocked-action status</a></p><details><summary>Other existing frontend pages (same safety restrictions; may need unavailable APIs)</summary><ul>'+pages.map(n=>'<li><a target="_blank" rel="noopener" href="/'+encodeURIComponent(n)+'">'+n+'</a></li>').join('')+'</ul></details>');return;
+                res.setHeader('Content-Type','text/html');res.end('<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><title>Home2Smart Local Visual Review</title><h1>Home2Smart local visual review</h1><p>Current saved working tree. Synthetic, in-memory records only. No production connection or deployment.</p><p><strong>Stripe, workflow/installation/payout/catalog writes, assignment writes, email/SMS, account administration and legacy mutations are blocked.</strong> Field Sales prospect/assessment/photo and quote/approval/agreement changes affect only disposable synthetic data. Test prices and placeholder legal text are not approved Home2Smart offers. One synthetic deposit is seeded through actual handlers using a fake provider; it is not real money or native Stripe proof. No installation completion, earned payout or settlement is fabricated.</p><ul>'+links.map(([label,href])=>'<li><a target="_blank" rel="noopener" href="'+href+'">'+label+'</a></li>').join('')+'</ul><h2>Limits</h2><p>Original interfaces and scripts are served, not replacement mockups. Legacy lists have minimal synthetic/empty read data; unsupported actions explicitly fail. Real integrations, externally hosted media and external API connections are not available. Unsaved editor buffers are not accessible to this server; they have been left untouched. Synthetic state resets if this server stops.</p><p><a href="/review-status">Live safety / blocked-action status</a></p><details><summary>Other existing frontend pages (same safety restrictions; may need unavailable APIs)</summary><ul>'+pages.map(n=>'<li><a target="_blank" rel="noopener" href="/'+encodeURIComponent(n)+'">'+n+'</a></li>').join('')+'</ul></details>');return;
             }
             if(url.pathname==='/review-agreement'){res.writeHead(302,{Location:prepared.agreementUrl});res.end();return;}
             if(url.pathname==='/review-boot.js'){res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(path.join(__dirname,'bootstrap.js')));return;}

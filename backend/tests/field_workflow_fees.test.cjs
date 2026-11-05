@@ -1,0 +1,30 @@
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createCommerceFixture}=require('./helpers/field_commerce_fixture.cjs');
+test('provider-side fee verification distinguishes unresolved, verified zero, actual fee and wrong provider source',async t=>{
+  const f=await createCommerceFixture();t.after(()=>f.db.close());await f.enable();await f.publish();await f.legal();
+  const leadId=await f.lead(),accepted=await f.accepted(leadId),quoteId=accepted.quoteId;
+  const payment=await(await f.post({action:'checkout',leadId,quoteId,kind:'full'})).json();
+  const paid=f.paid([...f.sessions.keys()][0]),record=await f.commerce.paymentRecord(payment.checkoutId);
+  let retrievals=0,balance={id:'txn_synthetic',source:paid.charge.id,amount:10000,fee:320,net:9680,currency:'usd',fee_details:[]};
+  const provider={paymentIntents:{retrieve:async()=>paid.intent},charges:{retrieve:async()=>paid.charge},
+    balanceTransactions:{retrieve:async id=>{assert.equal(id,'txn_synthetic');retrievals++;return balance;}}};
+  const unknown=await f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session);
+  assert.equal(unknown.processingFeeCents,null);assert.equal(unknown.processingFeeEvidence,null);
+  paid.charge.balance_transaction='txn_synthetic';
+  const verified=await f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session);
+  assert.equal(verified.processingFeeCents,320);assert.equal(verified.processingFeeEvidence.verified,true);
+  assert.equal(verified.processingFeeEvidence.source,'stripe.balance_transaction');assert.equal(retrievals,1);
+  balance={...balance,fee:0,net:10000};
+  const zero=await f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session);
+  assert.equal(zero.processingFeeCents,0);assert.ok(zero.processingFeeEvidence.balanceTransactionId);
+  balance={...balance,source:'ch_unrelated'};
+  await assert.rejects(f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session),/fee identity/);
+  balance={...balance,source:paid.charge.id,fee:10,net:10000};
+  await assert.rejects(f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session),/fee identity/);
+  paid.session.livemode=true;
+  await assert.rejects(f.commerce.verifyFieldSession(provider,record.payment,record.quote,paid.session),/does not match/);
+  f.env.H2S_FIELD_STRIPE_MODE='live';f.env.H2S_FIELD_STRIPE_LIVE_ENABLED='false';
+  assert.throws(()=>f.commerce.enrolledStripeMode(),/disabled/);
+  f.env.H2S_FIELD_STRIPE_LIVE_ENABLED='true';f.env.H2S_FIELD_STRIPE_LIVE_SECRET_KEY='sk_test_wrong_mode';
+  assert.throws(()=>f.commerce.stripeForMode('live'),/live-mode/);
+});

@@ -53,6 +53,9 @@ test('catalog administration is separately default-off and ADMIN-only with expli
 test('catalog draft/publication/retirement is versioned, checked, idempotent and cannot mutate accepted price versions', async t => {
   const f = await fixture(); t.after(() => f.db.close()); await f.enable();
   f.env.H2S_FIELD_CATALOG_ADMIN_ENABLED = 'true'; await f.db.exec('update field_sales_catalog_admin_settings set enabled=true');
+  f.definition.services[0].completionRequirements = [
+    { id: 'finished_wall', label: 'Synthetic finished installation', type: 'photo', minimumCount: 2 }
+  ];
   const catalogId = crypto.randomUUID(), operationId = crypto.randomUUID();
   const draft = { action: 'create_draft', operationId, catalogId, version: 'synthetic-launch-v1',
     definition: f.definition, sourceEvidence: { mode: 'isolated_test_only', approvalEvidence: null } };
@@ -61,6 +64,7 @@ test('catalog draft/publication/retirement is versioned, checked, idempotent and
   assert.equal((await f.post({ ...draft, version: 'changed-version' })).status, 409);
   const records = await (await f.request()).json(), row = records.catalogs[0];
   assert.equal(row.status, 'draft'); assert.match(row.digest, /^[a-f0-9]{64}$/);
+  assert.equal(row.definition.services[0].completionRequirements[0].minimumCount, 2);
   assert.equal((await f.post({ action: 'publish', catalogId, expectedDigest: 'a'.repeat(64), approvalEvidence: 'Synthetic approval' })).status, 409);
   assert.equal((await f.post({ action: 'publish', catalogId, expectedDigest: row.digest, approvalEvidence: '' })).status, 400);
   const publication = { action: 'publish', operationId: crypto.randomUUID(), catalogId, expectedDigest: row.digest,
@@ -80,6 +84,10 @@ test('catalog draft/publication/retirement is versioned, checked, idempotent and
   const bad = structuredClone(f.definition); bad.services[0].label = { unsafe: 'not a string' };
   assert.equal((await f.post({ action: 'create_draft', catalogId: crypto.randomUUID(), version: 'synthetic-invalid',
     definition: bad, sourceEvidence: {} })).status, 503);
+  const badProof = structuredClone(f.definition);
+  badProof.services[0].completionRequirements[0].minimumCount = 0;
+  assert.equal((await f.post({ action: 'create_draft', catalogId: crypto.randomUUID(), version: 'synthetic-invalid-proof',
+    definition: badProof, sourceEvidence: {} })).status, 503);
   const permission = (await f.db.query("select has_function_privilege('authenticated','field_sales_catalog_admin_command(uuid,uuid,text,jsonb)','EXECUTE') allowed")).rows[0];
   assert.equal(permission.allowed, false);
 });

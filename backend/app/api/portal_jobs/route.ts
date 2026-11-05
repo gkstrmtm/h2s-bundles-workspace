@@ -1435,6 +1435,13 @@ function mergeJobAssignment(job: any, assignment: any) {
   return {
     ...job,
     ...assignment,
+    ...(job?.metadata_json?.field_sales_workflow?.enrolled === true ? {
+      metadata_json: {
+        ...job.metadata_json,
+        ...assignment?.metadata_json,
+        field_sales_workflow: job.metadata_json.field_sales_workflow,
+      },
+    } : {}),
     job_id: job?.job_id ?? assignment?.job_id,
     status: jobStatus,           // Job lifecycle: queued/assigned/in_progress/completed/done/cancelled
     assign_state: assignState,   // Assignment state: pending/accepted/declined/expired (from assignments.state)

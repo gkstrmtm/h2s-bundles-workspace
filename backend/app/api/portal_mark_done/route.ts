@@ -4,6 +4,8 @@ import { requireAuth, AuthError } from '@/lib/auth';
 import { getConfig } from '@/lib/config';
 import { resolveDispatchSchema } from '@/lib/dispatchSchema';
 import { ensureCompletionSideEffects } from '@/lib/dataOrchestration';
+import { completeEnrolledJob } from '@/lib/fieldWorkflow';
+import { BusinessError } from '@/lib/fieldSales';
 
 function corsHeaders(request?: Request): Record<string, string> {
   const origin = request?.headers.get('origin') || '';
@@ -76,6 +78,17 @@ export async function POST(request: Request) {
     
     const proId = payload.sub;
     console.log(`[COMPLETE_JOB_AUTH_OK] cid=${cid} pro_id=${proId}`);
+
+    try {
+      const enrolled = await completeEnrolledJob(proId, jobId, body);
+      if (enrolled.enrolled) {
+        return NextResponse.json({ ok: true, ...enrolled, build_id: config.buildId, cid }, { headers: corsHeaders(request) });
+      }
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof BusinessError ? error.message : 'Enrolled installation completion unavailable; retry required.',
+        error_code: 'field_workflow_completion_failed', build_id: config.buildId, cid },
+      { status: error instanceof BusinessError ? error.status : 503, headers: corsHeaders(request) });
+    }
 
     // 1. Setup Clients
     const dispatchClient = getSupabaseDispatch();

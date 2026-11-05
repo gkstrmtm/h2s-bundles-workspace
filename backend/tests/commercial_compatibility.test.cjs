@@ -43,6 +43,26 @@ test('existing portal enrichment, assignment/lifecycle grouping and noncommercia
 test('existing technician completion preserves authentication and assignment ownership boundaries',async t=>{
   const f=await createOperationsFixture();t.after(()=>f.db.close());
   let authenticated=false;
+  const globals={process:{env:{H2S_FIELD_WORKFLOW_ENABLED:'false'}},Buffer};
+  const dependencies={
+    'node:crypto':require('node:crypto'),
+    '@/lib/supabase':{getSupabase:()=>f.client,getSupabaseDispatch:()=>f.client},
+    '@/lib/dashboardAuth':{getDashboardAuthUserFromSession:async()=>assert.fail('Legacy pro completion must not use dashboard authentication')},
+  };
+  const business=evaluate('lib\\commercial_business.ts',dependencies,globals);
+  const sales=evaluate('lib\\fieldSales.ts',{...dependencies,'@/lib/commercial_business':business},globals);
+  const workflow=evaluate('lib\\fieldWorkflow.ts',{...dependencies,'@/lib/fieldSales':sales},globals);
+  let workflowRpcCalls=0;
+  const rpc=f.client.rpc.bind(f.client);
+  f.client.rpc=async(name,args)=>{
+    if(name!=='field_sales_workflow_complete')return rpc(name,args);
+    workflowRpcCalls++;
+    try{
+      const result=await f.db.query('select field_sales_workflow_complete($1::uuid,$2::uuid,$3::uuid,$4::integer,$5::jsonb) result',
+        [args.p_pro,args.p_job,args.p_operation,args.p_revision,JSON.stringify(args.p_payload)]);
+      return {data:result.rows[0].result,error:null};
+    }catch(error){return {data:null,error:{code:error.code,message:error.message}};}
+  };
   class AuthError extends Error { constructor(){super('Fixture authentication required');this.status=401;this.code='fixture_auth';} }
   const route=evaluate('app\\api\\portal_mark_done\\route.ts',{
     'next/server':{NextResponse:{json:(data,options)=>Response.json(data,options)}},
@@ -50,13 +70,21 @@ test('existing technician completion preserves authentication and assignment own
     '@/lib/adminAuth':{corsHeaders:()=>({})},
     '@/lib/auth':{AuthError,requireAuth:async()=>{if(!authenticated)throw new AuthError();return{sub:id(999)};}},
     '@/lib/config':{getConfig:()=>({buildId:'fixture-only'})},
+    '@/lib/fieldSales':sales,
+    '@/lib/fieldWorkflow':workflow,
     '@/lib/dispatchSchema':{resolveDispatchSchema:async()=>({jobsTable:'h2s_dispatch_jobs',jobsIdCol:'job_id',jobsStatusCol:'status',
       assignmentsTable:'h2s_dispatch_job_assignments',assignmentsJobCol:'job_id',assignmentsProCol:'pro_id',assignmentsStateCol:'state'})},
     '@/lib/dataOrchestration':{ensureCompletionSideEffects:async()=>{assert.fail('Unauthorized technician reached completion processing');}},
-  });
+  },globals);
   const request=()=>new Request('http://fixture.invalid/api/portal_mark_done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({job_id:id(101)})});
   assert.equal((await route.POST(request())).status,401);
   authenticated=true;
   assert.equal((await route.POST(request())).status,403);
+  assert.equal(workflowRpcCalls,0,'Explicitly disabled workflow preserves a native legacy schema without 046');
+  globals.process.env.H2S_FIELD_WORKFLOW_ENABLED='true';
+  const unavailable=await route.POST(request());
+  assert.equal(unavailable.status,503,'Workflow activation before migration must fail closed, never fall back');
+  assert.equal((await unavailable.json()).ok,false);
+  assert.equal(workflowRpcCalls,1);
   assert.equal((await f.db.query('select status from h2s_dispatch_jobs where job_id=$1',[id(101)])).rows[0].status,'queued');
 });

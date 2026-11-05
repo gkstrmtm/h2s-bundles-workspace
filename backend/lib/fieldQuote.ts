@@ -3,11 +3,14 @@ import { BusinessError } from '@/lib/commercial_business';
 export type QuoteQuestion = { id: string; label: string; type: 'text' | 'number' | 'select'; required: boolean;
   min?: number; max?: number; options?: string[] };
 export type QuoteOption = { id: string; label: string; amountCents: number; perUnit: boolean; equipment: string[]; replacesEquipment?: string[] };
+export type QuoteCompletionRequirement = { id: string; label: string; type: 'photo' | 'signature' | 'checklist'; minimumCount: number };
+export const FIELD_COMPLETION_PROOF_MAX_BYTES = 4456448;
 export type QuoteOffer = { id: string; label: string; enabled: boolean; unitCents: number | null; basis: 'per_unit' | 'package';
   minimum: number; maximum: number; starting: boolean; equipment: string[]; scope: string[]; exclusions: string[];
   questions: QuoteQuestion[]; options: QuoteOption[]; qualifications: { question: string; allowed: (string | number)[]; reason: string }[] };
 export type QuoteCatalog = { catalog_id: string; version: string; status: 'draft' | 'published' | 'retired'; digest: string;
-  definition: { currency: 'usd'; validForMinutes: number | null; services: { id: string; label: string; markets: string[]; offers: QuoteOffer[] }[] } };
+  definition: { currency: 'usd'; validForMinutes: number | null; services: { id: string; label: string; markets: string[];
+    offers: QuoteOffer[]; completionRequirements?: QuoteCompletionRequirement[] }[] } };
 const slug = /^[a-z][a-z0-9_-]{0,79}$/;
 const money = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 100000000;
 const label = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 2000;
@@ -24,6 +27,15 @@ export function validateQuoteCatalog(catalog: QuoteCatalog): QuoteCatalog {
   for (const service of d.services) {
     if (!service || !label(service.label) || !strings(service.markets) || service.markets.some(m => !['residential','commercial'].includes(m))
       || !Array.isArray(service.offers) || !service.offers.length || !unique(service.offers.map(o => o?.id))) throw new BusinessError('Service configuration is incomplete.', 503);
+    if (service.completionRequirements !== undefined && (!Array.isArray(service.completionRequirements)
+      || service.completionRequirements.length > 100 || !unique(service.completionRequirements.map(requirement => requirement?.id))
+      || service.completionRequirements.some(requirement => !requirement || !label(requirement.label)
+        || !['photo','signature','checklist'].includes(requirement.type) || !Number.isSafeInteger(requirement.minimumCount)
+        || requirement.minimumCount < 1 || requirement.minimumCount > 100
+        || (requirement.type === 'checklist' && requirement.minimumCount !== 1)
+        || Object.keys(requirement).some(key => !['id','label','type','minimumCount'].includes(key))))) {
+      throw new BusinessError('Service completion evidence configuration requires management review.', 503);
+    }
     for (const o of service.offers) {
       if (!o || !label(o.label) || typeof o.enabled !== 'boolean' || typeof o.starting !== 'boolean' || !['per_unit','package'].includes(o.basis)
         || (o.unitCents !== null && !money(o.unitCents)) || !Number.isSafeInteger(o.minimum) || !Number.isSafeInteger(o.maximum)
@@ -47,6 +59,7 @@ export function calculateFieldQuote(catalog: QuoteCatalog, input: unknown, marke
   validateQuoteCatalog(catalog);
   if (!Array.isArray(input) || !input.length || input.length > 30) throw new BusinessError('Select 1-30 service lines.');
   const approvalReasons: string[] = [], lines: Record<string, unknown>[] = [];
+  const proofServices = new Map<string, QuoteCompletionRequirement[]>();
   let total = 0, unpriced = false;
   for (const raw of input) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new BusinessError('Invalid service line.');
@@ -57,6 +70,7 @@ export function calculateFieldQuote(catalog: QuoteCatalog, input: unknown, marke
     if (!service || !offer || !Number.isSafeInteger(row.quantity) || Number(row.quantity) < offer.minimum || Number(row.quantity) > offer.maximum) {
       throw new BusinessError('Select an available service/offer and an eligible whole quantity.');
     }
+    if (service.completionRequirements) proofServices.set(service.id, service.completionRequirements);
     if (!Array.isArray(row.options) || new Set(row.options).size !== row.options.length
       || row.options.some(id => !offer.options.some(o => o.id === id))) throw new BusinessError('Choose distinct configured equipment/add-ons.');
     if (!row.answers || typeof row.answers !== 'object' || Array.isArray(row.answers)) throw new BusinessError('Service answers are required.');
@@ -89,7 +103,23 @@ export function calculateFieldQuote(catalog: QuoteCatalog, input: unknown, marke
     lines.push({ serviceId: service.id, offerId: offer.id, service: service.label, description: offer.label, quantity, answers: clean,
       answerLabels: Object.fromEntries(offer.questions.map(question => [question.id, question.label])),
       baseCents, addOns: additions, totalCents: lineTotal, equipment: [...offer.equipment.filter(item => !replaced.includes(item)), ...selected.flatMap(o => o.equipment)],
-      scope: offer.scope, exclusions: offer.exclusions, starting: offer.starting });
+      scope: offer.scope, exclusions: offer.exclusions, starting: offer.starting,
+      ...(service.completionRequirements !== undefined
+        ? { completionRequirements: service.completionRequirements.map(requirement => ({ ...requirement })) } : {}) });
+  }
+  const bindings: { serviceId: string; requirementId: string; artifactIds: string[] }[] = [];
+  const checklists: { serviceId: string; requirementId: string; affirmed: boolean; evidence: { reference: string } }[] = [];
+  const identifier = '00000000-0000-4000-8000-000000000000';
+  for (const [serviceId, requirements] of proofServices) for (const requirement of requirements) {
+    if (requirement.type === 'checklist') checklists.push({ serviceId, requirementId: requirement.id,
+      affirmed: true, evidence: { reference: 'ref' } });
+    else bindings.push({ serviceId, requirementId: requirement.id, artifactIds: Array(requirement.minimumCount).fill(identifier) });
+  }
+  // Slug/UUID identifiers and this minimal payload are ASCII, so JSON length is its exact UTF-8 byte size.
+  const minimumProofBytes = JSON.stringify({ job_id: identifier, operationId: identifier, workflowRevision: 2147483647,
+    action: 'proof_record', bindings, checklists }).length;
+  if (minimumProofBytes > FIELD_COMPLETION_PROOF_MAX_BYTES) {
+    throw new BusinessError('Required completion evidence exceeds the supported record size. Management must review the service configuration.');
   }
   if (!money(total) || (!unpriced && total < 1)) throw new BusinessError('A positive supported quote total is required.');
   return { currency: 'usd', catalogVersion: catalog.version, lines, totalCents: unpriced ? null : total,

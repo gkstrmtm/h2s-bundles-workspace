@@ -1,6 +1,6 @@
 import { getSupabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/adminAuth';
-import { requireTransactions, tokenHash, salesChecked, readJson, identifier, text, BusinessError } from '@/lib/fieldCommerce';
+import { requireTransactions, tokenHash, salesChecked, readJson, identifier, text, BusinessError, customerPayment } from '@/lib/fieldCommerce';
 export const dynamic = 'force-dynamic';
 const headers = (request: Request) => ({ ...corsHeaders(request), 'Cache-Control': 'private, no-store', Vary: 'Authorization, Origin', 'Referrer-Policy': 'no-referrer' });
 async function handle(request: Request, accept: boolean) {
@@ -13,6 +13,10 @@ async function handle(request: Request, accept: boolean) {
     let payload: Record<string, unknown> | null = null;
     if (accept) {
       const body = await readJson(request);
+      if (body.action === 'checkout' || body.action === 'refresh_payment') {
+        const result = await customerPayment(token, body);
+        return Response.json({ ok: true, ...result }, { headers: headers(request) });
+      }
       if (Object.keys(body).some(key => !['operationId','name','email','quoteHash','policyVersion','accepted','electronicDelivery'].includes(key))) throw new BusinessError('Unsupported agreement field.');
       payload = { operationId: identifier(body.operationId), name: text(body.name, 120), email: text(body.email, 254).toLowerCase(),
         quoteHash: text(body.quoteHash, 64), policyVersion: text(body.policyVersion, 100), accepted: body.accepted === true,

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Synthetic fixture only — Sales workflow UI</title>
+<link rel="stylesheet" href="../../frontend/field-sales.css">
+<link rel="stylesheet" href="../../frontend/field-workflow.css">
+<style>
+:root { --text:#1f2937; --cobalt:#1a365d; --azure:#2563eb; --muted:#64748b; --danger:#b91c1c; --border:#d1d5db; --surface:#fff; }
+body { margin:0; font:14px/1.5 Inter,sans-serif; }
+main { padding:16px; max-width:1120px; margin:auto; }
+.fixture-banner { border-bottom:1px solid var(--border); padding:12px 16px; overflow-wrap:anywhere; }
+</style>
+<script src="../../frontend/field-workflow.js"></script>
+<script src="../../frontend/field-earnings.js"></script>
+<script src="../../frontend/field-installation.js"></script>
+<script src="../../frontend/field-commerce.js"></script>
+</head>
+<body>
+<p class="fixture-banner">SYNTHETIC UI FIXTURE ONLY. No production API calls, customer data, activated policies, payment or transfer.</p>
+<div id="h2s-app"><main class="field-sales"><section id="workflow"></section><section id="earnings"></section><section id="catalog"></section></main></div>
+<main><section id="installation"></section></main>
+<script>
+(function () {
+    const quoteId='00000000-0000-4000-8000-000000000001',jobId='00000000-0000-4000-8000-000000000002';
+    const actor={role:'ADMIN',token:'synthetic-fixture'};
+    const workflow={ok:true,enabled:true,policies:[
+        {policy_id:quoteId,kind:'legal',status:'draft',definition:{fixture:'Unapproved synthetic policy only'},approval_evidence:null},
+        {policy_id:jobId,kind:'commission',status:'approved',definition:{fixture:'Synthetic approval'},approval_evidence:{reference:'Fixture evidence'}}],
+        workflows:[{quoteId,leadId:quoteId,orderId:'SYNTHETIC-ORDER-NOT-PRODUCTION',revision:4,state:'scheduled',representativeId:quoteId,depositCents:2501,balanceCents:7500,netPaidCents:2501,
+            processingFeeCents:null,processingFeeEvidence:null,jobId,technicianId:quoteId,completedAt:null,hours:null,expenses:[],
+            documents:[{artifactId:quoteId,kind:'notice',label:'Synthetic notice',content:{fixture:'Long untrusted text <img src=x onerror=neverExecute()> '+ 'verified-identifier-'.repeat(20)},contentHash:'a'.repeat(64)}],
+            requiredArtifacts:[{kind:'quote',label:'Quote',content:{fixture:true}},{kind:'agreement',label:'Agreement',content:{fixture:true}},{kind:'notice',label:'Notice',content:{fixture:true}}],
+            deliveryEvidence:[],holds:['Completion required before balance collection'],preparation:{revision:2},reservation:{revision:3},
+            gates:{canDeposit:false,canBalance:false,canSchedule:false,canAssign:false,canComplete:true}}],nextActions:['preparation']};
+    workflow.workflows.push({...workflow.workflows[0],quoteId:'00000000-0000-4000-8000-000000000003',leadId:'00000000-0000-4000-8000-000000000003',
+        orderId:'SYNTHETIC-COMPLETED-ORDER',state:'completed',completedAt:'2026-01-02',costsComplete:false,expenses:[],
+        technicianExpenses:[{category:'equipment',quantity:2,unitCents:10000,amountCents:20000,actual:true,evidence:{reference:'Synthetic receipt'}},
+            {category:'materials',quantity:1,unitCents:0,amountCents:0,actual:true,evidence:{reference:'Synthetic zero receipt'},zeroCostAttestation:'Verified synthetic zero cost'}],
+        gates:{canDeposit:false,canBalance:true,canSchedule:false,canAssign:false,canComplete:false}});
+    const earnings={ok:true,enabled:true,externalPaymentInitiated:false,
+        summary:{pendingQualification:1,calculationReview:1,earnedCents:39600,adjustmentCents:0,allocatedCents:39600,reconciledPaidCents:0},
+        orders:[{quoteId,orderId:'SYNTHETIC-ORDER',state:'calculation_review',reasons:['Unresolved actual provider fees'],totalCents:100000,netPaidCents:100000,completedAt:'2026-01-01',qualifiesAt:'2026-01-02'}],
+        entries:[{entryId:quoteId,quoteId,representativeId:quoteId,amountCents:39600,basisCents:72000,rateBasisPoints:5500,tenureDay:30,qualifiesAt:'2026-01-02',rateEventAt:'2026-01-02',policyId:quoteId,inputHash:'a'.repeat(64),snapshot:{fixture:true}}],
+        adjustments:[],runs:[{runId:quoteId,runDate:'2026-01-09',policyId:quoteId,state:'exported',amountCents:39600,method:'Synthetic existing payroll',classification:'Synthetic classification',beneficiaries:[{representativeId:quoteId,amountCents:39600}]}]};
+    earnings.runs.push({...earnings.runs[0],runId:jobId,state:'approved',canAbandon:true});
+    const installationProof={photoCount:2,signatureCount:1,complete:false,missing:['Bind installed equipment photos and affirm the functional checklist'],
+        requirements:[
+            {serviceId:'synthetic-tv-service',id:'installed',label:'Installed equipment and mounting evidence — '+ 'scope-identifier-'.repeat(6),type:'photo',minimumCount:2,artifactIds:[],complete:false,missingCount:2},
+            {serviceId:'synthetic-tv-service',id:'tested',label:'Personally verified equipment operation',type:'checklist',minimumCount:1,affirmed:false,complete:false,missingCount:1}],
+        candidates:[{artifactId:quoteId,type:'photo',createdAt:'2026-01-02T12:00:00Z'},{artifactId:jobId,type:'photo',createdAt:'2026-01-02T12:01:00Z'}]};
+    workflow.workflows[0].proof={...installationProof,candidates:undefined};
+    window.__fixtureCalls=[];
+    window.fetch=async function (url,init) {
+        window.__fixtureCalls.push({url,method:init?.method||'GET'});
+        if(init?.method==='POST')return Response.json({ok:false,error:'Synthetic fixture is read-only; no operation was performed.'},{status:409});
+        if(url.includes('field-sales-installation'))return Response.json({ok:true,enabled:true,enrolled:true,workflow:{quoteId,jobId,revision:4,canComplete:false,proof:installationProof,gates:{canComplete:false,canBalance:false},expenses:[],hours:null}});
+        if(url.includes('field-sales-earnings'))return Response.json(earnings);
+        if(url.includes('field-sales-workflow'))return Response.json(workflow);
+        if(url.includes('field-sales-catalog'))return Response.json({ok:true,enabled:true,catalogs:[{catalog_id:quoteId,version:'Synthetic unapproved catalog',status:'draft',definition:{fixture:'Synthetic only',services:[]},source_evidence:{reference:'Synthetic source review'},digest:'a'.repeat(64)}]});
+        if(url.includes('field-sales-transactions'))return Response.json({ok:true,enabled:false});
+        throw Error('Fixture forbids unexpected or production API calls');
+    };
+    H2SFieldCommerce.mount(document.getElementById('catalog'),{apiBase:'https://fixture.invalid',getSession:()=>actor,leadId:null});
+    H2SFieldWorkflow.mount(document.getElementById('workflow'),{apiBase:'https://fixture.invalid',getSession:()=>actor});
+    H2SFieldEarnings.mount(document.getElementById('earnings'),{apiBase:'https://fixture.invalid',getSession:()=>actor});
+    H2SFieldInstallation.mount(document.getElementById('installation'),{apiBase:'https://fixture.invalid',getSession:()=>({token:'synthetic-pro'}),jobId,quoteId});
+})();
+</script>
+</body>
+</html>

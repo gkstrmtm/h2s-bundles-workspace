@@ -1,5 +1,6 @@
 (function (global) {
     'use strict';
+    const apiRoot = base => String(base).replace(/\/+$/,'').replace(/\/api$/i,'') + '/api';
     const root = document.createElement('section'), nav = document.createElement('button');
     root.id = 'field-sales-pane'; root.className = 'pane field-sales'; root.setAttribute('aria-label', 'Field Sales');
     nav.type = 'button'; nav.className = 'app-sidebar-nav-item'; nav.dataset.tab = 'fieldsales'; nav.textContent = 'Field Sales'; nav.hidden = true;
@@ -7,6 +8,8 @@
     document.querySelector('.app-sidebar-group[data-group-id="admin"] .app-sidebar-group-items').append(nav);
     const style = document.createElement('link'); style.rel = 'stylesheet';
     style.href = global.__h2sResolveDashSiblingAsset?.('field-sales.css') || './field-sales.css'; document.head.append(style);
+    const workflowStyle = document.createElement('link'); workflowStyle.rel = 'stylesheet';
+    workflowStyle.href = global.__h2sResolveDashSiblingAsset?.('field-workflow.css') || './field-workflow.css'; document.head.append(workflowStyle);
     let options, data, detail, mode = 'dashboard', token = '', version = 0, controller, attempt, busy = false, preparing = false;
     const urls = new Set(), hiddenNav = new Map();
     const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -22,6 +25,8 @@
     function release() { for (const url of urls) global.URL.revokeObjectURL(url); urls.clear(); }
     function reset() {
         global.H2SFieldCommerce?.reset();
+        global.H2SFieldWorkflow?.reset();
+        global.H2SFieldEarnings?.reset();
         ++version; controller?.abort(); release(); data = detail = attempt = null; busy = preparing = false; token = ''; root.replaceChildren(); nav.hidden = true;
         delete document.getElementById('h2s-app').dataset.fieldSales;
         for (const [element, hidden] of hiddenNav) element.hidden = hidden; hiddenNav.clear();
@@ -33,21 +38,21 @@
     }
     async function request(path, body) {
         if (!allowed()) { reset(); throw new Error('Sign in to Field Sales.'); }
-        const started = session().token, generation = version;
-        const response = await global.fetch(`${options.apiBase}/api/${path}`, { method: body ? 'POST' : 'GET', cache: 'no-store',
+        const started = session().token, startedRole=session().role, generation = version;
+        const response = await global.fetch(`${apiRoot(options.apiBase)}/${path}`, { method: body ? 'POST' : 'GET', cache: 'no-store',
             signal: controller?.signal, referrerPolicy: 'no-referrer',
             headers: { Authorization: `Bearer ${started}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
             ...(body ? { body: JSON.stringify(body) } : {}) });
-        if (generation !== version || session()?.token !== started) throw new Error('Session changed; private response discarded.');
+        if (generation !== version || session()?.token !== started || session()?.role !== startedRole) { if(generation===version)reset(); throw new Error('Session changed; private response discarded.'); }
         if (response.status === 401 || response.status === 403) {
             reset(); status('Access ended. Sign in again or contact management.', true); throw new Error('Access ended. Sign in again or contact management.');
         }
         return response;
     }
     async function json(path, body) {
-        const started = session()?.token, generation = version;
+        const started = session()?.token, startedRole=session()?.role, generation = version;
         const response = await request(path, body), result = await response.json();
-        if (generation !== version || session()?.token !== started || !allowed()) throw new Error('Session changed; private response discarded.');
+        if (generation !== version || session()?.token !== started || session()?.role!==startedRole || !allowed()) { if(generation===version)reset(); throw new Error('Session changed; private response discarded.'); }
         if (!response.ok || !result.ok) throw new Error(result.error || 'Field Sales request failed.');
         return result;
     }
@@ -63,16 +68,32 @@
     }
     function render() {
         global.H2SFieldCommerce?.reset();
+        global.H2SFieldWorkflow?.reset();
+        global.H2SFieldEarnings?.reset();
         release();
         root.innerHTML = `<header><h2>Field Sales</h2><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</header>
-            <p>Service interest is not an approved price, agreement or appointment. Transactions require separately approved pricing, legal configuration and feature gates.</p>
-            <nav aria-label="Field Sales views">${[['dashboard', 'My Dashboard'], ['new', 'New Prospect'], ['opportunities', 'My Opportunities'], ...(admin() ? [['representatives', 'Representatives'], ['transactions', 'Quotes & Payments']] : [])]
+            <p>Prospect → approved quote and customer copies → verified 25% deposit → cleared installation → post-install net balance → earned commission → reconciled Friday settlement.</p>
+            <nav aria-label="Field Sales views">${[['dashboard', 'Follow-ups'], ['new', 'New Prospect'], ['opportunities', 'My Opportunities'], ['orders','Orders'], ['performance','Performance'], ['commissions','Commissions'], ...(admin() ? [['representatives', 'Representatives'], ['transactions', 'Quotes & Payments']] : [])]
                 .map(([id, label]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${mode === id}">${label}</button>`).join('')}</nav>
             <p data-sales-status role="status" aria-live="polite"></p><div data-sales-content></div>`;
         if (!data) return;
         if (!data.enabled) { status('Field Sales is disabled. No accounts or customer records can be changed.'); return; }
         const content = root.querySelector('[data-sales-content]');
-        if (mode === 'transactions' && admin()) {
+        if(!admin()&&data.commissionProfile){
+            const profile=data.commissionProfile;
+            root.querySelector('[data-sales-status]').insertAdjacentHTML('afterend',`<p>My approved commission start: ${esc(profile.commission_start_date||'Not configured — tenure review required')} / terms revision ${esc(profile.commission_terms_revision??0)}. ${esc(profile.commission_start_evidence||'Approval evidence pending')}. Management controls changes; earned history remains immutable.</p>`);
+        }
+        if (mode === 'orders') {
+            content.innerHTML = '<div data-sales-workflow></div>';
+            const target = content.querySelector('[data-sales-workflow]');
+            if (global.H2SFieldWorkflow) global.H2SFieldWorkflow.mount(target, {apiBase:options.apiBase,getSession:session,onSessionEnded:reset});
+            else target.textContent = 'Order workflow module unavailable. No readiness, payment or installation is assumed.';
+        } else if (['performance','commissions'].includes(mode)) {
+            content.innerHTML = '<div data-sales-earnings></div>';
+            const target = content.querySelector('[data-sales-earnings]');
+            if (global.H2SFieldEarnings) global.H2SFieldEarnings.mount(target, {apiBase:options.apiBase,getSession:session,view:mode,onSessionEnded:reset});
+            else target.textContent = 'Earnings module unavailable. No commission or settlement is assumed.';
+        } else if (mode === 'transactions' && admin()) {
             content.innerHTML = '<div data-sales-commerce></div>';
             commerce(content.querySelector('[data-sales-commerce]'), null);
         } else if (mode === 'new') {
@@ -94,7 +115,13 @@
         } else if (mode === 'representatives' && admin()) {
             content.innerHTML = `<h3>Representative accounts</h3><p>New accounts are disabled. Creation does not enroll a representative for login.</p>
                 ${(data.representatives || []).map(rep => `<article><strong>${esc(rep.display_name)}</strong> / ${esc(rep.username)} / ${rep.active ? 'active' : 'disabled'}
-                <button type="button" data-rep-state="${esc(rep.user_id)}" data-active="${!rep.active}">${rep.active ? 'Disable and revoke sessions' : 'Explicitly enable account'}</button></article>`).join('')}
+                <button type="button" data-rep-state="${esc(rep.user_id)}" data-active="${!rep.active}">${rep.active ? 'Disable and revoke sessions' : 'Explicitly enable account'}</button>
+                <p>Approved commission start: ${esc(rep.commission_start_date || 'Not configured — tenure review required')} / ${esc(rep.commission_start_evidence || 'Evidence pending')}</p>
+                <details><summary>Representative commission terms</summary><form data-sales-form="representative_terms" class="field-sales__form">
+                    <input type="hidden" name="userId" value="${esc(rep.user_id)}"><input type="hidden" name="termsRevision" value="${esc(rep.commission_terms_revision ?? 0)}">
+                    <label>Approved commission start date (blank explicitly unsets tenure)<input name="commissionStartDate" type="date" value="${esc(rep.commission_start_date || '')}"></label>
+                    <label class="field-sales__wide">Start-event approval evidence<textarea name="commissionStartEvidence" required maxlength="2000">${esc(rep.commission_start_evidence || '')}</textarea></label>
+                    <button type="submit">Record approved representative terms</button></form></details></article>`).join('')}
                 <form data-sales-form="account_create" class="field-sales__form"><label>Display name<input name="displayName" required maxlength="120"></label>
                 <label>Username (letters/digits)<input name="username" required pattern="[A-Za-z][A-Za-z0-9]{2,31}"></label>
                 <label class="field-sales__wide">Temporary credential: save securely before creating; never share a session token<input name="pin" readonly value="${esc(global.crypto.randomUUID().replaceAll('-', ''))}"></label>
@@ -108,6 +135,7 @@
                 detail.photos.some(photo => photo.service_id === service.service_id && photo.label === label && photo.state === 'ready')));
             content.innerHTML = `<h3>${esc(detail.lead.full_name)}</h3><p>${esc(detail.lead.phone)} / ${esc(detail.lead.project_address)} / ${esc(detail.lead.project_city)}</p>
                 <p class="field-sales__id">Shared lead ${esc(op.lead_id)} / ${esc(op.status)} / revision ${esc(op.revision)}</p>
+                <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p>
                 <p>Assessment progress: ${required.filter(answer => answer !== undefined && answer !== '').length}/${required.length} required answers;
                     ${expectedPhotos.filter(Boolean).length}/${expectedPhotos.length} requested photo labels have ready evidence.</p>
                 <form data-sales-form="save" class="field-sales__form"><fieldset class="field-sales__wide"><legend>Service interests</legend>${interests(op.services, detail.lead.attribution.market)}</fieldset>
@@ -166,7 +194,7 @@
                 const attrs = `data-service="${esc(s.service_id)}" data-question="${esc(q.id)}"`;
                 return `<label>${esc(q.label)}${q.required ? ' (required for submission)' : ''}${q.type === 'select'
                     ? `<select ${attrs} data-custom-select="off"><option value="">Choose</option>${q.options.map(option => `<option${option === value ? ' selected' : ''}>${esc(option)}</option>`).join('')}</select>`
-                    : `<input ${attrs} type="${q.type === 'number' ? 'number' : 'text'}"${q.type === 'number' ? ` min="${q.min ?? 0}" max="${q.max ?? 100000}"` : ' maxlength="2000"'} value="${esc(value)}">`}</label>`;
+                    : `<input ${attrs} type="${q.type === 'number' ? 'number' : 'text'}"${q.type === 'number' ? ` min="${esc(q.min ?? 0)}" max="${esc(q.max ?? 100000)}"` : ' maxlength="2000"'} value="${esc(value)}">`}</label>`;
             }).join('')}<p>Requested photo evidence: ${esc(s.definition.photos.join('; '))}. Missing evidence stays visible for management review.</p></fieldset>`).join('');
     }
     function photoLabels() {
@@ -227,6 +255,7 @@
                 for (const el of form.querySelectorAll('[data-question]')) { (body.answers[el.dataset.service] ||= {})[el.dataset.question] = el.type === 'number' && el.value !== '' ? Number(el.value) : el.value; }
             }
             if (['assign', 'review'].includes(action)) Object.assign(body, { leadId: detail.opportunity.lead_id, revision: detail.opportunity.revision });
+            if (action === 'representative_terms') {body.termsRevision = Number(values.termsRevision);body.commissionStartDate=values.commissionStartDate||null;}
             if (action === 'photo') {
                 preparing = true; path = 'field-sales-photos'; body.leadId = detail.opportunity.lead_id; body.filename = 'assessment.jpg';
                 body.data = attempt?.path === path ? attempt.body.data : await preparePhoto(form.elements.photo.files[0]); delete body.photo;
