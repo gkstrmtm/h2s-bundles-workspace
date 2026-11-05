@@ -220,7 +220,6 @@
         function dashboardApplyCustomSelectMetrics(selectEl, shell) {
             if (!selectEl || !shell) return;
             const computed = window.getComputedStyle(selectEl);
-            const rect = selectEl.getBoundingClientRect();
             const inlineWidth = String(selectEl.style && selectEl.style.width || '').trim();
             const computedDisplay = String(computed.display || '').trim().toLowerCase();
             const shouldFillWidth = inlineWidth === '100%'
@@ -232,9 +231,7 @@
                 || selectEl.classList.contains('deliverables-field__control');
 
             shell.style.display = shouldFillWidth ? 'block' : 'inline-block';
-            shell.style.width = rect.width > 0
-                ? `${Math.round(rect.width)}px`
-                : (inlineWidth || (shouldFillWidth ? '100%' : ''));
+            shell.style.width = inlineWidth || (shouldFillWidth ? '100%' : '');
 
             const shadow = computed.boxShadow && computed.boxShadow !== 'none'
                 ? computed.boxShadow

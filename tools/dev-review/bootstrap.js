@@ -10,6 +10,7 @@
     localStorage.setItem('h2s_dashboard_session_token_v1',reviewToken);
     if(walkthrough&&role==='PRO')localStorage.setItem('h2s_portal_token','pro');
     localStorage.setItem('h2s_api_base',location.origin+'/api');
+    localStorage.setItem('h2s_proof_backend_url',location.origin);
     if(walkthrough&&role==='PRO')localStorage.removeItem('h2s_admin_token');
     else localStorage.setItem('h2s_admin_token','local-review-dispatch');
     window.API_URL=location.origin+'/api/v1';
@@ -53,6 +54,8 @@
         return nativeFetch(input,init);
     };
     const banner=()=>{
+        const mediaBackend=document.getElementById('ppBackendUrl');
+        if(mediaBackend)mediaBackend.value=location.origin;
         document.title='[LOCAL SYNTHETIC] '+document.title;
         const note=document.createElement('aside');note.id='local-review-notice';note.setAttribute('role','note');
         note.textContent=walkthrough?'LOCAL SYNTHETIC APPLICATION SESSION — no production connection or real money. ':'LOCAL SYNTHETIC REVIEW ONLY - current saved working-tree UI. No production connection. Stripe, assignments, notifications and legacy writes are blocked. Test prices/data are NOT approved Home2Smart offers. ';

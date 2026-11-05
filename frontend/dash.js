@@ -22583,7 +22583,7 @@ function deliverablesBrowserRender(mode) {
                         <h3 style="font-size: 20px; font-weight: 700; color: var(--cobalt); margin: 0 0 6px 0;">Learning & Knowledge</h3>
                         <div style="font-size:12px; color:#64748b;">Viewing: <span style="font-weight:900; color:#0f172a;">${escapeHtml(profileLabel)}</span>${normalizedSelectedUser === 'ALL' ? ' • aggregated across all submitted learnings' : ' • based on completed learnings and extracted concepts'}</div>
                     </div>
-                    <label style="display:flex; flex-direction:column; gap:6px; min-width:260px;">
+                    <label style="display:flex; flex-direction:column; gap:6px; min-width:min(100%,260px); max-width:100%;">
                         <span style="font-size:11px; font-weight:900; letter-spacing:.08em; text-transform:uppercase; color:#64748b;">Learning profile</span>
                         <select onchange="adminDashboard.setLearningUser(this.value)" style="height:42px; border-radius:10px; border:1px solid #cbd5e1; background:#fff; color:#0f172a; font-weight:700; padding:0 12px;">
                             <option value="ALL" ${normalizedSelectedUser === 'ALL' ? 'selected' : ''}>Team overview</option>
@@ -31390,7 +31390,7 @@ async function loadRecommendationsForFilter() {
                                 return `
                                         <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                                             <div style="font-weight: 700; font-size: 16px; color: var(--cobalt); margin-bottom: 12px;">${va}</div>
-                                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;">
+                                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 12px; margin-bottom: 12px;">
                                             <div>
                                                     <div style="font-size: 24px; font-weight: 900; color: var(--cobalt);">${comps.length}</div>
                                                     <div style="font-size: 11px; color: #6b7280;">Completed</div>
@@ -33196,7 +33196,7 @@ async function loadRecommendationsForFilter() {
                         <div id="forecastParseResult" style="margin-top: 12px; display: none;"></div>
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;" id="forecastMainGrid">
+                    <div style="display: grid; gap: 24px;" id="forecastMainGrid">
                         <!-- LEFT: Inputs -->
                         <div style="display: flex; flex-direction: column; gap: 24px;">
                             ${this.renderInputs()}
@@ -33346,7 +33346,7 @@ async function loadRecommendationsForFilter() {
                             <!-- Revenue Breakdown -->
                             <div>
                                 <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 8px;">Revenue</div>
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px;">
                                     <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb;">
                                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Daily</div>
                                         <div style="font-size: 16px; font-weight: 700; color: var(--cobalt);">$${r.dailyRevenue.toFixed(0)}</div>
@@ -33365,7 +33365,7 @@ async function loadRecommendationsForFilter() {
                             <!-- Profit Breakdown -->
                             <div>
                                 <div style="font-size: 13px; font-weight: 600; color: var(--cobalt); margin-bottom: 8px;">Profit</div>
-                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr)); gap: 8px;">
                                     <div style="background: white; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb;">
                                         <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;">Daily</div>
                                         <div style="font-size: 16px; font-weight: 700; color: ${r.dailyProfit >= 0 ? '#10b981' : '#ef4444'};">$${r.dailyProfit.toFixed(0)}</div>

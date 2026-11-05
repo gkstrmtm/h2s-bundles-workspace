@@ -61,6 +61,24 @@ function fixture(html) {
   return { dom, window, calls, close: () => window.close() };
 }
 
+test('shared select sizing remains fluid rather than snapshotting the initial measured width', () => {
+  const f = fixture('<label><select class="form-select" style="width:100%"><option value="owned">A long customer name</option></select></label>');
+  try {
+    const select = f.window.document.querySelector('select');
+    select.getBoundingClientRect = () => ({ width: 900 });
+    f.window.dashboardSyncCustomSelect(select);
+    const shell = f.window.dashboardGetCustomSelectShell(select);
+    assert.equal(shell.style.width, '100%');
+    select.parentElement.style.width = '200px';
+    select.getBoundingClientRect = () => ({ width: 200 });
+    f.window.dashboardSyncCustomSelect(select);
+    assert.equal(shell.style.width, '100%');
+    assert.equal(select.value, 'owned');
+    const css = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'dash.css'), 'utf8');
+    assert.match(css, /\.dashboard-custom-select-shell\s*\{[^}]*max-width:\s*100%/s);
+  } finally { f.close(); }
+});
+
 test('global initializer covers date, time and local datetime without a form-input class', () => {
   const f = fixture('<input type=date><input type=time><input type=datetime-local><input type=file>');
   try {

@@ -18,7 +18,7 @@ function extract(file, accept) {
   visit(ast);
   return selected.join('\n');
 }
-const selects = extract('dash.js', name => /^__dashboardCustomSelect|^dashboard.*CustomSelect|^ensureDashboardCustomSelectBindings$/.test(name));
+const selects = fs.readFileSync(path.join(root, 'frontend', 'dashboard-controls.js'), 'utf8');
 const media = extract('commercial.js', name => ['bindProofTileState', 'renderProofRail'].includes(name));
 function setup(t, html) {
   const dom = new JSDOM(html, { url: 'http://fixture.invalid/', runScripts: 'outside-only', pretendToBeVisual: true });
@@ -28,6 +28,7 @@ function setup(t, html) {
 function dropdown(t, html = '<form><label id="fieldLabel">Responsible staff<select id="staff" name="staff" required><option value="">Choose staff</option><option value="one">Alex</option><option value="two">Sam</option></select></label></form>') {
   const w = setup(t, html);
   w.eval(selects);
+  Object.assign(w, w.H2SDashboardControls);
   const select = w.document.querySelector('select');
   w.dashboardSyncCustomSelect(select);
   return { w, select, shell: select.nextElementSibling, trigger: select.nextElementSibling.querySelector('button') };
@@ -215,6 +216,7 @@ test('explicit native, multiple, listbox and hidden-model selects remain unenhan
     <select multiple><option>A</option></select><select size="3"><option>A</option></select>
     <select style="display:none"><option>A</option></select><input type="date"><input type="file">`);
   w.eval(selects);
+  Object.assign(w, w.H2SDashboardControls);
   w.dashboardSyncAllCustomSelects();
   assert.equal(w.document.querySelectorAll('.dashboard-custom-select-shell').length, 0);
   assert.equal(w.document.querySelector('input[type=date]').type, 'date');

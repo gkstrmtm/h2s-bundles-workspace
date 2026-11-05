@@ -7003,6 +7003,7 @@
         .dashboard-custom-select-shell {
             position: relative;
             width: 100%;
+            max-width: 100%;
             min-width: 0;
             display: block;
             vertical-align: top;
@@ -9743,7 +9744,7 @@
             max-width: none !important;
             box-sizing: border-box !important;
             position: relative !important; /* Critical for absolute pane positioning */
-            overflow-x: hidden;
+            overflow-x: visible;
         }
 
         #h2s-app .app-main > .pane {
@@ -11633,7 +11634,7 @@
             min-height: calc(100vh - 52px);
             box-sizing: border-box;
             /* Container for all panes - ensures same viewport */
-            overflow-x: hidden;
+            overflow-x: visible;
             overflow-y: visible;
             /* Ensure content starts at top */
             padding-top: 0;
@@ -11675,7 +11676,7 @@
             left: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
-            overflow-x: hidden !important;
+            overflow-x: visible !important;
             overflow-y: visible !important;
         }
 
@@ -18027,10 +18028,11 @@ details[open] .ob-chevron {
 
 /* ---- inline style block 3 ---- */
 
-                        @media (max-width: 768px) {
-                            #forecastMainGrid {
-                                grid-template-columns: 1fr !important;
-                            }
+                        #adminDashboardContent { container-type: inline-size; }
+                        #forecastMainGrid { grid-template-columns: minmax(0, 1fr); }
+                        #forecastMainGrid > * { min-width: 0; }
+                        @container (min-width: 768px) {
+                            #forecastMainGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
                         }
 
 

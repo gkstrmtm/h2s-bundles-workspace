@@ -120,8 +120,8 @@ function mount(t, { flicker = true } = {}) {
   } };
 }
 
-const requiredScriptNames = ['management-operations.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
-  html.match(/for \(const filename of \[([^\]]+)\]/)[1].matchAll(/'([^']+)'/g), match => match[1])];
+const requiredScriptNames = ['dashboard-controls.js', 'management-operations.js', 'field-workflow.js', 'field-earnings.js', 'field-sales.js', 'field-commerce.js', ...Array.from(
+  Array.from(html.matchAll(/for \(const filename of \[([^\]]+)\]/g)).at(-1)[1].matchAll(/'([^']+)'/g), match => match[1])];
 
 test('required scripts load serially and login stays disabled until all dependencies are ready', async t => {
   const dom = new JSDOM(html, { url: 'https://fixture.invalid/dash.html', runScripts: 'outside-only' });

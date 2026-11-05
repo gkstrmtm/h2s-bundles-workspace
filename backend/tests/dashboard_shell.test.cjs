@@ -124,13 +124,25 @@ test('mobile Log Hours keeps its icon treatment and label without the shared log
   const css = fs.readFileSync(path.join(root, 'frontend', 'dash.css'), 'utf8');
   assert.match(css, /\.logout-btn:not\(#logHoursQuickBtn\)\s*\{[^}]*font-size:\s*12px !important/s);
   const localStyles = Array.from(document.querySelectorAll('style'), element => element.textContent).join('\n');
-  assert.match(localStyles, /#logHoursQuickBtn\s*\{[^}]*font-size:\s*0\s*;/s);
-  assert.match(localStyles, /#logHoursQuickBtn::before\s*\{[^}]*background-image:/s);
+  assert.match(localStyles, /#logHoursQuickBtn\s*\{[^}]*position:\s*static\s*;/s);
+  assert.match(localStyles, /#logHoursQuickBtn::before\s*\{[^}]*mask:/s);
   const back = document.querySelector('.commercial-queue-back');
   assert.equal(back.className, 'commercial-queue-back');
   assert.equal(back.type, 'button');
   assert.equal(back.getAttribute('onclick'), 'window.commercialQueueUI.backToQueue()');
   assert.match(css, /\.commercial-queue-back\s*\{[^}]*background:\s*transparent/s);
+});
+
+test('shared content does not mask layout overflow and Admin grids size to their container', () => {
+  const css = fs.readFileSync(path.join(root, 'frontend', 'dash.css'), 'utf8');
+  for (const selector of ['.app-main', '.app-content', '.pane.active']) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(css, new RegExp('#h2s-app ' + escaped + '\\s*\\{[^}]*overflow-x:\\s*visible', 's'));
+  }
+  assert.match(css, /#adminDashboardContent\s*\{\s*container-type:\s*inline-size/);
+  assert.match(css, /#forecastMainGrid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(css, /@container\s*\(min-width:\s*768px\)/);
+  assert.match(source, /min-width:min\(100%,260px\); max-width:100%/);
 });
 
 test('mobile drawer opens, isolates the background, closes with Escape and restores focus and scroll state', t => {

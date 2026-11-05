@@ -198,7 +198,7 @@ function createFixture(environment = {}, integration = {}) {
     },
     from(table) {
       assert.ok(Object.hasOwn(tables, table), `Unexpected database table: ${table}`);
-      const operation = { table, mode: 'select', filters: [], orders: [], embeddedOrders: [], limit: Infinity, embeddedLimit: Infinity, single: false };
+      const operation = { table, mode: 'select', filters: [], orders: [], embeddedOrders: [], offset: 0, limit: Infinity, embeddedLimit: Infinity, single: false };
       const query = new Proxy({}, {
         get(_, method) {
           if (method === 'then') return (resolve, reject) => Promise.resolve().then(() => {
@@ -225,7 +225,7 @@ function createFixture(environment = {}, integration = {}) {
               });
             if (operation.orders.length) rows = sort(rows, operation.orders);
             const count = rows.length;
-            rows = rows.slice(0, operation.limit);
+            rows = rows.slice(operation.offset, operation.offset + operation.limit);
             if (operation.select?.includes('commercial_consultation_requests(')) rows = rows.map(row => ({
               ...row, commercial_lead_operations: tables.commercial_lead_operations.find(item => item.lead_id === row.lead_id) || null,
               commercial_consultation_requests: sort(tables.commercial_consultation_requests.filter(request => request.lead_id === row.lead_id), operation.embeddedOrders).slice(0, operation.embeddedLimit),
@@ -239,6 +239,11 @@ function createFixture(environment = {}, integration = {}) {
             else if (method === 'lte') operation.filters.push(row => row[args[0]] != null && row[args[0]] <= args[1]);
             else if (method === 'or') { operation.logic = args[0]; operation.filters.push(row => matchesPostgrestFilter(row, `or(${args[0]})`)); }
             else if (method === 'limit') operation[args[1]?.referencedTable ? 'embeddedLimit' : 'limit'] = args[0];
+            else if (method === 'range') {
+              assert.ok(Number.isInteger(args[0]) && Number.isInteger(args[1]) && args[0] >= 0 && args[1] >= args[0]);
+              operation.offset = args[0]; operation.limit = args[1] - args[0] + 1;
+            }
+            else if (method === 'returns') { /* Supabase type-only query annotation. */ }
             else if (method === 'order') operation[args[1]?.referencedTable ? 'embeddedOrders' : 'orders'].push([args[0], args[1]?.ascending !== false]);
             else if (method === 'single' || method === 'maybeSingle') operation.single = true;
             else if (method === 'select') { operation.select = args[0]; operation.head = args[1]?.head; operation.count = args[1]?.count; }

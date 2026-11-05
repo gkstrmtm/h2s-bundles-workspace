@@ -63,6 +63,7 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
     const engine = await createWalkthrough({ origin });
     const gallery=process.env.H2S_REVIEW_SALES_GALLERY==='true'
         ?await require('./sales-preview-seed.cjs').seedSalesPreview(engine,samplePhoto()):null;
+    const dashboard = require('./dashboard-preview-fixture.cjs').createDashboardPreview();
     const handler = async (req, res) => {
         try {
             const requestPort = req.socket.encrypted ? port : httpPort;
@@ -89,6 +90,11 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
             if (url.pathname === '/walkthrough/sample-photo.png') {
                 res.setHeader('Content-Type', 'image/png'); return res.end(samplePhoto());
             }
+            if (url.pathname === '/api/proof-asset-media' && req.method === 'GET') {
+                if (!dashboard.hasMedia(url.searchParams.get('bucket'), url.searchParams.get('path')))
+                    return json(res, 404, { ok: false, error: 'Synthetic media object not found.' });
+                res.setHeader('Content-Type', 'image/png'); return res.end(samplePhoto());
+            }
             if (url.pathname === '/walkthrough/artifact') {
                 const response = await engine.request('walkthrough-artifact', 'GET', null, 'pro', url.search);
                 res.writeHead(response.status, Object.fromEntries(response.headers));
@@ -97,7 +103,9 @@ const mime = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
             if (url.pathname.startsWith('/api/')) {
                 const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
                 const actor = token === 'local-review-admin' ? 'admin' : token === 'h2s-sales:local-review' ? 'sales' : token === 'local-review-pro' ? 'pro' : token;
-                const response = await engine.request(url.pathname.slice(5), req.method, body, actor, url.search);
+                const name = url.pathname.slice(5);
+                const response = await dashboard.request(name, req.method, actor, url.search, requestOrigin)
+                    || await engine.request(name, req.method, body, actor, url.search);
                 res.writeHead(response.status, Object.fromEntries(response.headers));
                 return res.end(Buffer.from(await response.arrayBuffer()));
             }
