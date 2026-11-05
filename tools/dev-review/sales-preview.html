@@ -15,8 +15,9 @@ label{margin-left:auto}select{font:inherit;padding:4px}iframe{display:block;flex
     const screen=new URLSearchParams(location.search).get('screen')||'home';
     const screens={home:['Salesperson Home','home'],leads:['Leads & New Prospect','new'],assessment:['Service Selection & Assessment','assessment'],
         quotes:['Quote Builder','quotes'],orders:['Orders & Customer Status','orders'],earnings:['Personal Earnings','earnings'],
-        management:['Management Sales Overview','performance'],managementOrders:['Management Orders & Detail Review','orders'],commissions:['Management Commissions & Friday Review','commissions']};
-    const [label,view]=screens[screen]||screens.home,admin=['management','managementOrders','commissions'].includes(screen),frame=document.getElementById('application');
+        management:['Management Sales Overview','performance'],managementOrders:['Management Orders & Customer Details','orders'],
+        managementQuotes:['Management Quotes & Payments','transactions'],commissions:['Management Commissions & Friday Review','commissions']};
+    const [label,view]=screens[screen]||screens.home,admin=['management','managementOrders','managementQuotes','commissions'].includes(screen),frame=document.getElementById('application');
     document.title=label+' · Home2Smart Local';document.getElementById('title').textContent=label;
     const width=document.getElementById('width');width.value=admin?'1280':'390';
     const resize=()=>document.documentElement.style.setProperty('--review-width',width.value+'px');width.onchange=resize;resize();

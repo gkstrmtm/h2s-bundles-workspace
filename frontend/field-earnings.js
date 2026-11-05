@@ -8,6 +8,12 @@
     const labels = {pending:'Awaiting qualification',pending_qualification:'Awaiting qualification',calculation_review:'Amount under review',earned:'Commission earned',held:'On hold',draft:'Draft review',approved:'Approved for export — not paid',exported:'Review exported — not paid',reconciled_paid:'Paid — independently reconciled',abandoned:'Review abandoned',recovery_review_required:'Recovery review required'};
     const human = value => labels[value] || 'Review required';
     const metric = (label,value) => `<div class="field-sales__metric"><span>${label}</span><strong>${value}</strong></div>`;
+    const staffName = (value,identity) => {
+        const name = typeof value==='string' ? value.trim() : '';
+        return name && name.toLowerCase()!==String(identity || '').toLowerCase()
+            && !/^[A-Z0-9_-]{3,}$/.test(name) && !/^[a-f0-9-]{16,}$/i.test(name)
+            && !/^[^\s@]+@[^\s@]+$/.test(name) ? name : '';
+    };
     function reset() { generation++; current?.controller.abort(); if (current) for (const url of current.downloads) global.URL.revokeObjectURL(url); current?.root.replaceChildren(); current = null; }
     function mount(root, options) {
         reset();
@@ -37,7 +43,24 @@
                 panel.append(heading,...disclosure.childNodes);
                 disclosure.replaceWith(panel);
             });
-            const group = root.querySelector('[data-earnings-records]'), panels = [...group.children];
+            const group = root.querySelector('[data-earnings-records]');
+            if (admin()) {
+                const evidence = document.createElement('section');
+                evidence.className = 'field-sales__section field-workflow__technical';
+                evidence.innerHTML = '<h4>Technical evidence & audit</h4><p class="field-workflow__note">Original qualification, rate, cost, adjustment and settlement snapshots. These records support review; they do not authorize a transfer or recovery.</p>';
+                group.querySelectorAll('.field-workflow__audit').forEach(audit => {
+                    // Required technical inputs stay associated with their original form.
+                    // Only read-only source snapshots leave the routine review panels.
+                    if (audit.querySelector('input,select,textarea,form,button')) return;
+                    const record = audit.closest('article'), context = document.createElement('p');
+                    context.className = 'field-workflow__evidence-context';
+                    context.textContent = record?.querySelector('h4')?.textContent || 'Accounting adjustment';
+                    audit.querySelector('summary').after(context);
+                    evidence.append(audit);
+                });
+                group.append(evidence);
+            }
+            const panels = [...group.children];
             const tabs = document.createElement('div');
             tabs.className = 'field-workflow__tabs'; tabs.setAttribute('role','tablist');
             tabs.setAttribute('aria-label','Earnings review views');
@@ -45,7 +68,7 @@
                 const key = `field-earnings-${id}-${index}`, tab = document.createElement('button');
                 tab.type = 'button'; tab.className = 'field-workflow__tab'; tab.id = key+'-tab';
                 const heading = panel.querySelector('h4').textContent;
-                tab.textContent = tabLabels[heading] || heading;
+                tab.textContent = heading==='Technical evidence & audit' ? 'Audit' : tabLabels[heading] || heading;
                 tab.setAttribute('role','tab'); tab.setAttribute('aria-controls',key+'-panel');
                 tab.setAttribute('aria-selected',String(index===0)); tab.tabIndex = index===0 ? 0 : -1;
                 panel.id = key+'-panel'; panel.classList.add('field-workflow__panel');
@@ -103,7 +126,7 @@
         function render() {
             const d = state.data;
             for (const url of state.downloads) global.URL.revokeObjectURL(url); state.downloads.clear();
-            root.innerHTML = `<div class="field-sales__toolbar"><h3>${options.view === 'performance' ? 'Sales performance' : admin() ? 'Commissions & Friday review' : 'Your earnings'}</h3><button type="button" data-earnings-refresh>Refresh earnings</button></div>
+            root.innerHTML = `<div class="field-sales__toolbar field-workflow__earnings-header"><div><p class="field-workflow__eyebrow">${admin()?'Management · financial review':'Field sales · earnings'}</p><h3>${options.view === 'performance' ? 'Sales performance' : admin() ? 'Commissions & Friday review' : 'Your earnings'}</h3></div><button type="button" data-earnings-refresh>Refresh earnings</button></div>
                 <p data-earnings-status role="status" aria-live="polite"></p>`;
             if (!d.enabled) { status('Earnings are disabled. No earnings review or settlement can be recorded.'); return; }
             const s = d.summary;
@@ -127,8 +150,9 @@
                 const ids=[...new Set([...d.orders,...d.entries].map(row=>row.representativeId).filter(Boolean))];
                 if(state.representativeId&&!ids.includes(state.representativeId))ids.push(state.representativeId);
                 for(const rep of ids){
-                    const name=options.representativeNames?.[rep] || [...d.orders,...d.entries].find(row=>row.representativeId===rep&&row.representativeName)?.representativeName;
-                    if(name||!state.representativeLabels.has(rep))state.representativeLabels.set(rep,name||'Representative '+(state.representativeLabels.size+1));
+                    const name=staffName(options.representativeNames?.[rep],rep) || [...d.orders,...d.entries]
+                        .filter(row=>row.representativeId===rep).map(row=>staffName(row.representativeName,rep)).find(Boolean);
+                    if(name||!state.representativeLabels.has(rep))state.representativeLabels.set(rep,name||'Representative '+(state.representativeLabels.size+1)+' — profile name unavailable');
                 }
                 root.querySelector('[data-earnings-records]').insertAdjacentHTML('beforebegin',`<label>Representative earnings scope<select data-earnings-representative><option value="">All authorized representatives</option>
                     ${ids.map(rep=>`<option value="${esc(rep)}"${rep===state.representativeId?' selected':''}>${esc(state.representativeLabels.get(rep))}</option>`).join('')}</select></label>`);
@@ -151,7 +175,7 @@
                 ${admin()?`<details class="field-workflow__audit"><summary>Admin audit details — immutable rate, cost & qualification evidence</summary><pre>${esc(JSON.stringify(row,null,2))}</pre></details>`:''}
                 ${admin() ? `<details><summary>Append reviewed adjustment</summary><form data-earnings-form="review_adjustment" class="field-sales__form">
                     <input type="hidden" name="entryId" value="${esc(row.entryId)}">
-                    <label>Adjustment (signed integer cents)<input name="amountCents" type="number" step="1" required></label>
+                    <details class="field-sales__wide field-workflow__audit"><summary>Technical adjustment amount</summary><label>Adjustment (signed integer cents)<input name="amountCents" type="number" step="1" required></label></details>
                     <label>Reason<textarea name="reason" required maxlength="2000"></textarea></label>
                     <label class="field-sales__wide">Source evidence<textarea name="evidence" required maxlength="4000"></textarea></label>
                     <button type="submit">Append reviewed adjustment</button></form></details>` : ''}</article>`).join('') || '<div class="field-sales__empty"><p>No earned commission yet. Qualification and amount reviews must finish first.</p></div>'}</section>
@@ -166,8 +190,9 @@
                     <button type="submit">Create review run — not a transfer</button></form></details>` : ''}</section>`;
         }
         function run(row) {
-            return `<article class="field-workflow__record"><header class="field-workflow__header"><h4>Friday review · ${esc(row.runDate)}</h4><span class="field-sales__badge">${esc(human(row.state))}</span></header><p><strong>${money(row.amountCents)}</strong> ${row.state==='reconciled_paid'?'independently reconciled':row.state==='abandoned'?'released allocation — not paid':'reviewed allocation — not confirmed paid'}</p>
-                <p>${row.beneficiaries.map((b,index)=>`${esc(admin() ? b.representativeName || options.representativeNames?.[b.representativeId] || state.representativeLabels.get(b.representativeId) || 'Beneficiary '+(index+1) : 'Commission allocation')}: ${money(b.amountCents)}`).join('; ')}</p>
+            return `<article class="field-workflow__record field-workflow__friday-run"><header class="field-workflow__header"><div><p class="field-workflow__eyebrow">Friday settlement review</p><h4>Friday review · ${esc(row.runDate)}</h4></div><span class="field-sales__badge" data-tone="${row.state==='reconciled_paid'?'success':'info'}">${esc(human(row.state))}</span></header><div class="field-workflow__run-summary"><p><strong class="field-workflow__run-amount">${money(row.amountCents)}</strong><span>${row.state==='reconciled_paid'?'independently reconciled':row.state==='abandoned'?'released allocation — not paid':'reviewed allocation — not confirmed paid'}</span></p>
+                <dl class="field-workflow__facts">${row.beneficiaries.map((b,index)=>`<dt>${esc(admin() ? staffName(b.representativeName,b.representativeId) || staffName(options.representativeNames?.[b.representativeId],b.representativeId) || state.representativeLabels.get(b.representativeId) || 'Beneficiary '+(index+1)+' — profile name unavailable' : 'Commission allocation')}</dt><dd>${money(b.amountCents)}</dd>`).join('')}</dl></div>
+                <p class="field-workflow__next"><strong>Next step</strong> ${row.state==='exported'?'Independently reconcile the external settlement before recording paid status.':row.state==='approved'?'Export the approved review. Export is not a payment.':row.state==='reconciled_paid'?'Independent settlement evidence is recorded. Retain the reviewed source records.':row.state==='abandoned'?'This review is closed. Released allocations are not a payment or debt.':'Review the allocation and approved policy before export. No transfer is initiated here.'}</p>
                 ${admin()?`<details class="field-workflow__audit"><summary>Admin audit details — run, beneficiaries & settlement evidence</summary><pre>${esc(JSON.stringify(row,null,2))}</pre></details>`:''}
                 ${row.state==='abandoned'?`<p>Abandoned unexported run. Effective allocations released; immutable review history remains. This is neither payment nor representative debt.</p>
                     `:''}
@@ -185,8 +210,7 @@
                     ${row.state === 'exported' ? `<form data-earnings-form="record_settlement" class="field-sales__form"><input type="hidden" name="runId" value="${esc(row.runId)}">
                     <label>Existing payment method<input name="method" required maxlength="120"></label><label>External settlement reference<input name="reference" required maxlength="500"></label>
                     <label>Settled at (device timezone)<input name="settledAt" type="datetime-local" required></label>
-                    <label>Settled amount (integer cents)<input name="amountCents" type="number" step="1" min="0" required></label>
-                    <details class="field-sales__wide field-workflow__audit"><summary>Admin evidence details — beneficiaries reconciliation (required)</summary><label>Verified beneficiaries & integer amounts (JSON)<textarea name="beneficiaries" required>${esc(JSON.stringify(row.beneficiaries,null,2))}</textarea></label></details>
+                    <details class="field-sales__wide field-workflow__audit"><summary>Admin evidence details — beneficiaries reconciliation (required)</summary><label>Settled amount (integer cents)<input name="amountCents" type="number" step="1" min="0" required></label><label>Verified beneficiaries & integer amounts (JSON)<textarea name="beneficiaries" required>${esc(JSON.stringify(row.beneficiaries,null,2))}</textarea></label></details>
                     <label class="field-sales__wide">Independent reconciliation evidence<textarea name="evidence" required maxlength="4000"></textarea></label>
                     <label class="field-sales__wide field-sales__check"><input name="independentReconciliation" type="checkbox" required>I independently reconciled the amount, beneficiaries and external reference.</label>
                     <button type="submit">Record settlement evidence</button></form>` : '<p>Settlement recording remains blocked until an approved run is exported and independently reconciled.</p>'}</details>` : ''}</article>`;

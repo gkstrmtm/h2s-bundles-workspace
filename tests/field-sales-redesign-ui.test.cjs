@@ -186,6 +186,53 @@ test('ADMIN keeps identity and raw audit evidence inside disclosure and represen
     assert.equal(attach.closest('details'),null);
     assert.ok(attach.closest('[aria-label="Link existing inquiry"]'));
 });
+test('management has one compact navigation with one current destination and no repeated global brand',async t=>{
+    const f=fixture(t,{role:'ADMIN'});await f.navigate('home');
+    const expected=['dashboard','opportunities','transactions','orders','commissions','performance','representatives'];
+    const assertNavigation=current=>{
+        assert.equal(f.root().querySelectorAll('nav').length,1);
+        assert.equal(f.root().querySelector('.field-sales__nav'),null,'representative footer is not a management navigation row');
+        const nav=f.root().querySelector('.field-sales__management-nav');
+        assert.deepEqual([...nav.querySelectorAll('button')].map(button=>button.dataset.salesMode),expected);
+        assert.equal(nav.querySelectorAll('[aria-current="page"]').length,1);
+        assert.equal(nav.querySelectorAll('[aria-pressed="true"]').length,1);
+        assert.equal(nav.querySelector('[aria-current="page"]').dataset.salesMode,current);
+        assert.equal(f.root().querySelector('.field-sales__header .field-sales__eyebrow'),null);
+        assert.equal(f.root().querySelector('.field-sales__header h2').textContent,'Field Sales');
+    };
+    assertNavigation('dashboard');
+    for(const mode of expected.slice(1)) {
+        f.root().querySelector(`.field-sales__management-nav [data-sales-mode="${mode}"]`).click();await settle();
+        assertNavigation(mode);
+        if(mode==='commissions'||mode==='performance')assert.equal(f.mounts.at(-1).options.view,mode,'performance remains distinct from commissions');
+    }
+    await f.navigate('new');assertNavigation('opportunities');
+    await f.navigate('assessment',leadId);assertNavigation('opportunities');
+    await f.navigate('quotes',leadId);assertNavigation('transactions');
+    assert.ok(f.root().querySelector('[data-sales-quote-lead]'),'customer quote builder remains an existing destination');
+    f.root().querySelector('[data-sales-content] [data-sales-mode="transactions"]').click();await settle();
+    assertNavigation('transactions');assert.equal(f.mounts.at(-1).options.leadId,null,'portfolio quote/payment review remains reachable');
+    f.root().querySelector('[data-sales-content] [data-sales-mode="quotes"]').click();await settle();
+    assertNavigation('transactions');assert.ok(f.root().querySelector('[data-sales-quote-lead]'));
+    assert.equal(f.calls.some(call=>call.body),false,'navigation never writes business state');
+});
+test('management navigation stays a compact single scrolling row without changing representative footer rules',()=>{
+    const dom=new JSDOM(`<style>${source('field-sales.css')}</style>`);
+    try {
+        const rules=[...dom.window.document.styleSheets[0].cssRules];
+        const nav=rules.find(rule=>rule.selectorText==='#h2s-app .field-sales nav.field-sales__management-nav');
+        assert.equal(nav.style.getPropertyValue('flex-wrap'),'nowrap');
+        assert.equal(nav.style.getPropertyValue('overflow-x'),'auto');
+        assert.equal(nav.style.getPropertyValue('position'),'');
+        assert.equal(nav.style.getPropertyValue('margin'),'0 0 12px');
+        const heading=rules.find(rule=>rule.selectorText==='#h2s-app .field-sales__header--management .field-sales__identity h2');
+        assert.equal(heading.style.getPropertyValue('margin'),'0');
+        const mobile=[...rules.find(rule=>rule.conditionText==='(max-width:767px)').cssRules];
+        const footer=mobile.find(rule=>rule.selectorText==='body[data-sales-app="true"] #h2s-app .field-sales nav.field-sales__nav');
+        assert.equal(footer.style.getPropertyValue('position'),'fixed');
+        assert.equal(footer.style.getPropertyValue('grid-template-columns'),'repeat(5,minmax(0,1fr))');
+    } finally {dom.window.close();}
+});
 test('compact navigation pairs decorative 16px line SVGs with visible labels and current-page state',async t=>{
     const f=fixture(t);await f.navigate('home');
     const buttons=[...f.root().querySelectorAll('.field-sales__nav button')];
@@ -509,4 +556,82 @@ test('320/390 management navigation stays in flow while only the independent sal
             }
         }
     } finally {sheet.window.close();}
+});
+test('real lead cards separate customer, service, status and labeled next actions without inventing order facts',async t=>{
+    const f=fixture(t);await f.navigate('leads');
+    const cards=[...f.root().querySelectorAll('[data-sales-list] .field-sales__lead-card')];
+    assert.equal(cards.length,3);
+    const first=cards[0];
+    assert.equal(first.querySelector('.field-sales__customer-link').textContent,f.data.opportunities[0].full_name);
+    assert.equal(first.querySelector('.field-sales__service-label').textContent,'TV Mounting');
+    assert.equal(first.querySelector('.field-sales__badge').textContent,'Awaiting review');
+    assert.equal(first.querySelector('.field-sales__badge').dataset.tone,'info');
+    assert.deepEqual([...first.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Next contact','Next step']);
+    assert.equal(first.querySelector('.field-sales__next-step dd').textContent,'Await management review');
+    assert.match(cards[2].querySelector('.field-sales__next-step').textContent,/Review saved assessment/);
+    assert.doesNotMatch(first.textContent,/private-owner|00000000|deposit|scheduled|verified payment/i);
+    first.querySelector('.field-sales__card-actions button').click();await settle();
+    assert.ok(f.root().querySelector('[data-sales-form="save"]'),'context action opens the existing assessment');
+    assert.ok(f.root().querySelector('.field-sales__customer-summary dl'),'assessment retains labeled customer context');
+});
+test('four compact activity metrics remain a single mobile row and customer cards grow naturally for long labels',async t=>{
+    const f=fixture(t);await f.navigate('home');
+    assert.equal(f.root().querySelectorAll('.field-sales__metric').length,4);
+    assert.deepEqual([...f.root().querySelectorAll('.field-sales__metric span')].map(el=>el.textContent),
+        ['Active leads','Follow-ups due','Follow-ups today','Awaiting review']);
+    const dom=new JSDOM(`<style>${source('field-sales.css')}</style>`);
+    try {
+        const rules=[...dom.window.document.styleSheets[0].cssRules];
+        const summary=rules.find(rule=>rule.selectorText==='#h2s-app .field-sales__summary');
+        assert.equal(summary.style.getPropertyValue('grid-template-columns'),'repeat(4,minmax(0,1fr))');
+        const mobile=[...rules.find(rule=>rule.conditionText==='(max-width:767px)').cssRules];
+        assert.ok(!mobile.some(rule=>rule.selectorText?.includes('field-sales__summary')&&rule.style.getPropertyValue('grid-template-columns')));
+        for(const rule of [...rules,...mobile].filter(rule=>/field-sales__(lead-card|metric|quote-review|quote-card)/.test(rule.selectorText||''))) {
+            assert.equal(rule.style.getPropertyValue('height'),'');
+            assert.equal(rule.style.getPropertyValue('min-height'),'');
+        }
+        assert.doesNotMatch(source('field-sales.css'),/radial-gradient|linear-gradient/);
+    } finally {dom.window.close();}
+});
+test('customer quote placeholder follows the actual existing selector without competing controls',async t=>{
+    const f=fixture(t);await f.navigate('quotes');
+    const empty=f.root().querySelector('[data-sales-quote-empty]'),select=f.root().querySelector('[data-sales-quote-lead]');
+    assert.equal(empty.hidden,false);
+    assert.equal(f.root().querySelectorAll('[data-sales-quote-lead]').length,1);
+    f.change(select,leadId);
+    assert.equal(empty.hidden,true);assert.equal(f.mounts.at(-1).options.leadId,leadId);
+    f.change(select,'');
+    assert.equal(empty.hidden,false);assert.equal(f.root().querySelector('[data-sales-quote-builder]').textContent,'');
+    assert.equal(f.calls.some(call=>call.body),false);
+});
+test('saved quote review uses structured customer, scoped line and payment facts; sparse customer fields never show undefined',async t=>{
+    const f=fixture(t,{commerce:true}),transactions=quoteData();
+    transactions.quotes=[{quote_id:'private-quote-reference',lead_id:leadId,revision:1,state:'draft',quote_hash:'private-hash',
+        snapshot:{customer:{name:'Customer <not markup>',market:'residential'},catalogVersion:'Approved version',approvalReasons:[],totalCents:10000,
+            lines:[{service:'TV Mounting',description:'Customer-owned TV with a long installation description',quantity:1,baseCents:10000,totalCents:10000,
+                equipment:[],scope:['Wall mounting'],answers:{internal_question_id:'Brick'},answerLabels:{internal_question_id:'Wall construction'},addOns:[],exclusions:[]}]}}];
+    f.respond(async(url)=>Response.json(url.includes('field-sales-transactions')?transactions:f.data));
+    await f.navigate('quotes',leadId);
+    const review=f.root().querySelector('.field-sales__quote-review');
+    assert.equal(review.querySelector('.field-sales__quote-customer strong').textContent,'Customer <not markup>');
+    assert.equal(review.querySelector('.field-sales__quote-customer not'),null);
+    assert.match(review.querySelector('.field-sales__quote-scope').textContent,/TV Mounting.*Customer-owned TV/s);
+    assert.ok([...review.querySelectorAll('dt')].some(el=>el.textContent==='Wall construction'));
+    assert.ok([...review.querySelectorAll('dt')].some(el=>el.textContent==='Net verified collected'));
+    assert.equal(review.querySelector('.field-sales__quote-total strong').textContent,'$100.00');
+    assert.equal(f.root().querySelector('[data-commerce-quote]').getAttribute('aria-pressed'),'true');
+    assert.doesNotMatch(review.textContent,/undefined|private-quote-reference|private-hash|internal_question_id/);
+    assert.equal(f.calls.some(call=>call.body),false,'presentation must never initiate a transaction');
+});
+test('pending sales and quote reads use concise live loading states without decorative skeletons',async t=>{
+    const f=fixture(t);let finish;
+    f.respond(()=>new Promise(resolve=>{finish=resolve;}));
+    const pending=f.w.H2SFieldSales.navigate('leads');await settle();
+    const status=f.root().querySelector('[data-sales-status]');
+    assert.equal(status.getAttribute('role'),'status');assert.equal(status.getAttribute('aria-live'),'polite');
+    assert.equal(status.classList.contains('field-sales__loading'),true);
+    assert.match(status.textContent,/Loading assigned/);
+    finish(Response.json(f.data));await pending;await settle();
+    assert.equal(f.root().querySelector('[data-sales-status]').textContent,'');
+    assert.ok(f.root().querySelector('[data-sales-list]'));
 });

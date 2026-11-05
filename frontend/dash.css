@@ -7101,10 +7101,12 @@
         }
 
         .dashboard-custom-select-menu {
-            position: absolute;
-            top: calc(100% + 4px);
-            left: 0;
-            right: 0;
+            position: fixed;
+            inset: auto;
+            margin: 0;
+            box-sizing: border-box;
+            height: auto;
+            min-height: 0;
             z-index: 2600;
             max-height: 240px;
             overflow-y: auto;
@@ -7115,7 +7117,12 @@
             box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12), 0 2px 8px rgba(15, 23, 42, 0.08);
         }
 
-        .dashboard-custom-select-option {
+        .dashboard-custom-select-menu[hidden] { display: none !important; }
+        .dashboard-custom-select-empty { padding: 10px; color: var(--muted); font: 400 13px/1.5 Inter, sans-serif; }
+        .dashboard-custom-select-option { overflow-wrap: anywhere; }
+
+        .dashboard-custom-select-option,
+        #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option {
             display: flex;
             align-items: center;
             width: 100%;
@@ -7132,26 +7139,34 @@
             transition: background-color 0.15s ease, box-shadow 0.15s ease;
         }
 
-        .dashboard-custom-select-option:hover {
+        .dashboard-custom-select-option:hover,
+        #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option:hover {
             background: color-mix(in srgb, var(--cobalt) 8%, white);
         }
 
-        .dashboard-custom-select-option.is-selected {
+        .dashboard-custom-select-option.is-selected,
+        #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option.is-selected {
             background: color-mix(in srgb, var(--primary) 12%, white);
             box-shadow: inset 2px 0 0 var(--primary);
             font-weight: 600;
         }
 
-        .dashboard-custom-select-option:focus-visible {
+        .dashboard-custom-select-option:focus-visible,
+        #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option:focus-visible {
             outline: none;
             background: color-mix(in srgb, var(--primary) 10%, white);
             box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
         }
 
-        .dashboard-custom-select-option[disabled] {
+        .dashboard-custom-select-option[disabled],
+        #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option[disabled] {
             color: var(--muted);
             cursor: not-allowed;
             opacity: 0.72;
+        }
+
+        @media (max-width: 767px) {
+            #h2s-app .dashboard-custom-select-menu .dashboard-custom-select-option { min-height: 44px; }
         }
 
         #addTaskModal .task-creator-flow {
@@ -9410,17 +9425,18 @@
         }
 
         #h2s-app .app-topbar-title {
-            font-weight: 900;
+            font-family: 'Space Grotesk', Inter, sans-serif;
+            font-weight: 700;
             font-size: 18px;
             color: var(--gray-900);
-            text-transform: lowercase;
+            text-transform: none;
         }
 
         #h2s-app .app-topbar-area {
-            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
-            font-weight: 700;
-            font-size: 18px;
-            letter-spacing: -0.02em;
+            font-family: Inter, sans-serif;
+            font-weight: 600;
+            font-size: 14px;
+            letter-spacing: 0;
             color: var(--gray-900);
             padding-left: 16px;
             border-left: 2px solid var(--border);
@@ -9478,7 +9494,7 @@
         }
 
         #h2s-app .app-sidebar-nav {
-            padding: 16px 0;
+            padding: 12px 0;
         }
 
         #h2s-app .app-sidebar-nav-divider {
@@ -9499,20 +9515,24 @@
         }
 
         #h2s-app .app-sidebar-nav-item {
-            display: block;
-            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: calc(100% - 16px);
+            margin: 2px 8px;
+            min-height: 36px;
             border: 0;
             background: transparent;
             text-align: left;
             font-family: inherit;
-            padding: 10px 18px 10px 20px;
-            color: var(--gray-900);
-            font-weight: 700;
+            padding: 8px 12px;
+            color: var(--cobalt);
+            font-weight: 500;
             font-size: 13px;
-            letter-spacing: 0.01em;
+            letter-spacing: 0;
             text-decoration: none;
             transition: all 0.2s var(--ease);
-            border-left: 2px solid transparent;
+            border-radius: 6px;
             cursor: pointer;
         }
 
@@ -9545,21 +9565,20 @@
         }
 
         #h2s-app .app-sidebar-nav-item:hover {
-            background: var(--gray-50);
-            border-left-color: var(--primary);
-            color: var(--gray-900);
+            background: var(--surface-2);
+            color: var(--cobalt);
         }
 
         #h2s-app .app-sidebar-nav-item.active {
-            background: var(--gray-50);
-            border-left-color: var(--primary);
-            color: var(--gray-900);
-            font-weight: 800;
+            background: color-mix(in srgb, var(--azure) 10%, white);
+            color: var(--azure);
+            font-weight: 600;
+            box-shadow: inset 2px 0 var(--azure);
         }
 
         /* Sidebar grouped nav (collapsible) */
         #h2s-app .app-sidebar-group {
-            margin: 0 0 10px 0;
+            margin: 0 0 8px 0;
         }
 
         #h2s-app .app-sidebar-group-header {
@@ -9568,14 +9587,15 @@
             align-items: center;
             justify-content: space-between;
             gap: 10px;
-            padding: 10px 16px 8px;
+            min-height: 40px;
+            padding: 8px 16px;
             margin: 0;
             border: 0;
             background: transparent;
-            color: #0f172a;
-            font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
-            font-size: 14px;
-            font-weight: 700;
+            color: var(--cobalt);
+            font-family: Inter, sans-serif;
+            font-size: 13px;
+            font-weight: 600;
             letter-spacing: 0;
             text-transform: none;
             cursor: pointer;
@@ -9617,7 +9637,33 @@
         }
 
         #h2s-app .app-sidebar-group-items .app-sidebar-nav-item {
-            padding-left: 24px;
+            padding-left: 34px;
+        }
+
+        #h2s-app .app-sidebar-group-header > span:first-child { flex: 1; text-align: left; }
+        #h2s-app .app-sidebar-group-header::before,
+        #h2s-app .app-sidebar-nav-item:is([data-tab="fieldsales"],[data-tab="operations"])::before {
+            content: ''; width: 16px; height: 16px; flex: 0 0 16px; background: currentColor;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h16M6 16v-5m6 5V4m6 12V8'/%3E%3C/svg%3E") center/contain no-repeat;
+        }
+        #h2s-app .app-sidebar-group[data-group-id="workflow"] .app-sidebar-group-header::before {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75'%3E%3Crect x='9' y='3' width='6' height='5' rx='1'/%3E%3Cpath d='M12 8v5M5 17v-4h14v4'/%3E%3Crect x='2' y='17' width='6' height='5' rx='1'/%3E%3Crect x='16' y='17' width='6' height='5' rx='1'/%3E%3C/svg%3E");
+        }
+        #h2s-app .app-sidebar-group[data-group-id="salestools"] .app-sidebar-group-header::before,
+        #h2s-app .app-sidebar-nav-item[data-tab="fieldsales"]::before {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linejoin='round'%3E%3Cpath d='m3 7 9-4 9 4-9 4-9-4Zm0 5 9 4 9-4M3 17l9 4 9-4'/%3E%3C/svg%3E");
+        }
+        #h2s-app .app-sidebar-group[data-group-id="admin"] .app-sidebar-group-header::before {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75'%3E%3Cpath d='m12 2 3 3h4v4l3 3-3 3v4h-4l-3 3-3-3H5v-4l-3-3 3-3V5h4Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+        }
+        #h2s-app .app-sidebar-group[data-group-id="feedback"] .app-sidebar-group-header::before {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linejoin='round'%3E%3Cpath d='M4 4h16v12H9l-5 4V4Z'/%3E%3C/svg%3E");
+        }
+        #h2s-app .app-sidebar-nav-item[data-tab="operations"]::before {
+            mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75'%3E%3Crect x='3' y='5' width='18' height='16' rx='2'/%3E%3Cpath d='M7 2v6m10-6v6M3 11h18'/%3E%3C/svg%3E");
+        }
+        @media (max-width: 767px) {
+            #h2s-app .app-sidebar-nav-item, #h2s-app .app-sidebar-group-header { min-height: 44px; }
         }
 
         /* Build ID pill (copyable, non-intrusive) */

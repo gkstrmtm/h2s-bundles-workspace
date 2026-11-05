@@ -261,6 +261,33 @@
             shell.style.setProperty('--dash-select-shadow', shadow);
         }
 
+        function dashboardPositionCustomSelect(trigger, menu) {
+            const field = trigger.getBoundingClientRect(), viewport = window.visualViewport;
+            const leftEdge = (viewport ? viewport.offsetLeft : 0) + 8;
+            const topEdge = (viewport ? viewport.offsetTop : 0) + 8;
+            const rightEdge = leftEdge + (viewport ? viewport.width : window.innerWidth) - 16;
+            const bottomEdge = topEdge + (viewport ? viewport.height : window.innerHeight) - 16;
+            const width = Math.min(field.width, Math.max(0, rightEdge - leftEdge));
+            menu.style.width = `${width}px`;
+            menu.style.maxHeight = '240px';
+            const height = menu.getBoundingClientRect().height;
+            const below = Math.max(0, bottomEdge - field.bottom - 4);
+            const above = Math.max(0, field.top - topEdge - 4);
+            const opensAbove = height > below && above > below;
+            menu.style.maxHeight = `${Math.min(240, opensAbove ? above : below)}px`;
+            menu.style.left = `${Math.max(leftEdge, Math.min(field.left, rightEdge - width))}px`;
+            const fittedHeight = menu.getBoundingClientRect().height;
+            menu.style.top = `${opensAbove ? field.top - fittedHeight - 4 : field.bottom + 4}px`;
+        }
+
+        function dashboardFocusCustomSelectOption(option, menu) {
+            if (!option) return;
+            option.focus({ preventScroll: true });
+            const item = option.getBoundingClientRect(), box = menu.getBoundingClientRect();
+            if (item.top < box.top) menu.scrollTop -= box.top - item.top;
+            else if (item.bottom > box.bottom) menu.scrollTop += item.bottom - box.bottom;
+        }
+
         function dashboardSetCustomSelectOpen(selectEl, shouldOpen) {
             if (!selectEl) return;
             const shell = dashboardGetCustomSelectShell(selectEl);
@@ -277,11 +304,15 @@
             menu.hidden = !shouldOpen;
 
             if (shouldOpen) {
+                menu.__search = '';
+                menu.__searchAt = 0;
+                if (typeof menu.showPopover === 'function' && !menu.matches(':popover-open')) menu.showPopover();
+                dashboardPositionCustomSelect(trigger, menu);
                 const activeOption = menu.querySelector('.dashboard-custom-select-option.is-selected:not([disabled])')
                     || menu.querySelector('.dashboard-custom-select-option:not([disabled])');
-                if (activeOption) {
-                    try { activeOption.focus(); } catch (_) {}
-                }
+                dashboardFocusCustomSelectOption(activeOption, menu);
+            } else if (typeof menu.hidePopover === 'function' && menu.matches(':popover-open')) {
+                menu.hidePopover();
             }
         }
 
@@ -290,11 +321,7 @@
                 if (!selectEl || selectEl === exceptSelect) return;
                 const shell = dashboardGetCustomSelectShell(selectEl);
                 if (!shell) return;
-                const trigger = shell.querySelector('.dashboard-custom-select-trigger');
-                const menu = shell.querySelector('.dashboard-custom-select-menu');
-                shell.classList.remove('is-open');
-                if (trigger) trigger.setAttribute('aria-expanded', 'false');
-                if (menu) menu.hidden = true;
+                dashboardSetCustomSelectOpen(selectEl, false);
             });
         }
 
@@ -355,6 +382,14 @@
                 dashboardCloseCustomSelects();
                 dashboardQueueCustomSelectSync();
             }, { passive: true });
+            document.addEventListener('scroll', event => {
+                const menu = document.querySelector('.dashboard-custom-select-shell.is-open .dashboard-custom-select-menu');
+                if (menu && event.target !== menu && !menu.contains(event.target)) dashboardCloseCustomSelects();
+            }, { passive: true, capture: true });
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', () => dashboardCloseCustomSelects(), { passive: true });
+                window.visualViewport.addEventListener('scroll', () => dashboardCloseCustomSelects(), { passive: true });
+            }
 
             if (window.MutationObserver && document.body && !__dashboardCustomSelectObserver) {
                 __dashboardCustomSelectObserver = new MutationObserver(records => {
@@ -430,6 +465,8 @@
                 menu.className = 'dashboard-custom-select-menu';
                 menu.id = `${selectId}CustomMenu`;
                 menu.setAttribute('role', 'listbox');
+                menu.setAttribute('popover', 'manual');
+                menu.setAttribute('aria-label', labelText || 'Available options');
                 menu.hidden = true;
                 const error = document.createElement('span');
                 error.className = 'dashboard-custom-select-error';
@@ -461,25 +498,34 @@
                     if (event.key === 'ArrowDown') {
                         event.preventDefault();
                         const nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, items.length - 1);
-                        if (items[nextIndex]) items[nextIndex].focus();
+                        dashboardFocusCustomSelectOption(items[nextIndex], menu);
                     }
 
                     if (event.key === 'ArrowUp') {
                         event.preventDefault();
                         const nextIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
-                        if (items[nextIndex]) items[nextIndex].focus();
+                        dashboardFocusCustomSelectOption(items[nextIndex], menu);
                     }
 
                     if (event.key === 'Home') {
                         event.preventDefault();
-                        if (items[0]) items[0].focus();
+                        dashboardFocusCustomSelectOption(items[0], menu);
                     }
 
                     if (event.key === 'End') {
                         event.preventDefault();
-                        if (items.length) items[items.length - 1].focus();
+                        dashboardFocusCustomSelectOption(items[items.length - 1], menu);
                     }
 
+                    if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                        event.preventDefault();
+                        const now = Date.now();
+                        menu.__search = now - (menu.__searchAt || 0) < 700 ? (menu.__search || '') + event.key.toLocaleLowerCase() : event.key.toLocaleLowerCase();
+                        menu.__searchAt = now;
+                        const match = items.find(item => item.textContent.trim().toLocaleLowerCase().startsWith(menu.__search))
+                            || items.find(item => item.textContent.toLocaleLowerCase().includes(menu.__search));
+                        dashboardFocusCustomSelectOption(match, menu);
+                    }
                     if (event.key === 'Tab' || event.key === 'Escape') {
                         dashboardSetCustomSelectOpen(selectEl, false);
                         if (event.key === 'Escape') {
@@ -529,6 +575,7 @@
             shell.classList.toggle('is-disabled', !!selectEl.disabled);
 
             menu.innerHTML = '';
+            menu.setAttribute('aria-label', selectEl.getAttribute('aria-label') || labelText || 'Available options');
             Array.from(selectEl.options || []).forEach(option => {
                 const optionBtn = document.createElement('button');
                 optionBtn.type = 'button';
@@ -555,8 +602,17 @@
 
                 menu.appendChild(optionBtn);
             });
+            if (!Array.from(selectEl.options || []).some(option => option.value && !option.disabled)) {
+                const empty = document.createElement('div');
+                empty.className = 'dashboard-custom-select-empty';
+                empty.setAttribute('role', 'option');
+                empty.setAttribute('aria-disabled', 'true');
+                empty.textContent = 'No options available';
+                menu.appendChild(empty);
+            }
 
             if (selectEl.disabled) dashboardSetCustomSelectOpen(selectEl, false);
+            else if (shell.classList.contains('is-open')) dashboardPositionCustomSelect(trigger, menu);
             selectEl.__dashboardSelectSignature = selectSignature;
         }
 

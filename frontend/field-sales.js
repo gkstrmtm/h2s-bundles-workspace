@@ -47,12 +47,19 @@
     const allowed = () => ['ADMIN', 'SALES'].includes(session()?.role) && !!session()?.token;
     const admin = () => session()?.role === 'ADMIN';
     const label = value => ({new:'New prospect',assessing:'Assessment in progress',ready_for_review:'Awaiting review',reviewed:'Assessment reviewed',needs_information:'More information needed',closed:'Closed'}[value] || 'Review needed');
+    const leadTone = value => ({ready_for_review:'info',reviewed:'success',needs_information:'attention',closed:'neutral'}[value] || 'neutral');
+    const nextContact = value => value ? date(value) : 'Not planned';
+    const nextStep = value => ({new:'Start service assessment',assessing:'Continue assessment',ready_for_review:'Await management review',reviewed:'Review assessment & quote',needs_information:'Complete requested details',closed:'Review saved assessment'}[value] || 'Review lead details');
     const serviceName = id => data.services.find(service => service.service_id === id)?.definition.label || 'Service unavailable';
     const identityNames = () => ({
         customerNames: Object.fromEntries((data?.opportunities || []).map(row=>[row.lead_id,row.full_name])),
         representativeNames: Object.fromEntries((data?.representatives || []).map(rep=>[rep.user_id,rep.display_name]))
     });
     const primaryMode = () => ['new','detail','opportunities'].includes(mode) ? 'opportunities' : ['commerce','quotes'].includes(mode) ? 'quotes' : mode === 'performance' ? 'commissions' : mode;
+    // Management groups customer quoting and portfolio payment review without
+    // confusing the distinct performance and commission review destinations.
+    const managementMode = () => ['new','detail','opportunities'].includes(mode) ? 'opportunities'
+        : ['commerce','quotes','transactions'].includes(mode) ? 'transactions' : mode;
     const date = value => value ? new Date(value).toLocaleString() : 'Not set';
     const inputDate = value => {
         if (!value) return '';
@@ -116,11 +123,13 @@
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
         release(); assessmentDraft = {};
-        root.innerHTML = `<header class="field-sales__header"><div><span class="field-sales__eyebrow">Home2Smart</span><h2>${admin() ? 'Field Sales management' : 'Field Sales'}</h2></div><div class="field-sales__toolbar"><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</div></header>
-            <nav class="field-sales__nav" aria-label="Field Sales views">${[['dashboard', 'Home'], ['opportunities', 'Leads'], ['quotes', 'Quotes'], ['orders','Orders'], ['commissions','Earnings']]
-                .map(([id, title]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${primaryMode() === id}"${primaryMode() === id ? ' aria-current="page"' : ''}>${navIcon(id)}<span>${title}</span></button>`).join('')}</nav>
-            ${admin() ? `<nav class="field-sales__management-nav" aria-label="Management views">${[['representatives','Representatives'],['transactions','Quotes & Payments'],['performance','Performance']].map(([id,title])=>`<button type="button" data-sales-mode="${id}" aria-pressed="${mode===id}">${title}</button>`).join('')}</nav>` : ''}
+        root.innerHTML = `<header class="field-sales__header${admin() ? ' field-sales__header--management' : ''}"><div class="field-sales__identity">${admin() ? '' : '<span class="field-sales__eyebrow">Home2Smart</span>'}<h2>Field Sales</h2></div><div class="field-sales__toolbar"><button type="button" data-sales-refresh>Refresh</button>${!admin() ? '<button type="button" data-sales-logout>Sign out</button>' : ''}</div></header>
+            ${admin() ? `<nav class="field-sales__management-nav" aria-label="Management views">${[['dashboard','Overview'],['opportunities','Leads'],['transactions','Quotes & Payments'],['orders','Orders'],['commissions','Commissions'],['performance','Performance'],['representatives','Representatives']]
+                .map(([id,title])=>`<button type="button" data-sales-mode="${id}" aria-pressed="${managementMode()===id}"${managementMode()===id ? ' aria-current="page"' : ''}>${title}</button>`).join('')}</nav>`
+                : `<nav class="field-sales__nav" aria-label="Field Sales views">${[['dashboard', 'Home'], ['opportunities', 'Leads'], ['quotes', 'Quotes'], ['orders','Orders'], ['commissions','Earnings']]
+                .map(([id, title]) => `<button type="button" data-sales-mode="${id}" aria-pressed="${primaryMode() === id}"${primaryMode() === id ? ' aria-current="page"' : ''}>${navIcon(id)}<span>${title}</span></button>`).join('')}</nav>`}
             <p data-sales-status role="status" aria-live="polite"></p><div data-sales-content></div>`;
+        root.querySelector('.field-sales__management-nav [aria-current="page"]')?.scrollIntoView?.({block:'nearest',inline:'nearest'});
         if (!data) return;
         if (!data.enabled) { status('Field Sales is disabled. No accounts or customer records can be changed.'); return; }
         const content = root.querySelector('[data-sales-content]');
@@ -139,14 +148,15 @@
             if (global.H2SFieldEarnings) global.H2SFieldEarnings.mount(target, {apiBase:options.apiBase,getSession:session,view:mode,onSessionEnded:reset,...identityNames()});
             else target.textContent = 'Earnings module unavailable. No commission or settlement is assumed.';
         } else if (mode === 'transactions' && admin()) {
-            content.innerHTML = '<div data-sales-commerce></div>';
+            content.innerHTML = '<div class="field-sales__toolbar"><button type="button" data-sales-mode="quotes">Build or review a customer quote</button></div><div data-sales-commerce></div>';
             commerce(content.querySelector('[data-sales-commerce]'), null);
         } else if (mode === 'quotes' || mode === 'commerce') {
             const leads = data.opportunities || [];
-            content.innerHTML = `<div class="field-sales__section"><h3>Customer quotes</h3><p>Choose an assigned lead to build or review their quote.</p>
+            content.innerHTML = `<section class="field-sales__quote-workspace"><div class="field-sales__section-heading"><h3>Customer quotes</h3>${admin() ? '<button type="button" data-sales-mode="transactions">Review all quotes & payments</button>' : ''}</div><p class="field-sales__note">Choose an assigned lead to build or review their quote.</p>
                 <label>Customer<select data-sales-quote-lead><option value="">Choose an existing lead</option>${leads.map(row=>`<option value="${esc(row.lead_id)}"${quoteLead===row.lead_id?' selected':''}>${esc(row.full_name)}${row.address?' · '+esc(row.address):''}</option>`).join('')}</select></label>
                 ${!leads.length ? '<div class="field-sales__empty"><p>No assigned leads yet.</p><button type="button" data-sales-mode="new">Add a prospect</button></div>' : ''}
-                <div data-sales-quote-builder></div></div>`;
+                ${leads.length ? `<div class="field-sales__empty" data-sales-quote-empty${leads.some(row=>row.lead_id===quoteLead) ? ' hidden' : ''}><h4>Choose a customer to get started</h4><p>Their service scope and saved quote revisions will appear here.</p></div>` : ''}
+                <div data-sales-quote-builder></div></section>`;
             if (quoteLead && leads.some(row=>row.lead_id===quoteLead)) {
                 const selectedLead = leads.find(row=>row.lead_id===quoteLead), target = content.querySelector('[data-sales-quote-builder]');
                 target.dataset.market = selectedLead.market;
@@ -192,9 +202,11 @@
             const expectedPhotos = selected.flatMap(service => service.definition.photos.map(label =>
                 detail.photos.some(photo => photo.service_id === service.service_id && photo.label === label && photo.state === 'ready')));
             content.innerHTML = `<div class="field-sales__toolbar"><button type="button" data-sales-mode="opportunities">Back to leads</button><button type="button" data-sales-build-quote="${esc(op.lead_id)}">Open customer quotes</button></div>
-                <h3>${esc(detail.lead.full_name)}</h3><p>${esc(detail.lead.phone)} · ${esc(detail.lead.project_address)} · ${esc(detail.lead.project_city)}</p>
-                <p class="field-sales__note">Lead · <strong>Assessment</strong> · Quote · Acceptance · Orders · Earnings. Save the assessment, then open customer quotes. Approval, acceptance and payment remain separate steps.</p>
-                <span class="field-sales__badge">${esc(label(op.status))}</span>
+                <section class="field-sales__customer-summary" aria-label="Customer assessment summary"><div class="field-sales__record-heading"><h3>${esc(detail.lead.full_name)}</h3>
+                <span class="field-sales__badge" data-tone="${leadTone(op.status)}">${esc(label(op.status))}</span></div>
+                <p>${esc([detail.lead.project_address, detail.lead.project_city].filter(Boolean).join(' · ') || 'Property address not provided')}</p>
+                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(detail.lead.phone || 'Not provided')}</dd></div><div><dt>Next step</dt><dd>${esc(nextStep(op.status))}</dd></div></dl></section>
+                <p class="field-sales__note">Save the assessment, then open customer quotes. Approval, acceptance and payment remain separate steps.</p>
                 ${admin() ? `<details><summary>Identity & ownership audit</summary><p class="field-sales__id">Shared lead ${esc(op.lead_id)} / ${esc(op.status)} / revision ${esc(op.revision)}</p>
                 <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p></details>` : ''}
                 <p class="field-sales__note">Assessment progress: ${required.filter(answer => answer !== undefined && answer !== '').length}/${required.length} required answers;
@@ -211,8 +223,8 @@
                 <form data-sales-form="photo" class="field-sales__form"><label>Service<select name="serviceId" required>${data.services.filter(s => op.services.includes(s.service_id)).map(s => `<option value="${esc(s.service_id)}">${esc(s.definition.label)}</option>`).join('')}</select></label>
                 <label>Photo label<select name="label" required></select></label>
                 <label>Photograph<input name="photo" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" required></label><button type="submit"${consent ? '' : ' disabled'}>Upload labeled photo</button></form>
-                <div data-sales-photos>${detail.photos.map(p => `<article>${esc(serviceName(p.service_id))} · ${esc(p.label)} · ${p.state === 'ready' ? 'Ready' : 'Processing or review needed'}
-                    ${consent && p.state === 'ready' ? `<button type="button" data-sales-photo="${esc(p.file_id)}">View private photo</button>` : ''}</article>`).join('')}</div>
+                <div data-sales-photos>${detail.photos.map(p => `<article class="field-sales__photo-card"><div><strong>${esc(p.label)}</strong><p class="field-sales__note">${esc(serviceName(p.service_id))} · ${p.state === 'ready' ? 'Ready' : 'Processing or review needed'}</p></div>
+                    ${consent && p.state === 'ready' ? `<button type="button" data-sales-photo="${esc(p.file_id)}">View private photo</button>` : ''}</article>`).join('') || '<p class="field-sales__empty">No assessment photos yet. Save customer permission before uploading.</p>'}</div>
                 ${admin() ? `<h3>Management review and ownership</h3><form data-sales-form="review" class="field-sales__form"><label>Review status<select name="status"><option value="reviewed">Reviewed (not quote approved)</option><option value="needs_information">Needs information</option><option value="closed">Closed</option></select></label>
                 <label>Review reason<textarea name="note" required maxlength="2000"></textarea></label><button type="submit">Record management review</button></form>
                 <form data-sales-form="assign" class="field-sales__form"><label>Reassign representative<select name="ownerId" required>${representatives(op.owner_user_id)}</select></label>
@@ -233,14 +245,17 @@
             const active = rows.filter(row=>row.status !== 'closed'), followUpsToday = rows.filter(row=>row.follow_up_at && new Date(row.follow_up_at).toDateString()===new Date().toDateString() && row.status!=='closed');
             content.innerHTML = `<div class="field-sales__toolbar field-sales__section-heading"><h3>${mode==='dashboard' ? (admin() ? 'Sales overview' : 'Your day in sales') : 'Customer leads'}</h3><button type="button" data-sales-mode="new" class="field-sales__primary">New prospect</button></div>
                 ${mode==='dashboard' ? `<div class="field-sales__summary" aria-label="Loaded lead activity">
-                    ${[[active.length,'Active opportunities'],[due.length,'Follow-ups due'],[followUpsToday.length,'Follow-ups today'],[rows.filter(row=>row.status==='ready_for_review').length,'Awaiting review']].map(([value,title])=>`<div class="field-sales__metric"><strong>${value}</strong><span>${title}</span></div>`).join('')}</div>` : ''}
+                    ${[[active.length,'Active leads'],[due.length,'Follow-ups due'],[followUpsToday.length,'Follow-ups today'],[rows.filter(row=>row.status==='ready_for_review').length,'Awaiting review']].map(([value,title])=>`<div class="field-sales__metric"><span>${title}</span><strong>${value}</strong></div>`).join('')}</div>` : ''}
                 <p class="field-sales__note">${rows.length} of ${esc(data.total ?? rows.length)} assigned leads loaded. ${data.total > rows.length ? 'Activity counts cover only the latest loaded leads, not your complete history.' : 'Activity counts reflect your current loaded leads.'}</p>
                 ${mode === 'dashboard' ? `<section class="field-sales__section"><h4>Follow-ups to make</h4>${due.map(row => `<div class="field-sales__followup"><button type="button" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span>${esc(date(row.follow_up_at))}</span></div>`).join('') || '<p class="field-sales__empty">You have no overdue follow-ups in loaded leads.</p>'}</section>` : ''}
                 <div class="field-sales__toolbar"><label class="field-sales__search">Find a lead<input type="search" data-sales-search placeholder="Customer, phone or address" autocomplete="off"></label>
                 ${admin() ? `<label>Representative<select data-sales-owner><option value="">All representatives</option>${(data.representatives || []).map(rep => `<option value="${esc(rep.user_id)}">${esc(rep.display_name)}</option>`).join('')}</select></label>` : ''}</div>
-                <div data-sales-list>${rows.map(row => `<article data-owner="${esc(row.owner_user_id)}" data-search="${esc([row.full_name,row.phone,row.address].join(' ').toLowerCase())}"><div class="field-sales__record-heading"><button type="button" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span class="field-sales__badge">${esc(label(row.status))}</span></div>
-                <p>${esc(row.phone)} · ${esc(row.address)} · ${row.market==='commercial'?'Commercial':'Residential'}</p><p>${esc(row.services.map(serviceName).join(' · ') || 'Service interests not selected')}</p>
-                <p class="field-sales__note">Next contact: ${esc(date(row.follow_up_at))}</p></article>`).join('') || '<div class="field-sales__empty"><h4>Your next customer starts here</h4><p>Add a prospect, or ask management to assign an existing inquiry.</p></div>'}</div><p data-sales-no-results hidden>No leads match these filters.</p>`;
+                <div data-sales-list>${rows.map(row => `<article class="field-sales__lead-card" data-owner="${esc(row.owner_user_id)}" data-search="${esc([row.full_name,row.phone,row.address].join(' ').toLowerCase())}">
+                <div class="field-sales__record-heading"><button type="button" class="field-sales__customer-link" data-sales-lead="${esc(row.lead_id)}">${esc(row.full_name)}</button><span class="field-sales__badge" data-tone="${leadTone(row.status)}">${esc(label(row.status))}</span></div>
+                <p class="field-sales__service-label">${esc(row.services.map(serviceName).join(' · ') || 'Service interests not selected')}</p>
+                <p class="field-sales__note">${esc(row.address || 'Property address not provided')}</p>
+                <dl class="field-sales__facts"><div><dt>Phone</dt><dd>${esc(row.phone || 'Not provided')}</dd></div><div><dt>Property</dt><dd>${row.market==='commercial'?'Commercial':'Residential'}</dd></div><div><dt>Next contact</dt><dd>${esc(nextContact(row.follow_up_at))}</dd></div><div class="field-sales__next-step"><dt>Next step</dt><dd>${esc(nextStep(row.status))}</dd></div></dl>
+                <div class="field-sales__card-actions"><button type="button" data-sales-lead="${esc(row.lead_id)}">View assessment<span aria-hidden="true"> ›</span></button></div></article>`).join('') || '<div class="field-sales__empty"><h4>Your next customer starts here</h4><p>Add a prospect, or ask management to assign an existing inquiry.</p></div>'}</div><p class="field-sales__empty" data-sales-no-results hidden>No leads match these filters. Try another name, phone or address.</p>`;
         }
         const key = viewKey(), retained = draftViews.get(key);
         if (retained) {
@@ -313,6 +328,7 @@
         renderedKey = null;
         token = session().token; actorRole = session().role; const id = ++version; controller?.abort(); controller = new AbortController();
         data = detail = null; render(); status('Loading assigned Field Sales records...');
+        root.querySelector('[data-sales-status]').classList.add('field-sales__loading');
         try {
             const result = await json('field-sales'); if (id !== version) return; data = result;
             if (leadId && result.enabled) { const record = await json(`field-sales?leadId=${encodeURIComponent(leadId)}`); if (id !== version) return; detail = record; mode = 'detail'; }
@@ -353,6 +369,7 @@
             quoteLead = event.target.value || null;
             const target = root.querySelector('[data-sales-quote-builder]'), lead = data.opportunities.find(row=>row.lead_id===quoteLead);
             global.H2SFieldCommerce?.reset(); target.replaceChildren();
+            const empty = root.querySelector('[data-sales-quote-empty]'); if (empty) empty.hidden = !!lead;
             if (lead) { target.dataset.market = lead.market; commerce(target, quoteLead); }
         }
     });

@@ -14,10 +14,6 @@
 #h2s-app .field-sales .field-workflow__header h4 { margin: 0; overflow-wrap: anywhere; }
 #h2s-app .field-sales .field-workflow__header > strong,
 #h2s-app .field-sales .field-workflow__facts dd { font-variant-numeric: tabular-nums; }
-#h2s-app .field-sales .field-workflow__timeline { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; list-style: none; padding: 0; margin: 16px 0; }
-#h2s-app .field-sales .field-workflow__timeline li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 2px solid var(--border); min-width: 0; overflow-wrap: anywhere; }
-#h2s-app .field-sales .field-workflow__timeline strong { font: 500 13px/1.5 Inter, sans-serif; color: var(--cobalt); }
-#h2s-app .field-sales .field-workflow__timeline span { font-size: 13px; color: var(--muted); }
 #h2s-app .field-sales .field-workflow__note { font-size: 13px; color: var(--muted); max-width: 88ch; }
 #h2s-app .field-sales .field-workflow__counts { margin-block: 12px; gap: 8px 24px; color: var(--muted); font-size: 13px; }
 #h2s-app .field-sales .field-workflow__counts strong { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -35,9 +31,55 @@
 #h2s-app .field-sales .field-workflow__audit[open] > summary { color: var(--cobalt); margin-bottom: 8px; }
 #h2s-app .field-sales .field-workflow__audit pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 'JetBrains Mono', monospace; }
 #h2s-app .field-sales .field-workflow__audit label + label { margin-top: 12px; }
+#h2s-app .field-sales .field-workflow__order-detail { padding: 16px; margin-block: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+#h2s-app .field-sales .field-workflow__order-detail > .field-workflow__header { align-items: flex-start; }
+#h2s-app .field-sales .field-workflow__order-detail > .field-workflow__header h4 { color: var(--cobalt); font: 650 22px/1.3 Inter, sans-serif; letter-spacing: -.02em; }
+#h2s-app .field-sales .field-workflow__eyebrow { margin: 0 0 4px; color: var(--muted); font: 500 12px/1.5 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__service { margin: 4px 0 0; color: var(--muted); font: 400 14px/1.5 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__facts:is(.field-workflow__identity,.field-workflow__payment-strip) { max-width: none; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px 16px; padding: 8px 12px; margin-block: 12px; border: 1px solid var(--border); border-radius: 4px; }
+#h2s-app .field-sales .field-workflow__facts.field-workflow__identity { grid-template-columns: repeat(4,minmax(0,1fr)); }
+#h2s-app .field-sales .field-workflow__identity > div,
+#h2s-app .field-sales .field-workflow__payment-strip > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#h2s-app .field-sales .field-workflow__identity dt,
+#h2s-app .field-sales .field-workflow__payment-strip dt { font: 400 12px/1.4 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__identity dd,
+#h2s-app .field-sales .field-workflow__payment-strip dd { color: var(--cobalt); font: 550 13px/1.5 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__inline-note { display: block; color: var(--muted); font: 400 12px/1.4 Inter, sans-serif; margin-top: 2px; }
+#h2s-app .field-sales .field-workflow__next { margin-block: 12px; font-size: 13px; }
+#h2s-app .field-sales .field-workflow__next > strong { display: block; color: var(--cobalt); margin-bottom: 4px; }
+#h2s-app .field-sales .field-workflow__order-detail .field-workflow__next > strong,
+#h2s-app .field-sales .field-workflow__mobile-order .field-workflow__next > strong { display: inline; margin: 0 8px 0 0; }
+#h2s-app .field-sales .field-workflow__order-detail .field-workflow__tabs { gap: 0 4px; border-top: 0; padding: 0; margin: 12px 0 8px; }
+#h2s-app .field-sales .field-workflow__order-detail .field-workflow__panel { margin-block: 8px; }
+#h2s-app .field-sales .field-workflow__tab { border: 0; border-bottom: 2px solid transparent; border-radius: 4px 4px 0 0; padding: 8px; font-size: 13px; }
+#h2s-app .field-sales .field-workflow__tab[aria-selected="true"] { border-bottom-color: var(--azure); color: var(--azure); background: var(--bg, var(--surface)); text-decoration: none; }
+#h2s-app .field-sales .field-workflow__overview { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; align-items: start; }
+#h2s-app .field-sales .field-workflow__summary-panel { padding: 12px; margin: 0; min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
+#h2s-app .field-sales .field-workflow__summary-panel > header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+#h2s-app .field-sales .field-workflow__summary-panel h5,
+#h2s-app .field-sales .field-workflow__panel h5 { margin: 0 0 8px; color: var(--cobalt); font: 600 13px/1.5 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__summary-panel .field-sales__badge { padding: 2px 6px; font-size: 11px; }
+#h2s-app .field-sales .field-workflow__summary-panel .field-workflow__facts { grid-template-columns: minmax(100px,.9fr) minmax(0,1.3fr); gap: 4px 12px; margin: 4px 0 0; font-size: 12px; }
+#h2s-app .field-sales .field-workflow__summary-panel ul { margin-block: 4px 12px; padding-left: 20px; font-size: 13px; }
+#h2s-app .field-sales .field-workflow__panel > .field-workflow__summary-panel { margin-block: 8px; }
+#h2s-app .field-sales .field-workflow__earnings-header h3 { margin: 0; color: var(--cobalt); font: 650 22px/1.3 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__friday-run { border: 1px solid var(--border); border-radius: 4px; padding: 16px; margin-block: 12px; background: var(--surface); }
+#h2s-app .field-sales .field-workflow__run-summary { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; gap: 16px; margin-block: 12px; }
+#h2s-app .field-sales .field-workflow__run-summary > p { display: flex; flex-direction: column; gap: 4px; margin: 0; color: var(--muted); font-size: 13px; }
+#h2s-app .field-sales .field-workflow__run-amount { color: var(--cobalt); font: 600 24px/1.3 Inter, sans-serif; font-variant-numeric: tabular-nums; }
+#h2s-app .field-sales .field-workflow__run-summary .field-workflow__facts { margin: 0; font-size: 13px; }
+#h2s-app .field-sales .field-workflow__evidence-context { color: var(--cobalt); font-weight: 600; }
 @media (max-width: 680px) {
-    #h2s-app .field-sales .field-workflow__timeline { grid-template-columns: minmax(0,1fr); gap: 4px; }
-    #h2s-app .field-sales .field-workflow__timeline li { border-top-width: 1px; gap: 0; }
+    #h2s-app .field-sales .field-workflow__order-detail { padding: 12px; }
+    #h2s-app .field-sales .field-workflow__order-detail > .field-workflow__header h4 { font-size: 20px; }
+    #h2s-app .field-sales .field-workflow__overview,
+    #h2s-app .field-sales .field-workflow__run-summary { grid-template-columns: minmax(0,1fr); }
+    #h2s-app .field-sales .field-workflow__facts:is(.field-workflow__identity,.field-workflow__payment-strip) { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 8px; gap: 8px 12px; }
+    #h2s-app .field-sales .field-workflow__mobile-order { padding: 12px; border: 1px solid var(--border); border-radius: 4px; margin-block: 12px; background: var(--surface); }
+    #h2s-app .field-sales .field-workflow__mobile-order .field-workflow__payment-strip { grid-template-columns: minmax(0,1fr); border: 0; padding: 0; }
+    #h2s-app .field-sales .field-workflow__mobile-order .field-workflow__payment-strip > div { display: grid; grid-template-columns: minmax(100px,.7fr) minmax(0,1.3fr); gap: 8px; padding-block: 4px; border-bottom: 1px solid var(--border); }
+    #h2s-app .field-sales .field-workflow__mobile-order .field-workflow__payment-strip dd { margin: 0; }
+    #h2s-app .field-sales .field-workflow__tab { min-height: 44px; }
     #h2s-app .field-sales .field-workflow__audit { padding: 8px; }
 }
 .field-installation { --field-install-text: var(--h2s-text-main, var(--text, CanvasText)); --field-install-muted: var(--h2s-text-muted, var(--muted, GrayText)); --field-install-border: var(--h2s-border-subtle, var(--border, GrayText)); --field-install-bg: var(--h2s-bg-card, var(--surface, Canvas)); --field-install-input: var(--h2s-bg-input, var(--surface, Canvas)); --field-install-accent: var(--h2s-accent-primary, var(--azure, Highlight)); --field-install-danger: var(--h2s-accent-danger, var(--danger, CanvasText)); color: var(--field-install-text); font: 400 14px/1.5 Inter, sans-serif; min-width: 0; max-width: 100%; }

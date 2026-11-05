@@ -9,6 +9,18 @@
     const human = value => labels[value] || 'Order under review';
     const policyLabel = (p,index=0) => `${({legal:'Customer agreement',commission:'Commission',settlement:'Friday settlement'})[p.kind] || 'Policy'} · ${p.version || p.definition?.version ? 'Version '+(p.version || p.definition.version) : p.approved_at ? 'Approved '+new Date(p.approved_at).toLocaleDateString() : 'Record '+(index+1)+' (version not supplied)'}`;
     const recordTitle = (w,index,names) => w.customerName || w.customer?.name || names?.[w.leadId] || `Order ${index + 1}`;
+    const staffName = (value,identity) => {
+        const name = typeof value==='string' ? value.trim() : '';
+        return name && name.toLowerCase()!==String(identity || '').toLowerCase()
+            && !/^[A-Z0-9_-]{3,}$/.test(name) && !/^[a-f0-9-]{16,}$/i.test(name)
+            && !/^[^\s@]+@[^\s@]+$/.test(name) ? name : '';
+    };
+    const facts = rows => `<dl class="field-workflow__facts">${rows.map(([label,value])=>`<dt>${esc(label)}</dt><dd>${value}</dd>`).join('')}</dl>`;
+    const strip = (rows,kind) => `<dl class="field-workflow__facts field-workflow__${kind}">${rows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${value}</dd></div>`).join('')}</dl>`;
+    const quoteCopy = w => (w.documents || []).find(d=>d.kind==='quote') || (w.requiredArtifacts || []).find(d=>d.kind==='quote');
+    const quoteLines = w => Array.isArray(quoteCopy(w)?.content?.lines) ? quoteCopy(w).content.lines : [];
+    const serviceTitle = w => [...new Set(quoteLines(w).map(line=>line.service).filter(value=>typeof value==='string'))].join(' · ') || 'Service details pending';
+    const summaryPanel = (title,status,body,tone='info') => `<section class="field-workflow__summary-panel"><header><h5>${esc(title)}</h5><span class="field-sales__badge" data-tone="${tone}">${esc(status)}</span></header>${body}</section>`;
     function exactCost(quantity,unitCents,amountCents){
         const [whole,fraction='']=quantity.split('.');
         const millionths=BigInt(whole)*1000000n+BigInt(fraction.padEnd(6,'0'));
@@ -31,11 +43,6 @@
         // native-backed controls, listeners and unsaved values must survive navigation.
         function preparePanels() {
             const tabLabels = {
-                'Order review & supporting records':'Overview',
-                'Customer documents & installation readiness':'Documents & readiness',
-                'Existing calendar and managed assignment':'Scheduling & team',
-                'Cancellation or refund review — not automatic refund':'Cancellation & refunds',
-                'Review technician actual costs before commission calculation':'Actual costs',
                 'New order enrollment — exact quote and approved policies':'Enroll sale',
                 'Versioned legal, commission and settlement policies':'Policy management'
             };
@@ -59,7 +66,7 @@
                     const key = `field-workflow-${id}-${groupIndex}-${index}`, tab = document.createElement('button');
                     tab.type = 'button'; tab.className = 'field-workflow__tab'; tab.id = key+'-tab';
                     const heading = panel.querySelector('h4').textContent;
-                    tab.textContent = tabLabels[heading] || heading;
+                    tab.textContent = panel.dataset.tabLabel || tabLabels[heading] || heading;
                     tab.setAttribute('role','tab'); tab.setAttribute('aria-controls',key+'-panel');
                     tab.setAttribute('aria-selected',String(index===0)); tab.tabIndex = index===0 ? 0 : -1;
                     panel.id = key+'-panel'; panel.setAttribute('role','tabpanel');
@@ -147,43 +154,78 @@
             if(!w.documents?.length)return 'Management: publish exact approved customer copies; customer retrieval and acceptance are required.';
             return 'Management: resolve the current legal, delivery and verified-deposit gates before scheduling.';
         }
-        function timeline(w) {
-            const steps = [
-                ['Customer copies',w.documents?.length ? 'Published' : 'Being prepared'],
-                ['Deposit',Number.isSafeInteger(w.depositCents)&&w.depositCents>0&&Number.isSafeInteger(w.netPaidCents)&&w.netPaidCents>=w.depositCents ? 'Verified net payment covers deposit' : 'Not yet verified'],
-                ['Installation',w.completedAt ? 'Completed '+date(w.completedAt) : w.state==='scheduled' ? 'Scheduled' : 'Not scheduled']
-            ];
-            return `<ol class="field-workflow__timeline" aria-label="Order progress">${steps.map(([label,value])=>`<li><strong>${label}</strong><span>${value}</span></li>`).join('')}</ol>`;
-        }
         function order(w,index) {
             const holds = Array.isArray(w.holds) ? w.holds : ['Readiness evidence unavailable'];
             const balanceText = !Number.isSafeInteger(w.balanceCents) ? 'Evidence pending'
                 : w.balanceCents === 0 ? 'No balance due'
                 : w.balanceCents < 0 ? `${money(w.balanceCents)} — credit balance under management review`
                 : `${money(w.balanceCents)}${w.gates?.canBalance ? ' — available after installation' : ' — not ready for collection'}`;
-            return `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(recordTitle(w,index,options.customerNames))}</h4>
-                <span class="field-sales__badge">${esc(human(w.state))}</span></header>
-                ${admin()&&(w.representativeName||options.representativeNames?.[w.representativeId])?`<p class="field-workflow__note">Credited representative: ${esc(w.representativeName||options.representativeNames[w.representativeId])}</p>`:''}
-                ${timeline(w)}
+            const rep = staffName(w.representativeName,w.representativeId) || staffName(options.representativeNames?.[w.representativeId],w.representativeId);
+            const payment = Number.isSafeInteger(w.depositCents)&&w.depositCents>0&&Number.isSafeInteger(w.netPaidCents)&&w.netPaidCents>=w.depositCents ? 'Verified net payment covers deposit' : 'Deposit verification pending';
+            const deposit = `${money(w.depositCents)}<span class="field-workflow__inline-note">${payment}</span>`;
+            const summary = admin() ? strip([
+                ['Exact 25% deposit',deposit],['Current net balance',balanceText],
+                ['Credited representative',esc(rep || (w.representativeId?'Assigned — profile name unavailable':'Not supplied'))],['Installation team',w.technicianId?'Assigned':'Not assigned']
+            ],'identity') : strip([
+                ['Exact 25% deposit',`${deposit}<span class="field-workflow__inline-note">Verified net paid: ${money(w.netPaidCents)}</span>`],
+                ['Current net balance',balanceText],['Installation team',w.technicianId?'Assigned':'Not assigned'],
+                ['Completion',date(w.completedAt)],['Customer copies',w.documents?.length?'Published':'Being prepared']
+            ],'payment-strip');
+            return `<article class="field-workflow__record${admin()?' field-workflow__order-detail':' field-workflow__mobile-order'}"><header class="field-workflow__header"><div><p class="field-workflow__eyebrow">${admin()?'Management order review':'Your order'}</p><h4>${esc(recordTitle(w,index,options.customerNames))}</h4><p class="field-workflow__service">${esc(serviceTitle(w))}</p></div>
+                <span class="field-sales__badge" data-tone="${w.state==='completed'?'success':['cancelled','refund_review'].includes(w.state)?'attention':'info'}">${esc(human(w.state))}</span></header>
+                ${summary}
                 <p class="field-workflow__next"><strong>Next step</strong> ${esc(nextAction(w))}</p>
-                <dl class="field-workflow__facts"><dt>Exact 25% deposit</dt><dd>${money(w.depositCents)}</dd><dt>Verified net paid</dt><dd>${money(w.netPaidCents)}</dd>
-                <dt>Current net balance</dt><dd>${balanceText}</dd>
-                <dt>Cancellation deadline</dt><dd>${date(w.cancellationDeadline)}${admin()?' — approved policy and delivery evidence control clearance':''}</dd>
-                <dt>Installation team</dt><dd>${w.technicianId?'Assigned':'Not assigned'}</dd>
-                <dt>Completion</dt><dd>${date(w.completedAt)}</dd></dl>
-                ${admin()?`<div data-context-panels aria-label="${esc(recordTitle(w,index,options.customerNames))} order actions"><details class="field-workflow__review"><summary>Order review & supporting records</summary>
-                <p>Review reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')}</p>
-                <dl class="field-workflow__facts"><dt>Actual processing fee</dt><dd>${money(w.processingFeeCents)}</dd>
-                <dt>Actual technician hours</dt><dd>${esc(w.hours ?? 'Not recorded')} — wages are separate from commission</dd></dl>
-                ${installationProof(w)}
-                <p>${w.costsComplete===true?'Actual costs approved by management.':'Technician costs are not approved costs. Commission remains in review until management approves evidenced actual costs.'}</p>
+                ${admin()?orderPanels(w,index,holds):''}</article>`;
+        }
+        function orderPanels(w,index,holds) {
+            const actions = management(w,holds), docs = w.documents || [], quote = quoteCopy(w);
+            const agreement = docs.find(d=>d.kind==='agreement');
+            const prep = w.preparation?.record;
+            const readyLabel = value => ({ready:'Ready',blocked:'Blocked',not_required:'Not required',unreviewed:'Not reviewed'})[value] || 'Not recorded';
+            const panel = (label,heading,body) => `<section class="field-workflow__panel" data-context-view data-tab-label="${label}"><h4>${heading}</h4>${body}</section>`;
+            const overview = `<div class="field-workflow__overview">
+                ${summaryPanel('Approved quote summary',docs.some(d=>d.kind==='quote')?'Published copy':'Copy not published',facts([
+                    ['Scope',esc(serviceTitle(w))],['Approved revenue',money(w.totalCents)],['Verified net paid',money(w.netPaidCents)],['Copy approved',date(quote?.approvedAt)]
+                ]),docs.some(d=>d.kind==='quote')?'success':'info')}
+                ${summaryPanel('Customer agreement',w.acceptedAt?'Accepted':'Acceptance pending',facts([
+                    ['Customer copy',agreement?'Published':'Not published'],['Accepted',date(w.acceptedAt)],['Delivery records',esc(w.deliveryEvidence?.length ?? 0)]
+                ]),w.acceptedAt?'success':'info')}
+                ${summaryPanel('Scheduling status',w.completedAt?'Completed':w.state==='scheduled'?'Scheduled':'Not scheduled',facts([
+                    ['Installation date',w.reservation?.starts_at?date(w.reservation.starts_at):'Not established'],['Installation team',w.technicianId?'Assigned':'Not assigned'],['Completion',date(w.completedAt)]
+                ]),w.completedAt?'success':'info')}
+                ${summaryPanel('Installation readiness',w.proof?.complete===true?'Proof complete':'Review required',facts([
+                    ['Scope review',prep?.scope_reviewed===true?'Reviewed':prep?.scope_reviewed===false?'Not reviewed':'Not recorded'],['Materials',readyLabel(prep?.materials)],['Customer access',readyLabel(prep?.access)],['Installation proof',w.proof?.complete===true?'Requirements satisfied':'Not complete']
+                ]),w.proof?.complete===true?'success':'info')}
+                ${summaryPanel('Actual costs approval',w.costsComplete===true?'Approved':'Approval pending',facts([
+                    ['Cost review',w.costsComplete===true?'Approved by management':'Actual-cost approval required'],['Approved on',date(w.costApprovedAt)],['Processing fee',money(w.processingFeeCents)]
+                ]),w.costsComplete===true?'success':'info')}
+                ${summaryPanel('Commission qualification', 'Separate earnings review',facts([
+                    ['Installation',w.completedAt?'Completed':'Not completed'],['Actual costs',w.costsComplete===true?'Approved':'Not approved'],['Qualification','See Earnings for authoritative qualification and amount']
+                ]))}</div><p class="field-workflow__note">Readiness reasons: ${esc(holds.join('; ') || 'No additional server review reasons reported.')} No approval or payment is inferred from this summary.</p>`;
+            const quoteBody = `<p class="field-workflow__note">${docs.some(d=>d.kind==='quote')?'Published approved customer copy.':'Approved source copy awaiting publication.'} Original copies and hashes remain in Audit.</p>
+                ${facts([['Approved revenue',money(w.totalCents)],['Approved copy date',date(quote?.approvedAt)]])}
+                ${quoteLines(w).map(line=>`<section class="field-workflow__summary-panel"><header><h5>${esc(line.description || line.service || 'Quoted service')}</h5><strong>${money(line.totalCents)}</strong></header>${facts([['Service',esc(line.service || 'Not supplied')],['Quantity',esc(line.quantity ?? 'Not supplied')]])}${['scope','equipment','exclusions'].filter(key=>Array.isArray(line[key])&&line[key].length).map(key=>`<h5>${({scope:'Included scope',equipment:'Equipment',exclusions:'Exclusions'})[key]}</h5><ul>${line[key].map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`).join('')}</section>`).join('') || '<p>Structured quote line details were not supplied. No scope or amount has been substituted.</p>'}`;
+            const docsBody = `<div class="field-workflow__overview">${docs.map(doc=>summaryPanel(doc.label || ({quote:'Approved quote',agreement:'Customer agreement',notice:'Customer notice'})[doc.kind] || 'Customer document','Published',facts([['Approved',date(doc.approvedAt)],['Copy type',esc(({quote:'Quote',agreement:'Agreement',notice:'Notice'})[doc.kind] || 'Customer copy')]]))).join('') || '<p>No approved customer copies published.</p>'}</div>
+                ${facts([['Agreement accepted',date(w.acceptedAt)],['Delivery records',esc(w.deliveryEvidence?.length ?? 0)],['Cancellation deadline',date(w.cancellationDeadline)]])}
+                <p class="field-workflow__note">Approved policy and delivery evidence control clearance. Published copies do not establish acceptance.</p>
+                <h5>Publish and record delivery</h5>${actions.documents}<section class="field-workflow__review"><h5>Cancellation & refund review</h5>${actions.cancellation}</section>`;
+            const costsBody = `${facts([['Actual processing fee',money(w.processingFeeCents)],['Actual technician hours',esc(w.hours ?? 'Not recorded')+' — wages are separate from commission'],['Actual costs approval',w.costsComplete===true?'Approved by management':'Not approved'],['Approved on',date(w.costApprovedAt)]])}
+                <p>${w.costsComplete===true?'Actual costs approved by management. Commission qualification and amount still require their separate Earnings review.':'Technician costs are not approved costs. Commission remains in review until management approves evidenced actual costs.'}</p>
+                <p class="field-workflow__note">No estimated margin is presented. Earnings retains the authoritative actual commission basis.</p>${(w.expenses || []).map(row=>`<p>${esc(({equipment:'Equipment',materials:'Installation materials',wages:'Technician wages'})[row.category] || 'Reviewed actual cost')}: <strong>${money(row.amountCents)}</strong></p>`).join('')}${costReview(w)}`;
+            return `<div data-context-panels aria-label="${esc(recordTitle(w,index,options.customerNames))} order actions">
+                ${panel('Overview','Order overview',overview)}
+                ${panel('Quote','Approved quote',quoteBody)}
+                ${panel('Customer Docs','Customer documents & acceptance',docsBody)}
+                ${panel('Scheduling','Scheduling & installation readiness',`<h5>Readiness review</h5>${actions.readiness}${installationProof(w)}<h5>Company calendar & managed assignment</h5>${actions.scheduling}`)}
+                ${panel('Costs & Margin','Actual costs & margin review',costsBody)}
+                ${panel('Commission Review','Commission qualification review',`<p>Qualification and the commission amount are established in Earnings, not calculated on this order screen.</p>${facts([['Installation completed',date(w.completedAt)],['Verified net paid',money(w.netPaidCents)],['Actual costs',w.costsComplete===true?'Approved by management':'Awaiting management approval']])}<p>Technician wages are separate. A completed installation or verified deposit alone does not establish earned commission or a paid Friday run.</p>`)}
+                ${panel('Audit','Technical evidence & audit',`<p class="field-workflow__note">Secondary technical records. Original identifiers, immutable copies, source evidence and revisions are retained here.</p>
                 <details class="field-workflow__audit"><summary>Admin audit details — IDs, documents & evidence</summary>
                 <p class="field-sales__id">Lead ${esc(w.leadId)} / quote ${esc(w.quoteId)} / revision ${esc(w.revision)} / representative ${esc(w.representativeId)}</p>
                 <h4>Approved immutable customer copies & delivery</h4>
                 ${(w.documents || []).map(doc => `<section><h4>${esc(doc.label)} / ${esc(doc.kind)}</h4><p class="field-sales__id">${esc(doc.artifactId)} / ${esc(doc.contentHash)}</p><pre>${esc(contentText(doc.content))}</pre></section>`).join('') || '<p>No approved immutable copies published.</p>'}
-                <pre>${esc(JSON.stringify({...w,proof:undefined},null,2))}</pre></details></details>
-                ${(w.refunds||[]).length?`<p class="field-workflow__note">Refund reconciliation requires management review. Reserved or provider-pending amounts are not confirmed refunds; verify the provider record or retry the identical operation.</p>`:''}
-                ${management(w, holds)}</div>`:''}</article>`;
+                <pre>${esc(JSON.stringify({...w,proof:undefined},null,2))}</pre></details>${(w.refunds||[]).length?'<p>Reserved or provider-pending refunds are not confirmed refunds. Management must reconcile the provider evidence.</p>':''}`)}
+                </div>`;
         }
         function installationProof(w){
             if(!admin())return '';
@@ -208,10 +250,8 @@
             const preview = w.assignmentPreview, technicians = preview?.technicians || [];
             const assignment = form('assign',w,`<label>Available technician<select name="proId" required><option value="">Choose an authorized technician</option>${technicians.map((t,i)=>`<option value="${esc(t.proId)}">${esc(t.name || 'Technician '+(i+1))}</option>`).join('')}</select></label>
                 <input name="context" type="hidden" value="${esc(preview?.job?.context || '')}"><label class="field-sales__wide">Assignment note<textarea name="note" required maxlength="4000"></textarea></label>`,'Submit managed assignment',w.gates?.canAssign !== true || !preview?.job?.context || !technicians.length);
-            return `${costReview(w)}<details class="field-workflow__review"><summary>Customer documents & installation readiness</summary><h4>Customer copies & delivery</h4>${docForms}<h4>Installation readiness</h4>${readiness}</details>
-                <details><summary>Existing calendar and managed assignment</summary>${holds.length ? '<p>Review the order readiness reasons above. Scheduling and assignment have separate requirements; disabled actions are not ready. The server revalidates every transition.</p>' : ''}
-                ${schedule}${assignment}</details><details><summary>Cancellation or refund review — not automatic refund</summary>
-                ${form('cancel',w,reason+evidence,'Record cancellation and holds')}${form('refund_review',w,reason+evidence,'Record refund review — no automatic transfer')}</details>`;
+            return {documents:docForms,readiness,scheduling:`${holds.length ? '<p>Scheduling and assignment have separate requirements; disabled actions are not ready. The server revalidates every transition.</p>' : ''}${schedule}${assignment}`,
+                cancellation:`<p>Review only — no automatic refund.</p>${form('cancel',w,reason+evidence,'Record cancellation and holds')}${form('refund_review',w,reason+evidence,'Record refund review — no automatic transfer')}`};
         }
         function costReview(w){
             if(!w.completedAt||w.costsComplete===true)return '';
@@ -220,8 +260,10 @@
                 ${form('cost_review',w,`${rows.map((row,index)=>`<fieldset class="field-sales__wide" data-workflow-cost-row><legend>Reviewed actual cost ${index+1}</legend>
                     <label>Category<select name="category"><option value="equipment"${row.category==='equipment'?' selected':''}>Equipment</option><option value="materials"${row.category==='materials'?' selected':''}>Installation materials</option></select></label>
                     <label>Quantity (up to 6 decimals)<input name="quantity" type="number" min="0" max="100000" step="0.000001" value="${esc(row.quantity)}" required></label>
+                    <p class="field-sales__wide">Reported unit cost <strong>${money(row.unitCents)}</strong> · reported line total <strong>${money(row.amountCents)}</strong></p>
+                    <details class="field-sales__wide field-workflow__audit"><summary>Technical cost correction — exact amounts</summary>
                     <label>Actual unit cost (integer cents)<input name="unitCents" type="number" min="0" step="1" value="${esc(row.unitCents)}" required></label>
-                    <label>Actual line total (quantity × unit cents)<input name="amountCents" type="number" min="0" step="1" value="${esc(row.amountCents)}" required></label>
+                    <label>Actual line total (quantity × unit cents)<input name="amountCents" type="number" min="0" step="1" value="${esc(row.amountCents)}" required></label></details>
                     <label>Receipt/source/correction evidence<textarea name="rowEvidence" required maxlength="4000">${esc(row.evidence?.reference||'')}</textarea></label>
                     <label>Zero-cost attestation (required when total is zero)<textarea name="zeroCostAttestation" maxlength="2000">${esc(row.zeroCostAttestation||'')}</textarea></label>
                     <label class="field-sales__check"><input name="actual" type="checkbox" required>I attest these are evidenced actual costs, not estimates.</label></fieldset>`).join('')}

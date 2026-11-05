@@ -59,10 +59,13 @@ test('an unavailable optional Operations script does not prevent established das
     w.document.head.appendChild = script => { pending.push(script); return script; };
     const loader = Array.from(w.document.scripts).find(script => script.textContent.includes('function loadDashboardScripts()')).textContent;
     vm.runInContext(loader, dom.getInternalVMContext());
-    assert.match(pending[0].src, /management-operations.js/);
-    pending[0].onerror();
+    assert.match(pending[0].src, /dashboard-controls.js/);
+    pending[0].onload();
     await new Promise(resolve => setImmediate(resolve));
-    for (let index = 1; pending[index]; index++) {
+    assert.match(pending[1].src, /management-operations.js/);
+    pending[1].onerror();
+    await new Promise(resolve => setImmediate(resolve));
+    for (let index = 2; pending[index]; index++) {
       pending[index].onload();
       await new Promise(resolve => setImmediate(resolve));
     }

@@ -352,73 +352,43 @@
             letter-spacing: 0.08em;
         }
 
-        /* Minimal shell polish */
         #logHoursQuickBtn {
-            position: fixed;
-            right: 22px;
-            bottom: 22px;
-            z-index: 1200;
+            position: static;
             margin-right: 0 !important;
-            display: inline-flex !important;
             align-items: center;
             justify-content: center;
-            width: 58px;
-            height: 58px;
-            min-height: 58px;
-            padding: 0 !important;
-            border-radius: 999px !important;
-            border: 1px solid rgba(15, 23, 42, 0.08) !important;
-            background: rgba(15, 23, 42, 0.94) !important;
-            color: #fff !important;
-            box-shadow: 0 18px 45px rgba(15, 23, 42, 0.20);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            font-size: 0;
+            gap: 6px;
+            width: auto;
+            height: 36px;
+            min-height: 36px;
+            padding: 6px 10px !important;
+            border-radius: 6px !important;
+            border: 1px solid var(--border) !important;
+            background: var(--surface) !important;
+            color: var(--cobalt) !important;
+            box-shadow: none;
+            font: 600 12px/1.4 Inter, sans-serif;
+            white-space: nowrap;
         }
 
         #logHoursQuickBtn::before {
             content: '';
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none'%3E%3Ccircle cx='12' cy='13' r='7.25' stroke='white' stroke-width='1.8'/%3E%3Cpath d='M12 2.75v3.5M9.5 2.75h5' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3Cpath d='M12 13V9.5M12 13l3 1.75' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: center;
-            background-size: 20px 20px;
-        }
-
-        #logHoursQuickBtn::after {
-            content: attr(aria-label);
-            position: absolute;
-            right: 72px;
-            top: 50%;
-            transform: translateY(-50%);
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: rgba(15, 23, 42, 0.96);
-            color: #fff;
-            font-size: 12px;
-            font-weight: 800;
-            letter-spacing: 0.01em;
-            white-space: nowrap;
-            opacity: 0;
-            pointer-events: none;
-            box-shadow: 0 16px 30px rgba(15, 23, 42, 0.18);
-            transition: opacity 0.18s ease, transform 0.18s ease;
+            width: 16px;
+            height: 16px;
+            flex: 0 0 16px;
+            background: currentColor;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='13' r='7.25'/%3E%3Cpath d='M12 2.75v3.5M9.5 2.75h5M12 13V9.5m0 3.5 3 1.75'/%3E%3C/svg%3E") center/contain no-repeat;
         }
 
         #logHoursQuickBtn:hover,
         #logHoursQuickBtn:focus-visible {
-            background: #0f172a !important;
-            box-shadow: 0 20px 52px rgba(15, 23, 42, 0.24);
+            background: var(--surface-2) !important;
+            box-shadow: none;
             transform: none !important;
         }
 
-        #logHoursQuickBtn:hover::after,
-        #logHoursQuickBtn:focus-visible::after {
-            opacity: 1;
-            transform: translateY(-50%) translateX(-4px);
-        }
+        #logHoursQuickBtn:focus-visible { outline: 2px solid var(--azure); outline-offset: 2px; }
 
         #h2s-app .btn,
         #h2s-app .deliverables-action-btn,
@@ -1959,15 +1929,8 @@
             }
 
             #logHoursQuickBtn {
-                right: 16px;
-                bottom: 16px;
-                width: 54px;
-                height: 54px;
-                min-height: 54px;
-            }
-
-            #logHoursQuickBtn::after {
-                display: none;
+                height: 44px;
+                min-height: 44px;
             }
 
             #deliverables-pane .deliverables-switcher {
@@ -2225,7 +2188,7 @@
                 <div class="app-topbar-logo">
                     <img src="https://cdn.jsdelivr.net/gh/gkstrmtm/home2smart-assets@main/logo-180.png" 
                          alt="Home2Smart Logo">
-                    <span class="app-topbar-title">H2S dashboard</span>
+                    <span class="app-topbar-title">Home2Smart</span>
                 </div>
                 <div class="app-topbar-area" id="currentAreaTitle">Pipeline</div>
             </div>

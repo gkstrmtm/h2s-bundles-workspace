@@ -18,21 +18,30 @@
 #h2s-app[data-field-sales="true"] :is(.app-sidebar,.app-topbar,.app-sidebar-backdrop) { display: none !important; }
 #h2s-app[data-field-sales="true"] .app-main { margin: 0; width: 100% !important; min-height: 100vh; }
 #h2s-app[data-field-sales="true"] .app-content { margin: 0 auto; padding: 24px; max-width: 1248px; width: 100%; }
-#h2s-app .field-sales :is(h2,h3,h4) { color: var(--sales-heading); font-family: 'Space Grotesk', Inter, sans-serif; line-height: 1.3; margin: 8px 0; overflow-wrap: anywhere; }
+#h2s-app .field-sales :is(h2,h3,h4) { color: var(--sales-heading); font-family: 'Space Grotesk', Inter, sans-serif; font-weight: 650; line-height: 1.3; margin: 8px 0; overflow-wrap: anywhere; }
 #h2s-app .field-sales h2 { font-size: 22px; }
-#h2s-app .field-sales h3 { font-size: 19px; }
+#h2s-app .field-sales h3 { font-size: 18px; }
 #h2s-app .field-sales h4 { font-size: 16px; }
 #h2s-app .field-sales p { margin: 8px 0; overflow-wrap: anywhere; }
-#h2s-app .field-sales__eyebrow { color: var(--sales-muted); font: 600 12px/1.4 Archivo, Inter, sans-serif; letter-spacing: .04em; }
-#h2s-app .field-sales__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 16px; }
+#h2s-app .field-sales__eyebrow { color: var(--sales-heading); font: 700 16px/1.4 Inter, sans-serif; letter-spacing: -.025em; }
+#h2s-app .field-sales__header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-bottom: 8px; }
+#h2s-app .field-sales__identity { min-width: 0; }
+#h2s-app .field-sales__identity h2 { margin: 8px 0 0; letter-spacing: -.025em; }
 #h2s-app .field-sales__toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; margin-block: 12px; min-width: 0; }
 #h2s-app .field-sales__header .field-sales__toolbar { margin: 0; }
 #h2s-app .field-sales nav { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-#h2s-app .field-sales__nav { padding: 8px 0; margin-bottom: 16px; border-block: 1px solid var(--sales-border); }
+#h2s-app .field-sales__nav { padding: 8px 0; margin-bottom: 16px; border-bottom: 1px solid var(--sales-border); }
 #h2s-app .field-sales__nav button { display: flex; align-items: center; justify-content: center; gap: 4px; min-width: 88px; border-color: transparent; background: transparent; }
 #h2s-app .field-sales__nav svg { width: 16px; height: 16px; flex-shrink: 0; }
-#h2s-app .field-sales__nav button[aria-current="page"] { color: var(--sales-heading); border-color: var(--sales-accent); font-weight: 600; }
-#h2s-app .field-sales__management-nav { margin-block: 0 16px; }
+#h2s-app .field-sales__nav button[aria-current="page"] { color: var(--sales-accent); border-color: transparent; background: color-mix(in srgb, var(--sales-accent) 9%, var(--sales-surface)); font-weight: 600; }
+#h2s-app .field-sales__header--management { align-items: center; padding-bottom: 0; gap: 8px; }
+#h2s-app .field-sales__header--management .field-sales__identity h2 { margin: 0; font-size: 18px; }
+/* One management row stays in flow; narrow screens scroll rather than adding rows.
+   The independent representative .field-sales__nav footer is not involved. */
+#h2s-app .field-sales nav.field-sales__management-nav { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; gap: 4px; padding: 4px 0 8px; margin: 0 0 12px; border-bottom: 1px solid var(--sales-border); }
+#h2s-app .field-sales__management-nav button { flex: 0 0 auto; min-width: 0; padding: 8px 12px; border-color: transparent; background: transparent; white-space: nowrap; overflow-wrap: normal; font-size: 13px; }
+#h2s-app .field-sales__management-nav button[aria-current="page"] { color: var(--sales-accent); border-color: transparent; background: color-mix(in srgb, var(--sales-accent) 9%, var(--sales-surface)); font-weight: 600; }
+#h2s-app .field-sales__management-nav button:focus-visible { outline-offset: -3px; }
 #h2s-app .field-sales button { min-height: 44px; max-width: 100%; padding: 8px 12px; border: 1px solid var(--sales-border); border-radius: 6px; background: var(--sales-surface); color: var(--sales-heading); font: 500 14px/1.4 Inter, sans-serif; cursor: pointer; white-space: normal; overflow-wrap: anywhere; box-shadow: none; }
 #h2s-app .field-sales button:hover:not(:disabled) { border-color: var(--sales-accent); }
 #h2s-app .field-sales button[aria-pressed="true"] { color: var(--sales-heading); border-color: var(--sales-accent); background: color-mix(in srgb, var(--sales-accent) 9%, var(--sales-surface)); }
@@ -45,14 +54,20 @@
 #h2s-app .field-sales article { padding: 16px 0; border-bottom: 1px solid var(--sales-border); overflow-wrap: anywhere; min-width: 0; }
 #h2s-app .field-sales__record-heading, #h2s-app .field-sales__section-heading, #h2s-app .field-sales__followup { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
 #h2s-app .field-sales__followup { justify-content: start; padding-block: 8px; }
-#h2s-app .field-sales__summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-block: 1px solid var(--sales-border); margin: 16px 0; background: var(--sales-surface); }
-#h2s-app .field-sales__metric { display: flex; flex-direction: column; min-width: 0; gap: 4px; padding: 16px; border-right: 1px solid var(--sales-border); }
-#h2s-app .field-sales__metric:last-child { border-right: 0; }
-#h2s-app .field-sales__metric strong { color: var(--sales-heading); font: 500 24px/1.3 'JetBrains Mono', monospace; overflow-wrap: anywhere; }
+#h2s-app .field-sales__summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+#h2s-app .field-sales__metric { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; gap: 4px; padding: 12px; border: 1px solid var(--sales-border); border-radius: 6px; background: var(--sales-surface); }
+#h2s-app .field-sales__metric strong { color: var(--sales-heading); font: 500 22px/1.25 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+#h2s-app .field-sales__metric:first-child { border-color: color-mix(in srgb, var(--sales-accent) 35%, var(--sales-border)); background: color-mix(in srgb, var(--sales-accent) 5%, var(--sales-surface)); }
 #h2s-app .field-sales__metric span, #h2s-app .field-sales__note { color: var(--sales-muted); font-size: 13px; }
-#h2s-app .field-sales__badge { display: inline-flex; align-items: center; padding: 4px 8px; border: 1px solid var(--sales-border); border-radius: 4px; background: var(--sales-surface); font-size: 12px; font-weight: 500; }
-#h2s-app .field-sales__section { margin-block: 24px; padding-block: 16px; border-block: 1px solid var(--sales-border); }
-#h2s-app .field-sales__empty { padding: 16px; color: var(--sales-muted); border-left: 2px solid var(--sales-border); margin-block: 16px; }
+#h2s-app .field-sales__badge { display: inline-flex; align-items: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--sales-border); border-radius: 4px; background: var(--sales-surface); color: var(--sales-muted); font-size: 12px; font-weight: 500; line-height: 1.4; }
+#h2s-app .field-sales__badge[data-tone="success"] { color: var(--success, #166534); border-color: transparent; background: color-mix(in srgb, var(--success, #166534) 10%, var(--sales-surface)); }
+#h2s-app .field-sales__badge[data-tone="info"] { color: var(--sales-accent); border-color: transparent; background: color-mix(in srgb, var(--sales-accent) 9%, var(--sales-surface)); }
+#h2s-app .field-sales__badge[data-tone="attention"] { color: var(--danger, #b42318); border-color: transparent; background: color-mix(in srgb, var(--danger, #b42318) 7%, var(--sales-surface)); }
+#h2s-app .field-sales__section { margin-block: 20px; }
+#h2s-app .field-sales__empty { padding: 16px; color: var(--sales-muted); border: 1px solid var(--sales-border); border-radius: 6px; background: var(--sales-surface); margin-block: 12px; }
+#h2s-app .field-sales__empty > :first-child { margin-top: 0; }
+#h2s-app .field-sales__empty > :last-child { margin-bottom: 0; }
+#h2s-app .field-sales__loading { padding: 12px; border-radius: 6px; background: var(--sales-surface); color: var(--sales-muted); }
 #h2s-app .field-sales__search { flex: 1; max-width: 480px; }
 #h2s-app .field-sales__form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 16px; max-width: 960px; margin-block: 16px 24px; }
 #h2s-app .field-sales label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-weight: 500; }
@@ -79,17 +94,52 @@
 #h2s-app .field-sales__service span { min-width: 0; overflow-wrap: anywhere; }
 #h2s-app .field-sales__service strong, #h2s-app .field-sales__service small { display: block; }
 #h2s-app .field-sales__service small { color: var(--sales-muted); font-size: 12px; font-weight: 400; margin-top: 4px; }
+#h2s-app .field-sales__service:has(input:checked) strong { color: var(--sales-accent); }
+#h2s-app .field-sales__service:has(input:disabled) { color: var(--sales-muted); cursor: not-allowed; }
 #h2s-app .field-sales [data-sales-questions] fieldset { display: grid; gap: 8px; margin-block: 12px; }
 #h2s-app .field-sales__wide { grid-column: 1 / -1; }
 #h2s-app .field-sales__id { font: 12px/1.5 'JetBrains Mono', monospace; }
 #h2s-app .field-sales pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 'JetBrains Mono', monospace; }
-#h2s-app .field-sales details { padding-block: 12px; border-block: 1px solid var(--sales-border); margin-block: 12px; }
+#h2s-app .field-sales details { padding-block: 4px; border-top: 1px solid var(--sales-border); margin-block: 12px; }
 #h2s-app .field-sales summary { cursor: pointer; font-weight: 500; padding-block: 8px; }
 #h2s-app .field-sales img { display: block; max-width: 100%; max-height: 420px; margin-top: 8px; }
-#h2s-app .field-sales [data-sales-commerce], #h2s-app .field-sales [data-sales-quote-builder]:not(:empty) { margin-block: 24px; padding-block: 16px; border-top: 1px solid var(--sales-border); }
-#h2s-app .field-sales [data-commerce-review] button { margin: 4px; }
+#h2s-app .field-sales [data-sales-commerce], #h2s-app .field-sales [data-sales-quote-builder]:not(:empty) { margin-block: 20px; }
+#h2s-app .field-sales [data-commerce-review] button { margin-block: 4px; }
 #h2s-app .field-sales [data-commerce-line] { margin-bottom: 16px; }
 #h2s-app .field-sales [data-commerce-inputs] { display: grid; gap: 12px; margin-block: 12px; }
+#h2s-app .field-sales [data-sales-list], #h2s-app .field-sales__quote-list { display: grid; gap: 12px; }
+/* Customer-first surfaces, not nested elevation cards. Workflow owns its own order cards. */
+#h2s-app .field-sales :is(.field-sales__lead-card,.field-sales__quote-card,.field-sales__quote-review,.field-sales__customer-summary) { min-width: 0; padding: 16px; border: 1px solid var(--sales-border); border-radius: 8px; background: var(--sales-surface); }
+#h2s-app .field-sales :is(.field-sales__lead-card,.field-sales__quote-card) .field-sales__record-heading { align-items: start; gap: 4px 12px; }
+#h2s-app .field-sales button.field-sales__customer-link { flex: 1 1 160px; min-width: 0; min-height: 44px; margin-block: -8px; padding: 8px 0; border: 0; background: transparent; text-align: left; font-weight: 650; font-size: 15px; }
+#h2s-app .field-sales button.field-sales__customer-link:hover { color: var(--sales-accent); text-decoration: underline; text-underline-offset: 3px; }
+#h2s-app .field-sales .field-sales__service-label { margin: 4px 0; font-size: 13px; }
+#h2s-app .field-sales__facts { display: grid; gap: 8px; margin: 12px 0 0; font-size: 13px; }
+#h2s-app .field-sales__facts > div { display: grid; grid-template-columns: minmax(0,104px) minmax(0,1fr); align-items: baseline; gap: 8px 12px; }
+#h2s-app .field-sales__facts dt { color: var(--sales-muted); font-weight: 400; overflow-wrap: anywhere; }
+#h2s-app .field-sales__facts dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+#h2s-app .field-sales__next-step dd { color: var(--sales-heading); font-weight: 600; }
+#h2s-app .field-sales__card-actions { display: flex; justify-content: end; margin-top: 8px; }
+#h2s-app .field-sales__card-actions button { padding: 8px 0 0 8px; min-height: 44px; border-color: transparent; background: transparent; color: var(--sales-accent); font-size: 13px; }
+#h2s-app .field-sales__customer-summary h3 { margin: 0; }
+#h2s-app .field-sales__customer-summary .field-sales__record-heading { align-items: start; }
+#h2s-app .field-sales__photo-card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+#h2s-app .field-sales .field-sales__photo-card p { margin: 4px 0 0; }
+#h2s-app .field-sales__quote-workspace > label { max-width: 640px; }
+#h2s-app .field-sales__quote-workspace > h3 { margin-top: 0; }
+#h2s-app .field-sales__quote-customer { margin-block: 12px 16px; }
+#h2s-app .field-sales .field-sales__quote-customer p { margin-block: 4px; }
+#h2s-app .field-sales__quote-revisions { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px 16px; }
+#h2s-app .field-sales__quote-revisions button { display: flex; flex-direction: column; align-items: start; gap: 4px; text-align: left; }
+#h2s-app .field-sales__quote-revisions button strong { font-variant-numeric: tabular-nums; }
+#h2s-app .field-sales__quote-scope { margin-block: 16px; padding-block: 4px; }
+#h2s-app .field-sales__quote-scope + .field-sales__quote-scope { border-top: 1px solid var(--sales-border); padding-top: 12px; }
+#h2s-app .field-sales__quote-total { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-block: 16px 8px; padding: 12px; background: color-mix(in srgb, var(--sales-accent) 5%, var(--sales-surface)); border-radius: 6px; color: var(--sales-heading); }
+#h2s-app .field-sales__quote-total strong { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+#h2s-app .field-sales__scope-note { padding: 8px 12px; background: var(--bg, #f3f5f8); border-radius: 4px; }
+#h2s-app .field-sales .field-sales__scope-note p { margin-block: 4px; }
+#h2s-app .field-sales details.field-sales__guidance { border: 0; margin: 4px 0; padding: 0; color: var(--sales-muted); font-size: 13px; }
+#h2s-app .field-sales__payment-record { padding-block: 12px; }
 #h2s-app .field-sales a { color: var(--sales-accent); overflow-wrap: anywhere; }
 #h2s-app .field-sales--agreement { box-sizing: border-box; max-width: 960px; margin-inline: auto; padding: 16px; }
 @media(max-width:767px) {
@@ -105,8 +155,15 @@
     #h2s-app .field-sales__form, #h2s-app .field-sales__services { grid-template-columns: minmax(0,1fr); }
     #h2s-app .field-sales :is(input,select,textarea) { font-size: 16px; }
     #h2s-app .field-sales .dashboard-custom-select-trigger { font-size: 16px; }
-    #h2s-app .field-sales__summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
-    #h2s-app .field-sales__metric:nth-child(even) { border-right: 0; }
-    #h2s-app .field-sales__metric:nth-child(n+3) { border-top: 1px solid var(--sales-border); }
+    #h2s-app .field-sales__summary { gap: 6px; }
+    #h2s-app .field-sales__metric { padding: 8px; }
+    #h2s-app .field-sales__metric span { font-size: 11px; line-height: 1.4; }
+    #h2s-app .field-sales__metric strong { font-size: 20px; }
+    #h2s-app .field-sales :is(.field-sales__lead-card,.field-sales__quote-card,.field-sales__quote-review,.field-sales__customer-summary) { padding: 12px; }
+    #h2s-app .field-sales__quote-revisions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+    #h2s-app .field-sales__quote-revisions > .field-sales__empty { grid-column: 1 / -1; margin: 0; }
+    #h2s-app .field-sales__facts > div { grid-template-columns: minmax(0,88px) minmax(0,1fr); gap: 8px; }
     #h2s-app .field-sales__header { align-items: start; }
+    #h2s-app .field-sales__header .field-sales__toolbar { gap: 4px; }
+    #h2s-app .field-sales__header .field-sales__toolbar button { padding-inline: 8px; border-color: transparent; font-size: 12px; }
 }

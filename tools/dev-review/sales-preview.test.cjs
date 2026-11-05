@@ -32,8 +32,22 @@ test('management Orders review opens the actual dashboard order destination at d
     assert.equal(w.document.getElementById('width').value,'1280');
     assert.equal(w.getComputedStyle(frame).maxWidth,'none');
     assert.equal(w.getComputedStyle(w.document.body).overflowX,'auto');
-    assert.equal(w.document.getElementById('title').textContent,'Management Orders & Detail Review');
+    assert.equal(w.document.getElementById('title').textContent,'Management Orders & Customer Details');
     frame.contentWindow.postMessage=message=>messages.push(message);
     w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin:w.location.origin,data:{type:'h2s-review-ready'}}));
     assert.equal(messages[0].mode,'orders');
+});
+test('management Quotes review retains ADMIN context and requests the native payment portfolio destination',async t=>{
+    const dom=new JSDOM(fs.readFileSync(path.join(__dirname,'sales-preview.html'),'utf8'),{url:'http://127.0.0.1:9444/sales-review?screen=managementQuotes',runScripts:'outside-only'});
+    t.after(()=>dom.window.close());
+    const w=dom.window;
+    w.fetch=async()=>({ok:true,json:async()=>({gallery:{}})});
+    w.eval(w.document.querySelector('script').textContent);
+    await new Promise(resolve=>setImmediate(resolve));
+    const frame=w.document.getElementById('application'),url=new URL(frame.src),messages=[];
+    assert.equal(url.pathname,'/dash.html');assert.equal(url.searchParams.get('reviewRole'),'ADMIN');
+    assert.equal(w.document.getElementById('width').value,'1280');
+    frame.contentWindow.postMessage=message=>messages.push(message);
+    w.dispatchEvent(new w.MessageEvent('message',{source:frame.contentWindow,origin:w.location.origin,data:{type:'h2s-review-ready'}}));
+    assert.equal(messages[0].mode,'transactions');
 });

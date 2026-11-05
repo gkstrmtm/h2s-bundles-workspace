@@ -1,6 +1,124 @@
 # Field Sales interface review
 
-## Current coordinated UX refinement
+## Approved visual direction implementation
+
+Implemented on `retro-dev`, continuing from
+`818f2ae6efd5468632c265d8a07772a7d21e4dd8`. The supplied reference guided the actual
+interfaces: restrained bordered surfaces, clearer hierarchy, compact typography,
+structured customer/payment/status information, contextual tabs and independent
+mobile navigation. Reference amounts and policies were not copied.
+
+### What changed
+
+- Management has one navigation row with one active destination, a more consistent
+  sidebar, aligned small icons and clearer Home2Smart branding. The existing Log
+  Hours action now occupies the topbar instead of floating over application content.
+- Orders show customer/service/status, deposit, balance, representative/team,
+  next action and six structured overview summaries. Seven contextual views are
+  **Overview, Quote, Customer Docs, Scheduling, Costs & Margin, Commission Review
+  and Audit**. Existing cancellation, enrollment, policy and operational controls
+  remain available in contextual views; primary workflows no longer require
+  opening their former disclosure sections.
+- Earnings retain authoritative financial cards and Qualification, Commissions,
+  Adjustments and Friday review views, with a separate administrator Audit view.
+  Friday approval/export remain explicitly distinct from confirmed payment.
+- The independent representative application has compact metrics, customer-first
+  order/status rows, concise next actions, full-card multi-service selection,
+  explicit loading/empty states and five equal mobile footer destinations.
+  Input retention, existing validation and account/session boundaries remain.
+- Routine quote, payment and order information uses formatted amounts and readable
+  statuses. Supplied representative names are preferred; missing names are
+  explicitly unavailable rather than replaced with internal codes.
+
+### Customer dropdown: demonstrated cause and correction
+
+The existing absolute-positioned popup had no viewport-aware bounds or flipping.
+In an actual 390px-wide, 420px-high application viewport, its bottom reached
+568.84px, placing 148.84px outside the viewport. Local stacking/scroll containers
+could also clip the popup. Broad sales-button styling additionally overrode option
+appearance. A literal oversized blank block was not reproduced at normal full
+height; these are the rendering defects actually demonstrated and corrected.
+
+The same native-backed shared select now uses the browser popover top layer where
+available, a fixed-position fallback, natural content height, bounded placement,
+above/below fitting and refitting when option results change. Closed menus reserve
+no area; empty lists have an explicit message. Long options wrap; long lists
+scroll within a maximum 240px popup. Canonical option styles override generic
+button rules. Native values/events, disabled state and ownership validation remain.
+Keyboard typeahead, arrows, Home/End, Enter, Escape/focus return, outside clicks
+and ancestor-scroll closing are covered.
+
+### Final validation and review
+
+- Combined command documented below: **221/221 passed**, no failures, skips or
+  cancellations. The former baseline optional-script assertion was corrected to
+  finish required shared-controls loading before exercising optional Operations
+  failure; startup/error assertions remain.
+- After correcting the review-only Quotes & Payments entry to the actual
+  `transactions` portfolio destination:
+  `node --test tools\dev-review\sales-preview.test.cjs` **3/3 passed**.
+- Actual eight destinations at **320, 390, 768 and 1280px**:
+  **32/32 exact application widths**, no document-wide horizontal overflow,
+  no visible routine JSON blocks and exactly one active navigation destination.
+  Screenshots were inspected, including scrolled order summaries, mobile forms,
+  compact orders, desktop payments and tablet commissions.
+- Actual pointer/keyboard checks exercised customer selection/typeahead and focus,
+  full-card multi-selection, required-field blocking/focus, destination changes,
+  unsaved customer/quote input retention, order contextual tabs and arrow navigation,
+  and Friday review. Two services remained selected; invalid intake focused Phone;
+  quantity and exception text survived Quotes / Orders roundtrips.
+- Empty, one long-name and 80-option cases also exercised the real shared control
+  in an isolated component fixture, distinct from the three actual seeded leads.
+  Syntax and scoped whitespace checks passed.
+- All eight final editor previews use the committed isolated gallery:
+  `http://127.0.0.1:50276/sales-review?screen=` followed by `management`,
+  `managementOrders`, `managementQuotes`, `commissions`, `home`, `leads`,
+  `quotes` or `orders`. Management defaults to 1280px; representative views to 390px.
+
+### Limitations and safety
+
+Missing representative/team display names in existing read models remain visibly
+unavailable/assigned; exact identities remain in authorized evidence. Technical
+records, provider references and policy configuration remain secondary and may
+use evidence disclosures; they are not primary workflow navigation. Detailed
+assessments/legal/financial forms still require vertical scrolling. Management
+navigation uses contained horizontal scrolling at narrower widths.
+
+External-provider payments/storage responses and sessions are synthetic. Legacy
+adapters unavailable in this isolated environment explicitly return 503; external
+decorative assets may be CSP-blocked. No real payment, export delivery, bank
+settlement or production integration is newly certified. This review did not
+submit refund, cancellation, abandonment or settlement actions. The non-Popover
+fallback is regression-tested, not separately certified in older browser engines.
+
+No pricing, business permissions, 25/75 payment rules, commission accounting,
+scheduling authority, payment verification, technician source or production gates
+were changed. No deployment, production mutation, account activation or payout.
+Unrelated local work is preserved.
+
+### Changed files
+
+- Presentation: [dash.html](../frontend/dash.html),
+  [dash.css](../frontend/dash.css),
+  [dashboard-controls.js](../frontend/dashboard-controls.js),
+  [field-sales.js](../frontend/field-sales.js),
+  [field-sales.css](../frontend/field-sales.css),
+  [field-commerce.js](../frontend/field-commerce.js),
+  [field-workflow.js](../frontend/field-workflow.js),
+  [field-workflow.css](../frontend/field-workflow.css),
+  [field-earnings.js](../frontend/field-earnings.js).
+- Tests: [dashboard_controls.test.cjs](../backend/tests/dashboard_controls.test.cjs),
+  [field_sales_ui.test.cjs](../backend/tests/field_sales_ui.test.cjs),
+  [management_operations_ui.test.cjs](../backend/tests/management_operations_ui.test.cjs),
+  [field-sales-integration-ui.test.cjs](../tests/field-sales-integration-ui.test.cjs),
+  [field-sales-redesign-ui.test.cjs](../tests/field-sales-redesign-ui.test.cjs),
+  [field-workflow-presentation.test.cjs](../tests/field-workflow-presentation.test.cjs).
+- Isolated preview: [sales-preview.html](../tools/dev-review/sales-preview.html),
+  [sales-preview.test.cjs](../tools/dev-review/sales-preview.test.cjs),
+  [walkthrough-server.cjs](../tools/dev-review/walkthrough-server.cjs).
+- This report: [FIELD_SALES_REDESIGN_REVIEW.md](./FIELD_SALES_REDESIGN_REVIEW.md).
+
+## Prior coordinated UX refinement (historical)
 
 Continues from `5762901c38ea113f015fd48582f48c86eae9c0cf` on
 `retro-dev`. The independent representative application and management dashboard

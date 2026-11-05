@@ -62,6 +62,10 @@ test('SALES mobile enclave, assigned worklist, generic configured assessment, es
 test('ADMIN oversight/reps/exact inquiry attach; VA cannot read; default-off is explicit', async t => {
   const f = fixture(t, 'ADMIN'); f.w.H2SFieldSales.open(); await settle();
   assert.equal(f.w.document.querySelector('[data-sales-content] h3').textContent,'Sales overview');
+  assert.equal(f.w.document.querySelectorAll('#field-sales-pane nav').length,1,'management uses one destination row');
+  assert.equal(f.w.document.querySelectorAll('.field-sales__management-nav [aria-current="page"]').length,1);
+  assert.equal(f.w.document.querySelector('.field-sales__management-nav [aria-current="page"]').dataset.salesMode,'dashboard');
+  assert.equal(f.w.document.querySelector('.field-sales__header .field-sales__eyebrow'),null,'global management brand is not repeated');
   const owners=f.w.document.querySelector('[data-sales-owner]');
   assert.ok(owners);assert.equal(owners.options[0].textContent,'All representatives');
   assert.equal(owners.options[1].value,'rep');assert.equal(owners.options[1].textContent,'Fixture rep');
@@ -90,6 +94,20 @@ test('configured future-service cards and ADMIN linking/terms remain accessible 
   assert.equal(terms.elements.userId.value, 'rep');
   assert.equal(terms.elements.termsRevision.value, '0');
   assert.equal(terms.elements.commissionStartEvidence.required, true);
+});
+test('customer-first mobile presentation retains escaped labels, role-safe facts and existing assessment navigation',async t=>{
+  const f=fixture(t);await f.w.H2SFieldSales.navigate('leads');await settle();
+  const card=f.w.document.querySelector('.field-sales__lead-card');
+  assert.equal(card.querySelector('.field-sales__customer-link').textContent,'<img src=x onerror=alert(1)>');
+  assert.equal(card.querySelector('img'),null);
+  assert.equal(card.querySelector('.field-sales__service-label').textContent,'Future configurable service');
+  assert.deepEqual([...card.querySelectorAll('dt')].map(el=>el.textContent),['Phone','Property','Next contact','Next step']);
+  assert.equal(card.querySelector('.field-sales__next-step dd').textContent,'Continue assessment');
+  assert.doesNotMatch(card.textContent,/future_fixture|00000000|owner_user_id/);
+  f.click('.field-sales__card-actions [data-sales-lead]');await settle();
+  assert.equal(f.w.document.querySelector('.field-sales__customer-summary h3').textContent,'Synthetic customer');
+  assert.ok(f.w.document.querySelector('[data-sales-form="save"]'));
+  assert.equal(f.calls.some(call=>call.body),false);
 });
 test('assessment DOM draft survives navigation without transferring across the same-token role boundary', async t => {
   const f = fixture(t, 'ADMIN'); await f.w.H2SFieldSales.navigate('assessment', lead); await settle();

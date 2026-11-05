@@ -16,6 +16,10 @@ test('candidate and task overlays stay inside the canonical styled dashboard and
     assert.equal(drawer.getAttribute('aria-labelledby'), 'drawerTitle');
     assert.equal(drawer.querySelector('button').getAttribute('aria-label'), 'Close candidate details');
     assert.equal(doc.getElementById('appNavToggle').textContent, 'Menu');
+    const hours = doc.getElementById('logHoursQuickBtn');
+    assert.ok(hours.closest('.app-topbar-right'));
+    assert.equal(hours.getAttribute('onclick'), 'openHoursModal()');
+    assert.equal(dom.window.getComputedStyle(hours).position, 'static');
   } finally { dom.window.close(); }
 });
 
@@ -214,5 +218,98 @@ test('dynamic popups keep unique accessible IDs when another picker is removed',
     const third = ready(f.calls[2]);
     assert.notEqual(second.id, third.id);
     assert.equal(input._flatpickr.altInput.getAttribute('aria-controls'), third.id);
+  } finally { f.close(); }
+});
+
+test('shared selects render zero, one and many long-labelled options without changing identities', () => {
+  for (const count of [0, 1, 80]) {
+    const f = fixture('<label>Customer<select></select></label>');
+    try {
+      const select = f.window.document.querySelector('select');
+      for (let i = 0; i < count; i++) select.add(new f.window.Option(`Customer ${i} with a long household and property description`, `owned-lead-${i}`));
+      f.window.dashboardSyncAllCustomSelects();
+      const shell = f.window.dashboardGetCustomSelectShell(select);
+      assert.equal(shell.querySelectorAll('.dashboard-custom-select-option').length, count);
+      assert.equal(Boolean(shell.querySelector('.dashboard-custom-select-empty')), count === 0);
+      let changes = 0;
+      select.addEventListener('change', () => changes++);
+      shell.querySelector('button').click();
+      assert.equal(shell.querySelector('[role=listbox]').hidden, false);
+      if (count) {
+        shell.querySelectorAll('.dashboard-custom-select-option')[count - 1].click();
+        assert.equal(select.value, `owned-lead-${count - 1}`);
+        assert.equal(changes, count > 1 ? 1 : 0);
+        assert.equal(shell.querySelector('[role=listbox]').hidden, true);
+      }
+    } finally { f.close(); }
+  }
+});
+
+test('select menu flips and fits available viewport space rather than clipping in its parent', () => {
+  const f = fixture('<label>Customer<select><option value=a>Avery</option><option value=t>Taylor</option></select></label>');
+  try {
+    f.window.innerWidth = 390; f.window.innerHeight = 420;
+    f.window.dashboardSyncAllCustomSelects();
+    const select = f.window.document.querySelector('select'), shell = f.window.dashboardGetCustomSelectShell(select);
+    const trigger = shell.querySelector('button'), menu = shell.querySelector('[role=listbox]');
+    trigger.getBoundingClientRect = () => ({ left: 300, top: 330, bottom: 374, width: 300 });
+    menu.getBoundingClientRect = () => ({ top: 0, bottom: 0, height: Math.min(180, parseFloat(menu.style.maxHeight) || 240) });
+    trigger.click();
+    assert.equal(menu.getAttribute('popover'), 'manual');
+    assert.equal(parseFloat(menu.style.left), 82);
+    assert.equal(parseFloat(menu.style.top), 146);
+    assert.ok(parseFloat(menu.style.left) + parseFloat(menu.style.width) <= 382);
+    f.window.innerHeight = 120;
+    trigger.getBoundingClientRect = () => ({ left: 16, top: 50, bottom: 94, width: 300 });
+    f.window.dashboardSetCustomSelectOpen(select, true);
+    assert.equal(parseFloat(menu.style.maxHeight), 38);
+    assert.equal(parseFloat(menu.style.top), 8);
+  } finally { f.close(); }
+});
+
+test('shared select keyboard search, focus, scroll boundaries and disabled state remain native-backed', () => {
+  const f = fixture('<main><label>Customer<select><option value=t>Taylor</option><option value=a>Avery Chen</option><option value=m>Morgan</option></select></label></main>');
+  try {
+    f.window.dashboardSyncAllCustomSelects();
+    const select = f.window.document.querySelector('select'), shell = f.window.dashboardGetCustomSelectShell(select);
+    const trigger = shell.querySelector('button'), menu = shell.querySelector('[role=listbox]');
+    const key = value => menu.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: value, bubbles: true }));
+    trigger.click(); key('End');
+    assert.equal(f.window.document.activeElement.textContent, 'Morgan');
+    key('Home');
+    assert.equal(f.window.document.activeElement.textContent, 'Taylor');
+    key('A'); key('v');
+    assert.equal(f.window.document.activeElement.textContent, 'Avery Chen');
+    menu.dispatchEvent(new f.window.Event('scroll'));
+    assert.equal(menu.hidden, false);
+    key('Escape');
+    assert.equal(menu.hidden, true);
+    assert.equal(f.window.document.activeElement, trigger);
+    assert.equal(select.value, 't');
+    trigger.click();
+    f.window.document.querySelector('main').dispatchEvent(new f.window.Event('scroll'));
+    assert.equal(menu.hidden, true);
+    select.disabled = true; f.window.dashboardSyncCustomSelect(select);
+    f.window.dashboardSetCustomSelectOpen(select, true);
+    assert.equal(menu.hidden, true);
+  } finally { f.close(); }
+});
+
+test('an open menu refits when asynchronous option results replace an empty list', () => {
+  const f = fixture('<label>Customer<select></select></label>');
+  try {
+    f.window.innerWidth = 390; f.window.innerHeight = 420;
+    const select = f.window.document.querySelector('select');
+    f.window.dashboardSyncCustomSelect(select);
+    const shell = f.window.dashboardGetCustomSelectShell(select), trigger = shell.querySelector('button'), menu = shell.querySelector('[role=listbox]');
+    trigger.getBoundingClientRect = () => ({ left: 16, top: 330, bottom: 374, width: 300 });
+    menu.getBoundingClientRect = () => ({ height: select.options.length ? 180 : 24 });
+    trigger.click();
+    assert.equal(parseFloat(menu.style.top), 378);
+    select.add(new f.window.Option('A long customer result', 'owned-lead'));
+    f.window.dashboardSyncCustomSelect(select);
+    assert.equal(parseFloat(menu.style.top), 146);
+    assert.equal(menu.querySelector('.dashboard-custom-select-empty'), null);
+    assert.equal(select.value, 'owned-lead');
   } finally { f.close(); }
 });

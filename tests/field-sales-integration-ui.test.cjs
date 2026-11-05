@@ -356,7 +356,7 @@ test('catalog is independently gated and shows explicit errors; a late catalog r
     f.respond(async(url)=>url.includes('field-sales-catalog')?Response.json({ok:false,error:'Synthetic unavailable catalog schema'},{status:503}):Response.json({ok:true,enabled:false}));f.mount({leadId:null});await settle();
     assert.match(f.root.textContent,/Synthetic unavailable catalog schema/);assert.equal(f.root.querySelector('[data-commerce-catalog-action]'),null);
     let done;f.respond(async(url)=>url.includes('field-sales-catalog')?({ok:true,status:200,json:()=>new Promise(r=>done=r)}):Response.json({ok:true,enabled:false}));
-    f.mount({leadId:null});await settle();assert.match(f.root.textContent,/Loading transaction visibility/);f.w.H2SFieldCommerce.reset();f.actor({token:'',role:null});done({ok:true,enabled:true,catalogs:[]});await settle();assert.equal(f.root.children.length,0);
+    f.mount({leadId:null});await settle();assert.match(f.root.textContent,/Loading quotes, agreements and payment status/);f.w.H2SFieldCommerce.reset();f.actor({token:'',role:null});done({ok:true,enabled:true,catalogs:[]});await settle();assert.equal(f.root.children.length,0);
 });
 test('own SALES commission profile is visible without ADMIN commission terms controls; late representative read is cleared',async t=>{
     const dom=new JSDOM('<div id="h2s-app"><div class="app-sidebar-group" data-group-id="admin"><div class="app-sidebar-group-items"></div></div><div class="app-content"></div></div>',{runScripts:'outside-only',url:'https://fixture.invalid'});t.after(()=>dom.window.close());
