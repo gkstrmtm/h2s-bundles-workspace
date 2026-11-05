@@ -83,6 +83,9 @@ successfully opened the eight labeled interfaces.
   financial/ownership checks.
 - HTTP rejects foreign Host and Origin with 403; status explicitly reports
   isolated data, production network false and outgoing payments false.
+- Final integrated-editor checks confirmed all eight labeled tabs loaded their
+  intended synthetic state, with 390px representative and emulated 1280px
+  management viewports. The persistent server serves committed assets only.
 
 ## Remaining review limitations
 
@@ -90,6 +93,11 @@ successfully opened the eight labeled interfaces.
   locator clicks while their document is hidden. Native browser clicks were
   separately exercised in the existing dedicated local review browser; this is
   not certification of every click in every integrated pane.
+- The legacy management shell still makes background requests outside the
+  fixture's supported adapters, returning explicit 503 responses. Some external
+  decorative icons are intentionally blocked by preview CSP. The eight sales
+  panes loaded successfully; unrelated dashboard integrations are not thereby
+  certified or made available in this fixture.
 - Assessment forms are still long on 320px when several services are selected.
   Configured service names, evidence requirements and quote exclusions can be
   verbose. Management performance and Friday review still share substantial
