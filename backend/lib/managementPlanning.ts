@@ -186,7 +186,7 @@ export function projectManagementPlanning(snapshot: PlanningSnapshot, now: strin
       `Dispatch-to-legacy relationship unresolved: ${link.reason}`,
       'Obtain source-record evidence, a named reviewer and exact legacy target; approve mapping separately. Do not create legacy jobs or payouts automatically.',
       [record('h2s_dispatch_jobs', job.job_id, job), ...(order ? [record('h2s_orders', order.id,
-        { order_id: order.order_id, customer_email: order.customer_email })] : []), ...link.evidence]);
+        { order_id: order.order_id, customer_email: order.customer_email, customer_name: order.customer_name, service_name: order.service_name })] : []), ...link.evidence]);
     if (!terminal(job.status) && availability.some(a => a.status !== 'no_recorded_day_block')) attention.push('Technician availability is blocked or unverified.');
     if (snapshot.days.status !== 'available' || snapshot.capacity.status !== 'available' || snapshot.reservations.status !== 'available') attention.push('Availability/calendar source evidence is incomplete.');
     return { jobId: job.job_id, rawStatus: job.status, kind, orderId: order?.id || null, orderReference: order?.order_id || job.order_id,

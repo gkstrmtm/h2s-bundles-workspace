@@ -86,13 +86,14 @@ test('read-only view renders evidence, escapes content, filters loaded page, and
     assert.equal(f.root.querySelector('[data-operations-action="refresh"]'), null);
     assert.equal(f.root.querySelector('[data-operations-action="retry"]').hidden, true);
     assert.match(f.root.querySelector('[data-operations-secondary-metrics]').textContent, /Loaded jobs1/);
-    assert.match(f.root.textContent, /Next review:/);
-    assert.match(f.root.textContent, /Browser timezone; job timezone is not provided/);
+    assert.match(f.root.textContent, /Next step/);
+    assert.match(f.root.textContent, /Browser display; job timezone unknown/);
     assert.match(f.root.textContent, /<img src=x onerror=alert\(1\)>/); assert.equal(f.root.querySelector('img'), null);
     assert.match(f.root.querySelector('[data-operations-evidence]').textContent, /"status": "pending"/);
     assert.match(f.root.querySelector('[data-operations-evidence]').textContent, /"state": "approved"/);
-    assert.match(f.root.textContent, /Preparation ready \(not payment clearance\)/);
-    assert.match(f.root.textContent, /Filters apply to this page only/);
+    assert.match(f.root.textContent, /Preparation ready/);
+    assert.match(f.root.textContent, /filters and search apply to this page/);
+    assert.ok(f.root.querySelector('.management-operations__summary').compareDocumentPosition(f.root.querySelector('[data-operations-jobs]')) & f.w.Node.DOCUMENT_POSITION_FOLLOWING);
     assert.match(f.root.textContent, /2 mounts/);
     assert.match(f.root.querySelector('article header').textContent, /ORD-FIXTURE/);
     assert.doesNotMatch(f.root.querySelector('article header').textContent, /fixture-job/);
@@ -168,7 +169,7 @@ test('partial evidence is visibly unavailable rather than unpaid, unassigned or 
     for (const key of ['order', 'assignments', 'preparation', 'equipment', 'payouts']) assert.match(f.root.textContent, new RegExp(`${key} source unavailable`));
     assert.match(f.root.textContent, /Stripe verification unavailable/);
     assert.doesNotMatch(f.root.textContent, /Settlement: paid|No active assignment recorded/);
-    assert.match(f.root.querySelector('[data-operations-metrics]').textContent, /0 known · 1 unknown/);
+    assert.match(f.root.querySelector('[data-operations-metrics]').textContent, /0\+1 not verified/);
   } finally { f.dom.window.close(); }
 });
 
@@ -198,18 +199,18 @@ test('dispatch operational categories use loaded evidence, not queued status, ac
     await f.module.open();
     const metric = label => Array.from(f.root.querySelectorAll('[data-operations-metrics] > div'))
       .find(node => node.querySelector('dt').textContent === label).querySelector('strong').textContent;
-    assert.equal(metric('Awaiting scheduling'), '1 known · 2 unknown');
-    assert.equal(metric('Scheduled (recorded start)'), '2 known · 2 unknown');
-    assert.equal(metric('Pending technician acceptance'), '1 known · 2 unknown');
-    assert.equal(metric('Ready for installation'), 'Unknown / unavailable');
+    assert.equal(metric('Awaiting scheduling'), '1+');
+    assert.equal(metric('Scheduled start'), '2+');
+    assert.equal(metric('Awaiting technician'), '1+');
+    assert.equal(metric('Installation readiness'), 'Not verified');
     assert.equal(metric('Completed'), '1');
-    assert.equal(metric('Attention'), '5 known · 1 unknown');
-    assert.match(f.root.querySelector('[data-operations-metrics]').textContent, /1 known · 3 unknown preparation-ready/);
+    assert.equal(metric('Needs attention'), '5+');
+    assert.match(f.root.querySelector('[data-operations-metrics]').textContent, /2 not verified/);
     assert.match(Array.from(f.root.querySelectorAll('[data-operations-metrics] > div'))
-      .find(node => node.querySelector('dt').textContent === 'Scheduled (recorded start)').title, /not a confirmed booking/);
-    assert.match(f.root.querySelector('[data-operations-summary-title]').textContent, /loaded page only/);
+      .find(node => node.querySelector('dt').textContent === 'Scheduled start').title, /not a confirmed booking/);
+    assert.match(f.root.querySelector('[data-operations-summary-title]').textContent, /This page/);
     click(f, '[data-operations-filter="payments"]');
-    assert.equal(metric('Scheduled (recorded start)'), '2 known · 2 unknown', 'overview totals cover loaded page, not selected filter or later pages');
+    assert.equal(metric('Scheduled start'), '2+', 'overview totals cover loaded page, not selected filter or later pages');
   } finally { f.dom.window.close(); }
 });
 

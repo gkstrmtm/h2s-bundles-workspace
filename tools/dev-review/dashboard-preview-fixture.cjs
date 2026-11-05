@@ -45,25 +45,26 @@ function createDashboardPreview({ jobCount = 1 } = {}) {
     const readiness = new Map(), payments = new Map();
     for (let i = 0; i < jobCount; i++) {
         const jobId = id(301 + i * 10), orderId = id(300 + i * 10), proId = id(50000 + i % 3), legacyId = 'SYNTHETIC-LEGACY-' + i;
-        const start = new Date(Date.now() + 86400000 * (1 + Math.floor(i / 10)));
-        start.setUTCHours(15 + (i % 10 === 3 ? 0 : i % 3) * 2, 0, 0, 0);
         const scheduled = i % 10 !== 2, completed = i % 10 === 4;
+        const start = new Date(Date.now() + (completed ? -1 : 1) * 86400000 * (1 + Math.floor(i / 10)));
+        start.setUTCHours(15 + (i % 10 === 3 ? 0 : i % 3) * 2, 0, 0, 0);
         const end = new Date(start.getTime() + 7200000).toISOString();
         const email = `installation${i}@example.invalid`;
-        fixture.tables.h2s_orders.push({ id: orderId, order_id: 'SYNTHETIC-ORDER-' + (i + 1),
-            customer_name: i === 0 ? fixture.tables.commercial_leads[0].full_name : `SYNTHETIC ${['Rivera', 'Chen', 'Patel', 'Williams'][i % 4]} household ${i + 1}`,
-            customer_email: email, address: `${100 + i} Synthetic Review Lane`, city: 'Review City',
-            service_name: i % 2 ? 'SYNTHETIC camera installation' : 'SYNTHETIC TV installation',
+        fixture.tables.h2s_orders.push({ id: orderId, order_id: 'H2S-' + (1041 + i),
+            customer_name: `${['Avery', 'Jordan', 'Taylor', 'Riley', 'Cameron', 'Casey', 'Morgan', 'Alex'][i % 8]} ${['Morgan', 'Chen', 'Patel', 'Williams', 'Rivera', 'Brooks', 'Reed', 'Parker'][Math.floor(i / 8) % 8]}`,
+            customer_email: email, address: `${100 + i} ${['Maple Lane', 'Oak Drive', 'Cedar Court', 'Pine Street'][i % 4]}`, city: 'Greenville',
+            service_name: i % 2 ? 'Camera installation · 4 cameras' : 'TV mounting · 65-inch TV',
             total: null, status: completed ? 'completed' : 'pending',
-            items: 'Customer-owned equipment; mounting supplies require review',
-            metadata_json: scheduled ? { scheduled_end: end, scheduled_tz: 'America/Chicago', order_required: true,
+            items: JSON.stringify(i % 2 ? [{ name: 'Customer-owned cameras', quantity: 4 }, { name: 'Camera mounting kits', quantity: 4 }]
+                : [{ name: 'Customer-owned 65-inch TV', quantity: 1 }, { name: 'Wall mount', quantity: 1 }]),
+            metadata_json: scheduled ? { scheduled_end: end, scheduled_tz: 'America/New_York', order_required: true,
                 order_stage: i % 10 === 6 ? 'pending' : 'delivered' } : {},
             created_at: now, updated_at: now });
-        fixture.tables.h2s_dispatch_jobs.push({ job_id: jobId, order_id: 'SYNTHETIC-ORDER-' + (i + 1),
+        fixture.tables.h2s_dispatch_jobs.push({ job_id: jobId, order_id: 'H2S-' + (1041 + i),
             status: completed ? 'completed' : scheduled ? 'assigned' : 'queued',
             due_at: scheduled ? start.toISOString() : null, updated_at: now });
         if (!fixture.tables.h2s_pros.some(row => row.pro_id === proId)) fixture.tables.h2s_pros.push({
-            pro_id: proId, name: ['SYNTHETIC Alex installer', 'SYNTHETIC Taylor installer', 'SYNTHETIC Casey installer'][i % 3],
+            pro_id: proId, name: ['Alex Brooks', 'Taylor Reed', 'Casey Parker'][i % 3],
             email: `installer${i % 3}@example.invalid`, is_active: true });
         if (scheduled) fixture.tables.h2s_dispatch_job_assignments.push({ assign_id: 'SYNTHETIC-OFFER-' + i, job_id: jobId,
             pro_id: proId, state: completed ? 'completed' : i % 10 === 0 ? 'pending' : 'accepted', updated_at: now });
@@ -79,7 +80,7 @@ function createDashboardPreview({ jobCount = 1 } = {}) {
         if (i % 10 === 1) {
             fixture.tables.commercial_lead_operations.push({ lead_id: id(90000 + i), installation_job_id: jobId, order_id: orderId });
             fixture.tables.commercial_reservations.push({ lead_id: id(90000 + i), revision: 1, state: 'confirmed',
-                starts_at: start.toISOString(), ends_at: end, expires_at: null, timezone: 'America/Chicago' });
+                starts_at: start.toISOString(), ends_at: end, expires_at: null, timezone: 'America/New_York' });
         }
     }
     if (jobCount > 1) fixture.tables.h2s_dispatch_job_assignments.push({ assign_id: 'SYNTHETIC-HISTORICAL-ORPHAN',

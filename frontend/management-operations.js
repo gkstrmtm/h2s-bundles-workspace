@@ -30,11 +30,11 @@
     const selected = { overview: null, schedule: null, reconciliation: null };
     const reviewDrafts = new Map();
     const reviewInputs = new Map();
-    const views = { overview: 'Dispatch Records', schedule: 'Scheduling Visibility', reconciliation: 'Reconciliation Review' };
+    const views = { overview: 'Dispatch', schedule: 'Scheduling', reconciliation: 'Record checks' };
     const planningLabels = {
         schedule: { all: 'All jobs', upcoming: 'Upcoming installations', scheduled: 'Scheduled starts', unscheduled: 'Unscheduled jobs', attention: 'Management attention', conflicts: 'Observed conflicts' },
-        reconciliation: { all: 'All issues', orphan_assignment: 'Orphan assignments', technician_identity: 'Technician identities',
-            legacy_relationship: 'Legacy job links', assignment_conflict: 'Assignment conflicts', payout_association: 'Payout associations', source_unavailable: 'Unavailable evidence' },
+        reconciliation: { all: 'All checks', orphan_assignment: 'Assignment without a job', technician_identity: 'Technician details',
+            legacy_relationship: 'Older job records', assignment_conflict: 'Conflicting assignments', payout_association: 'Technician payouts', source_unavailable: 'Missing information' },
     };
     const escape = value => String(value == null ? '' : value).replace(/[&<>"']/g,
         char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -75,7 +75,9 @@
         });
     }
     function metric(label, count, detail, note = '') {
-        return `<div title="${escape(detail)}"><dt>${escape(label)}</dt><dd><strong>${escape(count)}</strong>${note ? `<span>${escape(note)}</span>` : ''}</dd></div>`;
+        const partial = typeof count === 'string' && /^(\d+) known · (\d+) unknown$/.exec(count);
+        const caption = [partial ? `${partial[2]} not verified` : '', note].filter(Boolean).join(' · ');
+        return `<div title="${escape(count + '. ' + detail)}"><dt>${escape(label)}</dt><dd><strong>${escape(partial ? partial[1] + '+' : count)}</strong>${caption ? `<span>${escape(caption)}</span>` : ''}</dd></div>`;
     }
     function measured(jobs, known, test) {
         const verified = jobs.filter(known), unknown = jobs.length - verified.length;
@@ -130,16 +132,15 @@
         return metric('Awaiting scheduling', count(job => installation(job, value => {
             const recorded = startRecorded(value); return recorded === null ? null : !recorded;
         })), 'Active installations with no recorded start, not jobs merely marked queued. Loaded page only; unresolved kind/window is unknown.')
-            + metric('Scheduled (recorded start)', count(job => installation(job, startRecorded)),
+            + metric('Scheduled start', count(job => installation(job, startRecorded)),
                 'Active installations with a valid recorded start; not a confirmed booking, complete window or technician acceptance. Loaded page only.')
-            + metric('Pending technician acceptance', count(job => installation(job, pending)),
+            + metric('Awaiting technician', count(job => installation(job, pending)),
                 'Active installations with an explicit pending assignment. Unknown assignment evidence/state is not zero; acceptance is not booking confirmation.')
-            + metric('Ready for installation', 'Unknown / unavailable',
-                'Preparation alone cannot establish overall installation readiness or payment / availability clearance.',
-                `${count(job => installation(job, preparationReady))} preparation-ready`)
+            + metric('Installation readiness', 'Not verified',
+                'Preparation alone cannot establish overall installation readiness or payment / availability clearance.')
             + metric('Completed', count(job => typeof job.rawStatus === 'string' && job.rawStatus ? ['completed', 'done'].includes(job.rawStatus) : null),
                 'Loaded jobs explicitly marked completed or done; cancelled jobs are excluded. Not proof of settlement.')
-            + metric('Attention', count(attention), planning
+            + metric('Needs attention', count(attention), planning
                 ? 'Loaded jobs with projected attention items or observed conflicts. Empty flags with incomplete evidence remain unknown; not availability clearance.'
                 : 'Active loaded jobs with observed schedule, relationship, assignment, preparation, payment or payout review indicators. Unavailable evidence without a known indicator remains unknown.');
     }
@@ -181,23 +182,24 @@
     }
     function frame() {
         root.innerHTML = `<header class="management-operations__header"><div><h2>Operations</h2>
-            <p>Dispatch, scheduling and reconciliation review.</p></div>
+            <p>${view === 'reconciliation' ? 'Historical record review.' : 'Installations, scheduling and follow-up.'}</p></div>
             <button type="button" data-operations-action="retry" hidden>Retry read</button></header>
             <p data-operations-sync role="status" aria-live="polite"></p>
             <div class="management-operations__filters" role="group" aria-label="Operations view">${Object.entries(views).map(([key, label]) =>
                 `<button type="button" data-operations-view="${key}" aria-pressed="${key === view}">${label}</button>`).join('')}</div>
-            ${view === 'reconciliation' ? '<p>Session drafts only. Reviewed does not mean resolved. Export before sign-out.</p><button type="button" data-review-export disabled>Export session review drafts</button>' : ''}
+            <section class="management-operations__summary" aria-label="Loaded-scope summary"><h3 data-operations-summary-title></h3><dl data-operations-metrics></dl></section>
+            ${view === 'reconciliation' ? '<button type="button" data-review-export disabled>Export review notes</button>' : ''}
             <p data-operations-status role="status" aria-live="polite"></p>
             <div class="management-operations__toolbar">
-                <label class="management-operations__search">Search ${view === 'reconciliation' ? 'cases' : 'jobs'} on this loaded page
-                    <input type="search" data-operations-search maxlength="200" value="${escape(search)}" placeholder="${view === 'reconciliation' ? 'Category or recorded relationship' : 'Customer, service, address or order reference'}"></label>
-                <label class="management-operations__search">${view === 'overview' ? 'Filter this page' : 'Filter bounded dataset'}
+                <label class="management-operations__search">Search this page
+                    <input type="search" data-operations-search maxlength="200" value="${escape(search)}" placeholder="${view === 'reconciliation' ? 'Customer, order or type of check' : 'Customer, service, address or order'}"></label>
+                <label class="management-operations__search">${view === 'overview' ? 'Filter this page' : 'Filter available records'}
                     <select data-operations-category aria-label="${view === 'reconciliation' ? 'Case category' : 'Job filter'}">${Object.entries(view === 'overview' ? labels : planningLabels[view]).map(([key, label]) =>
                         `<option value="${key}" ${view === 'overview' ? 'data-operations-filter' : 'data-planning-filter'}="${key}"${key === (view === 'overview' ? filter : planningFilter) ? ' selected' : ''}>${label}</option>`).join('')}</select>
                 </label>
             </div>
             <div data-operations-jobs class="management-operations__workbench">
-                <section class="management-operations__list" aria-label="${view === 'reconciliation' ? 'Reconciliation cases' : 'Installation jobs'}"><h3>${view === 'reconciliation' ? 'Historical review cases' : 'Installation jobs'}</h3><div data-operations-list></div>
+                <section class="management-operations__list" aria-label="${view === 'reconciliation' ? 'Reconciliation cases' : 'Installation jobs'}"><h3>${view === 'reconciliation' ? 'Records to check' : 'Installation jobs'}</h3><div data-operations-list></div>
                     <footer class="management-operations__footer"><span data-operations-page></span><div>
                         <button type="button" data-operations-action="previous" disabled>Previous</button>
                         <button type="button" data-operations-action="next" disabled>Next</button></div></footer>
@@ -215,8 +217,7 @@
                         <h3>Selected record references</h3><pre data-operations-evidence></pre>
                     </section>
                 </section>
-            </div>
-            <section class="management-operations__summary" aria-label="Loaded-scope summary"><h3 data-operations-summary-title></h3><dl data-operations-metrics></dl></section>`;
+            </div>`;
         syncStatus();
     }
     function render() {
@@ -228,7 +229,7 @@
         });
         const preparationMetric = measured(data.jobs.filter(job => job.kind !== 'consultation'), job => evidence(job.preparation) !== null, job => !job.preparation.value.ready);
         const paymentMetric = measured(data.jobs, job => ['paid', 'unpaid', 'not_applicable'].includes(job.payment.status), job => job.payment.status === 'unpaid');
-        root.querySelector('[data-operations-summary-title]').textContent = 'Dispatch overview · loaded page only';
+        root.querySelector('[data-operations-summary-title]').textContent = `This page · ${data.jobs.length} jobs`;
         root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Loaded jobs', data.jobs.length, `${jobs.length} match the selected page filter; not a business-wide total.`)
             + metric('Active-job assignment review', assignmentMetric.count, assignmentMetric.detail)
             + metric('Preparation blockers', preparationMetric.count, preparationMetric.detail)
@@ -236,7 +237,7 @@
         root.querySelector('[data-operations-metrics]').innerHTML = operationalMetrics(data.jobs);
         root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. Latest records, at most 25 per page. Counts cover loaded records only, not the business. Filters apply to this page only.`;
         root.querySelector('[data-operations-status]').textContent = data.jobs.length
-            ? `${jobs.length} of ${data.jobs.length} loaded jobs shown. Filters apply to this page only.`
+            ? `${jobs.length} of ${data.jobs.length} jobs shown · filters and search apply to this page.`
             : 'No Dispatch records found.';
         renderWorkbench(jobs);
         root.querySelector('[data-operations-page]').textContent = `Latest records, page ${Math.floor(offset / 25) + 1}`;
@@ -245,9 +246,9 @@
     }
     function renderPlanning() {
         const status = root.querySelector('[data-operations-status]');
-        status.textContent = `${data.complete ? 'Bounded read complete' : 'Incomplete evidence'}. Counts cover loaded records, not all jobs.`;
+        status.textContent = data.complete ? 'Available records loaded.' : 'Some information is missing. See Audit for details.';
         root.querySelector('[data-operations-scope]').textContent = `Read ${date(data.readAt)}. ${data.scope}`;
-        root.querySelector('[data-operations-summary-title]').textContent = view === 'schedule' ? 'Scheduling · loaded page' : 'Reconciliation · loaded cases';
+        root.querySelector('[data-operations-summary-title]').textContent = view === 'schedule' ? `This page · ${data.jobs.length} jobs` : 'Review overview';
         const scopeDetail = data.complete ? 'Complete bounded read; not an organization-wide total.' : 'Known in bounded read; additional issues may be unknown.';
         root.querySelector('[data-operations-secondary-metrics]').innerHTML = metric('Jobs in bounded read', data.summary.jobs ?? 'Unknown', scopeDetail)
             + metric('Observed reconciliation issues', data.summary.issues ?? 'Unknown', scopeDetail)
@@ -255,55 +256,76 @@
                 : metric('Loaded review cases', data.issues.length, 'Session classifications do not resolve production issues.'))
             + metric('Evidence coverage', data.complete ? 'Bounded read complete' : 'Incomplete / unknown', 'Separate reads, not an atomic snapshot.');
         root.querySelector('[data-operations-metrics]').innerHTML = view === 'schedule' ? operationalMetrics(data.jobs, true)
-            : metric('Loaded review cases', data.issues.length, 'Cases on this page only; session classifications do not resolve production issues.');
+            : metric('Matching records', data.page.total ?? 'Unknown', scopeDetail)
+                + metric('On this page', data.issues.length, 'Review records on this page.')
+                + metric('Notes saved', data.issues.filter(issue => reviewDrafts.get(issue.id)?.fingerprint === issue.fingerprint).length, 'Private session notes, not resolved production cases.');
         if (view === 'schedule') {
             renderWorkbench(data.jobs);
         } else {
             renderWorkbench(data.issues);
             root.querySelector('[data-review-export]').disabled = reviewDrafts.size === 0;
         }
-        root.querySelector('[data-operations-page]').textContent = `${data.page.total ?? 'Unknown number of'} matching records; page ${Math.floor(offset / 25) + 1}. Filters cover the bounded dataset, not just this page. Search applies to the loaded page only.`;
+        root.querySelector('[data-operations-page]').textContent = `${data.page.total ?? 'Unknown number of'} matching records · page ${Math.floor(offset / 25) + 1}`;
+        root.querySelector('[data-operations-page]').title = 'Category filters cover the available dataset (up to 1000 rows per source). Search and summary counts cover this page. This is not a company-wide total.';
         root.querySelector('[data-operations-action="previous"]').disabled = offset === 0;
         root.querySelector('[data-operations-action="next"]').disabled = !data.page.hasMore || offset >= 10000;
     }
     function caseLabel(issue) {
-        return `Case ${offset + data.issues.indexOf(issue) + 1} in this result set`;
+        return `Check ${offset + data.issues.indexOf(issue) + 1}`;
+    }
+    function caseStatus(value) {
+        return { unresolved: 'Not reviewed', needs_investigation: 'Needs follow-up', reviewed: 'Review noted' }[value] || readable(value);
+    }
+    function casePresentation(issue) {
+        const descriptions = {
+            orphan_assignment: ['Assignment without a job', 'A technician assignment could not be matched to an installation in the available records.', 'Find the original installation and confirm who was assigned.'],
+            technician_identity: ['Technician details need checking', 'The assignment does not identify one verified technician.', 'Confirm the technician using the original assignment and technician profile.'],
+            legacy_relationship: ['Older job record needs matching', 'This installation is not connected to one verified older job record.', 'Compare the order and older installation record, then note which records belong together.'],
+            assignment_conflict: ['Assignments need checking', 'The recorded assignments do not establish one clear technician for this job.', 'Check the active offers and confirm which assignment should apply.'],
+            payout_association: ['Technician payout needs checking', 'The available installation and payout records could not be matched reliably.', 'Compare the installation outcome with the approved technician payout record.'],
+            source_unavailable: ['Information could not be loaded', 'A required source was unavailable, so some checks could not be completed.', 'Check the source connection before drawing a conclusion.'],
+        };
+        const [title, concern, action] = descriptions[issue.category] || ['Record needs checking', 'The available records need a management review.', 'Compare the original records before making a change.'];
+        const order = issue.records.find(record => record.source === 'h2s_orders')?.fields;
+        const customer = humanReference(order?.customer_name), reference = humanReference(order?.order_id);
+        return { title, concern, action, subject: customer || reference || caseLabel(issue), reference };
     }
     function renderCase(issue) {
                 const prior = reviewDrafts.get(issue.id), draft = prior?.fingerprint === issue.fingerprint ? prior : null;
                 const classification = draft?.status || issue.status;
                 const pending = reviewInputs.get(issue.id), input = pending?.fingerprint === issue.fingerprint ? pending : null;
-                const priority = ['assignment_conflict', 'payout_association', 'orphan_assignment'].includes(issue.category) ? 'High'
-                    : issue.category === 'source_unavailable' ? 'Evidence gap' : 'Relationship review';
+                const presentation = casePresentation(issue);
+                const priority = ['assignment_conflict', 'payout_association', 'orphan_assignment'].includes(issue.category) ? 'Priority review' : 'Record check';
                 const relationships = issue.records.map(record => {
                     const fields = record.fields || {};
                     const humanLabel = value => typeof value === 'string' && value.trim()
                         && !/[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}/i.test(value) ? value : null;
                     const orderReference = record.source === 'h2s_orders' ? humanLabel(fields.order_id) : null;
                     const customer = record.source === 'h2s_orders' ? humanLabel(fields.customer_name) : null;
-                    return `${readable(record.source.replace(/^h2s_/, ''))} · ${[
-                        orderReference ? `Recorded order reference: ${orderReference}` : null,
-                        customer ? `Recorded customer name: ${customer}` : null,
-                    ].filter(Boolean).join(' · ') || 'Name unavailable'} · 1 source record`;
+                    const sources = { h2s_orders: 'Customer order', h2s_dispatch_jobs: 'Installation', h2s_jobs: 'Older installation',
+                        h2s_dispatch_job_assignments: 'Technician assignment', h2s_pros: 'Technician profile',
+                        h2s_dispatch_pros: 'Dispatch profile', h2s_payouts_ledger: 'Technician payout',
+                        h2s_dispatch_legacy_job_links: 'Saved connection between jobs' };
+                    return `${sources[record.source] || 'Supporting record'}${orderReference || customer ? ': ' + [customer, orderReference].filter(Boolean).join(' · ') : ''}`;
                 });
                 return `<article class="management-operations__job">
-                    <h3>${escape(planningLabels.reconciliation[issue.category] || issue.category)}</h3>
-                    <p>${escape(caseLabel(issue))}</p>
-                    <p><strong>${escape(classification.replaceAll('_', ' '))}${draft ? ' (session draft, not resolution)' : ''}</strong></p>
-                    <p class="management-operations__priority"><strong>Review priority: ${escape(priority)}</strong> · category-based triage, not a verified incident severity</p>
+                    <h3>${escape(presentation.subject)}</h3>
+                    <p>${escape(presentation.title)}</p>
+                    <p><strong>${escape(caseStatus(classification))}${draft ? ' · saved in this session' : ''}</strong></p>
+                    <p class="management-operations__priority" title="Review order only, not a verified incident severity.">${escape(priority)}</p>
                     ${prior && !draft ? '<p role="status">Earlier draft is stale: supporting evidence changed. Review again.</p>' : ''}
                     ${pending && !input ? '<p role="status">Unsubmitted inputs refer to older evidence. Review current records before re-entering them.</p>' : ''}
-                    <p><strong>Evidence / concern:</strong> ${escape(issue.reason)}</p>
-                    <p><strong>Affected relationships (${issue.records.length} source records):</strong></p><ul>${relationships.map(value => `<li>${escape(value)}</li>`).join('')}</ul>
-                    <p class="management-operations__next"><strong>Recommended review:</strong> ${escape(issue.remediation)}</p>
-                    <p>No automatic repair. Reviewed does not mean resolved; approval and any production change remain separate.</p>
+                    <p>${escape(presentation.concern)}</p>
+                    <p class="management-operations__next"><strong>Next step:</strong> ${escape(presentation.action)}</p>
+                    <p><strong>Related records:</strong> ${relationships.map(value => escape(value)).join(' · ')}</p>
                     <form id="review-${escape(issue.fingerprint)}" data-review-issue="${escape(issue.id)}" class="management-review">
-                        <label>Session review classification<select name="classification">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
-                            `<option value="${value}"${value === (input?.classification || classification) ? ' selected' : ''}>${value.replaceAll('_', ' ')}</option>`).join('')}</select></label>
-                        <label>Evidence reference (required for reviewed)<input name="evidence" maxlength="2000" value="${escape(input?.evidence ?? draft?.evidence ?? '')}"></label>
+                        <label>Review status<select name="classification">${['unresolved', 'needs_investigation', 'reviewed'].map(value =>
+                            `<option value="${value}"${value === (input?.classification || classification) ? ' selected' : ''}>${caseStatus(value)}</option>`).join('')}</select></label>
+                        <label>Supporting record<input name="evidence" aria-describedby="review-evidence-help" maxlength="2000" value="${escape(input?.evidence ?? draft?.evidence ?? '')}"></label>
+                        <p id="review-evidence-help" class="management-review__help">A record reference is required for "Review noted". Use an order, document or audit reference.</p>
                         <label class="management-review__notes">Review notes<textarea name="notes" maxlength="2000">${escape(input?.notes ?? draft?.notes ?? '')}</textarea></label>
-                        <button type="submit">Keep session draft</button><p data-review-status role="status"></p>
-                    </form></article>`;
+                        <button type="submit">Save review notes</button><p data-review-status role="status"></p>
+                    </form><p class="management-review__help">Private to this session. Saving notes does not change the job or resolve the issue. Export before signing out.</p></article>`;
     }
     function identity(job) {
         const order = view === 'schedule' ? { customerName: job.customerName, service: job.service, address: job.address, reference: job.orderReference }
@@ -331,7 +353,7 @@
     }
     function preparation(job) {
         const value = evidence(job.preparation);
-        return value ? value.ready ? 'Preparation ready (not payment clearance)' : value.blockers.join('; ') || 'Readiness review required' : 'Readiness evidence unavailable';
+        return value ? value.ready ? 'Preparation ready' : value.blockers.join('; ') || 'Readiness review required' : 'Readiness evidence unavailable';
     }
     function section(key, title, fields) {
         return `<section class="management-operations__section" data-job-section="${key}" tabindex="-1"><h3>${title}</h3><dl>${fields.map(([label, value]) =>
@@ -352,37 +374,37 @@
                 <p>${escape(customer.service || 'Service not verified')} · ${escape(readable(job.rawStatus))}</p>
                 <p>${escape(humanReference(customer.reference) || 'Order reference not verified')}</p>
                 <button type="button" data-return-job-list>Choose another job</button></header>
-            <div class="management-operations__next"><strong>Next review:</strong> ${escape(action)}
+            <div class="management-operations__next"><strong>Next step</strong>
                 <button type="button" data-job-focus="${target}">${escape(action)}</button></div>
-            ${planning ? `<p data-selected-read-status role="${detailError ? 'alert' : 'status'}">${escape(detailError || (record ? 'Selected job evidence loaded separately from scheduling; see Audit for read times.' : 'Checking selected job, equipment and payment evidence…'))}
+            ${planning ? `<p data-selected-read-status title="Scheduling and job details are separate reads. Audit contains source timestamps." role="${detailError ? 'alert' : 'status'}">${escape(detailError || (record ? 'Job details loaded.' : 'Loading job details…'))}
                 ${detailError ? '<button type="button" data-selected-retry>Retry selected job read</button>' : ''}</p>` : ''}
             <div class="management-operations__sections">
                 ${section('overview', 'Overview', [['Customer', customer.customerName || 'Not verified'], ['Service', customer.service || 'Not verified'],
-                    ['Address', customer.address || 'Not verified'], ['Installation status', readable(job.rawStatus)], ['Order status', 'Not provided by this read'],
-                    ['Assigned representative', 'Not provided by this read']])}
+                    ['Address', customer.address || 'Not verified'], ['Installation status', readable(job.rawStatus)], ['Order status', 'Not available'],
+                    ['Assigned representative', 'Not available']])}
                 ${section('schedule', 'Schedule', [['Appointment', planning ? scheduleDate(window.start, window.timezone) : date(job.scheduledAt)],
-                    ['Appointment end', planning ? scheduleDate(window.end, window.timezone) : 'Not provided by dispatch read'],
-                    ['Timezone', planning ? window.timezone || 'Timezone unresolved' : 'Browser timezone; job timezone is not provided by this dispatch read.'],
-                    ['Reservation status', planning ? readable(job.reservationEvidence) + ' · assignment acceptance is not appointment confirmation.' : 'Not provided by dispatch read'],
-                    ['Rescheduling', 'Requires management review; no schedule change is made here.'],
-                    ['Scheduling conflicts', conflicts.length ? conflicts.map(c => readable(c.code) + ': ' + c.detail).join('; ') : 'None observed in this read; not availability clearance.']])}
+                    ['Appointment end', planning ? scheduleDate(window.end, window.timezone) : 'Not available'],
+                    ['Timezone', planning ? window.timezone || 'Not verified' : 'Browser display; job timezone unknown'],
+                    ['Customer booking', planning ? ({ confirmed: 'Confirmed', tentative: 'Held', requested: 'Requested', completed: 'Completed', cancelled: 'Cancelled' }[job.reservationEvidence] || 'Not verified') : 'Not verified'],
+                    ['Schedule changes', 'Management review required'],
+                    ['Conflicts', conflicts.length ? conflicts.map(c => ({ technician_overlap: 'Technician appointments overlap', pending_offer_overlap: 'A pending offer overlaps another job', company_calendar_overlap: 'Company calendar overlap', technician_day_block: 'Technician time-off conflict' }[c.code] || 'Schedule needs checking')).join('; ') : 'None found; capacity still needs confirmation']])}
                 ${section('technician', 'Technician', [['Assignment / offer', technician(job)],
-                    ['Acceptance', 'Recorded offer status above; acceptance is not bound to a rescheduled appointment.'],
-                    ['Availability', planning ? job.availability.length ? job.availability.map(row => readable(row.status)).join('; ') + ' · not full capacity clearance'
-                        : 'No verified technician to evaluate' : 'Not provided by dispatch read'],
+                    ['After rescheduling', 'Reconfirm technician acceptance'],
+                    ['Availability', planning ? job.availability.length ? job.availability.map(row => ({ no_recorded_day_block: 'No time off recorded', blocked: 'Time-off conflict', unverified: 'Not verified' }[row.status] || readable(row.status))).join('; ')
+                        : 'No verified technician' : 'Not available'],
                     ['Next action', done(job) ? 'Review recorded installation outcome' : 'Review offer and verify the current installation window']])}
                 ${(record ? data.assignmentManagementEnabled === true || detailData?.assignmentManagementEnabled === true : false) && !done(job)
                     ? `<button type="button" data-assignment-job="${escape(job.jobId)}">Review job / technician offer</button>` : ''}
                 ${section('readiness', 'Readiness', [['Preparation', preparation(job)], ['Equipment', equipment
                     ? `Required: ${equipment.required === null ? 'unverified' : equipment.required ? 'yes' : 'no'}; stage: ${equipment.stage || 'not recorded'}` : 'Equipment evidence not available'],
-                    ['Equipment scope', equipmentScope(equipment?.scope)], ['Materials', 'Item-level evidence not provided by this read'],
-                    ['Access / approvals', 'Individual access and approval evidence not provided; review recorded blockers.']])}
-                ${section('payments', 'Payments', [['Verified order payment', payment ? readable(payment.status) + ' · ' + payment.detail : 'Not checked; selected job evidence required'],
-                    ['Verified deposit', 'Deposit allocation not provided by this read'], ['Outstanding balance', 'Balance ledger not provided by this read'],
-                    ['Payment checked', payment?.checkedAt ? date(payment.checkedAt) : 'No verification timestamp provided']])}
-                ${section('completion', 'Completion', [['Installation status', readable(job.rawStatus)], ['Installation evidence', 'Completion artifacts not provided by this read'],
-                    ['Actual costs', 'Actual-cost evidence not provided by this read'], ['Technician settlement', evidence(record?.payouts)
-                        ? 'Recorded settlement evidence is available in Audit; no payout changes here.' : 'Settlement relationship not verified']])}
+                    ['Equipment scope', equipmentScope(equipment?.scope)], ['Materials checklist', 'Not available'],
+                    ['Access / approvals', 'Not verified; check preparation blockers']])}
+                ${section('payments', 'Payments', [['Full-order payment', payment ? readable(payment.status) : 'Not checked'],
+                    ['Verified deposit', 'Not available'], ['Outstanding balance', 'Not available'],
+                    ['Payment checked', payment?.checkedAt ? date(payment.checkedAt) : 'No check time available']])}
+                ${section('completion', 'Completion', [['Installation status', readable(job.rawStatus)], ['Installation evidence', 'Not available'],
+                    ['Actual costs', 'Not available'], ['Technician payout', evidence(record?.payouts)
+                        ? 'View payout records in Audit' : 'Not verified']])}
             </div></article>`;
     }
     function renderWorkbench(rows) {
@@ -398,15 +420,16 @@
         const item = shown.find(row => id(row) === selected[view]);
         const list = root.querySelector('[data-operations-list]'), scrollTop = list.scrollTop;
         list.innerHTML = `<p>${shown.length} of ${rows.length} records on this page match search.</p>` + (shown.length ? shown.map(row => {
-            const person = view === 'reconciliation' ? null : identity(row);
+            const person = view === 'reconciliation' ? null : identity(row), check = person ? null : casePresentation(row);
+            const prep = evidence(row.preparation), payment = row.payment || (row.jobId && row.jobId === detailData?.job?.jobId ? detailData.job.payment : null);
             return `<button type="button" class="management-operations__record" data-operation-record="${escape(id(row))}" aria-pressed="${id(row) === selected[view]}">
-                <strong>${escape(person ? person.customerName || 'Customer not verified' : `${caseLabel(row)} · ${planningLabels.reconciliation[row.category] || readable(row.category)}`)}</strong>
-                <span>${escape(person ? person.service || 'Service not verified' : readable(row.status))}</span>
+                <strong>${escape(person ? person.customerName || 'Customer not verified' : check.subject === caseLabel(row) ? check.subject : `${check.subject} · ${caseLabel(row)}`)}</strong>
+                <span>${escape(person ? person.service || 'Service not verified' : check.title)}</span>
                 ${person ? `<span class="management-operations__badge">${escape(readable(row.rawStatus))}</span>
                     <span>${escape(view === 'schedule' ? scheduleDate(row.window.start, row.window.timezone) : date(row.scheduledAt))}</span>
-                    <span>${escape(person.reference || 'Order reference not verified')}</span><span>${escape(technician(row))}</span><span>${escape(preparation(row))}</span>
-                    <span>Payment: ${escape(row.payment ? readable(row.payment.status) : row.jobId === detailData?.job?.jobId ? readable(detailData.job.payment?.status) : 'Not checked in scheduling list')}</span>
-                    <span class="management-operations__record-next">${escape(nextAction(row))}</span>` : `<span>${escape(row.records.length)} affected source records · historical review</span>`}</button>`;
+                    <span>${escape(technician(row))}</span>
+                    <span title="${escape(preparation(row))}">Preparation: ${prep ? prep.ready ? 'ready' : 'blocked' : 'not verified'} · Payment: ${escape(payment ? readable(payment.status) : 'not checked')}</span>
+                    <span class="management-operations__record-next">${escape(nextAction(row))}</span>` : `<span>${escape(caseStatus(reviewDrafts.get(row.id)?.fingerprint === row.fingerprint ? reviewDrafts.get(row.id).status : row.status))} · ${escape(row.records.length)} related records</span>`}</button>`;
         }).join('') : '<p class="management-operations__empty">No records match on this page. Other pages may contain matching records.</p>');
         list.scrollTop = scrollTop;
         const focusTitle = root.querySelector('[data-selected-title]') === document.activeElement;
@@ -770,7 +793,7 @@
         const message = form.querySelector('[data-review-status]');
         if (!['unresolved', 'needs_investigation', 'reviewed'].includes(status) || evidence.length > 2000 || notes.length > 2000
             || status === 'reviewed' && (!evidence || !notes)) {
-            message.setAttribute('role', 'alert'); message.textContent = 'Reviewed drafts require notes and an evidence reference (maximum 2000 characters each).'; return;
+            message.setAttribute('role', 'alert'); message.textContent = 'To mark "Review noted", add notes and a supporting record reference (up to 2000 characters each).'; return;
         }
         const previous = reviewDrafts.get(issue.id), changedAt = new Date().toISOString();
         reviewDrafts.set(issue.id, { issueId: issue.id, fingerprint: issue.fingerprint, status, evidence, notes,
@@ -780,7 +803,7 @@
         reviewInputs.delete(issue.id);
         renderPlanning();
         const saved = document.getElementById(`review-${issue.fingerprint}`);
-        saved.querySelector('[data-review-status]').textContent = 'Draft kept in this session only. Export before signing out.';
+        saved.querySelector('[data-review-status]').textContent = 'Review notes saved for this session. Export before signing out.';
         saved.querySelector('button').focus();
     });
     global.addEventListener('storage', () => reset());
