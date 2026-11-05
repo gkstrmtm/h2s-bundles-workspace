@@ -1,3 +1,6 @@
+if (process.env.H2S_REVIEW_WALKTHROUGH === 'true') {
+    require('./walkthrough-server.cjs');
+} else {
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),https=require('node:https'),crypto=require('node:crypto'),zlib=require('node:zlib');
 const workspace=path.resolve(__dirname,'..','..'),frontend=path.join(workspace,'frontend');
 const port=Number(process.env.H2S_REVIEW_PORT||50267);
@@ -167,3 +170,4 @@ function png(){
     });
     server.listen(port,'127.0.0.1',()=>console.log('READY '+origin+' - PID '+process.pid+'; synthetic only; no production or payment access'));
 })().catch(error=>{console.error('Isolated review startup failed:',error);process.exitCode=1;});
+}

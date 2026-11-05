@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulated payment provider — no real Stripe transaction</title>
+<style>body{font:14px system-ui,sans-serif;max-width:620px;padding:16px;margin:auto;line-height:1.5}button{padding:10px;margin:4px 8px 4px 0}p{overflow-wrap:anywhere}</style></head>
+<body><h1>SIMULATED payment provider</h1><p>This is an external-provider stand-in, not Stripe Checkout. No card information is requested and no real payment occurs. Buttons produce fake provider receipts through the actual signed webhook and reconciliation handlers.</p>
+<p id="amount">Loading the exact reserved session…</p><button id="pay" disabled>Simulate successful payment</button><button id="decline" disabled>Simulate failed payment</button><button id="return">Return without paying</button>
+<p id="status" role="status"></p>
+<script>
+const sessionId=new URLSearchParams(location.search).get('session');
+const documentVersion=Number(new URLSearchParams(location.search).get('reviewNavigation'))||0;
+const notify=message=>parent.postMessage({...message,documentVersion},location.origin);
+const status=document.getElementById('status');
+async function back(){const data=await(await fetch('/walkthrough/status')).json();if(data.agreementUrl)notify({type:'h2s-review-navigation',url:data.agreementUrl});else status.textContent='Customer handoff unavailable. Return using the review navigator.';}
+fetch('/walkthrough/status').then(r=>r.json()).then(data=>{const s=(data.checkouts||[]).find(s=>s.sessionId===sessionId);if(!s)throw Error('No matching server-reserved checkout. Create checkout from the actual customer screen first.');document.getElementById('amount').textContent=s.kind+' · '+new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(s.amountCents/100)+' · '+s.state;document.getElementById('pay').disabled=document.getElementById('decline').disabled=false;}).catch(e=>{status.textContent=e.message;document.getElementById('pay').disabled=document.getElementById('decline').disabled=true;});
+for(const [id,action] of [['pay','provider_capture'],['decline','provider_decline']])document.getElementById(id).onclick=async()=>{document.getElementById('pay').disabled=document.getElementById('decline').disabled=true;try{const r=await fetch('/walkthrough/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,sessionId})});const d=await r.json();if(!r.ok||d.ok===false)throw Error(d.error||'The real handler refused this simulated receipt.');status.textContent='SIMULATED provider response processed. Return to view actual verified records; this is not real money.';notify({type:'h2s-review-change'});await back();}catch(e){status.textContent=e.message;document.getElementById('pay').disabled=document.getElementById('decline').disabled=false;}};
+document.getElementById('return').onclick=back;
+</script></body></html>

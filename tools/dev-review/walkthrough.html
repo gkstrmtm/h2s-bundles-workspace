@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home2Smart | Interactive isolated sales review</title>
+<link rel="stylesheet" href="/dash.css">
+<style>
+html,body{margin:0;min-width:0;width:100%;height:100%;overflow:hidden}
+body.review{display:flex;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:var(--cobalt,CanvasText);background:var(--bg,Canvas)}
+.review-nav{flex:none;padding:8px 12px;border-bottom:1px solid var(--border,lightgray);display:grid;gap:8px;max-height:48vh;overflow:auto}
+.review-nav h1{margin:0;font:600 16px "Space Grotesk",system-ui,sans-serif}
+.review-row{display:flex;align-items:center;gap:4px 8px;flex-wrap:wrap}
+.review-nav button{padding:5px 8px;border:1px solid var(--border,lightgray);border-radius:4px;background:var(--surface,Canvas);color:inherit;font:inherit;font-size:12px;cursor:pointer;min-height:30px}
+.review-nav button[aria-pressed=true]{border-color:var(--primary,Highlight);color:var(--primary,Highlight);background:var(--surface,Canvas)}
+.review-nav button:disabled{opacity:.5;cursor:not-allowed}
+.review-nav p{margin:0;font-size:12px;line-height:1.4;overflow-wrap:anywhere}
+.review-note{border-left:3px solid var(--primary,Highlight);padding-left:8px}
+.review-nav details{font-size:12px}.review-nav ol{padding-left:24px;margin:8px 0;columns:2}
+.review-nav li{break-inside:avoid;margin-bottom:4px}.review-nav li button{text-align:left}
+.review-stage{font-family:"JetBrains Mono",monospace;font-size:11px}
+.review-frame{border:0;display:block;width:100%;flex:1;min-height:0;background:Canvas}
+.review-status{color:var(--muted,GrayText)}.review-error{color:var(--danger,FireBrick)}
+@media(max-width:420px){.review-nav{padding:8px;gap:4px}.review-nav ol{columns:1}.review-nav h1{font-size:14px}}
+</style>
+<script src="/walkthrough/navigator.js" defer></script>
+</head>
+<body class="review">
+<nav class="review-nav" aria-label="Isolated review controls">
+  <div class="review-row"><h1>Home2Smart interactive sales review</h1><span class="review-stage" id="step-label"></span></div>
+  <p class="review-note">ISOLATED SYNTHETIC DATA · Actual application screens/handlers. Payment provider and settlement evidence are simulated. No real money, accounts, production data or notifications.</p>
+  <div class="review-row" aria-label="Select scenario">
+    <button data-scenario="tv" aria-pressed="true">A · TV mounting</button>
+    <button data-scenario="camera" aria-pressed="false">B · Included cameras</button>
+    <button data-scenario="exception" aria-pressed="false">C · Nonstandard</button>
+    <button id="reset">Reset scenario</button>
+  </div>
+  <div class="review-row" aria-label="Switch perspective">
+    <button data-role="sales">Representative</button><button data-role="customer">Customer</button>
+    <button data-role="admin">Management</button><button data-role="pro">Technician</button>
+    <button id="current">Current customer</button>
+  </div>
+  <div class="review-row"><button id="back">← Previous</button><button id="forward">Next →</button>
+    <button id="suggest">Fill sample values</button><button id="photo">Select synthetic photo</button><button id="refresh">Refresh screen</button>
+  </div>
+  <p id="instructions">Loading the isolated scenario…</p>
+  <p id="journey" class="review-status" aria-live="polite"></p>
+  <p id="error" class="review-error" role="alert"></p>
+  <details><summary>All review steps / simulation boundaries</summary><ol id="steps"></ol>
+    <p>Navigator changes perspective and fills optional sample inputs; you still submit actual application forms, approve evidence, draw the onsite signature and follow validation. Synthetic pricing and legal fixtures are NOT approved Home2Smart policies. Reset deletes only this disposable in-memory scenario.</p>
+  </details>
+</nav>
+<iframe id="application" class="review-frame" title="Actual Home2Smart application"></iframe>
+</body>
+</html>
