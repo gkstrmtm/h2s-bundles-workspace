@@ -22,9 +22,13 @@ function createProxy({ backendOrigin, bypassSecret, fetchImpl = fetch }) {
       if (typeof rawPath !== 'string' || !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(rawPath)) {
         return failure(400, 'Invalid staging API path');
       }
+      const capture = source.searchParams.getAll('path');
+      if (capture.length && (capture.length !== 1 || capture[0] !== rawPath || source.pathname !== `/api/${rawPath}`)) {
+        return failure(400, 'Invalid staging routing metadata');
+      }
       const target = new URL(`/api/${rawPath}`, origin);
       for (const [key, value] of source.searchParams) {
-        if (key !== '__staging_path') target.searchParams.append(key, value);
+        if (key !== '__staging_path' && key !== 'path') target.searchParams.append(key, value);
       }
       const headers = {};
       for (const [key, value] of Object.entries(req.headers)) {

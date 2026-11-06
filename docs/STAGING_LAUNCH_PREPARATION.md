@@ -169,6 +169,10 @@ production project or customer domain was promoted or rerouted.
   staging backend using an encrypted provider bypass credential. It preserves
   application authorization and request bytes; it never exposes that credential
   in browser assets or follows an upstream redirect to production.
+  Vercel's generated wildcard `path` capture is verified against the actual API
+  route and removed before forwarding; mismatched/duplicate capture metadata is
+  rejected. Actual authenticated hosted-history checks exposed this provider
+  behavior, which local transport fixtures did not initially reproduce.
 - Backend build uses the existing package/Prisma/Next commands. Constructor-only,
   invalid-provider placeholders are confined to the build child process; they
   are not runtime database or Stripe credentials. All native requests are blocked.

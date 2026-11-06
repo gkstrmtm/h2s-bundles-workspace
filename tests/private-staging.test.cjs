@@ -149,6 +149,20 @@ test('invalid paths and oversized requests never contact the backend', async () 
   assert.equal(res.statusCode, 413);
   assert.equal(calls, 0);
 });
+test('verified Vercel wildcard metadata is removed without hiding mismatched or duplicate routing input', async () => {
+  const observed=[];
+  const proxy=createProxy({backendOrigin,bypassSecret,fetchImpl:async url=>{
+    observed.push(url);return new Response('{"ok":true}',{headers:{'content-type':'application/json'}});
+  }});
+  const valid=response();
+  await proxy(request([],{url:'/api/field-sales?customerId=synthetic&__staging_path=field-sales&path=field-sales'}),valid);
+  assert.equal(valid.statusCode,200);assert.equal(observed[0],backendOrigin+'/api/field-sales?customerId=synthetic');
+  for(const url of ['/api/field-sales?path=v1','/api/field-sales?path=field-sales&path=field-sales',
+    '/api/staging-proxy?path=field-sales']){
+    const invalid=response();await proxy(request([],{url}),invalid);assert.equal(invalid.statusCode,400);
+  }
+  assert.equal(observed.length,1);
+});
 test('unexpected redirects and network errors remain explicit failures', async () => {
   for (const fetchImpl of [async () => new Response(null, { status: 302,
     headers: { location: 'https://portal.home2smart.com' } }), async () => { throw Error('unavailable'); }]) {
