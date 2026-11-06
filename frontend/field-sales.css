@@ -107,6 +107,9 @@
 #h2s-app .field-sales__service:has(input:disabled) { color: var(--sales-muted); cursor: not-allowed; }
 #h2s-app .field-sales [data-sales-questions] fieldset { display: grid; gap: 8px; margin-block: 12px; }
 #h2s-app .field-sales__wide { grid-column: 1 / -1; }
+#h2s-app .field-installation [data-installation-proof-form] { display: grid; gap: 12px; margin-block: 12px; }
+#h2s-app .field-installation :is([data-proof-requirement],[data-installation-expense]) { min-inline-size: 0; max-width: 100%; margin: 0; padding: 12px; border: 1px solid var(--sales-border); border-radius: 4px; }
+#h2s-app .field-installation legend { max-width: 100%; padding-inline: 4px; white-space: normal; overflow-wrap: anywhere; font-weight: 600; }
 #h2s-app .field-sales__id { font: 12px/1.5 'JetBrains Mono', monospace; }
 #h2s-app .field-sales pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 'JetBrains Mono', monospace; }
 #h2s-app .field-sales details { padding-block: 4px; border-top: 1px solid var(--sales-border); margin-block: 12px; }

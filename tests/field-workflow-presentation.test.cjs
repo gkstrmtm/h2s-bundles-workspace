@@ -50,6 +50,32 @@ function nonAuditText(root){
     clone.querySelectorAll('.field-workflow__audit').forEach(el=>el.remove());
     return clone.textContent;
 }
+test('installation requirements show distinct readable evidence statuses without raw identifiers or duplicate bullets',async t=>{
+    const data=workflow(),proof=data.workflows[0].proof;
+    Object.assign(proof,{photoCount:3,signatureCount:1,complete:false,
+        missing:['tv_internal: finished_internal','tv_internal: signoff_internal','tv_internal: onsite_internal'],
+        requirements:[
+            {serviceId:'tv_internal',id:'finished_internal',label:'Finished installation views',type:'photo',minimumCount:2,missingCount:1,complete:false},
+            {serviceId:'tv_internal',id:'signoff_internal',label:'Customer installation signature',type:'signature',minimumCount:1,missingCount:1,complete:false},
+            {serviceId:'tv_internal',id:'onsite_internal',label:'Operation tested onsite',type:'checklist',minimumCount:1,missingCount:1,complete:false}
+        ]});
+    const f=browser(t,'field-workflow.js','ADMIN',data);await settle();
+    const section=f.root.querySelector('[aria-label="Installation completion requirements"]');
+    assert.equal(section.querySelectorAll('.field-workflow__requirements > div').length,3);
+    assert.equal(section.querySelector('ul,li'),null);
+    const text=nonAuditText(section);
+    assert.match(text,/Saved photographs: 3.*Saved customer signatures: 1/);
+    assert.match(text,/Missing 1 photograph/);assert.match(text,/Missing 1 customer signature/);
+    assert.match(text,/Missing onsite confirmation and written evidence/);
+    assert.doesNotMatch(text,/tv_internal|finished_internal|signoff_internal|onsite_internal/);
+    assert.ok([...f.root.querySelectorAll('.field-workflow__audit')].some(e=>e.textContent.includes('tv_internal')));
+    assert.equal(f.calls.filter(call=>call.body).length,0);
+    proof.complete=true;proof.requirements.forEach(row=>{row.complete=true;row.missingCount=0;});
+    f.respond(data);f.w.H2SFieldWorkflow.mount(f.root,{apiBase:'https://fixture.invalid',getSession:()=>({token:'synthetic-token',role:'ADMIN'})});await settle();
+    assert.match(nonAuditText(f.root),/All installation evidence is saved and verified/);
+    assert.equal(f.root.querySelectorAll('.field-workflow__requirements strong').length,3);
+    assert.ok([...f.root.querySelectorAll('.field-workflow__requirements strong')].every(e=>e.textContent==='Saved and verified'));
+});
 test('private staging policies remain selectable but are never labeled production approved',async t=>{
     const data=workflow();
     for(const policy of data.policies)if(policy.status==='approved')policy.status='staging_only';

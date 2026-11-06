@@ -91,3 +91,45 @@ test('real company completion uses readable service labels and automatic proof r
     assert.equal(technician.querySelector('[data-installation-refresh]').textContent,'Refresh saved installation proof');
     instance.destroy();legacy.destroy();
 });
+test('readable requirement controls retain exact native bindings and never turn local selections into completion clearance',async t=>{
+    const dom=new JSDOM('<div id="h2s-app"><div id="root"></div></div>',{runScripts:'outside-only',url:'https://fixture.invalid'});
+    t.after(()=>dom.window.close());const w=dom.window,root=w.document.getElementById('root'),writes=[];
+    w.crypto.randomUUID=crypto.randomUUID;w.console.error=()=>{};
+    const proof={photoCount:2,signatureCount:1,complete:false,missing:['internal_service: internal_requirement'],
+        requirements:[
+            {serviceId:'internal_service',id:'internal_photo',label:'Finished installation views',type:'photo',minimumCount:2,missingCount:2,complete:false},
+            {serviceId:'internal_service',id:'internal_signature',label:'Customer sign-off',type:'signature',minimumCount:1,missingCount:1,complete:false},
+            {serviceId:'internal_service',id:'internal_checklist',label:'Operation tested onsite',type:'checklist',minimumCount:1,missingCount:1,complete:false}
+        ],candidates:[
+            {artifactId:'private-photo-a',type:'photo',createdAt:'2026-11-06T12:00:00Z'},
+            {artifactId:'private-photo-b',type:'photo',createdAt:'2026-11-06T12:01:00Z'},
+            {artifactId:'private-signature',type:'signature',createdAt:'2026-11-06T12:02:00Z'}
+        ]};
+    w.fetch=async(url,init)=>{
+        if(init.body){writes.push(JSON.parse(init.body));return Response.json({ok:true,enrolled:true,proofRecorded:true,revision:8});}
+        return Response.json({ok:true,enabled:true,enrolled:true,workflow:{jobId:'synthetic-job',revision:7,canComplete:false,completedAt:null,proof}});
+    };
+    w.eval(fs.readFileSync(path.join(__dirname,'..','frontend','field-installation.js'),'utf8'));
+    const instance=w.H2SFieldInstallation.mount(root,{apiBase:'https://fixture.invalid/api',getSession:()=>({token:'synthetic-installer'}),
+        enrolled:true,jobId:'synthetic-job',company:false});await instance.ready;
+    assert.doesNotMatch(root.textContent,/internal_service|internal_requirement|private-photo|private-signature/);
+    const rows=[...root.querySelectorAll('[data-proof-requirement]')];assert.equal(rows.length,3);
+    assert.match(rows[0].textContent,/2 required.*Missing 2 saved evidence/s);
+    assert.ok([...root.querySelectorAll('.field-installation__check')].every(e=>e.classList.contains('field-sales__check')));
+    const complete=root.querySelector('[data-installation-form] button[type="submit"]');assert.equal(complete.disabled,true);
+    for(const input of root.querySelectorAll('[data-proof-artifact], [name="affirmed"]')){
+        input.checked=true;input.dispatchEvent(new w.Event('change',{bubbles:true}));
+    }
+    rows[2].querySelector('textarea').value='SYNTHETIC onsite operation checked';
+    const form=root.querySelector('[data-installation-proof-form]');
+    form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true}));await settle();
+    assert.equal(writes.length,1);assert.equal(writes[0].action,'proof_record');
+    assert.deepEqual(writes[0].bindings,[
+        {serviceId:'internal_service',requirementId:'internal_photo',artifactIds:['private-photo-a','private-photo-b']},
+        {serviceId:'internal_service',requirementId:'internal_signature',artifactIds:['private-signature']}
+    ]);
+    assert.equal(writes[0].checklists[0].requirementId,'internal_checklist');
+    assert.equal(writes[0].checklists[0].affirmed,true);
+    assert.equal(root.querySelector('[data-installation-form] button[type="submit"]').disabled,true);
+    instance.destroy();
+});

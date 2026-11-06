@@ -9,7 +9,10 @@
     const metricName = key => ({
         cplCents: 'Paid CPL', cacCents: 'Blended advertising CAC / completed job',
         breakEvenCacCents: 'Break-even advertising CAC', repRateBps: 'Projected representative rate',
-        operatingProfitCents: 'Estimated operating profit', cashCollectedCents: 'Expected customer cash collections'
+        operatingProfitCents: 'Estimated operating profit', cashCollectedCents: 'Expected customer cash collections',
+        materialsCents: 'Equipment + materials', processingCents: 'Payment processing',
+        representativeCommissionCents: 'Projected representative commissions',
+        technicianCompensationCents: 'Installer compensation (separate)'
     })[key] || readable(key.replace(/Cents$|Bps$/, ''));
     const metricValue = (key, value) => value == null ? 'Not available' : /Cents$/.test(key) ? money(value)
         : /Bps$/.test(key) ? `${value / 100}%` : new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);

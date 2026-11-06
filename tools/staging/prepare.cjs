@@ -146,7 +146,7 @@ function nativeMiddlewareSource(middleware, commit) {
   const fieldRoutes = new Set(['/api/field-sales','/api/field-sales-photos','/api/field-sales-catalog',
     '/api/field-sales-transactions','/api/field-sales-agreement','/api/field-sales-stripe-webhook',
     '/api/field-sales-workflow','/api/field-sales-installation','/api/field-sales-company-installation',
-    '/api/field-sales-earnings']);
+    '/api/field-sales-earnings','/api/forecast']);
   let allowed = scoped && fieldRoutes.has(req.nextUrl.pathname);
   if (scoped && req.nextUrl.pathname === '/api/v1') {
     let action = req.nextUrl.searchParams.get('action') || '';

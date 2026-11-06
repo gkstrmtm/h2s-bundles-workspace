@@ -232,15 +232,20 @@
                 <p class="field-sales__id">Lead ${esc(w.leadId)} / quote ${esc(w.quoteId)} / revision ${esc(w.revision)} / representative ${esc(w.representativeId)}</p>
                 <h4>Approved immutable customer copies & delivery</h4>
                 ${(w.documents || []).map(doc => `<section><h4>${esc(doc.label)} / ${esc(doc.kind)}</h4><p class="field-sales__id">${esc(doc.artifactId)} / ${esc(doc.contentHash)}</p><pre>${esc(contentText(doc.content))}</pre></section>`).join('') || '<p>No approved immutable copies published.</p>'}
-                <pre>${esc(JSON.stringify({...w,proof:undefined},null,2))}</pre></details>${(w.refunds||[]).length?'<p>Reserved or provider-pending refunds are not confirmed refunds. Management must reconcile the provider evidence.</p>':''}`)}
+                <pre>${esc(JSON.stringify({...w,proof:w.proof?{...w.proof,candidates:undefined}:undefined},null,2))}</pre></details>${(w.refunds||[]).length?'<p>Reserved or provider-pending refunds are not confirmed refunds. Management must reconcile the provider evidence.</p>':''}`)}
                 </div>`;
         }
         function installationProof(w){
             if(!admin())return '';
             const p=w.proof;if(!p)return '<p>Assigned-job installation proof status unavailable. No completion clearance is implied.</p>';
-            return `<h4>Pinned installation requirements</h4><p>Baseline saved photos: ${esc(p.photoCount)} / customer signatures: ${esc(p.signatureCount)}. ${p.complete===true?'Server proof requirements satisfied.':'Proof remains incomplete: '+esc((p.missing||[]).join('; '))}</p>
-                ${Array.isArray(p.requirements)&&p.requirements.length?`<ul>${p.requirements.map(r=>`<li>${esc(r.label)} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Missing '+esc(r.missingCount)}</li>`).join('')}</ul>`:'<p>No additional service requirements reported. Baseline photo/signature requirements remain mandatory.</p>'}
-                <p>Requirements are pinned to the approved quote. The assigned technician records native evidence and explicit checklist completion; management does not bypass proof here.</p>`;
+            const types={photo:'Installation photographs',signature:'Customer signatures',checklist:'Onsite checklist'};
+            return `<section class="field-workflow__proof" aria-label="Installation completion requirements"><h4>Installation completion requirements</h4>
+                <p>Saved photographs: ${esc(p.photoCount)}. Saved customer signatures: ${esc(p.signatureCount)}.</p>
+                <p role="status">${p.complete===true?'All installation evidence is saved and verified.':'Evidence is still required. Each requirement below and the baseline photograph and signature checks must pass before completion.'}</p>
+                ${Array.isArray(p.requirements)&&p.requirements.length?`<dl class="field-workflow__requirements">${p.requirements.map(r=>`<div><dt>${esc(r.label)}</dt><dd><span>${esc(types[r.type]||'Evidence requiring server review')} · ${esc(r.minimumCount)} required</span>
+                    <strong>${r.complete===true?'Saved and verified':r.type==='checklist'?'Missing onsite confirmation and written evidence':`Missing ${esc(r.missingCount)} ${r.type==='signature'?'customer signature':'photograph'}${r.missingCount===1?'':'s'}`}</strong></dd></div>`).join('')}</dl>`:'<p>No additional service requirements reported. Baseline photograph and signature checks remain mandatory.</p>'}
+                <p class="field-workflow__note">Requirements come from the accepted quote. The assigned installer must save the evidence and personally confirm onsite checks. Management cannot bypass these checks.</p>
+                </section>`;
         }
         function management(w, holds) {
             const docForms = form('documents_publish',w,`<p class="field-sales__wide">Publish the approved customer copies below without changing their content.</p><details class="field-sales__wide field-workflow__audit"><summary>Admin evidence details — exact required customer copies</summary><label>Server copies (read-only JSON)<textarea name="artifacts" readonly required>${esc(JSON.stringify(w.requiredArtifacts || [],null,2))}</textarea></label></details>${evidence}`,'Publish approved immutable copies',

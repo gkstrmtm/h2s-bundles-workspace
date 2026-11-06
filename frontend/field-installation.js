@@ -44,7 +44,7 @@
                 proofDrafts.set(row.dataset.proofKey,{artifactIds:[...row.querySelectorAll('[data-proof-artifact]:checked')].map(e=>e.value),affirmed:row.querySelector('[name="affirmed"]')?.checked===true,reference:row.querySelector('[name="checklistEvidence"]')?.value||''});
             }
             target.innerHTML=proof?`<p>Saved installation photos: ${esc(proof.photoCount)} / customer signatures: ${esc(proof.signatureCount)}</p>
-                <p>${proof.complete===true?'Installation proof verified for this assigned job.':options.company===true?'Complete the required photographs, signature and onsite checks below.':esc((proof.missing||[]).join('; ')||'Installation proof is incomplete.')}</p>
+                <p>${proof.complete===true?'Installation proof verified for this assigned job.':'Complete the required photographs, signature and onsite checks below.'}</p>
                 ${Array.isArray(proof.requirements)&&proof.requirements.length?proofForm(proof):''}`:'<p>Installation proof verification unavailable. Completion remains blocked.</p>';
             const submit=root.querySelector('[data-installation-form] button[type="submit"]');
             if(submit)submit.disabled=reading||proofDirty||attempt?.action==='proof_record'||workflow?.canComplete!==true||proof?.complete!==true;
@@ -53,7 +53,7 @@
                 root.querySelectorAll('[data-installation-form] input,[data-installation-form] select,[data-installation-form] textarea,[data-installation-form] button').forEach(el=>el.disabled=true);
                 status('Installation already completed. Customer net balance and management cost review are verified separately.');
             }else if(proofDirty||attempt?.action==='proof_record')status(options.company===true?'Save the selected evidence and onsite checks before completing this installation. Interrupted saves retain the same operation.':'Evidence selections are not yet server-confirmed. Save selected proof (an interrupted retry keeps the identical operation), then refresh server readiness.');
-            else if(proof?.complete!==true)status(options.company===true?'Upload photographs and the customer signature above, then save the required evidence selections and onsite checks below.':(proof?.missing||['Verify installation photos and customer signature']).join('; ')+'. Use existing job uploads, refresh, then bind evidence and affirm configured checklists. Text cannot replace saved photos/signatures.');
+            else if(proof?.complete!==true)status(options.company===true?'Upload photographs and the customer signature above, then save the required evidence selections and onsite checks below.':'Use the job upload and signature controls, refresh, then save the evidence selections and onsite checks below. Written notes cannot replace saved photographs or signatures.');
             else if(workflow?.canComplete!==true)status('Photo/signature proof is saved, but assigned-job/readiness gates still block completion. Final balance is not a completion gate.');
             else status('Saved photo/signature proof verified. Record actual costs and hours before submitting completion.');
         }
@@ -64,10 +64,11 @@
                     const key=JSON.stringify([r.serviceId,r.id]),draft=proofDrafts.get(key),selected=draft?.artifactIds||r.artifactIds||[];
                     const candidates=(proof.candidates||[]).filter(c=>c.type===r.type);
                     return `<fieldset data-proof-requirement="${index}" data-proof-key="${esc(key)}"><legend>${esc(r.label)}</legend>
-                        <p>${options.company===true?esc(options.serviceNames?.[r.serviceId]||'Approved installation service'):('Service '+esc(r.serviceId))} / ${esc(r.type)} / required ${esc(r.minimumCount)} / ${r.complete===true?'Saved requirement satisfied':'Still required: '+esc(r.missingCount)}</p>
-                        ${r.type==='checklist'?`<label class="field-installation__check"><input type="checkbox" name="affirmed"${(draft?draft.affirmed:r.affirmed===true)?' checked':''}>I personally verified: ${esc(r.label)}</label>
+                        <p>${esc(options.serviceNames?.[r.serviceId]||'Installation service')} · ${esc({photo:'Photographs',signature:'Customer signatures',checklist:'Onsite checklist'}[r.type]||'Evidence')} · ${esc(r.minimumCount)} required</p>
+                        <p><strong>${r.complete===true?'Saved and verified':r.type==='checklist'?'Missing onsite confirmation and written evidence':'Missing '+esc(r.missingCount)+' saved evidence item(s)'}</strong></p>
+                        ${r.type==='checklist'?`<label class="field-installation__check field-sales__check"><input type="checkbox" name="affirmed"${(draft?draft.affirmed:r.affirmed===true)?' checked':''}>I personally completed this onsite check</label>
                             <label>Checklist completion evidence<textarea name="checklistEvidence" minlength="3" maxlength="4000">${esc(draft?draft.reference:r.evidence?.reference||'')}</textarea></label>`:
-                            ['photo','signature'].includes(r.type)?`${candidates.map((c,i)=>`<label class="field-installation__check"><input type="checkbox" data-proof-artifact value="${esc(c.artifactId)}"${selected.includes(c.artifactId)?' checked':''}>${options.company===true?`${c.type==='photo'?'Photograph':'Customer signature'} ${i+1} · ${esc(new Date(c.createdAt).toLocaleString())}`:`${esc(c.type)} / ${esc(c.createdAt)} / ${esc(c.artifactId)}`}</label>`).join('')||(options.company===true?'<p>Upload the required image above. Saved evidence appears here automatically.</p>':'<p>No matching native proof available. Use the existing job upload/signature control, then refresh.</p>')}`:'<p>Unsupported requirement type. Completion remains subject to server clearance.</p>'}
+                            ['photo','signature'].includes(r.type)?`${candidates.map((c,i)=>`<label class="field-installation__check field-sales__check"><input type="checkbox" data-proof-artifact value="${esc(c.artifactId)}"${selected.includes(c.artifactId)?' checked':''}>${c.type==='photo'?'Photograph':'Customer signature'} ${i+1} · ${esc(new Date(c.createdAt).toLocaleString())}</label>`).join('')||(options.company===true?'<p>Upload the required image above. Saved evidence appears here automatically.</p>':'<p>No matching saved evidence. Use the job upload/signature control, then refresh.</p>')}`:'<p>Unsupported requirement type. Completion remains subject to server clearance.</p>'}
                         </fieldset>`;
                 }).join('')}<button type="submit">Save selected installation proof</button></form>`;
         }
@@ -84,7 +85,7 @@
                 <label>Total actual line cost (integer cents, not unit price)<input name="amountCents" type="number" min="0" step="1" required></label>
                 <label>Receipt / customer-owned / zero-cost evidence<textarea name="expenseEvidence" required maxlength="4000"></textarea></label>
                 <label>Zero-cost attestation (required when total is zero)<textarea name="zeroCostAttestation" maxlength="2000"></textarea></label>
-                <label class="field-sales__wide field-installation__check"><input name="actual" type="checkbox" required>I attest this quantity, unit cost and line total are actual, evidenced costs—not estimates.</label>
+                <label class="field-sales__wide field-installation__check field-sales__check"><input name="actual" type="checkbox" required>I attest this quantity, unit cost and line total are actual, evidenced costs—not estimates.</label>
                 <button type="button" data-installation-remove>Remove expense line</button></fieldset>`);
         }
         const click = event => {

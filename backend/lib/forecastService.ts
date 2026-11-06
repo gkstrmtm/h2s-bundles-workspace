@@ -8,6 +8,7 @@ export type ForecastCapabilities = { ai: { available: boolean; reason: string };
 export type ForecastAiProvider = {
   interpret(input: { text: string; scenario: unknown; conversation: { role:'user'|'assistant';content:string }[] }): Promise<unknown>;
   advise?(input: { text: string; comparisons: unknown }): Promise<unknown>;
+  diagnostics?(): Partial<Record<'interpretation'|'advice', { provider:'openai';model:string;httpStatus:number;requestId:string|null }>>;
 };
 export type ForecastDependencies = { capabilities: ForecastCapabilities; catalog: ForecastCatalogPrice[];
   research?: ForecastResearchProvider; ai?: ForecastAiProvider };
@@ -81,7 +82,11 @@ export async function executeForecast(body: Record<string,unknown>, dependencies
     scenario = hydrateForecastPrices(scenario,dependencies.catalog);
     let response: unknown;
     try { response = await dependencies.ai.interpret({text:body.text,scenario:aiScenario(scenario),conversation}); }
-    catch { throw new BusinessError('Conversational AI is unavailable. Your previous scenario was not changed.',503); }
+    catch (error) {
+      if (error instanceof BusinessError) throw error;
+      console.error('Forecast interpretation failed', {type:error instanceof Error ? error.name : 'UnknownError'});
+      throw new BusinessError('Conversational AI is unavailable. Your previous scenario was not changed.',503);
+    }
     scenario = applyForecastAiPatch(scenario,response);
     warnings.push('AI interpreted management intent; all returned assumptions require management review. AI does not verify research or approve prices.');
   }
@@ -104,7 +109,8 @@ export async function executeForecast(body: Record<string,unknown>, dependencies
       validateAdvice(advice,comparisons);
     } catch { warnings.push('AI advisory was unavailable or failed grounding checks; deterministic source-aware recommendations remain available.'); }
   }
-  return {ok:true as const,scenario,comparisons,capabilities:dependencies.capabilities,warnings};
+  return {ok:true as const,scenario,comparisons,capabilities:dependencies.capabilities,warnings,
+    aiExecution:dependencies.ai?.diagnostics?.()};
 }
 function validateAdvice(raw: unknown, comparisons: ForecastComparison[]) {
   // AI selects a bounded grounded advisory template. Financial calculations and prose are server-owned.

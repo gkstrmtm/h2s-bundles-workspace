@@ -47,7 +47,7 @@ function createProxy({ backendOrigin, bypassSecret, fetchImpl = fetch }) {
         }
       }
       const response = await fetchImpl(target.href, {
-        method: req.method, headers, redirect: 'manual', signal: AbortSignal.timeout(30_000),
+        method: req.method, headers, redirect: 'manual', signal: AbortSignal.timeout(rawPath === 'forecast' ? 90_000 : 30_000),
         ...(['GET', 'HEAD'].includes(req.method) ? {} : { body: Buffer.concat(chunks) }),
       });
       if (response.status >= 300 && response.status < 400) {

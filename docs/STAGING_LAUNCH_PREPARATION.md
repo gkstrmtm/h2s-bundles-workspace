@@ -8,9 +8,41 @@ camera workflows passed, including four real Stripe Sandbox payments, signed
 receipts, company completion, actual-cost review, independent commissions and
 Friday allocation. Production activation remains a separate controlled release.**
 No additional database/account/key or organization login is needed.
-Only authenticated, UUID-run-scoped synthetic Field Sales routes and the existing
-managed PIN-reset action are available. Other legacy APIs remain quarantined.
+Only authenticated, UUID-run-scoped synthetic Field Sales routes, the
+administrator-only read-only Forecast endpoint and existing managed PIN-reset
+action are available. Other legacy APIs remain quarantined.
 See the [current native evidence and exact-run cleanup procedure](INFRASTRUCTURE_REUSE_AUDIT.md#current-result-existing-database-connected-2026-11-06-utc).
+
+### Focused dashboard verification
+
+Forecast requires `H2S_FORECAST_AI_ENABLED=true` and the existing server-only
+`OPENAI_API_KEY`; private staging stores the reused key as Sensitive, Preview
+only. This does not enable Stripe live mode or any production route. The
+forecast proxy permits a bounded 90-second request, while the backend has a
+60-second function limit and each OpenAI operation has a 15-second timeout.
+Successful interpretation returns `aiExecution` with the actual OpenAI HTTP
+status, model and request ID, never credentials. Configuration presence alone
+is not connection certification.
+
+Research remains explicitly unavailable where no Census connector key exists.
+Missing facts remain missing; neither AI advice nor supplied scenario assumptions
+establish verified Greenville market statistics. Planning may use the existing
+proposed source prices and equipment/material allowances as explicitly
+hypothetical inputs, not published offers or supplier verification. Installer
+compensation remains separate from the representative commission base.
+
+Installation requirements use readable labels, individual missing-evidence
+statuses and the existing checkbox layout. Raw diagnostics stay in the Audit
+tab without disclosing native proof candidates. Photo/signature counts, distinct
+artifact binding, checklist evidence, server clearance and completion
+immutability are unchanged. Verify missing, partial and completed evidence at
+mobile and desktop widths.
+
+Account checks must use synthetic SALES identities and the existing Accounts
+managed credential reset. Retire temporary identities and revoke their sessions
+after verification. Manual settlement success is tested with independently
+reconciled **synthetic fixtures**; native staging's retained Friday allocations
+must not be declared paid without actual independent settlement evidence.
 
 The baseline commit is supplemented by explicitly owned native-scoping overlays;
 the actual backend and overlay identifiers are in the provider table below.

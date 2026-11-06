@@ -8,7 +8,7 @@ function load(file, imports={}, globals={}) {
   const code=ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{
     compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
   vm.runInNewContext(code,{module,exports:module.exports,URL,Request,Response,AbortController,TextDecoder,Date,JSON,
-    setTimeout,clearTimeout,console,process:{env:{}},fetch:()=>{throw Error('Live network prohibited');},
+    setTimeout,clearTimeout,structuredClone,console,process:{env:{}},fetch:()=>{throw Error('Live network prohibited');},
     require(name){assert.ok(Object.hasOwn(imports,name),`Unexpected dependency ${name}`);return imports[name];},...globals},{filename:file});
   return module.exports;
 }
@@ -345,4 +345,39 @@ test('OpenAI SDK provider is constructed only behind explicit forecast gate and 
   const p=load('lib\\forecastProviders.ts',{'openai':OpenAI,'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine},
     {process:{env:{H2S_FORECAST_AI_ENABLED:'true',OPENAI_API_KEY:'synthetic'}}});
   assert.ok(p.createOpenAiForecastProvider());assert.equal(constructions,1);assert.equal(calls,0);
+});
+test('OpenAI response diagnostics are actual HTTP metadata, never credentials or submitted scenario text',async()=>{
+  const secret='synthetic-openai-key',responses=[];
+  class OpenAI {
+    static APIError=class extends Error {};
+    constructor(){this.chat={completions:{create:request=>{
+      responses.push(request);
+      return {withResponse:async()=>({data:{model:'synthetic-model',choices:[{message:{content:'{"updates":[]}'},finish_reason:'stop'}]},
+        response:new Response(null,{status:200,headers:{'x-request-id':'synthetic-request-id'}})})};
+    }}};}
+  }
+  const p=load('lib\\forecastProviders.ts',{'openai':OpenAI,'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine},
+    {process:{env:{H2S_FORECAST_AI_ENABLED:'true',OPENAI_API_KEY:secret}}});
+  const ai=p.createOpenAiForecastProvider();
+  await ai.interpret({text:'Synthetic private management request',scenario:{},conversation:[]});
+  const metadata=ai.diagnostics();
+  assert.equal(metadata.interpretation.httpStatus,200);assert.equal(metadata.interpretation.requestId,'synthetic-request-id');
+  assert.equal(metadata.interpretation.provider,'openai');assert.equal(responses.length,1);
+  assert.doesNotMatch(JSON.stringify(metadata),/synthetic-openai-key|private management request|Authorization/);
+  metadata.interpretation.httpStatus=599;assert.equal(ai.diagnostics().interpretation.httpStatus,200);
+});
+test('OpenAI provider failures expose safe status, retain the previous scenario and never echo provider error secrets',async()=>{
+  const secret='synthetic-secret-not-for-errors',logs=[];
+  class APIError extends Error {constructor(){super(secret);this.status=429;}}
+  class OpenAI {
+    static APIError=APIError;
+    constructor(){this.chat={completions:{create:()=>({withResponse:async()=>{throw new APIError();}})}};}
+  }
+  const p=load('lib\\forecastProviders.ts',{'openai':OpenAI,'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine},
+    {console:{error:(...parts)=>logs.push(parts)},process:{env:{H2S_FORECAST_AI_ENABLED:'true',OPENAI_API_KEY:secret}}});
+  const s=scenario(),before=JSON.stringify(s);
+  await assert.rejects(service.executeForecast({action:'interpret',text:'Synthetic management request',scenario:s},
+    dependencies({capabilities:{...capabilities,ai:{available:true,reason:'synthetic'}},ai:p.createOpenAiForecastProvider()})),
+    error=>error.status===503&&/HTTP 429/.test(error.message)&&!error.message.includes(secret));
+  assert.equal(JSON.stringify(s),before);assert.doesNotMatch(JSON.stringify(logs),/synthetic-secret-not-for-errors/);
 });

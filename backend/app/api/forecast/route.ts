@@ -8,6 +8,7 @@ import { createCensusForecastProvider } from '@/lib/forecastResearch';
 import { createOpenAiForecastProvider } from '@/lib/forecastProviders';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 const headers = (request: Request) => ({...corsHeaders(request),'Cache-Control':'private, no-store',Vary:'Authorization, Origin'});
 // One process-local research provider retains bounded TTL and in-flight caches across requests.
 let census: ReturnType<typeof createCensusForecastProvider> | undefined;

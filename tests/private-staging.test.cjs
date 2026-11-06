@@ -37,6 +37,8 @@ test('prepared middleware never opens legacy or nonisolated routes, even if an o
   const req=(url,method='GET',body='')=>({nextUrl:new URL('https://fixture.invalid'+url),method,clone:()=>({text:async()=>body})});
   const valid=stagingMiddleware(env);
   assert.equal((await valid(req('/api/field-sales'))).status,200);
+  assert.equal((await valid(req('/api/forecast'))).status,200);
+  assert.equal((await valid(req('/api/forecast','POST','{"action":"interpret"}'))).status,200);
   assert.equal((await valid(req('/api/v1?action=dashboardLogin','POST','{}'))).status,200);
   assert.equal((await valid(req('/api/v1?action=dashboardLogin','POST','{"action":"forceDeleteAll"}'))).status,400);
   assert.equal((await valid(req('/api/v1?action=forceDeleteAll','POST','{}'))).status,503);
@@ -44,6 +46,7 @@ test('prepared middleware never opens legacy or nonisolated routes, even if an o
   for(const override of [{H2S_STAGING_SANDBOX_RUN_ID:''},{VERCEL_ENV:'production'},{H2S_FIELD_STRIPE_MODE:'live'},
     {H2S_FIELD_STRIPE_LIVE_ENABLED:'true'},{H2S_STAGING_DATABASE_SCHEMA:'public'}]){
     assert.equal((await stagingMiddleware({...env,...override})(req('/api/field-sales'))).status,503);
+    assert.equal((await stagingMiddleware({...env,...override})(req('/api/forecast'))).status,503);
   }
 });
 function response() {

@@ -26,6 +26,12 @@
 #h2s-app .field-sales .field-workflow__panel { min-width: 0; margin-block: 16px; }
 #h2s-app .field-sales .field-workflow__panel[hidden] { display: none; }
 #h2s-app .field-sales .field-workflow__panel > h4 { margin: 0 0 12px; color: var(--cobalt); font: 500 14px/1.5 Inter, sans-serif; }
+#h2s-app .field-sales .field-workflow__proof { margin-block: 16px; min-width: 0; }
+#h2s-app .field-sales .field-workflow__requirements { display: grid; gap: 0; margin: 12px 0; }
+#h2s-app .field-sales .field-workflow__requirements > div { display: grid; gap: 4px; padding: 12px 0; border-top: 1px solid var(--border); min-width: 0; }
+#h2s-app .field-sales .field-workflow__requirements dt { color: var(--cobalt); font-weight: 600; overflow-wrap: anywhere; }
+#h2s-app .field-sales .field-workflow__requirements dd { display: grid; gap: 4px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+#h2s-app .field-sales .field-workflow__requirements dd span { color: var(--muted); font-size: 13px; }
 #h2s-app .field-sales .field-workflow__audit { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
 #h2s-app .field-sales .field-workflow__audit > summary { font: 500 13px/1.5 Inter, sans-serif; color: var(--muted); }
 #h2s-app .field-sales .field-workflow__audit[open] > summary { color: var(--cobalt); margin-bottom: 8px; }
