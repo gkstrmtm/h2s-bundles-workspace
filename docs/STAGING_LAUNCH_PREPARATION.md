@@ -24,6 +24,12 @@ Successful interpretation returns `aiExecution` with the actual OpenAI HTTP
 status, model and request ID, never credentials. Configuration presence alone
 is not connection certification.
 
+The interpretation contract uses minimal object patches, but service arrays
+replace whole arrays and must contain complete retained service rows. Invalid
+partial rows are rejected without changing the prior scenario. Both OpenAI
+operations explicitly request JSON, including the advisory operation's JSON-mode
+requirement.
+
 Research remains explicitly unavailable where no Census connector key exists.
 Missing facts remain missing; neither AI advice nor supplied scenario assumptions
 establish verified Greenville market statistics. Planning may use the existing

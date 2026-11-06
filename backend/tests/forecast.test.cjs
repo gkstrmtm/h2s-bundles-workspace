@@ -363,8 +363,24 @@ test('OpenAI response diagnostics are actual HTTP metadata, never credentials or
   const metadata=ai.diagnostics();
   assert.equal(metadata.interpretation.httpStatus,200);assert.equal(metadata.interpretation.requestId,'synthetic-request-id');
   assert.equal(metadata.interpretation.provider,'openai');assert.equal(responses.length,1);
+  assert.match(responses[0].messages[0].content,/Service arrays are whole-array replacements, not per-item patches/);
+  assert.match(responses[0].messages[0].content,/Never omit required fields even when unchanged/);
   assert.doesNotMatch(JSON.stringify(metadata),/synthetic-openai-key|private management request|Authorization/);
   metadata.interpretation.httpStatus=599;assert.equal(ai.diagnostics().interpretation.httpStatus,200);
+  await ai.advise({text:'Synthetic management request',comparisons:[]});
+  assert.match(responses[1].messages[0].content,/Return JSON only:/);
+  assert.equal(ai.diagnostics().advice.httpStatus,200);
+});
+test('service array replacements preserve complete rows and reject incomplete AI item patches',()=>{
+  const previous=scenario(),before=JSON.stringify(previous),row=previous.markets[0].services[0];
+  const patch=services=>({updates:[{marketId:'dallas',changes:{services}}],newMarkets:[]});
+  assert.throws(()=>service.applyForecastAiPatch(previous,patch([{id:row.id,shareBps:10000,jobMinutes:90,
+    price:{kind:'hypothetical',amountCents:17900},materialsCents:2788}])),/invalid or untrusted scenario/);
+  const next=service.applyForecastAiPatch(previous,patch([{...row,jobMinutes:90,price:{kind:'hypothetical',amountCents:17900},materialsCents:2788}]));
+  assert.equal(next.markets[0].services[0].label,row.label);
+  assert.equal(next.markets[0].services[0].ownership,row.ownership);
+  assert.equal(next.markets[0].services[0].price.amountCents,17900);
+  assert.equal(JSON.stringify(previous),before);
 });
 test('OpenAI provider failures expose safe status, retain the previous scenario and never echo provider error secrets',async()=>{
   const secret='synthetic-secret-not-for-errors',logs=[];
