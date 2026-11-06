@@ -12,7 +12,10 @@
         operatingProfitCents: 'Estimated operating profit', cashCollectedCents: 'Expected customer cash collections',
         materialsCents: 'Equipment + materials', processingCents: 'Payment processing',
         representativeCommissionCents: 'Projected representative commissions',
-        technicianCompensationCents: 'Installer compensation (separate)'
+        technicianCompensationCents: 'Installer compensation (separate)',
+        travelShippingCents: 'Job travel / shipping budgets',
+        serviceReserveCents: 'Company-held reserve (not a cash expense)',
+        spendableAfterReserveCents: 'Spendable retained funds after reserve'
     })[key] || readable(key.replace(/Cents$|Bps$/, ''));
     const metricValue = (key, value) => value == null ? 'Not available' : /Cents$/.test(key) ? money(value)
         : /Bps$/.test(key) ? `${value / 100}%` : new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(value);
@@ -66,6 +69,7 @@
         state.template = null;
         state.catalog = [];
         state.capabilities = {};
+        state.businessPolicy = null;
         state.library?.replaceChildren();
         if (state.nameInput) state.nameInput.value = '';
         state.body.replaceChildren();
@@ -128,6 +132,8 @@
             if (action !== 'capabilities' && !Array.isArray(data.comparisons)) throw Error('Forecast returned incomplete market comparisons.');
             state.capabilities = data.capabilities || {};
             state.catalog = data.catalog || state.catalog || [];
+            state.businessPolicy = data.businessPolicy || state.businessPolicy || null;
+            if (data.scenario.policyMode === 'canonical_v2' && !state.businessPolicy) throw Error('Canonical business policy was not supplied. No default pricing is substituted.');
             if (!state.library.childElementCount) renderLibrary(state);
             const previousScenario = state.scenario;
             state.scenario = clone(data.scenario);
@@ -181,6 +187,10 @@
                 : typeof value === 'boolean' ? value ? 'Connected' : 'Not connected' : String(value);
             paragraph(state.connections, `${key === 'ai' ? 'AI' : readable(key)}: ${status}`, 'forecast-workbench__secondary');
         }
+        if (state.businessPolicy) {
+            const p = state.businessPolicy;
+            paragraph(state.connections, `Business source: ${p.pricingSource} · checked ${p.checkedDate} · fingerprint ${p.digest.slice(0,12)}. ${state.scenario?.policyMode === 'canonical_v2' ? 'V2 rules applied automatically by the server.' : 'Explicit custom hypothesis — not canonical V2 economics.'}`, 'forecast-workbench__secondary');
+        }
     }
     function metrics(parent, values, names) {
         const dl = node('dl');
@@ -205,7 +215,8 @@
         if (state.dirty) paragraph(state.body, 'Inputs changed after this calculation. These results are not current.', 'forecast-workbench__secondary');
         const comparisons = result.comparisons || [];
         if (comparisons.length) {
-            const headline = ['bookedRevenueCents', 'completedRevenueCents', 'cashCollectedCents', 'operatingProfitCents', 'cacCents', 'breakEvenCacCents'];
+            const headline = ['bookedRevenueCents', 'completedRevenueCents', 'cashCollectedCents', 'operatingProfitCents',
+                ...(state.scenario.policyMode === 'canonical_v2' ? ['spendableAfterReserveCents'] : []), 'cacCents', 'breakEvenCacCents'];
             const wrapper = node('div', null, { class: 'forecast-workbench__table forecast-workbench__summary-table', role: 'region', tabindex: '0', 'aria-label': 'Market forecast comparison' });
             const table = node('table'), thead = node('thead'), heading = node('tr');
             heading.append(node('th', 'Market / pricing context', { scope: 'col' }));
@@ -238,7 +249,8 @@
                 paragraph(panel, `${market.reps} representatives · ${market.technicians} technicians · ${money(market.adBudgetCents)} monthly advertising. Service mix: ${serviceMix.map(service => `${service.label} (${service.shareBps / 100}%)`).join('; ')}.`);
             }
             const base = comparison.cases?.find(item => item.name === 'base');
-            if (base) metrics(panel, base.metrics, ['capacityJobs', 'completedJobs', 'materialsCents', 'representativeCommissionCents', 'technicianCompensationCents', 'grossContributionCents']);
+            if (base) metrics(panel, base.metrics, ['capacityJobs', 'completedJobs', 'materialsCents', 'travelShippingCents', 'processingCents',
+                'serviceReserveCents', 'representativeCommissionCents', 'technicianCompensationCents', 'grossContributionCents', 'spendableAfterReserveCents']);
             list(panel, comparison.missing?.map(item => 'Needs review: ' + item));
             if (comparison.recommendations?.length) {
                 panel.append(node('h4', 'Recommended next decisions'));
@@ -435,6 +447,28 @@
         ({ workspace: renderConversation, results: renderResults, assumptions: renderAssumptions, research: renderResearch, comparison: renderComparison })[state.tab](state);
     }
     function renderScenarioEditor(state) {
+        const canonical = state.scenario.policyMode === 'canonical_v2', policy = state.businessPolicy;
+        if (policy) {
+            const panel = node('section', null, { class: 'forecast-workbench__panel', 'aria-label':'Business policy' });
+            panel.append(node('h3', canonical ? 'Home2Smart V2 business model' : 'Explicit custom hypothesis'));
+            paragraph(panel, `Server source: config/pricing/${policy.pricingSource}. Checked ${policy.checkedDate}. Fingerprint ${policy.digest.slice(0,12)}; full hashes are included in the authenticated calculation audit.`);
+            paragraph(panel, `V2 planning: ${policy.assumptions.materialsTaxPercent}% materials tax; ${policy.assumptions.processingPercent}% estimated processing; ${policy.assumptions.serviceReservePercent}% company-held reserve; ${policy.assumptions.commissionPercent}% modeled representative commission after reserve. Per-job retained floors: ${policy.assumptions.minimumCompanyMarginPercent}% and ${money(Math.round(policy.assumptions.minimumCompanyContribution*100))}.`);
+            paragraph(panel, `Payment structure: ${policy.payments.depositBps/100}% deposit, rounded up to the cent; ${policy.payments.balanceBps/100}% remaining balance after installation. No live checkout or compensation policy is changed.`);
+            paragraph(panel, 'The V2 planning commission is not the native 55% / 50% / 45% tenure-based actual commission contract. Friday review and independently verified settlements remain unchanged.');
+            list(panel, policy.assumptionNotes);
+            paragraph(panel, 'Canonical selectors cover the 70 base tiers. Mount upgrades, mixed-model camera systems and discounted multi-TV quotes require a reviewed custom quote; fixed-mount costs must not stand in for those scopes.');
+            button(panel, canonical ? 'Use an explicit custom hypothesis instead' : 'Restore server V2 business defaults', () => {
+                if (!global.confirm(canonical ? 'Switch to an editable custom hypothesis without V2 cost, reserve and margin protections?' : 'Replace this scenario with the current server-loaded V2 defaults?')) return;
+                if (canonical) {
+                    state.scenario.policyMode = 'hypothetical';
+                    for (const market of state.scenario.markets) for (const service of [...market.services,...market.baselineServices || []]) {
+                        service.price = {kind:'hypothetical',amountCents:service.price.amountCents};
+                    }
+                } else state.scenario = clone(state.template);
+                markChanged(state); renderCapabilities(state); renderTab(state);
+            });
+            state.body.append(panel);
+        }
         const field = (parent, object, key, title, settings = {}) => {
             const label = node('label', title);
             let control;
@@ -456,10 +490,12 @@
                 } else control.maxLength = settings.maxLength || 500;
                 if (settings.nullable) control.placeholder = 'Unknown';
             }
+            if (settings.readOnly) control.readOnly = true;
             control.addEventListener(settings.choices ? 'change' : 'input', () => {
                 if (control.type === 'number') object[key] = control.value === '' ? null : Math.round(Number(control.value) * (/Cents$|Bps$/.test(key) ? 100 : 1));
                 else object[key] = control.value;
                 markChanged(state);
+                if (settings.refresh) renderTab(state);
             });
             label.append(control);
             if (settings.hint) label.append(node('small', settings.hint));
@@ -479,6 +515,40 @@
             paragraph(section, 'Mix shares must total 100%. Each row is one reviewed job/offer scope. Materials include all consumed equipment, supplies and landed acquisition tax; customer-owned equipment does not mean supplies cost zero.', 'forecast-workbench__secondary');
             rows.forEach((service, index) => {
                 const grid = group(section, service.label || `Service ${index + 1}`);
+                if (canonical && policy) {
+                    const label = node('label', 'Canonical V2 service scope');
+                    const select = node('select', null, {'aria-label':'Canonical V2 service scope'});
+                    const choices = policy.offers.filter(offer => offer.market === market.context.property);
+                    select.append(node('option', 'Select the exact service scope', {value:''}));
+                    for (const offer of choices) select.append(node('option', `${offer.label} · ${offer.priceKind === 'starting' ? 'from ' : ''}${money(offer.amountCents)}`, {value:offer.id}));
+                    select.value = service.price.policyOfferId || '';
+                    select.addEventListener('change', () => {
+                        const offer = choices.find(item => item.id === select.value);
+                        if (!offer) { announce(state, 'Select an exact V2 scope; no price substitution is made.', true); return; }
+                        service.price = {kind:'canonical',policyOfferId:offer.id,amountCents:offer.amountCents};
+                        service.label = offer.label; service.ownership = offer.ownership;
+                        if (offer.equipmentSku) service.equipmentSku = offer.equipmentSku; else delete service.equipmentSku;
+                        service.materialsCents = null;
+                        markChanged(state); renderTab(state);
+                    });
+                    label.append(select); grid.append(label);
+                    field(grid, service, 'shareBps', 'Service mix (%)', {hint:'Distinct jobs; all service shares total 100%.'});
+                    field(grid, service, 'jobMinutes', 'Installation minutes per job', {number:true,min:1,max:2880});
+                    const selected = choices.find(item => item.id === service.price.policyOfferId);
+                    if (selected) {
+                        paragraph(grid, `Source price: ${money(selected.amountCents)}${selected.priceKind === 'starting' ? ' starting estimate; exact quote required' : ''}. Exact equipment: ${selected.equipmentSku || 'customer-owned / scope review required'}. Server rechecks the price and every cost on Calculate.`);
+                        paragraph(grid, selected.passesContributionFloors === true ? 'Source V2 per-job retained floors pass before optional paid crew; the server rechecks added crew. Site and supplier review still required.' :
+                            `V2 retained floors ${selected.passesContributionFloors === false ? 'FAIL' : 'are not verified'}. Minimum modeled price: ${selected.minimumPriceForFloors == null ? 'unavailable' : money(Math.round(selected.minimumPriceForFloors*100))}. Reprice/custom-quote review required; no automatic price increase.`);
+                        list(grid, selected.scopeConditions);
+                        const details = node('details'); details.append(node('summary','Server-loaded cost lines and source limitations'));
+                        for (const cost of selected.expenseLines || []) paragraph(details, `${readable(cost.id)}: ${cost.amount == null ? 'Unknown — review required' : money(Math.round(cost.amount*100))} · ${cost.notes}`);
+                        list(details, selected.missingCosts?.map(cost => 'Unpriced: '+readable(cost)));
+                        grid.append(details);
+                    }
+                    const remove = button(grid,'Remove service',()=>{rows.splice(index,1);markChanged(state);renderTab(state);});
+                    remove.disabled = rows.length <= 1;
+                    return;
+                }
                 field(grid, service, 'label', 'Service / exact installation scope');
                 field(grid, service, 'shareBps', 'Service mix (%)', { hint: 'Share of distinct jobs, not number of devices.' });
                 field(grid, service, 'jobMinutes', 'Installation minutes per job', { number: true, min: 1, max: 2880 });
@@ -507,7 +577,9 @@
                 remove.disabled = rows.length <= 1;
             });
             const add = button(section, 'Add service', () => {
-                rows.push({ id: id('service'), label: 'New service — scope requires review', shareBps: 0, jobMinutes: 120, ownership: 'customer_owned', price: { kind: 'unknown', amountCents: null }, materialsCents: null });
+                const offer = canonical ? policy.offers.find(item => item.market === market.context.property) : null;
+                rows.push({ id: id('service'), label: offer?.label || 'New service — scope requires review', shareBps: 0, jobMinutes: 120, ownership: 'customer_owned',
+                    price: offer ? {kind:'canonical',amountCents:offer.amountCents,policyOfferId:offer.id} : {kind:'unknown',amountCents:null}, materialsCents: null });
                 markChanged(state); renderTab(state);
             });
             add.disabled = rows.length >= 12; parent.append(section);
@@ -520,14 +592,16 @@
             field(identity, market.geography, 'place', 'City / Census place');
             field(identity, market.geography, 'state', 'Full state name or Census FIPS', { hint: 'Use Texas rather than TX; ambiguous places are not guessed.' });
             for (const [key, title] of [['entry', 'Market-entry strategy'], ['household', 'Household profile'], ['channels', 'Sales channels & deduplication'], ['goals', 'Financial objectives'], ['constraints', 'Local installation constraints']]) field(identity, market.context, key, title);
-            field(identity, market.context, 'property', 'Property / catalog market', { choices: [['residential', 'Residential'], ['commercial', 'Commercial']] });
+            field(identity, market.context, 'property', 'Property / catalog market', { choices: [['residential', 'Residential'], ['commercial', 'Commercial']],
+                refresh:canonical,hint:canonical ? 'After changing market, choose exact matching service scopes. Prices are never silently substituted.' : '' });
             const capacity = group(panel, 'Staffing & fulfillment capacity');
             for (const [key, title, settings] of [
                 ['reps', 'Representatives', { max: 1000 }], ['repTenureDays', 'Representative tenure (days)', { nullable: true, min: 1, max: 36500, hint: '55% / 50% / 45% policy projection; not an earning or payout.' }],
                 ['technicians', 'Technicians', { max: 1000 }], ['workDays', 'Working days this month', { min: 1, max: 31 }],
                 ['hoursPerDay', 'Technician hours per day', { min: 1, max: 24 }], ['productiveBps', 'Productive technician time (%)', {}],
                 ['travelMinutesPerJob', 'Travel minutes per job', { nullable: true, max: 1440, hint: 'Explicit local travel assumption; no invented city multiplier.' }]
-            ]) field(capacity, market, key, title, { number: true, ...settings });
+            ]) field(capacity, market, key, title, { number: true, ...settings,
+                ...(canonical && key === 'repTenureDays' ? {readOnly:true,hint:`Not used by V2's modeled ${policy.assumptions.commissionPercent}% rate. Actual native tenure compensation remains separate.`} : {}) });
             const demand = group(panel, 'Demand & acquisition');
             for (const [key, title, settings] of [
                 ['adBudgetCents', 'Monthly advertising ($)', {}], ['cplCents', 'Paid cost per lead ($)', { nullable: true, min: .01 }],
@@ -546,7 +620,8 @@
                 ['techHourlyCents', 'Technician hourly expense ($)', { nullable: true }],
                 ['techPerJobCents', 'Additional technician expense per completed job ($)', { nullable: true }],
                 ['overheadCents', 'Monthly operating overhead ($)', { nullable: true }]
-            ]) field(financial, market, key, title, settings);
+            ]) field(financial, market, key, title, {...settings,readOnly:canonical && ['processingBps','processingFixedCents'].includes(key)});
+            if (canonical) paragraph(panel, 'Processing is the V2 percentage-only planning estimate; fixed provider charges are unverified, not confirmed zero. No owner wage is imputed. Enter paid-crew cash only when explicitly applicable; unknown paid-crew costs must remain blank.');
             paragraph(panel, 'Deposit obligations use the exact 25% ceiling and remaining balance. Collection percentages explicitly model period timing, not verified payments. Technician hourly and per-job amounts are additive; enter explicit zero for an inapplicable component. Profit is an estimate, not bank settlement or tax/legal clearance.', 'forecast-workbench__secondary');
             services(panel, market, 'services', 'Service mix & proposed market strategy');
             if (market.baselineServices) services(panel, market, 'baselineServices', 'Existing-price baseline (source reviewed separately)');
@@ -584,6 +659,7 @@
         const previous = current?.token === token ? current : null;
         const state = { root, options, token, scenario: previous?.scenario || null, result: previous?.result || null,
             conversation: previous?.conversation || [], capabilities: previous?.capabilities || {}, catalog: previous?.catalog || [],
+            businessPolicy: previous?.businessPolicy || null,
             template: previous?.template || null, name: previous?.name || 'Untitled scenario',
             saved: previous?.saved || [], selectedSaved: previous?.selectedSaved || new Set(), snapshotId: previous?.snapshotId || null,
             unsaved: previous?.unsaved || false, loadedSnapshot: previous?.loadedSnapshot || false, calculatedAt: previous?.calculatedAt || null,

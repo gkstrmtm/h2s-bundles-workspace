@@ -2,16 +2,19 @@ import { BusinessError } from '@/lib/commercial_business';
 import { ForecastScenario, ForecastMarket, ForecastCatalogPrice, ForecastResearch, ForecastComparison,
   defaultForecastScenario, validateForecastScenario, hydrateForecastPrices, compareForecast } from '@/lib/forecast';
 import { ForecastResearchProvider, FORECAST_UNCONNECTED_SOURCES } from '@/lib/forecastResearch';
+import { applyForecastBusinessPolicy, canonicalForecastScenario } from '@/lib/forecastBusinessPolicy';
+import type { ForecastBusinessPolicy } from '@/lib/forecastBusinessPolicy';
 
 export type ForecastCapabilities = { ai: { available: boolean; reason: string }; research: { available: boolean; reason: string };
-  catalog: { available: boolean; reason: string } };
+  catalog: { available: boolean; reason: string }; business?: { available: boolean; reason: string } };
 export type ForecastAiProvider = {
-  interpret(input: { text: string; scenario: unknown; conversation: { role:'user'|'assistant';content:string }[] }): Promise<unknown>;
+  interpret(input: { text: string; scenario: unknown; conversation: { role:'user'|'assistant';content:string }[];
+    canonicalOffers?: {id:string;label:string;market:string;priceKind:string}[] }): Promise<unknown>;
   advise?(input: { text: string; comparisons: unknown }): Promise<unknown>;
   diagnostics?(): Partial<Record<'interpretation'|'advice', { provider:'openai';model:string;httpStatus:number;requestId:string|null }>>;
 };
 export type ForecastDependencies = { capabilities: ForecastCapabilities; catalog: ForecastCatalogPrice[];
-  research?: ForecastResearchProvider; ai?: ForecastAiProvider };
+  research?: ForecastResearchProvider; ai?: ForecastAiProvider; businessPolicy?: ForecastBusinessPolicy };
 function invalid(): never { throw new BusinessError('AI returned an invalid or untrusted scenario. No changes were accepted.',502); }
 function boundedText(value: unknown, limit: number): value is string {
   return typeof value === 'string' && value.trim().length > 0 && value.length <= limit && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
@@ -22,7 +25,7 @@ function rejectAuthority(value: unknown): void {
   if (Array.isArray(value)) { value.forEach(rejectAuthority); return; }
   if (!plain(value)) return;
   for (const [k,v] of Object.entries(value)) {
-    if (['provenance','sourceUrl','fetchedAt','evidence','approvedBy','catalogId','serviceId','offerId'].includes(k)
+    if (['provenance','sourceUrl','fetchedAt','evidence','approvedBy','catalogId','serviceId','offerId','policyMode','businessPolicy','digest'].includes(k)
       || (k === 'kind' && v === 'approved') || ['__proto__','constructor','prototype'].includes(k)) invalid();
     rejectAuthority(v);
   }
@@ -57,15 +60,22 @@ export function applyForecastAiPatch(previous: ForecastScenario, raw: unknown): 
 function aiScenario(scenario: ForecastScenario) {
   return {version:1,markets:scenario.markets.map(m => {
     const sanitize = (rows: ForecastMarket['services']) => rows.map(r => ({...r,price:{kind:r.price.kind === 'approved' ? 'unknown' : r.price.kind,
-      amountCents:r.price.kind === 'approved' ? null : r.price.amountCents},approvedSummaryCents:r.price.kind === 'approved' ? r.price.amountCents : null}));
+      amountCents:r.price.kind === 'approved' ? null : r.price.amountCents,
+      ...(r.price.kind === 'canonical' ? {policyOfferId:r.price.policyOfferId} : {})},
+      ...(r.price.kind === 'approved' ? {approvedSummaryCents:r.price.amountCents} : {})}));
     return {...m,services:sanitize(m.services),...(m.baselineServices ? {baselineServices:sanitize(m.baselineServices)} : {})};
   })};
 }
 export async function executeForecast(body: Record<string,unknown>, dependencies: ForecastDependencies) {
   if (!ownKeys(body,['action','text','scenario','conversation']) || !['interpret','calculate'].includes(String(body.action))) throw new BusinessError('Unsupported forecast operation.');
-  let scenario = body.scenario === undefined ? defaultForecastScenario() : validateForecastScenario(body.scenario);
+  const policy = dependencies.businessPolicy;
+  let scenario = body.scenario === undefined ? policy ? canonicalForecastScenario(policy) : defaultForecastScenario() : validateForecastScenario(body.scenario);
+  if (policy) scenario = applyForecastBusinessPolicy(scenario, policy);
   const warnings = ['Forecast only. No prices were published, bookings created, payments charged or payroll changed.',
     'All funnel, staffing, sensitivity and collection inputs are explicit hypothetical management assumptions. Missing required money remains unknown.'];
+  if (policy) warnings.push(scenario.policyMode === 'canonical_v2'
+    ? `Server-loaded ${policy.pricingSource} (${policy.checkedDate}), business profile ${policy.id}, digest ${policy.digest}. Prices, cost lines, tax, processing, reserve and per-job floors are not supplied by AI. This is pending V2 planning, not live pricing or compensation approval.`
+    : 'Explicit custom hypothesis: V2 cost/reserve/margin protections do not apply. This is not a forecast of the canonical Home2Smart business model.');
   let conversation: {role:'user'|'assistant';content:string}[] = [];
   if (body.conversation !== undefined) {
     if (!Array.isArray(body.conversation) || body.conversation.length > 12) throw new BusinessError('Conversation is too long.');
@@ -81,13 +91,16 @@ export async function executeForecast(body: Record<string,unknown>, dependencies
     // Rehydrate even the bounded numeric AI summary: submitted approved amounts are never trusted.
     scenario = hydrateForecastPrices(scenario,dependencies.catalog);
     let response: unknown;
-    try { response = await dependencies.ai.interpret({text:body.text,scenario:aiScenario(scenario),conversation}); }
+    try { response = await dependencies.ai.interpret({text:body.text,scenario:aiScenario(scenario),conversation,
+      ...(policy && scenario.policyMode === 'canonical_v2' ? {canonicalOffers:policy.offers.map(offer => ({
+        id:offer.id,label:offer.label,market:offer.market,priceKind:offer.priceKind}))} : {})}); }
     catch (error) {
       if (error instanceof BusinessError) throw error;
       console.error('Forecast interpretation failed', {type:error instanceof Error ? error.name : 'UnknownError'});
       throw new BusinessError('Conversational AI is unavailable. Your previous scenario was not changed.',503);
     }
     scenario = applyForecastAiPatch(scenario,response);
+    if (policy) scenario = applyForecastBusinessPolicy(scenario, policy);
     warnings.push('AI interpreted management intent; all returned assumptions require management review. AI does not verify research or approve prices.');
   }
   scenario = hydrateForecastPrices(scenario,dependencies.catalog);
@@ -100,7 +113,7 @@ export async function executeForecast(body: Record<string,unknown>, dependencies
     }
     research[m.id] = { facts:result.facts,missing:[...result.missing,...FORECAST_UNCONNECTED_SOURCES] };
   }));
-  const comparisons = compareForecast(scenario,research);
+  const comparisons = compareForecast(scenario,research,policy);
   if (body.action === 'interpret' && dependencies.ai?.advise) {
     try {
       const advice = await dependencies.ai.advise({text:body.text as string,comparisons:comparisons.map(c => ({
@@ -110,6 +123,7 @@ export async function executeForecast(body: Record<string,unknown>, dependencies
     } catch { warnings.push('AI advisory was unavailable or failed grounding checks; deterministic source-aware recommendations remain available.'); }
   }
   return {ok:true as const,scenario,comparisons,capabilities:dependencies.capabilities,warnings,
+    ...(policy ? {businessPolicy:policy} : {}),
     aiExecution:dependencies.ai?.diagnostics?.()};
 }
 function validateAdvice(raw: unknown, comparisons: ForecastComparison[]) {

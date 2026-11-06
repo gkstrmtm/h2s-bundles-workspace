@@ -3,6 +3,10 @@ import { BusinessError } from '@/lib/commercial_business';
 import { ForecastAiProvider } from '@/lib/forecastService';
 import { defaultForecastScenario } from '@/lib/forecast';
 
+function marketTemplate(scenario: unknown): unknown {
+  if (scenario && typeof scenario === 'object' && 'markets' in scenario && Array.isArray(scenario.markets) && scenario.markets[0]) return scenario.markets[0];
+  return defaultForecastScenario().markets[0];
+}
 export function createOpenAiForecastProvider(): ForecastAiProvider | undefined {
   if (process.env.H2S_FORECAST_AI_ENABLED !== 'true' || !process.env.OPENAI_API_KEY) return undefined;
   const client = new OpenAI({apiKey:process.env.OPENAI_API_KEY,timeout:15000,maxRetries:0});
@@ -33,10 +37,11 @@ Return JSON only: {"updates":[{"marketId":"existing-id","changes":{only fields e
 Preserve all unspecified assumptions and other markets exactly. Never return an entire existing market as changes; use minimal nested patches. If the scenario contains only the initial "market-1" placeholder with blank geography, reuse that ID for the first requested market via updates and add only subsequent requested markets through newMarkets. For a request to compare independent markets, create independent complete newMarkets; never apply arbitrary geographic price multipliers.
 Service arrays are whole-array replacements, not per-item patches. When changing services or baselineServices, return every retained service as a complete object with id, label, shareBps, jobMinutes, ownership, price and materialsCents, preserving unchanged fields and any existing equipmentSku. Never omit required fields even when unchanged. Never copy approvedSummaryCents into a service object.
 Interpret geography (use full US state names), new market entry, rep/technician staffing, ad budgets/channels, household/property, TV/camera/eufy service mix, constraints and goals.
-Numbers are safe bounded integers, money cents, rates basis points. Complete new-market template and schema by example: ${JSON.stringify(defaultForecastScenario().markets[0])}.
-All unspecified financial prices, CPL, travel, direct costs, processing, tenure and wages stay null. Defaults are explicitly hypothetical, not market observations. Never set approved prices, catalogId, serviceId, offerId, provenance, source URLs, evidence or verified claims.
-approvedSummaryCents is bounded context only, NOT an editable field; preserve existing approved price objects by not patching them. New price objects are hypothetical or unknown, never approved.
-For management-entered comparison prices use hypothetical. Supplied eufy SKU must remain unpriced unless management explicitly supplies a hypothetical exact SKU price. Geographic demographics never imply conversion/CPL.
+Numbers are safe bounded integers, money cents, rates basis points. Complete new-market template and schema by example: ${JSON.stringify(marketTemplate(input.scenario))}.
+When services have price.kind canonical, keep canonical mode: return complete service rows with price.kind canonical and their exact policyOfferId. You may select a different scope only from canonicalOffers for the property's exact market. Never substitute camera models or unsupported quantities. Server code, not your output, supplies prices, costs, processing, reserves and commissions. Never add policyMode, businessPolicy or digest to output. Do not copy approvedSummaryCents. Preserve owner-operated zero compensation unless management explicitly requests paid crew; unknown paid-crew compensation must remain null, not an invented wage.
+Preserve existing canonical financial fields and scope references. Other unspecified prices, CPL, travel, direct costs, processing, tenure and wages stay null; do not erase existing reviewed inputs. Defaults are planning assumptions, not market observations. Never set approved prices, catalogId, serviceId, offerId, provenance, source URLs, evidence or verified claims.
+approvedSummaryCents is bounded context only, NOT an editable field; preserve existing approved price objects by not patching them. Outside canonical mode, new price objects are hypothetical or unknown, never approved.
+For management-entered comparison prices outside canonical mode use hypothetical. Outside the exact canonical scopes, supplied eufy SKU must remain unpriced unless management explicitly supplies a hypothetical exact SKU price. Geographic demographics never imply conversion/CPL.
 Service shares sum 10000. Best demand >=10000, CPL <=10000, completion >= base; downside demand <=10000, CPL >=10000, completion <= base. Bps completion <=10000. No forecasts, finance math or invented benchmarks in output. New market IDs are unique short slugs.`,input),
     advise: input => complete('advice',`Select grounded advisory actions for each market using only the supplied deterministic metrics and missing-source evidence.
 Return JSON only: {"items":[{"marketId":"exact-id","reason":"research_gap|capacity|costs|experiment","metric":"exact metric key","observed":exact numeric or null metric value}]}.

@@ -86,14 +86,22 @@ test('credential-like secrets and service-role JWTs block upload without echoing
 });
 test('only runtime authorities and assets are eligible, never maintenance scripts or credentials', () => {
   for (const file of ['backend/app/api/field-sales/route.ts', 'backend/lib/fieldSales.ts',
-    'backend/schema.prisma', 'backend/tools/package-portal.cjs', 'frontend/field-sales.js', 'portal.html']) {
+    'backend/schema.prisma', 'backend/tools/package-portal.cjs', 'backend/tools/package-forecast-policy.cjs',
+    'config/pricing/home2smart.v2.json', 'config/pricing/reconciliation/source/Home2Smart_Complete_Service_Pricing.pdf',
+    'config/pricing/forecast-business.v1.json', 'frontend/field-sales.js', 'portal.html']) {
     assert.equal(isRuntimeFile(file.split('/').join(path.sep)), true, file);
   }
   for (const file of ['backend/force-fix-data.js', 'backend/tests/fixture.cjs', 'backend/scripts/migrate.js',
     'backend/tools/clone_supabase_project.js', 'backend/.env.local', 'frontend/.env.local',
-    'frontend/_base_dash.js', 'frontend/temp-vercel-dash.js', 'backend/private.key']) {
+    'frontend/_base_dash.js', 'frontend/temp-vercel-dash.js', 'backend/private.key',
+    'config/pricing/node_modules/ajv/package.json', 'config/pricing/reconciliation/reconcile.test.cjs']) {
     assert.equal(isRuntimeFile(file.split('/').join(path.sep)), false, file);
   }
+});
+test('pricing source evidence remains byte-exact in private staging exports', () => {
+  const {adaptRuntimeText}=require('../tools/staging/prepare.cjs');
+  const text='{"source":"https://home2smart.com/","reference":"https://old.supabase.co"}';
+  assert.equal(adaptRuntimeText(text,path.join('config','pricing','home2smart.v2.json'),backendOrigin,frontendOrigin),text);
 });
 test('hosted dashboard stamp must resolve to the current canonical CSS and JS, not older or missing files', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'h2s-stamp-test-'));

@@ -13,8 +13,12 @@ function load(file, imports={}, globals={}) {
   return module.exports;
 }
 const engine=load('lib\\forecast.ts',{'@/lib/commercial_business':{BusinessError}});
+require('../tools/package-forecast-policy.cjs').packageForecastPolicy();
+const business=load('lib\\forecastBusinessPolicy.ts',{'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine,
+  '@/lib/generated/forecastBusinessPolicy.json':require('../lib/generated/forecastBusinessPolicy.json')});
 const research=load('lib\\forecastResearch.ts',{'@/lib/forecast':engine});
-const service=load('lib\\forecastService.ts',{'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine,'@/lib/forecastResearch':research});
+const service=load('lib\\forecastService.ts',{'@/lib/commercial_business':{BusinessError},'@/lib/forecast':engine,'@/lib/forecastResearch':research,
+  '@/lib/forecastBusinessPolicy':business});
 const capabilities={ai:{available:false,reason:'off'},research:{available:false,reason:'off'},catalog:{available:false,reason:'off'}};
 const dependencies=(extra={})=>({capabilities:structuredClone(capabilities),catalog:[],...extra});
 function scenario() {
@@ -28,6 +32,123 @@ function scenario() {
 }
 const run=(s,extra={})=>service.executeForecast({action:'calculate',scenario:s},dependencies(extra));
 const base=result=>result.comparisons[0].cases.find(c=>c.name==='base').metrics;
+function canonicalScenario() {
+  const policy=business.loadForecastBusinessPolicy(),s=business.canonicalForecastScenario(policy);
+  Object.assign(s.markets[0],{label:'Greenville residential planning',geography:{place:'Greenville',state:'South Carolina'},
+    technicians:2,travelMinutesPerJob:30,adBudgetCents:300000,cplCents:2500,bookingBps:3000,overheadCents:50000});
+  return s;
+}
+const runCanonical=(s=canonicalScenario(),extra={})=>run(s,{businessPolicy:business.loadForecastBusinessPolicy(),...extra});
+test('canonical defaults load automatically without AI, research, published catalog or uploaded prices',async()=>{
+  const result=await service.executeForecast({action:'calculate'},dependencies({businessPolicy:business.loadForecastBusinessPolicy()}));
+  assert.equal(result.scenario.policyMode,'canonical_v2');
+  assert.equal(result.scenario.markets[0].services[0].price.amountCents,19900);
+  assert.equal(result.scenario.markets[0].techHourlyCents,0);
+  assert.equal(base(result).operatingProfitCents,null);
+  assert.equal(result.businessPolicy.activationAllowed,false);
+  assert.match(result.warnings.join(' '),/not supplied by AI/);
+});
+test('all 70 canonical tier snapshots match the existing V2 exact-money engine and source hashes',()=>{
+  const crypto=require('node:crypto'),policy=business.loadForecastBusinessPolicy();
+  const oracle=require('../../config/pricing/reconciliation/reconcile.cjs'),context=oracle.loadContext();
+  assert.equal(policy.offers.length,70);
+  for(const [file,hash]of Object.entries(policy.sourceHashes)) assert.equal(crypto.createHash('sha256')
+    .update(fs.readFileSync(path.join(root,'..','config','pricing',...file.split('/')))).digest('hex'),hash,file);
+  const {digest,...data}=policy;
+  assert.equal(crypto.createHash('sha256').update(JSON.stringify(data)).digest('hex'),digest);
+  for(const offer of policy.offers) {
+    const options=offer.group==='commercialBundlesInstallationOnlyUpTo65Inches'?{sameLocation:true,tvSizes:Array(offer.selector.quantity).fill(65)}:{};
+    const quote=oracle.quoteTier(context,offer.service,offer.group,offer.selector,options);
+    assert.equal(offer.commissionExact,quote.exactFinancials.commission,offer.id);
+    assert.equal(offer.companyRetainedExact,quote.exactReconciliation.companyRetainedAfterTechnician,offer.id);
+    assert.equal(offer.passesContributionFloors,quote.passesContributionFloors,offer.id);
+    assert.equal(offer.activationAllowed,false);assert.equal(offer.bookable,false);
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(policy.nativeCommissionReference.rates)),[
+    {throughDay:30,basisPoints:5500},{throughDay:60,basisPoints:5000},{throughDay:null,basisPoints:4500}]);
+  assert.equal(policy.nativeCommissionReference.reviewDay,'Friday');assert.equal(policy.nativeCommissionReference.automaticTransfers,false);
+});
+test('Greenville source-owned ONN/eufy scenario reproduces independent exact V2 economics',async()=>{
+  const result=await runCanonical(),m=base(result);
+  for(const [key,value]of Object.entries({completedJobs:58,completedRevenueCents:3224200,materialsCents:1281256,
+    travelShippingCents:115500,processingCents:96726,serviceReserveCents:161210,commissionBasisCents:1569508,
+    representativeCommissionCents:863229,technicianCompensationCents:0,operatingProfitCents:517489,spendableAfterReserveCents:356279}))
+    assert.equal(m[key],value,key);
+  assert.equal(m.operatingProfitCents-m.spendableAfterReserveCents,m.serviceReserveCents);
+  assert.equal(m.completedDepositCents+m.completedBalanceCents,m.completedRevenueCents);
+  assert.ok(result.comparisons[0].audit.some(row=>row.provenance==='canonical'&&row.detail.includes(result.businessPolicy.digest)));
+  assert.equal(result.comparisons[0].evidence.length,0);
+});
+test('client-edited canonical prices, materials, fees, labels, equipment and ownership are rehydrated',async()=>{
+  const s=canonicalScenario(),m=s.markets[0];
+  for(const row of m.services) Object.assign(row,{label:'Tampered',ownership:'customer_owned',equipmentSku:'invented',materialsCents:0,
+    price:{...row.price,amountCents:1}});
+  m.processingBps=0;m.processingFixedCents=9999;
+  const result=await runCanonical(s);
+  assert.equal(base(result).operatingProfitCents,517489);
+  assert.equal(result.scenario.markets[0].services[0].price.amountCents,19900);
+  assert.notEqual(result.scenario.markets[0].services[0].equipmentSku,'invented');
+  assert.equal(result.scenario.markets[0].services[0].ownership,'supplied');
+});
+test('stale unlinked scenarios and unsupported canonical IDs never fall back to legacy pricing',async()=>{
+  await assert.rejects(runCanonical(scenario()),e=>e.status===409);
+  const s=canonicalScenario();s.markets[0].services[0].price.policyOfferId='c31_invented_scope';
+  await assert.rejects(runCanonical(s),/exact V2 service scope/);
+  const cross=canonicalScenario();cross.markets[0].context.property='commercial';
+  await assert.rejects(runCanonical(cross),/exact V2 service scope/);
+});
+test('an explicit custom hypothesis is available but cannot claim canonical safeguards',async()=>{
+  const s=scenario();s.policyMode='hypothetical';
+  const result=await runCanonical(s);
+  assert.equal(base(result).operatingProfitCents,7884);
+  assert.match(result.warnings.join(' '),/V2 cost\/reserve\/margin protections do not apply/);
+  const mixed=canonicalScenario();mixed.policyMode='hypothetical';
+  await assert.rejects(runCanonical(mixed),/Canonical V2 services require/);
+});
+test('AI may interpret intent but cannot change business mode or create authoritative economics',async()=>{
+  const s=canonicalScenario(),rows=structuredClone(s.markets[0].services);
+  rows[0].price.amountCents=100;rows[0].materialsCents=1;
+  const deps=dependencies({businessPolicy:business.loadForecastBusinessPolicy(),capabilities:{...capabilities,ai:{available:true,reason:'fixture'}},
+    ai:{interpret:async()=>({updates:[{marketId:s.markets[0].id,changes:{services:rows}}]})}});
+  const result=await service.executeForecast({action:'interpret',text:'Keep the current mix',scenario:s},deps);
+  assert.equal(base(result).operatingProfitCents,517489);
+  deps.ai.interpret=async()=>({updates:[{marketId:s.markets[0].id,changes:{policyMode:'hypothetical'}}]});
+  await assert.rejects(service.executeForecast({action:'interpret',text:'Keep the current mix',scenario:s},deps),e=>e.status===502);
+});
+test('unknown equipment costs stay unknown and source floor failures remain explicit',async()=>{
+  const policy=business.loadForecastBusinessPolicy();
+  const unknown=policy.offers.find(row=>row.market==='residential'&&row.companyRetainedExact===null);
+  assert.ok(unknown);
+  const s=canonicalScenario(),m=s.markets[0];
+  m.services=[{...m.services[1],shareBps:10000,price:{kind:'canonical',amountCents:unknown.amountCents,policyOfferId:unknown.id}}];
+  const result=await runCanonical(s);
+  assert.equal(base(result).operatingProfitCents,null);
+  assert.match(result.comparisons[0].missing.join(' '),/unpriced cost/);
+  const failing=policy.offers.find(row=>row.id==='tvMounting.residentialWithStandardFixedMount.56-65');
+  failing.passesContributionFloors=false;failing.minimumPriceForFloors=250;
+  m.services[0].price={kind:'canonical',amountCents:failing.amountCents,policyOfferId:failing.id};
+  const review=await runCanonical(s,{businessPolicy:policy});
+  assert.equal(review.scenario.markets[0].services[0].price.amountCents,failing.amountCents);
+  assert.match(review.comparisons[0].missing.join(' '),/floors FAIL/);
+});
+test('explicit paid crew is separate, rechecks retained floors, and excessive spending is not hidden',async()=>{
+  const s=canonicalScenario();s.markets[0].techHourlyCents=2500;
+  const paid=await runCanonical(s);
+  assert.equal(base(paid).technicianCompensationCents,592500);
+  assert.equal(base(paid).representativeCommissionCents,863229);
+  assert.equal(base(paid).operatingProfitCents,-75011);
+  assert.match(paid.comparisons[0].missing.join(' '),/paid-crew adjusted.*floors FAIL/);
+  s.markets[0].techHourlyCents=0;s.markets[0].overheadCents=2000000;
+  const loss=await runCanonical(s);
+  assert.ok(base(loss).operatingProfitCents<0);
+  assert.match(loss.comparisons[0].recommendations.join(' '),/not a monthly spending guarantee/);
+});
+test('canonical exact aggregation rounds once after quantities and does not erase unknown nonzero costs',()=>{
+  assert.equal(engine.sumPolicyAmounts([{amount:'0.004',count:3}]),1);
+  assert.equal(engine.sumPolicyAmounts([{amount:'-0.005',count:1}]),-1);
+  assert.equal(engine.sumPolicyAmounts([{amount:null,count:0},{amount:'1',count:1}]),100);
+  assert.equal(engine.sumPolicyAmounts([{amount:null,count:1}]),null);
+});
 test('default manual scenario executes honestly without AI, research, catalog or prices',async()=>{
   const result=await service.executeForecast({action:'calculate'},dependencies());
   assert.equal(result.ok,true);assert.equal(base(result).operatingProfitCents,null);
@@ -283,7 +404,7 @@ function routeFixture(env={}) {
       readJson:async(request,limit)=>{const text=await request.text();if(Buffer.byteLength(text)>limit)throw new BusinessError('Too large',413);
         try{return JSON.parse(text);}catch{throw new BusinessError('Bad JSON');}}},
     '@/lib/supabase':{getSupabase:()=>({rpc:async name=>{if(name!=='field_sales_catalog_admin_read'){writes++;throw Error('write');}reads++;return {data:{catalogs:[],total:0},error:null};}})},
-    '@/lib/fieldQuote':{validateQuoteCatalog:c=>c},'@/lib/forecast':engine,'@/lib/forecastService':service,
+    '@/lib/fieldQuote':{validateQuoteCatalog:c=>c},'@/lib/forecast':engine,'@/lib/forecastService':service,'@/lib/forecastBusinessPolicy':business,
     '@/lib/forecastResearch':{...research,createCensusForecastProvider:options=>{
       researchConstructions++;return research.createCensusForecastProvider(options);
     }},'@/lib/forecastProviders':{createOpenAiForecastProvider:()=>{aiCalls++;return undefined;}},
@@ -299,7 +420,9 @@ test('endpoint authenticates ADMIN, default GET supplies executable manual scena
   assert.equal((await f.request('GET','VA')).status,403);
   const response=await f.request(),body=await response.json();
   assert.equal(response.status,200);assert.equal(body.capabilities.ai.available,false);
-  assert.equal(body.scenario.markets[0].services[0].price.amountCents,null);
+  assert.equal(body.scenario.policyMode,'canonical_v2');
+  assert.equal(body.scenario.markets[0].services[0].price.amountCents,19900);
+  assert.equal(body.businessPolicy.offers.length,70);
   assert.equal(response.headers.get('Cache-Control'),'private, no-store');
   assert.equal(response.headers.get('Access-Control-Allow-Origin'),'https://fixture.invalid');
   const calculate=await f.request('POST','ADMIN',{action:'calculate',scenario:body.scenario});assert.equal(calculate.status,200);
@@ -318,7 +441,7 @@ test('enabled Census without server key is unavailable and Calculate never creat
   const response=await f.request(),body=await response.json();
   assert.equal(body.capabilities.research.available,false);assert.match(body.capabilities.research.reason,/Census key required/);
   assert.equal(body.capabilities.ai.available,false);
-  for(let n=0;n<2;n++) assert.equal((await f.request('POST','ADMIN',{action:'calculate',scenario:scenario()})).status,200);
+  for(let n=0;n<2;n++) assert.equal((await f.request('POST','ADMIN',{action:'calculate',scenario:{...scenario(),policyMode:'hypothetical'}})).status,200);
   assert.equal(f.researchConstructions(),0);
 });
 test('configured synthetic Census key enables connector without disclosure; explicit disable still wins',async()=>{
@@ -326,7 +449,7 @@ test('configured synthetic Census key enables connector without disclosure; expl
   const f=routeFixture({H2S_FORECAST_RESEARCH_ENABLED:undefined,CENSUS_API_KEY:key});
   const body=await (await f.request()).json();assert.equal(body.capabilities.research.available,true);
   assert.equal(JSON.stringify(body).includes(key),false);assert.equal(f.researchConstructions(),0);
-  const calculated=await (await f.request('POST','ADMIN',{action:'calculate',scenario:scenario()})).json();
+  const calculated=await (await f.request('POST','ADMIN',{action:'calculate',scenario:{...scenario(),policyMode:'hypothetical'}})).json();
   assert.equal(calculated.ok,true);assert.equal(f.researchConstructions(),1);
   assert.equal(JSON.stringify(calculated).includes(key),false);
   assert.ok(calculated.comparisons[0].missing.some(s=>s.includes('unavailable')));

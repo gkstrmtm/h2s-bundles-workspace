@@ -24,6 +24,59 @@ function fixture(t){
     return {w,root,calls,mount,options,setToken:value=>{token=value;},setAdmin:value=>{admin=value;},
         click:text=>[...root.querySelectorAll('button')].find(button=>button.textContent===text).click()};
 }
+function canonicalInitial() {
+    const businessPolicy=require('../backend/lib/generated/forecastBusinessPolicy.json'),s=JSON.parse(JSON.stringify(businessPolicy.operatingDefaults));
+    const services=businessPolicy.defaultServices.map(row=>{
+        const offer=businessPolicy.offers.find(offer=>offer.id===row.policyOfferId);
+        return {...row,label:offer.label,ownership:offer.ownership,equipmentSku:offer.equipmentSku,materialsCents:null,
+            price:{kind:'canonical',amountCents:offer.amountCents,policyOfferId:offer.id}};
+    });
+    return {...initial(),businessPolicy,scenario:{version:1,policyMode:'canonical_v2',markets:[{...s,id:'market-1',label:'Greenville',
+        geography:{place:'Greenville',state:'South Carolina'},context:{property:'residential',propertyTypes:['homeowner'],zones:['city'],season:'all_year'},
+        sensitivities:{downside:{demandBps:8000,cplBps:12000,completionBps:9000},best:{demandBps:12000,cplBps:8000,completionBps:10000}},services}]}};
+}
+test('canonical business source and exact scopes are automatic, protected and editable only via explicit custom mode',async t=>{
+    const f=fixture(t),data=canonicalInitial();
+    f.w.fetch=async(url,init)=>{f.calls.push({url,init});return Response.json(data);};
+    await f.mount();f.click('Assumptions & Sources');
+    assert.match(f.root.textContent,/home2smart\.v2\.json/);
+    assert.match(f.root.textContent,/25% deposit/);assert.match(f.root.textContent,/company-held money/i);
+    assert.equal(f.root.querySelectorAll('[aria-label="Canonical V2 service scope"]').length,2);
+    assert.equal(f.root.querySelector('[aria-label="Price source"]'),null);
+    assert.equal(f.root.querySelector('[aria-label="Estimated processing variable fee (%)"]').readOnly,true);
+    f.click('Use an explicit custom hypothesis instead');
+    assert.match(f.root.textContent,/Explicit custom hypothesis/);
+    assert.equal(f.root.querySelectorAll('[aria-label="Canonical V2 service scope"]').length,0);
+    assert.equal(f.root.querySelector('[aria-label="Estimated processing variable fee (%)"]').readOnly,false);
+    f.click('Calculate reviewed assumptions');await settle();
+    const sent=JSON.parse(f.calls.at(-1).init.body).scenario;
+    assert.equal(sent.policyMode,'hypothetical');assert.ok(sent.markets[0].services.every(row=>row.price.kind==='hypothetical'));
+});
+test('canonical offer selection preserves exact IDs without exposing editable price/material controls',async t=>{
+    const f=fixture(t),data=canonicalInitial();
+    f.w.fetch=async(url,init)=>{f.calls.push({url,init});return Response.json(data);};
+    await f.mount();f.click('Assumptions & Sources');
+    const select=f.root.querySelector('[aria-label="Canonical V2 service scope"]');
+    const offer=data.businessPolicy.offers.find(row=>row.id==='tvMounting.residentialWithStandardFixedMount.66-75');
+    assert.ok(offer);
+    select.value=offer.id;select.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    f.click('Calculate reviewed assumptions');await settle();
+    const sent=JSON.parse(f.calls.at(-1).init.body).scenario;
+    assert.equal(sent.policyMode,'canonical_v2');assert.equal(sent.markets[0].services[0].price.policyOfferId,offer.id);
+    assert.equal(sent.markets[0].services[0].price.amountCents,offer.amountCents);
+});
+test('changing canonical property market immediately refreshes scope choices without guessing replacement prices',async t=>{
+    const f=fixture(t),data=canonicalInitial();
+    f.w.fetch=async()=>Response.json(data);
+    await f.mount();f.click('Assumptions & Sources');
+    assert.equal(f.root.querySelector('[aria-label="Representative tenure (days)"]').readOnly,true);
+    const market=f.root.querySelector('[aria-label="Property / catalog market"]');
+    market.value='commercial';market.dispatchEvent(new f.w.Event('change',{bubbles:true}));
+    const scope=f.root.querySelector('[aria-label="Canonical V2 service scope"]');
+    assert.equal(scope.value,'');
+    assert.ok([...scope.options].filter(option=>option.value).every(option=>option.value.includes('.commercial')));
+    assert.match(f.root.textContent,/Prices are never silently substituted/);
+});
 test('Describe Your Scenario opens without an AI call and states unavailable connections honestly',async t=>{
     const f=fixture(t);await f.mount();
     assert.equal(f.calls.length,1);assert.equal(f.calls[0].init.method,'GET');

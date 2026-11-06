@@ -34,11 +34,29 @@ source descriptions are not metrics, and known negative profit must not be
 misclassified as unknown costs. Invalid advice stays rejected. Earnings totals
 use a bounded responsive grid so currency amounts remain readable on mobile.
 
+The internal planning API now derives its default prices, linked equipment,
+costs, reserve and retained-margin floors from `config/pricing/home2smart.v2.json`
+and the linked `forecast-business.v1.json` at install/build. It does not depend
+on scenario-specific financial context pasted into OpenAI. All 70 base tiers
+are server-owned; exact scope IDs are rehydrated after interpretation and
+before calculation. Invalid/missing sources fail closed. Explicit custom
+hypotheses are separately labeled, not silently substituted for V2.
+The profile records existing 25%/75% payments and native commission references;
+V2's modeled commission-after-reserve is not a change to native compensation.
+Reserve is retained company cash, not an operating expense. Optional paid crew
+is explicit and floors are rechecked; owner wages are not imputed.
+
+**Correction to prior focused evidence:** the previous real OpenAI connectivity,
+rendering and dashboard-control checks remain valid, but that scenario used
+archived V1 prices and assumed payroll. Its negative-profit result does not
+certify current V2 business economics. A canonical integration requires a fresh
+hosted scenario using source-owned prices, not reuse of that financial result.
+
 Research remains explicitly unavailable where no Census connector key exists.
 Missing facts remain missing; neither AI advice nor supplied scenario assumptions
 establish verified Greenville market statistics. Planning may use the existing
-proposed source prices and equipment/material allowances as explicitly
-hypothetical inputs, not published offers or supplier verification. Installer
+proposed V2 prices and equipment/material allowances as source-owned planning
+estimates, not published offers or supplier verification. Installer
 compensation remains separate from the representative commission base.
 
 Installation requirements use readable labels, individual missing-evidence

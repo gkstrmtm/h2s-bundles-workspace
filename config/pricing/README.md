@@ -1,4 +1,4 @@
-# Home2Smart Pricing v1.0: proposed, offline only
+# Home2Smart pricing: proposed reference and internal planning
 
 ## Current recommended reconciliation
 
@@ -11,14 +11,47 @@ historical/reference inputs; v2 does not activate or rewrite them.
 
 Default `npm run validate` now checks both original inputs and v2. `npm test`
 includes reconciliation tests; `npm run compare` prints the complete report.
-Shared catalog/selection dependencies are included with this reconciliation so
-the development-branch checkout is self-contained. No website/Stripe/checkout,
-compensation policy or deployment changes are included.
+Shared catalog/selection dependencies make the development-branch checkout
+self-contained. The internal administrator forecast now consumes V2 through the
+[linked business profile](forecast-business.v1.json) and a validated build-time
+snapshot; website/Stripe/checkout and actual compensation policy are unchanged.
 
 This is a version-controlled **business proposal**, not an approved or deployed
 price feed. Status remains `proposed_baseline_pending_approval`; `effectiveDate`
-remains `null`. No website, dashboard, API, database or checkout imports it.
+remains `null`. The administrator-only planning API uses V2 automatically; no
+public website, database pricing activation or live checkout imports it.
 Do not serve supplier-cost scenarios to public pages.
+
+### Internal forecasting contract
+
+[forecast-business.v1.json](forecast-business.v1.json) is the human-editable
+planning entry point. It links V2 instead of duplicating its prices, equipment,
+cost lines, tax, processing, reserve and retained-margin floors. It also records
+the existing 25%/75% payment structure and native commission/Friday-review
+reference separately from V2's modeled commission-after-reserve assumption.
+No reference in this file approves or changes actual compensation.
+
+`npm --prefix backend run package:forecast` (from the repository root) validates
+V2 and its archived evidence and derives all 70 base-tier financials with the
+existing exact-money engine. Install/build regenerate the ignored runtime
+snapshot; invalid/missing sources fail instead of loading historical prices.
+The authenticated forecast returns source hashes and a digest.
+Calculation works without AI, research, a published catalog or financial
+context pasted into a prompt. AI interprets operating intent; the server always
+rehydrates exact scope IDs and protected economics.
+
+Default owner-operated scenarios do not impute wages. Explicit paid-crew costs
+remain separate, and retained floors are rechecked with those costs.
+Reserve is company-held money, not a cash expense: estimated operating profit
+and spendable funds after reserve are distinct. Per-job floors do not guarantee
+monthly profit after advertising/overhead. Unknown costs stay unknown and
+starting/custom scopes remain nonbinding.
+
+Selectors cover base tiers, not mount-upgrade combinations, mixed camera
+models or discounted multi-TV quotes; those need reviewed custom quotes.
+Switching to an editable custom hypothesis is explicit and loses V2
+safeguards. Unlinked historical saved scenarios are rejected rather than
+silently treated as current V2.
 
 ## Files and source mapping
 
@@ -39,8 +72,8 @@ Do not serve supplier-cost scenarios to public pages.
   groups and service scope. Unknown fields and attempts to activate this proposal
   fail validation. Schema IDs are identifiers, not published endpoints.
 - [Offline helpers](pricing.cjs), [validator](validate.cjs),
-  [tests](tests/pricing.test.cjs), and isolated package/lockfile: no application
-  dependencies or root/backend manifests were changed.
+  [tests](tests/pricing.test.cjs), and isolated package/lockfile: Ajv remains a
+  build-time pricing dependency, not a browser/runtime pricing dependency.
 - [Comparison and connection plan](COMPARISON.md): local implementation evidence,
   unresolved decisions and proposed future adapters.
 - [Linked equipment catalog](equipment.v1.json) and

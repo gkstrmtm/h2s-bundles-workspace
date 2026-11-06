@@ -31,6 +31,8 @@ function adaptText(text, apiOrigin, frontendOrigin) {
     .replace(/https?:\/\/script\.google\.com/gi, `${apiOrigin}/_staging-blocked/legacy`);
 }
 function adaptRuntimeText(text, relative, apiOrigin, frontendOrigin) {
+  // Pricing evidence is hashed and validated at build time, not an outbound runtime integration.
+  if (relative.startsWith(path.join('config', 'pricing') + path.sep)) return text;
   // The verified shared-provider allowlist is an identity check, not an outbound production target.
   if (relative === path.join('backend', 'lib', 'stagingSandbox.ts')) return text;
   return adaptText(text, apiOrigin, frontendOrigin);
@@ -50,13 +52,16 @@ function isRuntimeFile(relative) {
   const parts = relative.split(path.sep);
   if (parts.some(part => part.startsWith('.env') || ['tests', 'migrations', 'scripts'].includes(part))) return false;
   if (/\.(?:md|pem|key|pfx|p12|bak)$/i.test(relative)) return false;
+  if (parts[0] === 'config' && parts[1] === 'pricing') {
+    return !parts.includes('node_modules') && !/\.test\.cjs$/.test(relative) && /\.(?:json|cjs|pdf)$/.test(relative);
+  }
   if (relative === 'portal.html') return true;
   if (parts[0] === 'frontend') {
     return !parts.slice(1).some(part => /^_|^temp[-_]|^dash\.BROKEN_|\.test\.js$|^\.vercel$/.test(part));
   }
   if (parts[0] !== 'backend') return false;
   if (['app', 'lib', 'public'].includes(parts[1])) return true;
-  if (parts[1] === 'tools') return parts.length === 3 && parts[2] === 'package-portal.cjs';
+  if (parts[1] === 'tools') return parts.length === 3 && ['package-portal.cjs','package-forecast-policy.cjs'].includes(parts[2]);
   return parts.length === 2 && [
     'package.json', 'package-lock.json', 'schema.prisma', 'next.config.js',
     'next-env.d.ts', 'tsconfig.json', 'vercel.json', 'middleware.ts',

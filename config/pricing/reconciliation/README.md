@@ -1,7 +1,9 @@
 # Proposed pricing reconciliation
 
 [Canonical v2](../home2smart.v2.json) is the **recommended offline source of
-truth**, not an approved/live feed. No application imports it. All effective
+truth**, not an approved/live feed. The administrator-only internal forecast now
+loads its validated exact-money outputs automatically through the
+[business profile](../forecast-business.v1.json); no live checkout consumes it. All effective
 dates remain null, activation is forbidden, and quotes cannot be bookable.
 Original [40-tier v1](../home2smart.v1.json), the equipment catalog, camera
 selection definitions and sealed residential offers v1-v5 remain unchanged.

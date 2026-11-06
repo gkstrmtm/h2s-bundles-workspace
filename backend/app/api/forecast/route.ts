@@ -2,7 +2,8 @@ import { corsHeaders } from '@/lib/adminAuth';
 import { salesActor, salesAccess, salesChecked, BusinessError, readJson } from '@/lib/fieldSales';
 import { getSupabase } from '@/lib/supabase';
 import { validateQuoteCatalog, QuoteCatalog } from '@/lib/fieldQuote';
-import { defaultForecastScenario, ForecastCatalogPrice } from '@/lib/forecast';
+import { ForecastCatalogPrice } from '@/lib/forecast';
+import { loadForecastBusinessPolicy, canonicalForecastScenario } from '@/lib/forecastBusinessPolicy';
 import { ForecastCapabilities, executeForecast } from '@/lib/forecastService';
 import { createCensusForecastProvider } from '@/lib/forecastResearch';
 import { createOpenAiForecastProvider } from '@/lib/forecastProviders';
@@ -18,6 +19,7 @@ async function actorFor(request: Request) {
   return actor;
 }
 async function context(actorId: string) {
+  const businessPolicy = loadForecastBusinessPolicy();
   const aiEnabled = process.env.H2S_FORECAST_AI_ENABLED === 'true' && !!process.env.OPENAI_API_KEY;
   const researchEnabled = process.env.H2S_FORECAST_RESEARCH_ENABLED !== 'false';
   const researchConfigured = researchEnabled && !!process.env.CENSUS_API_KEY?.trim();
@@ -26,7 +28,8 @@ async function context(actorId: string) {
     research:{available:researchConfigured,reason:!researchEnabled ? 'Public research explicitly disabled; no geographic assumptions substituted.' :
       researchConfigured ? 'Official Census ACS connector enabled with a configured server key; source availability is verified per request. Wages, competition, tax and advertising providers are not connected.' :
       'Census key required: connector enabled but CENSUS_API_KEY is not configured. Public facts are unavailable; labeled management assumptions remain editable.'},
-    catalog:{available:false,reason:'Published catalog read is disabled or unavailable. Prices remain unknown unless explicitly hypothetical.'},
+    catalog:{available:false,reason:'Published checkout catalog is separate from the server-loaded V2 planning model; no live pricing approval is implied.'},
+    business:{available:true,reason:`Server-loaded ${businessPolicy.pricingSource}, checked ${businessPolicy.checkedDate}; V2 planning is the default even when AI/research/published catalogs are unavailable. No pricing activation.`},
   };
   const catalog: ForecastCatalogPrice[] = [];
   if (process.env.H2S_FIELD_CATALOG_ADMIN_ENABLED === 'true' && process.env.H2S_FIELD_SALES_ENABLED === 'true') {
@@ -46,7 +49,7 @@ async function context(actorId: string) {
     }
     capabilities.catalog = {available:catalog.length > 0,reason:catalog.length ? 'Read-only authorized published catalog; exact eligible IDs only. Starting/qualified offers remain unknown.' : 'No authorized published offers available.'};
   }
-  return {capabilities,catalog};
+  return {capabilities,catalog,businessPolicy};
 }
 function failure(request: Request, error: unknown) {
   return Response.json({ok:false,error:error instanceof BusinessError ? error.message : 'Forecast service unavailable. No business records were changed.'},
@@ -58,7 +61,7 @@ export async function GET(request: Request) {
     const actor = await actorFor(request);
     if ([...new URL(request.url).searchParams.keys()].length) throw new BusinessError('Unsupported forecast query.');
     const result = await context(actor.userId);
-    return Response.json({ok:true,...result,scenario:defaultForecastScenario()},{headers:headers(request)});
+    return Response.json({ok:true,...result,scenario:canonicalForecastScenario(result.businessPolicy)},{headers:headers(request)});
   } catch (error) { return failure(request,error); }
 }
 export async function POST(request: Request) {

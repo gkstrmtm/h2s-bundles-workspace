@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "id": "home2smart-business-planning-v1",
+  "status": "internal_planning_only",
+  "pricingSource": "home2smart.v2.json",
+  "activationAllowed": false,
+  "payments": {
+    "depositBps": 2500,
+    "balanceBps": 7500,
+    "depositRounding": "ceiling_cent",
+    "balanceEligibility": "after_installation",
+    "processing": "v2_percentage_estimate_fixed_provider_charges_unverified"
+  },
+  "nativeCommissionReference": {
+    "basis": "customer_revenue_less_actual_equipment_materials_provider_fees",
+    "rates": [
+      {"throughDay": 30, "basisPoints": 5500},
+      {"throughDay": 60, "basisPoints": 5000},
+      {"throughDay": null, "basisPoints": 4500}
+    ],
+    "reviewDay": "Friday",
+    "independentSettlementEvidenceRequired": true,
+    "automaticTransfers": false,
+    "notes": "Reference to the existing native contract, not a compensation approval or override. V2 planning instead uses its own explicitly modeled commission after reserve. Actual commissions still require the existing approved policy and qualified order evidence."
+  },
+  "operatingDefaults": {
+    "reps": 5,
+    "repTenureDays": null,
+    "technicians": 1,
+    "workDays": 20,
+    "hoursPerDay": 8,
+    "productiveBps": 7500,
+    "travelMinutesPerJob": null,
+    "adBudgetCents": 0,
+    "cplCents": null,
+    "repLeadsPerDay": 2,
+    "organicLeads": 0,
+    "bookingBps": 2000,
+    "cancellationBps": 1000,
+    "completionBps": 10000,
+    "depositCollectedBps": 10000,
+    "balanceCollectedBps": 10000,
+    "techHourlyCents": 0,
+    "techPerJobCents": 0,
+    "overheadCents": null
+  },
+  "defaultServices": [
+    {
+      "id": "tv",
+      "policyOfferId": "tvMounting.residentialWithStandardFixedMount.56-65",
+      "shareBps": 6000,
+      "jobMinutes": 120
+    },
+    {
+      "id": "eufy",
+      "policyOfferId": "cameras.residentialEquipmentIncluded.4",
+      "shareBps": 4000,
+      "jobMinutes": 360
+    }
+  ],
+  "assumptionNotes": [
+    "Operating defaults and installation times are editable planning assumptions, not verified market research.",
+    "The base case is owner-operated: no imputed owner wage. Explicit paid-crew hourly/per-job costs are additional cash expenses, not deductions from the representative commission base.",
+    "Unknown travel time, acquisition cost and overhead stay unknown until reviewed. Zero overhead is not assumed.",
+    "V2 retained-margin and dollar floors apply per modeled job before advertising and overhead; they do not guarantee monthly profit for arbitrary operating spend.",
+    "V2 reserve is company-held money, not a cash expense. Show profit and spendable retained funds after reserve separately.",
+    "No pricing publication, checkout activation, legal-term changes or compensation approvals are authorized by this planning profile."
+  ]
+}

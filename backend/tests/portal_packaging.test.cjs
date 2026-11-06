@@ -106,5 +106,7 @@ test('build retains Prisma and Next behavior after packaging, including Vercel e
   const pkg = JSON.parse(read('backend/package.json'));
   assert.equal(pkg.scripts['vercel-build'], 'npm run build');
   assert.equal(pkg.scripts['package:portal'], 'node tools/package-portal.cjs');
-  assert.equal(pkg.scripts.build, 'npm run package:portal && cross-env NODE_OPTIONS=--max-old-space-size=6144 npx prisma generate && cross-env NODE_OPTIONS=--max-old-space-size=6144 next build');
+  assert.equal(pkg.scripts['package:forecast'], 'node tools/package-forecast-policy.cjs');
+  assert.equal(pkg.scripts.build, 'npm run package:forecast && npm run package:portal && cross-env NODE_OPTIONS=--max-old-space-size=6144 npx prisma generate && cross-env NODE_OPTIONS=--max-old-space-size=6144 next build');
+  assert.match(pkg.scripts.postinstall,/npm --prefix \.\.\/config\/pricing ci --ignore-scripts --include=dev && npm run package:forecast$/);
 });
