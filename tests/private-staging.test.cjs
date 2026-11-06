@@ -157,8 +157,9 @@ test('verified Vercel wildcard metadata is removed without hiding mismatched or 
   const valid=response();
   await proxy(request([],{url:'/api/field-sales?customerId=synthetic&__staging_path=field-sales&path=field-sales'}),valid);
   assert.equal(valid.statusCode,200);assert.equal(observed[0],backendOrigin+'/api/field-sales?customerId=synthetic');
-  for(const url of ['/api/field-sales?path=v1','/api/field-sales?path=field-sales&path=field-sales',
-    '/api/staging-proxy?path=field-sales']){
+  for(const url of ['/api/field-sales?__staging_path=field-sales&path=v1',
+    '/api/field-sales?__staging_path=field-sales&path=field-sales&path=field-sales',
+    '/api/staging-proxy?__staging_path=field-sales&path=field-sales']){
     const invalid=response();await proxy(request([],{url}),invalid);assert.equal(invalid.statusCode,400);
   }
   assert.equal(observed.length,1);
