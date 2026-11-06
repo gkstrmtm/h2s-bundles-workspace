@@ -91,7 +91,8 @@ silently treated as current V2.
 ## Proposed equipment supplement: checked 2026-10-30
 
 All items, allowances and upgrades remain `proposed_pending_approval`, with no
-effective date or application consumer. These entries are not an approved SKU
+effective date. Linked base equipment costs now inform internal forecasting,
+not checkout. These entries are not an approved SKU
 allowlist. No checkout, commissions or baseline tier definitions change.
 
 | Supplier item | Planning cost (USD) | Observed retail (USD) |
@@ -496,7 +497,8 @@ catalog without cameras does not require that file.
 Tests run with Node's existing built-in test runner; Ajv is the isolated,
 development-only JSON Schema dependency. Validation compiles the baseline,
 promotion, equipment, camera and recommendation schemas;
-this package has no application bundle/build step.
+the backend's `package:forecast` build step consumes these validated helpers
+for internal planning. This package does not publish a live price feed.
 
 1. Preserve received source records. Draft new versioned baselines/overlays
    rather than overwriting an approved standard for a promotion.

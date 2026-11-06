@@ -52,6 +52,32 @@ archived V1 prices and assumed payroll. Its negative-profit result does not
 certify current V2 business economics. A canonical integration requires a fresh
 hosted scenario using source-owned prices, not reuse of that financial result.
 
+That fresh canonical verification passed on 2026-11-06 against application
+source `13e3a08be509898089c82c5bc0dfd8c60aa02c80`. Both actual OpenAI
+interpretation and grounded advice returned HTTP 200 (`gpt-4o-2024-08-06`).
+The prompt supplied operating assumptions and service scopes, not prices,
+equipment costs, fees, reserves or commissions. The deployed policy digest was
+`4a3499d6345126b266ff284d6386d6d966b824f7cd3071939df40f1db9f431b1`,
+verified against the exact committed export (not CRLF worktree bytes).
+
+The owner-operated Greenville example used two installers, five representatives,
+20 eight-hour days at 75% productivity, 30 travel minutes/job, $3,000 ads,
+$25 hypothetical CPL, 30% booking, 10% cancellations, $500 overhead, and
+60% 56-65-inch fixed-mount TV / 40% four-S220 jobs. It completed 58 modeled
+jobs: $32,242 revenue, $8,632.29 modeled rep commissions, $5,174.89 estimated
+operating profit and $3,562.79 spendable after the $1,612.10 company-held
+reserve. Optional paid-crew wages were not invented or included.
+All supplier costs and operating inputs remain planning estimates.
+
+Manual calculation made no AI call and reproduced the same totals even after
+submitted prices/materials were deliberately altered; the server rehydrated
+V2. Unlinked stale scenarios were rejected with HTTP 409. Results, protected
+scope controls and source provenance rendered at 390/1280 widths without
+document overflow; navigation retained the results.
+Existing account lifecycle/reset checks and unreconciled-settlement rejection
+also passed. All newly created synthetic accounts were disabled and their
+sessions revoked. Production deployments and actual payout totals were unchanged.
+
 Research remains explicitly unavailable where no Census connector key exists.
 Missing facts remain missing; neither AI advice nor supplied scenario assumptions
 establish verified Greenville market statistics. Planning may use the existing
