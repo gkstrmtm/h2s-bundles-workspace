@@ -30,6 +30,11 @@ function adaptText(text, apiOrigin, frontendOrigin) {
     .replace(/https?:\/\/[a-z0-9]+\.supabase\.co/gi, 'https://staging-not-configured.invalid')
     .replace(/https?:\/\/script\.google\.com/gi, `${apiOrigin}/_staging-blocked/legacy`);
 }
+function adaptRuntimeText(text, relative, apiOrigin, frontendOrigin) {
+  // The verified shared-provider allowlist is an identity check, not an outbound production target.
+  if (relative === path.join('backend', 'lib', 'stagingSandbox.ts')) return text;
+  return adaptText(text, apiOrigin, frontendOrigin);
+}
 function assertNoSecret(text, file) {
   if (/(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|sb_secret_[A-Za-z0-9_-]{20,}|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/.test(text)) {
     throw new Error(`Credential-like material blocks staging upload: ${file}`);
@@ -194,7 +199,7 @@ function prepare({ root, commit, backendOrigin, frontendOrigin }) {
   for (const file of textFiles) {
     const relative = path.relative(root, file), input = fs.readFileSync(file, 'utf8');
     const isFrontend = relative.startsWith(`frontend${path.sep}`);
-    const result = adaptText(input, isFrontend ? frontendOrigin : backendOrigin, frontendOrigin);
+    const result = adaptRuntimeText(input, relative, isFrontend ? frontendOrigin : backendOrigin, frontendOrigin);
     if (result !== input) {
       fs.writeFileSync(file, result);
       changes.push({ path: relative, before: digest(input), after: digest(result) });
@@ -322,4 +327,4 @@ if (require.main === module) {
       overlaySha256: result.overlaySha256, adaptedFiles: result.changes.length }, null, 2));
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
-module.exports = { prepare, stagingOrigin, adaptText, assertNoSecret, isRuntimeFile, verifyFrontendStamp, nativeMiddlewareSource };
+module.exports = { prepare, stagingOrigin, adaptText, adaptRuntimeText, assertNoSecret, isRuntimeFile, verifyFrontendStamp, nativeMiddlewareSource };

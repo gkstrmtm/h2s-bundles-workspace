@@ -161,6 +161,10 @@ production project or customer domain was promoted or rerouted.
   export, not the dirty workspace. It permits only staging origins, removes
   nonruntime maintenance files, rejects credential-like runtime content, rewrites
   production service origins and generates staging-only routing/quarantine.
+  The immutable shared-Supabase identity guard is preserved verbatim: it is an
+  approved provider allowlist, not an unscoped production request target.
+  Hosted login verification caught and corrected the earlier blanket URL
+  rewrite before final handoff.
 - The [server-only proxy](../tools/staging/proxy.cjs) forwards to the fixed private
   staging backend using an encrypted provider bypass credential. It preserves
   application authorization and request bytes; it never exposes that credential

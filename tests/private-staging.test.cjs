@@ -6,10 +6,17 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { createProxy, LIMIT } = require('../tools/staging/proxy.cjs');
-const { stagingOrigin, adaptText, assertNoSecret, isRuntimeFile, verifyFrontendStamp, nativeMiddlewareSource } = require('../tools/staging/prepare.cjs');
+const { stagingOrigin, adaptText, adaptRuntimeText, assertNoSecret, isRuntimeFile, verifyFrontendStamp, nativeMiddlewareSource } = require('../tools/staging/prepare.cjs');
 const backendOrigin = 'https://h2s-staging-backend.vercel.app';
 const frontendOrigin = 'https://h2s-staging-frontend.vercel.app';
 const bypassSecret = 'synthetic-server-only-bypass';
+test('preparation preserves the immutable shared-provider identity guard without preserving ordinary embedded provider targets',()=>{
+  const guard=fs.readFileSync(path.join(__dirname,'..','backend','lib','stagingSandbox.ts'),'utf8');
+  const args=['https://h2s-staging-backend.vercel.app','https://h2s-staging-frontend.vercel.app'];
+  assert.equal(adaptRuntimeText(guard,path.join('backend','lib','stagingSandbox.ts'),...args),guard);
+  assert.ok(adaptRuntimeText(guard,path.join('frontend','example.js'),...args).includes('https://staging-not-configured.invalid'));
+  assert.ok(adaptRuntimeText(guard,path.join('backend','lib','otherClient.ts'),...args).includes('https://staging-not-configured.invalid'));
+});
 function stagingMiddleware(env) {
   const ts=require('typescript'),vm=require('node:vm');
   const load=(source,imports={})=>{
