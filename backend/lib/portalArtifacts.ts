@@ -52,6 +52,21 @@ function isLikelyWebUrl(u: string): boolean {
 async function resolveArtifactUrl(sb: any, rawUrl: any): Promise<string | null> {
   const u = String(rawUrl ?? '').trim();
   if (!u) return null;
+  const runId = process.env.H2S_STAGING_SANDBOX_RUN_ID;
+  if (runId && u.startsWith('https://')) {
+    const url = new URL(u);
+    const prefix = '/storage/v1/object/authenticated/' + 'h2s-test-' + runId + '-proof/';
+    if (url.origin !== process.env.SUPABASE_URL || !url.pathname.startsWith(prefix)) {
+      throw new Error('Staging proof reference is outside this test run');
+    }
+    const objectPath = decodeURIComponent(url.pathname.slice(prefix.length));
+    const signed = await sb.storage.from('h2s-job-artifacts').createSignedUrl(objectPath, 3600);
+    if (signed.error || !signed.data?.signedUrl) {
+      console.error('Staging proof signing failed', { code: signed.error?.statusCode });
+      throw new Error('Private staging proof cannot be retrieved');
+    }
+    return signed.data.signedUrl;
+  }
   if (isLikelyWebUrl(u)) return u;
 
   const normalized = u.replace(/^\/+/, '');
@@ -216,8 +231,23 @@ export async function addArtifact(
   const artifactId = (globalThis.crypto as any)?.randomUUID ? (globalThis.crypto as any).randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const uploadedAt = new Date().toISOString();
 
-  // Prefer storage URL, but always have a fallback that works.
   let storageUrl: string | null = null;
+  const stagingRunId = process.env.H2S_STAGING_SANDBOX_RUN_ID;
+  if (stagingRunId) {
+    const objectPath = `${jobId}/${artifactId}_${(filename || `${type}.bin`).replace(/[^a-zA-Z0-9_.-]+/g, '_')}`;
+    const storage = sb.storage.from('h2s-job-artifacts');
+    const uploaded = await storage.upload(objectPath, Buffer.from(data, 'base64'), { contentType: mimetype, upsert: false });
+    if (uploaded.error) {
+      console.error('Staging proof upload failed', { code: uploaded.error.statusCode });
+      return { ok: false, error: 'Private proof upload failed; completion evidence was not recorded', error_code: 'storage_unavailable' };
+    }
+    const signed = await storage.createSignedUrl(objectPath, 3600);
+    if (signed.error || !signed.data?.signedUrl) {
+      console.error('Staging proof verification failed', { code: signed.error?.statusCode });
+      return { ok: false, error: 'Private proof retrieval failed; completion evidence was not recorded', error_code: 'storage_unavailable' };
+    }
+    storageUrl = `${process.env.SUPABASE_URL}/storage/v1/object/authenticated/h2s-test-${stagingRunId}-proof/${objectPath}`;
+  } else {
   try {
     // Best-effort storage upload. Works only if a bucket exists and is configured for reads.
     const bucketCandidates = ['h2s-job-artifacts', 'job-artifacts', 'artifacts', 'dispatch-artifacts', 'uploads'];
@@ -247,6 +277,7 @@ export async function addArtifact(
     }
   } catch {
     // ignore
+  }
   }
 
   if (!storageUrl) {
@@ -301,11 +332,21 @@ export async function addArtifact(
       },
     ];
 
-    for (const row of attempts) {
+    if (stagingRunId) {
+      const inserted = await tryInsertArtifactRow(sb, attempts[0]);
+      if (!inserted.ok) {
+        console.error('Staging proof attribution was not persisted');
+        return { ok: false, error: 'Native attributed proof could not be recorded', error_code: 'storage_unavailable' };
+      }
+    } else for (const row of attempts) {
       const ins = await tryInsertArtifactRow(sb, row);
       if (ins.ok) break;
     }
   } else {
+    if (stagingRunId) {
+      console.error('Staging native proof table is unavailable');
+      return { ok: false, error: 'Native proof table is unavailable', error_code: 'storage_unavailable' };
+    }
     // Fallback: embed in job.metadata
     try {
       const jobTable = access.schema?.jobsTable || 'h2s_dispatch_jobs';
@@ -360,8 +401,16 @@ export async function getArtifacts(
   if (!access.ok) return access;
 
   const out: PortalArtifact[] = [];
+  const scoped = Boolean(process.env.H2S_STAGING_SANDBOX_RUN_ID);
+  const unavailable: { ok: false; error: string; error_code: string } = {
+    ok: false, error: 'Private attributed proof could not be retrieved', error_code: 'storage_unavailable',
+  };
 
   const hasTable = await artifactsTableExists(sb);
+  if (scoped && !hasTable) {
+    console.error('Staging native proof table is unavailable');
+    return unavailable;
+  }
   if (hasTable) {
     try {
       // Try common timestamp columns for ordering.
@@ -371,7 +420,13 @@ export async function getArtifacts(
           let q = sb.from('h2s_dispatch_job_artifacts').select('*').eq('job_id', jobId);
           if (type) q = q.eq('type', type);
           const { data, error } = await q.order(orderCol, { ascending: true }).limit(500);
-          if (error) continue;
+          if (error || (scoped && !Array.isArray(data))) {
+            if (scoped) {
+              console.error('Staging native proof lookup failed', { code: error?.code });
+              return unavailable;
+            }
+            continue;
+          }
           if (Array.isArray(data)) {
             for (const r of data) {
               const resolvedUrl = await resolveArtifactUrl(sb, r.url || r.file_url || r.photo_url || r.storage_url);
@@ -392,6 +447,10 @@ export async function getArtifacts(
             return { ok: true, artifacts: out };
           }
         } catch {
+          if (scoped) {
+            console.error('Staging private proof renewal failed');
+            return unavailable;
+          }
           // try next order col
         }
       }
@@ -420,6 +479,10 @@ export async function getArtifacts(
         return { ok: true, artifacts: out };
       }
     } catch {
+      if (scoped) {
+        console.error('Staging private proof retrieval failed');
+        return unavailable;
+      }
       // fallback below
     }
   }

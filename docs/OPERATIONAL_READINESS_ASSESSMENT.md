@@ -4,11 +4,120 @@ Updated 2026-11-05 on `retro-dev`, continuing from assessment commit
 `e22082d4bace80517ad5800e2af97807b8199c12`. This revision includes the coordinated
 sales-readiness corrections, not another redesign.
 
-**Decision: development corrections are implemented; unrestricted real-money
-launch is not yet approved or integration-certified.** No production deployment,
-database migration, account enrollment, payment or payout was performed.
-Production credentials, installed migrations and actual production switch values
-were not inspected. Unrelated local changes were preserved.
+**Current decision, 2026-11-06 UTC: the complete synthetic paid workflow passed
+against private Vercel, native PostgreSQL/private Storage and Home2Smart's
+existing Stripe Sandbox. This is not authorization to activate production.**
+One canonical fictional household completed independent TV and returning-camera
+purchases attributed to two representatives. Both accepted exact documents,
+paid real Stripe **test-mode** deposits/balances, completed personally claimed
+company installations with explicitly synthetic evidence, and received
+management-approved actual-cost snapshots and separate earned commissions.
+
+| Synthetic purchase | Total | Deposit / balance | Actual Stripe fees | Equipment / materials fixtures | Commission basis / 55% earning |
+|---|---:|---:|---:|---:|---:|
+| TV, 60-inch fixed | $179.00 | $44.75 / $134.25 | $1.60 + $4.19 | $24.88 / $3.00 | $145.33 / $79.93 |
+| Returning customer, two included wireless cameras | $599.00 | $149.75 / $449.25 | $4.64 + $13.33 | $15.00 / $2.00 | $564.03 / $310.22 |
+
+All four provider-generated `checkout.session.completed` event IDs correlate
+with signed native receipts. Camera fees were initially unavailable at webhook
+arrival: commission correctly stayed held. Existing authenticated **Refresh
+payment** retrieved actual Stripe balance-transaction evidence, after which
+native review earned $310.22; no estimated fee or synthetic webhook was used.
+The first immutable Friday export allocates $79.93 for November 6; the independent
+second export allocates $310.22 for November 13. These are synthetic future-Friday
+accounting exercises, not bank transfers. Independent paid settlement remains
+**$0.00**; missing settlement proof was rejected.
+
+The original quote hashes and six-field customer legal/payment projections
+remain unchanged after the repeat purchase. Accepted reads intentionally expose
+additional locked policy metadata; this DTO difference is not a changed legal
+snapshot. Separate orders, completion records, receipts and representative
+earnings were verified. Each representative was denied the other's lead,
+quotes, orders/history and earnings, and management/company actions. Managed
+credential reset, old-credential denial, immediate disable/revocation and fresh
+login after reactivation passed against hosted routes.
+
+Native testing exposed and corrected the real residential-inquiry trigger
+incompatibility with properly enrolled Field Sales bookings (054), without
+fabricating intake consent or bypassing legal/deposit/booking gates. Premature
+balance remains blocked, now with the correct HTTP 400 rather than a misleading
+setup/storage 503. Staging-only catalog/legal/policy status is namespace-guarded
+(053); no proposed configuration is marked production-approved.
+
+**575 regression tests passed, 1 optional independent-session PostgreSQL fixture
+skipped, 0 failed (576 total); backend TypeScript passed.** The optional fixture
+was not pointed at shared public tables. Actual native booking, company proof,
+payment and accounting authorities were exercised separately. Prior native
+0/1/100/101/500/1000 pagination, Storage expiry/renewal and exact-run cleanup
+evidence remains valid; fresh staging-only setup/Storage cleanup also passed.
+
+The clean committed staging builder now retains only run-scoped authenticated
+sales/authentication routes and keeps other APIs quarantined even if an old
+quarantine flag is false. Release source is bound by the generated staging
+manifest and Vercel deployment metadata; earlier overlay-only deployment IDs
+below are historical. See [current infrastructure evidence](INFRASTRUCTURE_REUSE_AUDIT.md)
+and [URLs, operating procedures and exact production gates](STAGING_LAUNCH_PREPARATION.md).
+There is **no missing provider credential, database account or Supabase login**.
+Real customer records, production deployments and live finances are untouched.
+
+## Historical infrastructure timeline
+
+The dated updates below describe earlier states and are superseded by the
+current decision above, not requests for another database or credentials.
+
+**Staging update, 2026-11-05:** dedicated private frontend/backend hosting is now
+deployed from `428c2cc527d3216b2f060960aeb8dc4c621205f4`, with staging-only
+routing/quarantine and correctly built current assets. Native database/storage,
+Stripe test access and the native transaction/account certification remain
+unavailable; sign-in/transaction APIs intentionally return 503. See the
+[staging evidence and controlled-release checklist](STAGING_LAUNCH_PREPARATION.md)
+for actual URLs, deployment IDs, 65 passing focused tests, hosted/visual evidence
+and exact remaining blockers. This does not authorize production activation.
+
+**Infrastructure reuse update, 2026-11-05:** authenticated read-only inspection
+confirms Home2Smart's existing Stripe account, Supabase service access and local
+TLS-verified PostgreSQL access. The native ledger matches migrations 029-039;
+Field Sales tables/functions are not installed. No accessible test Stripe key
+or authorized isolated database target was found. Both registered live webhooks
+are disabled; no production setting was changed. See the
+[reuse audit](INFRASTRUCTURE_REUSE_AUDIT.md), including 23 passing payment/
+workflow regressions and explicit limits of the zero-dollar historical samples.
+No separate Stripe account is required.
+
+**Test-key update, 2026-11-05 19:40 EST:** management supplied the secret directly
+to Vercel. It is now Sensitive, Preview only, in `h2s-staging-backend`; refreshed
+backend deployment `dpl_EmfDmz4CSYAZrweuUKPe8BJhe811` is READY and includes the
+variable. Its value was not retrieved outside Vercel. Subsequent private-runtime
+checks authenticated to the same Home2Smart account in test mode; all ten SDK
+read groups passed and card capability is active. There are zero registered test
+webhook endpoints. Actual webhook delivery/database certification remain pending.
+Twenty-nine guard/financial tests passed, including six temporary probe guards.
+The diagnostic Preview and its token variables were removed; stable routing,
+quarantine and payment-disable gates
+remain in force; actual production was not redeployed.
+
+**Staging connections update, 2026-11-05 20:18 EST:** the existing Home2Smart
+test account now has Field Sales endpoint `we_1UYbioLuMP6aPhGZBXa9lU79`, with
+exactly the handler's 13 events. It is **paused** pending native readiness.
+`H2S_FIELD_STRIPE_TEST_WEBHOOK_SECRET` is securely stored Sensitive/Preview-only;
+the existing API key was reused inside Vercel, not retrieved or requested again.
+Clean backend `dpl_3TobVNnAAum6mE3WyY3A5nJqmzxo` is READY at the same private
+alias; dedicated ingress reaches quarantine 503 and anonymous access remains
+302. Setup deployment/token variables were removed. Both actual production
+deployments and live webhook settings were untouched.
+The current webhook/preflight/financial selection passed **33/33**.
+
+Remaining infrastructure access: the existing Supabase organization cannot yet
+be inspected with an authenticated management session/token. Its saved service
+keys authenticate established databases, not project/branch provisioning.
+Management can use its normal browser and existing account; no new Supabase
+account or replacement Stripe key is needed. An authorized isolated target,
+native baseline/migrations/grants and verified private proof bytes are still
+required. No Stripe-delivered event or native deposit/balance/completion/
+commission/repeat-purchase cycle is claimed. Exact approved catalog/legal/
+commission policy inputs and authorized company installer identity remain
+separate activation gates. See the [staging preparation and mapping](STAGING_LAUNCH_PREPARATION.md)
+and [provider evidence](INFRASTRUCTURE_REUSE_AUDIT.md).
 
 ## Ready
 
@@ -134,8 +243,10 @@ SALES sessions remain eight hours with request-time ownership and role checks.
   request for another development phase.
 - No new self-service/email recovery or staff-management application is supplied;
   the approved initial operating procedure is managed recovery, not a launch blocker.
-- Native company identity provisioning, actual field-device uploads and live
-  deployment are not created or certified by synthetic fixtures.
+- Private staged hosting/current assets and actual native account workflows are
+  verified. Native company identity provisioning, field-device uploads and the
+  complete paid/completion/commission chain remain unverified; fixture success
+  cannot certify those remaining requirements.
 - Hidden integrated-browser tabs do not establish native keyboard certification.
   Real browser navigation/screenshots and automated interaction tests are separate
   evidence, not proof of mobile hardware or field connectivity.
@@ -160,18 +271,20 @@ SALES sessions remain eight hours with request-time ownership and role checks.
 
 | Dependency | Required evidence before launch |
 |---|---|
-| Native database | Reviewed target/baseline/checksums and required dependencies through 043-051. The guarded runner registers only through 039; 040 remains draft. Separately authorize/register/apply only required reviewed migrations. Prove native PostgreSQL constraints, grants/RLS, retries/concurrency and rollback. PGlite is not this certification. |
+| Native database | Actual private native baseline, scoped migrations through 052, account/lead/repeat authorities and exact-run cleanup passed. Public business migrations remain unapplied; review/authorize the production plan separately. Paid-chain/concurrency/rollback still need certification. 040 remains draft. |
 | Storage/projects | Main/management/dispatch co-location; private assessment photos/consent and cross-owner denial; canonical native installation artifact identity, actual byte persistence, provenance, retention and customer/installer access. |
-| Hosted identity/package | Verify frontend/backend deployed SHAs, canonical technician build output/assets, five actual account/session lifecycles and managed recovery. Verify native installer identity ownership and edge/WAF login throttling; no deployed edge protection was inspected. |
-| Stripe test account | Real test checkout/webhook chain, mode/amount/customer/order matching, duplicate/late/retried events, provider fees, balance, refunds/disputes and outage recovery. Isolated signed fake-provider events are not actual Stripe certification. |
+| Hosted identity/package | Private deployed sources/package, native synthetic lifecycle, managed recovery and provider protection passed. Five actual employee enrollments, legitimate installer identity and login-throttling certification remain production release gates. |
+| Existing Stripe account, test mode | Real test checkout/webhook chain, mode/amount/customer/order matching, duplicate/late/retried events, provider fees, balance, refunds/disputes and outage recovery. Isolated signed fake-provider events are not actual Stripe certification. |
 | Customer/devices | Approved HTTPS origin, exact legal copies, issued/expiring customer links, acceptance/payment returns, actual mobile photos/signatures and field connectivity. |
 | Rollback/operations | Rehearse gate disablement without deleting accepted contracts, receipts, artifacts or earnings. Reconcile in-flight webhooks and obligations; disablement does not refund orders or erase earned amounts. No bank transfer was tested. |
 
 ### Prioritized remaining launch actions
 
 1. Approve M1-M4, company identities and accountable support/reconciliation owners.
-2. Separately authorize native migration/grant/storage preparation and a reviewed
-   source/package deployment; keep real employees and live payments inactive.
+2. Private hosting, existing-database run isolation, Storage and actual signed
+   Stripe test connectivity are verified. No additional key/database/login is
+   needed. Record the approved business inputs; keep real employees/live payments inactive.
+   Production schema/deployment activation still needs separate authorization.
 3. Certify the connected workflow against authorized native services and Stripe
    **test mode**, including failures, concurrency, disable/recovery and rollback.
 4. Review the evidence, then separately authorize five real accounts, operating
@@ -179,6 +292,10 @@ SALES sessions remain eight hours with request-time ownership and role checks.
 
 ### Validation record
 
+- Latest same-database selection: **72 passed** plus actual hosted native
+  accounts/pagination/repeat/recovery, private byte/expiry checks, fresh-run
+  provider/schema cleanup and actual Stripe-delivered signed audit correlation.
+  Final clean backend compilation/type validation passed. Not paid-processing certification.
 - Complete connected/compatibility selection: **50 files, 462 passed, 0 failed,
   0 skipped** using `node --test --test-concurrency=2`. It includes representative
   authorization, account/session recovery, transactions, immutable history,

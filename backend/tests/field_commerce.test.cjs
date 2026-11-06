@@ -1,6 +1,18 @@
 const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {createCommerceFixture,id}=require('./helpers/field_commerce_fixture.cjs');
 const {evaluate}=require('./helpers/commercial_operations_fixture.cjs');
+test('private-run Checkout and payment-intent metadata are cleanup-addressable without changing receipt verification',async t=>{
+  const f=await createCommerceFixture();t.after(()=>f.db.close());await f.enable();await f.publish();await f.legal();
+  f.env.H2S_STAGING_SANDBOX_RUN_ID='c6316381-64f5-4b67-b41f-41711416cdcc';
+  const leadId=await f.lead(),accepted=await f.accepted(leadId);
+  const result=await f.post({action:'checkout',leadId,quoteId:accepted.quoteId,kind:'full'});
+  assert.equal(result.status,200);
+  const session=[...f.sessions.values()][0];
+  assert.equal(session.metadata.h2s_staging_run,f.env.H2S_STAGING_SANDBOX_RUN_ID);
+  const paid=f.paid(session.id);
+  assert.equal(paid.intent.metadata.h2s_staging_run,f.env.H2S_STAGING_SANDBOX_RUN_ID);
+  assert.equal((await f.webhook('checkout.session.completed',paid.session)).status,200);
+});
 test('canonical Stripe failures, expired retry, expanded intent identity, wrong amounts and sticky dispute review',async t=>{
   const f=await createCommerceFixture();t.after(()=>f.db.close());await f.enable();await f.publish();await f.legal();
   const leadId=await f.lead(),accepted=await f.accepted(leadId),quoteId=accepted.quoteId;

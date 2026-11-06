@@ -37,8 +37,10 @@
     }
     function render(){
         const q=facts.quote,s=q.snapshot,a=facts.agreement,p=a.policy_snapshot;
+        const staging=s.pricingStatus==='staging_only'||p.status==='staging_only';
+        const documentLabel=doc=>staging&&['agreement','quote'].includes(doc.kind)?'STAGING ONLY '+doc.kind+' copy':doc.label;
         for(const url of downloads)URL.revokeObjectURL(url);downloads.clear();
-        content.innerHTML=`<h3>${esc(s.customer.name)}</h3><p>${esc(s.customer.address)} / ${esc(s.customer.city)} / ${esc(s.customer.phone)}</p>
+        content.innerHTML=`${staging?'<p role="note">STAGING ONLY - synthetic test pricing and documents. Not production-approved legal terms or a real customer obligation.</p>':''}<h3>${esc(s.customer.name)}</h3><p>${esc(s.customer.address)} / ${esc(s.customer.city)} / ${esc(s.customer.phone)}</p>
             <p>Exact quote revision ${esc(q.revision)} / ${esc(s.catalogVersion)}</p>
             ${s.lines.map(line=>`<article><h3>${esc(line.service)} / ${esc(line.description)}</h3><p>Quantity ${esc(line.quantity)}; base ${money(line.baseCents)}</p>
                 <p>Equipment/materials: ${esc(line.equipment.join('; '))}</p><p>Scope: ${esc(line.scope.join('; '))}</p>
@@ -47,20 +49,20 @@
                 <p>Exclusions/conditions: ${esc(line.exclusions.join('; '))}</p></article>`).join('')}
             ${s.managementReview?`<p>Approved scope confirmation: ${esc(s.managementReview.scopeConfirmation)}</p>`:''}
             ${s.managementAdjustmentCents!==undefined?`<p>Management adjustment: ${money(s.managementAdjustmentCents)}</p>`:''}
-            <h3>Approved quote total: ${money(s.totalCents)}</h3><p>Quote valid until ${esc(new Date(q.expires_at).toLocaleString())}</p>
+            <h3>${staging?'Staging-only test quote':'Approved quote'} total: ${money(s.totalCents)}</h3><p>Quote valid until ${esc(new Date(q.expires_at).toLocaleString())}</p>
             ${p.paymentPlan?.depositCents>0?`<p>${facts.workflow?'Exact new-sales 25% deposit':'Approved optional deposit'}: ${money(p.paymentPlan.depositCents)}; remaining balance: ${money(p.paymentPlan.remainingAfterDepositCents)}.${facts.workflow?' Net balance is collected after installation.':' Full payment: '+money(p.paymentPlan.fullCents)+'.'} Payment terms are shown below.</p>`:''}
             <p class="field-sales__id">Quote ${esc(q.quote_id)} / ${esc(q.quote_hash)}</p><h3>Agreement version ${esc(p.version)}</h3>
             <h4>Service agreement</h4><pre>${esc(p.terms)}</pre><h4>Payment terms</h4><pre>${esc(p.payment_terms)}</pre>
             <h4>Cancellation information</h4><pre>${esc(p.cancellation_information)}</pre><h4>Electronic delivery</h4><pre>${esc(p.electronic_delivery)}</pre>
-            ${facts.workflow?`<h3>Approved immutable customer copies & notices</h3>
+            ${facts.workflow?`<h3>${staging?'Staging-only immutable test':'Approved immutable customer'} copies & notices</h3>
                 <p>These copies belong to this exact approved quote. Retrieval is recorded by the secure server. Download and retain them before acknowledging acceptance.</p>
-                ${(facts.workflow.documents||[]).map((doc,index)=>`<section><h4>${esc(doc.label)} / ${esc(doc.kind)}</h4>
-                    <p class="field-sales__id">${esc(doc.contentHash)}</p><pre>${esc(copyText(doc.content))}</pre><button type="button" data-agreement-download="${index}">Download ${esc(doc.label)}</button></section>`).join('')||'<p>Approved copies unavailable. Acceptance and legal clearance remain blocked.</p>'}
+                ${(facts.workflow.documents||[]).map((doc,index)=>`<section><h4>${esc(documentLabel(doc))} / ${esc(doc.kind)}</h4>
+                    <p class="field-sales__id">${esc(doc.contentHash)}</p><pre>${esc(copyText(doc.content))}</pre><button type="button" data-agreement-download="${index}">Download ${esc(documentLabel(doc))}</button></section>`).join('')||'<p>Approved copies unavailable. Acceptance and legal clearance remain blocked.</p>'}
                 <p>Cancellation deadline: ${facts.workflow.cancellationDeadline?esc(new Date(facts.workflow.cancellationDeadline).toLocaleString()):'Not established — legal policy and delivery evidence required'}. Deposit alone is not scheduling clearance.</p>`:''}
             ${a.accepted_at?`<p>Acceptance recorded ${esc(new Date(a.accepted_at).toLocaleString())} by ${esc(a.acceptance.name)}. This is not a payment receipt.</p>`:
                 `<form class="field-sales__form" data-agreement-accept><label>Your full name<input name="name" autocomplete="name" maxlength="120" required></label>
                 <label>Email for this agreement<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
-                <label class="field-sales__wide field-sales__check"><input type="checkbox" name="accepted" required>I have reviewed and accept this exact quote, agreement and ${facts.workflow?'approved immutable copies and notices':'terms'} shown above.</label>
+                <label class="field-sales__wide field-sales__check"><input type="checkbox" name="accepted" required>I have reviewed and accept this exact quote, agreement and ${facts.workflow?(staging?'staging-only immutable test copies and notices':'approved immutable copies and notices'):'terms'} shown above.</label>
                 <label class="field-sales__wide field-sales__check"><input type="checkbox" name="electronicDelivery" required>I have reviewed and consent to the electronic delivery information shown above.</label>
                 <button type="submit"${facts.workflow&&!(facts.workflow.documents||[]).length?' disabled':''}>Record customer acceptance</button></form>`}
             ${facts.workflow?`<h3>Secure deposit, installation & balance</h3>

@@ -50,6 +50,19 @@ function nonAuditText(root){
     clone.querySelectorAll('.field-workflow__audit').forEach(el=>el.remove());
     return clone.textContent;
 }
+test('private staging policies remain selectable but are never labeled production approved',async t=>{
+    const data=workflow();
+    for(const policy of data.policies)if(policy.status==='approved')policy.status='staging_only';
+    const f=browser(t,'field-workflow.js','ADMIN',data);await settle();
+    for(const name of ['legalPolicyId','commissionPolicyId','settlementPolicyId']){
+        const select=f.root.querySelector(`[name="${name}"]`);
+        assert.equal(select.options.length,2);
+        assert.match(select.options[1].textContent,/STAGING ONLY - not production approved/);
+        assert.equal(select.querySelector(`option[value="${id(11)}"]`),null);
+    }
+    assert.equal(f.root.querySelectorAll('[data-workflow-form="policy_retire"]').length,0);
+    assert.equal(f.calls.filter(call=>call.body).length,0);
+});
 test('orders outside the current lead page retain their own immutable customer name',async t=>{
     const data=workflow();delete data.workflows[0].customerName;
     data.workflows[0].documents[0].content.customer={name:'Returning household from approved quote'};

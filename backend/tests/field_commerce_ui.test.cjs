@@ -23,6 +23,14 @@ test('default-off UI reads once, never auto-posts; VA cannot fetch private trans
   const f=fixture(t);f.data.enabled=false;f.mount();await settle();assert.match(f.root.textContent,/disabled/);assert.equal(f.calls.length,1);assert.equal(f.root.querySelector('form'),null);
   f.setActor({token:'va',role:'VA'});f.mount();await settle();assert.equal(f.calls.length,1);
 });
+test('a private staging catalog is clearly nonproduction without publication or payment side effects',async t=>{
+  const f=fixture(t,'ADMIN');f.data.catalogs[0].status='staging_only';f.mount();await settle();
+  assert.match(f.root.querySelector('[name="catalogId"] option').textContent,/STAGING ONLY - not production approved/);
+  f.mount(null);await settle();
+  assert.match(f.root.textContent,/STAGING ONLY technical activation; no production approval/);
+  assert.equal(f.root.querySelector('[data-commerce-catalog-action="publish"],[data-commerce-catalog-action="retire"]'),null);
+  assert.equal(f.calls.some(call=>call.body),false);
+});
 test('automatic quote reads coalesce and never replace a builder edited during the read',async t=>{
   const f=fixture(t);f.root.parentElement.classList.add('pane','active');
   f.w.eval(source('dashboard-sync.js'));f.mount();await settle();
@@ -113,6 +121,24 @@ test('customer fragment is removed, exact quote/policy accepted without payment 
   assert.equal(calls[0].url.includes('token'),false);assert.equal(w.localStorage.length,0);assert.match(w.document.body.textContent,/not a payment receipt/);
   assert.match(w.document.body.textContent,/Exact fixture size: 50/);assert.match(w.document.body.textContent,/Approved optional deposit: \$40\.00; remaining balance: \$60\.00/);
   w.dispatchEvent(new w.Event('pagehide'));assert.equal(w.document.querySelector('[data-agreement-content]').children.length,0);
+});
+test('staging customer copies cannot appear production approved and immutable document content stays intact',async t=>{
+  const dom=new JSDOM(source('field-agreement.html'),{runScripts:'outside-only',url:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64)});
+  t.after(()=>dom.window.close());const w=dom.window,calls=[];
+  const content={status:'staging_only',productionApproved:false,terms:'Synthetic test terms only'};
+  const facts={ok:true,quote:{quote_id:'quote',quote_hash:'hash',revision:2,snapshot:{...snapshot(),pricingStatus:'staging_only'},expires_at:'2099-01-01'},
+    agreement:{accepted_at:null,policy_snapshot:{status:'staging_only',version:'STAGING-ONLY-fixture',terms:'Synthetic terms',payment_terms:'Synthetic payment',cancellation_information:'Synthetic notice',electronic_delivery:'Synthetic delivery'}},
+    workflow:{documents:[{label:'Approved agreement',kind:'agreement',contentHash:'immutable-fixture-hash',content}],payments:[],holds:[],netPaidCents:0,balanceCents:10000,gates:{canDeposit:false}}};
+  w.fetch=async(url,init)=>{calls.push({url,init});return Response.json(facts);};
+  w.eval(source('field-agreement.js'));await settle();
+  assert.equal(w.location.hash,'');assert.match(w.document.querySelector('[role="note"]').textContent,/STAGING ONLY.*Not production-approved/);
+  assert.match(w.document.body.textContent,/Staging-only test quote total: \$100\.00/);
+  assert.match(w.document.body.textContent,/STAGING ONLY agreement copy/);
+  assert.doesNotMatch(w.document.body.textContent,/Approved agreement|Approved immutable customer/);
+  assert.match(w.document.body.textContent,/immutable-fixture-hash/);
+  assert.equal(w.document.querySelector('[data-agreement-checkout]').disabled,true);
+  assert.deepEqual(content,{status:'staging_only',productionApproved:false,terms:'Synthetic test terms only'});
+  assert.equal(calls.length,1);assert.equal(calls[0].init.method,'GET');
 });
 test('checkout redirect is never presented as proof of payment and performs no API request',t=>{
   const dom=new JSDOM(source('field-agreement.html'),{runScripts:'outside-only',url:'https://fixture.invalid/field-agreement.html#checkout-returned'});t.after(()=>dom.window.close());

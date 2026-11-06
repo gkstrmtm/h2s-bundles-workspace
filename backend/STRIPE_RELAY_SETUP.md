@@ -1,5 +1,16 @@
 # Stripe Relay Environment Variables
 
+This documents the legacy shop's optional relay, not the Field Sales payment
+authority. Reuse existing secure configuration before performing setup. The
+[authenticated infrastructure audit](../docs/INFRASTRUCTURE_REUSE_AUDIT.md)
+confirms the existing Home2Smart account; no new Stripe account is required.
+Field Sales uses its separate mode-bound direct SDK and signed webhook.
+
+**Read-only verification:** do not run the Checkout POST example below or
+`/api/stripe_smoke` for a connectivity audit. They create Checkout sessions;
+the smoke route creates a $1 session even though it uses GET. Use authenticated
+Stripe account/catalog reads instead. Do not copy live keys into staging.
+
 ## Required Vercel Environment Variables
 
 Add these to your Vercel project settings:
@@ -121,7 +132,9 @@ Frontend → Redirect to Stripe Checkout
 1. **Authentication:** All requests to relay require Bearer token
 2. **CORS:** Relay only accepts requests from h2s-backend.vercel.app
 3. **Idempotency:** Order ID is used as idempotency key to prevent duplicate charges
-4. **No Direct Stripe Access:** Vercel never calls Stripe directly (timeout issues)
+4. **Scope:** The shop prefers this relay when configured and otherwise uses
+   direct Stripe access. Field Sales uses its existing direct SDK rather than
+   this creation-only relay.
 
 ## Rollback Plan
 

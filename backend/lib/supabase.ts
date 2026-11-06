@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { stagingSandboxOptions } from '@/lib/stagingSandbox';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🛡️ GUARDRAIL: SINGLE DATABASE ARCHITECTURE
@@ -44,6 +45,7 @@ export function getSupabase(): SupabaseClient {
     }
 
     supabaseInstance = createClient(supabaseUrl, supabaseServiceKey, {
+      ...stagingSandboxOptions(supabaseUrl),
       auth: {
         autoRefreshToken: false,
         persistSession: false
@@ -67,6 +69,7 @@ export function getSupabaseMgmt(): SupabaseClient {
     }
 
     supabaseMgmtInstance = createClient(mgmtUrl, mgmtKey, {
+      ...stagingSandboxOptions(mgmtUrl),
       auth: {
         autoRefreshToken: false,
         persistSession: false

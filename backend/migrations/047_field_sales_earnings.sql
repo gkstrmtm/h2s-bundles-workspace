@@ -180,7 +180,7 @@ begin
       or (f->>'netPaidCents')::bigint<>(f->>'totalCents')::bigint then
       return jsonb_build_object('state','pending_qualification','qualifiesAt',null);
     end if;
-    select * into pol from public.field_sales_workflow_policies where policy_id=(f->>'commissionPolicyId')::uuid and kind='commission' and status='approved';
+    select * into pol from public.field_sales_workflow_policies where policy_id=(f->>'commissionPolicyId')::uuid and kind='commission' and public.field_sales_configuration_usable(status,'approved');
     select * into rep from public.field_sales_representatives where user_id=(f->>'representativeId')::uuid;
     rep.commission_start_date:=(f->>'commissionStartDate')::date;
     rep.commission_start_evidence:=f->>'commissionStartEvidence';
@@ -195,7 +195,7 @@ begin
     return jsonb_build_object('state',case when public.field_sales_earning_needs_review(e.entry_id) then 'held' else 'earned' end,
       'entryId',e.entry_id,'qualifiesAt',q.qualifies_at);
   end if;
-  select * into pol from public.field_sales_workflow_policies where policy_id=(f->>'commissionPolicyId')::uuid and kind='commission' and status='approved';
+  select * into pol from public.field_sales_workflow_policies where policy_id=(f->>'commissionPolicyId')::uuid and kind='commission' and public.field_sales_configuration_usable(status,'approved');
   select * into rep from public.field_sales_representatives where user_id=q.representative_id;
   if q.evidence->'commissionPolicySnapshot'->>'policy_id' is not null then
     select * into pol from jsonb_populate_record(null::public.field_sales_workflow_policies,q.evidence->'commissionPolicySnapshot');
@@ -207,7 +207,8 @@ begin
   snap:=jsonb_build_object('facts',f,'qualification',to_jsonb(q),'policy',to_jsonb(pol),'representativeStartDate',rep.commission_start_date,
     'representativeStartEvidence',rep.commission_start_evidence);
   begin
-    if pol.policy_id is null or pol.approved_by is null or pol.approved_at is null or not public.field_sales_earning_has_evidence(pol.approval_evidence)
+    if pol.policy_id is null or not public.field_sales_configuration_usable(pol.status,'approved')
+      or (pol.status<>'staging_only' and (pol.approved_by is null or pol.approved_at is null)) or not public.field_sales_earning_has_evidence(pol.approval_evidence)
       then raise exception 'Approved commission policy is unavailable'; end if;
     if rep.commission_start_date is null or nullif(trim(rep.commission_start_evidence),'') is null then raise exception 'Evidenced representative start date is unavailable'; end if;
     if pol.definition->>'creditPolicy' is distinct from 'approved_attribution'
@@ -369,8 +370,9 @@ begin
     result:=jsonb_build_object('adjustmentId',rid,'state','reviewed','amountCents',amount);
   elsif p_action='create_run' then
     perform pg_advisory_xact_lock(hashtextextended('field-earnings-runs',0));
-    select * into pol from public.field_sales_workflow_policies where policy_id=(p_input->>'settlementPolicyId')::uuid and kind='settlement' and status='approved';
-    if pol.policy_id is null or pol.approved_by is null or pol.approved_at is null or not public.field_sales_earning_has_evidence(pol.approval_evidence) then raise exception 'Approved settlement version required'; end if;
+    select * into pol from public.field_sales_workflow_policies where policy_id=(p_input->>'settlementPolicyId')::uuid and kind='settlement' and public.field_sales_configuration_usable(status,'approved');
+    if pol.policy_id is null or not public.field_sales_configuration_usable(pol.status,'approved')
+      or (pol.status<>'staging_only' and (pol.approved_by is null or pol.approved_at is null)) or not public.field_sales_earning_has_evidence(pol.approval_evidence) then raise exception 'Approved settlement version required'; end if;
     perform public.field_sales_earning_run_date(now(),pol.definition);
     if (p_input->>'runDate') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' or (p_input->>'runDate')::date::text<>p_input->>'runDate' then raise exception 'Valid run date required'; end if;
     if exists(select 1 from public.field_sales_earning_active_runs where run_date=(p_input->>'runDate')::date) then raise exception 'A run already owns this settlement date'; end if;

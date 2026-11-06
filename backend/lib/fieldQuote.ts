@@ -8,7 +8,7 @@ export const FIELD_COMPLETION_PROOF_MAX_BYTES = 4456448;
 export type QuoteOffer = { id: string; label: string; enabled: boolean; unitCents: number | null; basis: 'per_unit' | 'package';
   minimum: number; maximum: number; starting: boolean; equipment: string[]; scope: string[]; exclusions: string[];
   questions: QuoteQuestion[]; options: QuoteOption[]; qualifications: { question: string; allowed: (string | number)[]; reason: string }[] };
-export type QuoteCatalog = { catalog_id: string; version: string; status: 'draft' | 'published' | 'retired'; digest: string;
+export type QuoteCatalog = { catalog_id: string; version: string; status: 'draft' | 'published' | 'retired' | 'staging_only'; digest: string;
   definition: { currency: 'usd'; validForMinutes: number | null; services: { id: string; label: string; markets: string[];
     offers: QuoteOffer[]; completionRequirements?: QuoteCompletionRequirement[] }[] } };
 const slug = /^[a-z][a-z0-9_-]{0,79}$/;
@@ -17,7 +17,7 @@ const label = (value: unknown): value is string => typeof value === 'string' && 
 const strings = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 100 && value.every(item => typeof item === 'string' && item.length > 0 && item.length <= 2000);
 export function validateQuoteCatalog(catalog: QuoteCatalog): QuoteCatalog {
   const d = catalog?.definition;
-  if (!catalog || !['draft','published','retired'].includes(catalog.status) || !d || d.currency !== 'usd'
+  if (!catalog || !['draft','published','retired','staging_only'].includes(catalog.status) || !d || d.currency !== 'usd'
     || !Array.isArray(d.services) || !d.services.length || d.services.length > 100
     || (catalog.status !== 'draft' && (!Number.isSafeInteger(d.validForMinutes) || Number(d.validForMinutes) < 1 || Number(d.validForMinutes) > 43200))) {
     throw new BusinessError('Quote catalog configuration requires management review.', 503);
@@ -123,5 +123,5 @@ export function calculateFieldQuote(catalog: QuoteCatalog, input: unknown, marke
   }
   if (!money(total) || (!unpriced && total < 1)) throw new BusinessError('A positive supported quote total is required.');
   return { currency: 'usd', catalogVersion: catalog.version, lines, totalCents: unpriced ? null : total,
-    approvalReasons: [...new Set(approvalReasons)], pricingStatus: catalog.status === 'published' ? 'published' : 'unpublished_not_payable' };
+    approvalReasons: [...new Set(approvalReasons)], pricingStatus: catalog.status === 'staging_only' ? 'staging_only' : catalog.status === 'published' ? 'published' : 'unpublished_not_payable' };
 }

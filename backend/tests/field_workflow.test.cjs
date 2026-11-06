@@ -45,13 +45,13 @@ test('exact calendar/assignment/completion chain accepts unpaid balance and pres
   let w=(await json(await f.read(record.leadId))).workflows[0];
   assert.equal(w.depositCents,2501);assert.equal(w.agreedBalanceCents,7500);assert.equal(w.balanceCents,10001);
   const accepted=await f.accept(await f.documents(record));
-  const full=await f.post({action:'checkout',...record,kind:'full'});assert.equal(full.status,503);
+  const full=await f.post({action:'checkout',...record,kind:'full'});assert.equal(full.status,400);
   const deposits=await Promise.all([f.post({action:'checkout',...record,kind:'deposit'}),f.post({action:'checkout',...record,kind:'deposit'})]);
   const payment=await deposits[0].json(),second=await deposits[1].json();assert.equal(payment.ok,true);
   assert.equal(second.checkoutId,payment.checkoutId);assert.equal(f.sessions.size,1);
   const sid=[...f.sessions.keys()][0],paid=f.paid(sid);assert.equal(paid.session.amount_total,2501);
   assert.equal((await f.webhook('checkout.session.completed',paid.session)).status,200);
-  assert.equal((await f.post({action:'checkout',...record,kind:'balance'})).status,503);
+  assert.equal((await f.post({action:'checkout',...record,kind:'balance'})).status,400);
   w=(await json(await f.read(record.leadId))).workflows[0];assert.equal(w.processingFeeCents,null);
   const schedule={action:'schedule',...record,revision:w.revision,reservationRevision:0,start:'2099-03-03T15:00:00Z',
     end:'2099-03-03T17:00:00Z',timezone:'America/New_York',customerAgreed:true,reason:'Synthetic agreed window'};

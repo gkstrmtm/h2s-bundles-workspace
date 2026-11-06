@@ -5,12 +5,16 @@ begin;
 create table public.field_sales_workflow_policies (
   policy_id uuid primary key,
   kind text not null check(kind in ('legal','commission','settlement')),
-  status text not null default 'draft' check(status in ('draft','approved','retired')),
+  status text not null default 'draft' check(status in ('draft','approved','retired','staging_only')),
+  "productionApproved" boolean generated always as (status='approved') stored,
+  "stagingOnly" boolean generated always as (status='staging_only') stored,
   definition jsonb not null check(jsonb_typeof(definition)='object'),
   approved_by uuid references public."Dashboard_Users"("User_ID"),
   approved_at timestamptz,
   approval_evidence jsonb,
-  check(status='draft' or (approved_by is not null and approved_at is not null
+  check(status<>'staging_only' or (public.field_sales_native_staging_scope() and approved_by is null and approved_at is null
+    and coalesce(jsonb_typeof(approval_evidence)='object' and approval_evidence<>'{}'::jsonb,false))),
+  check(status in ('draft','staging_only') or (approved_by is not null and approved_at is not null
     and jsonb_typeof(approval_evidence)='object' and approval_evidence<>'{}'::jsonb))
 );
 create table public.field_sales_workflow_settings (
@@ -142,7 +146,7 @@ begin
     if tg_op='UPDATE' and old.status='draft' then return new; end if;
     if tg_op='DELETE' and old.status='draft' then return old; end if;
     if tg_op='UPDATE' and old.status='approved'
-      and new.status='retired' and to_jsonb(old)-'status'=to_jsonb(new)-'status' then return new; end if;
+      and new.status='retired' and to_jsonb(old)-array['status','productionApproved','stagingOnly']=to_jsonb(new)-array['status','productionApproved','stagingOnly'] then return new; end if;
   end if;
   if tg_table_name='field_sales_workflows' and tg_op='UPDATE' then
     if (to_jsonb(old)-array['revision','state','job_id','technician_id','cancellation_deadline','completed_at',
@@ -250,7 +254,7 @@ declare w public.field_sales_workflows; d jsonb; hashes jsonb;
 begin
   select * into w from public.field_sales_workflows where quote_id=p_quote;
   if not found then return true; end if;
-  select definition into d from public.field_sales_workflow_policies where policy_id=w.legal_policy_id and status='approved';
+  select definition into d from public.field_sales_workflow_policies where policy_id=w.legal_policy_id and public.field_sales_configuration_usable(status,'approved');
   if d is null or not exists(select 1 from public.field_sales_workflow_artifacts where quote_id=p_quote and kind='quote')
     or not exists(select 1 from public.field_sales_workflow_artifacts where quote_id=p_quote and kind='agreement')
     or exists(select 1 from jsonb_array_elements(d->'requiredNotices') n where not exists(
@@ -266,7 +270,7 @@ language plpgsql stable security definer set search_path=pg_catalog,public as $$
 declare c jsonb; day date; remaining integer; n integer:=0;
 begin
   select p.definition->'cancellationCalendar' into c from public.field_sales_workflows w
-    join public.field_sales_workflow_policies p on p.policy_id=w.legal_policy_id where w.quote_id=p_quote and p.status='approved';
+    join public.field_sales_workflow_policies p on p.policy_id=w.legal_policy_id where w.quote_id=p_quote and public.field_sales_configuration_usable(p.status,'approved');
   if c is null or not c ?& array['timezone','businessDays','deadlineLocalTime','excludedWeekdays','holidays','startEvent']
     or c->>'startEvent' not in ('delivery','acceptance')
     or jsonb_typeof(c->'excludedWeekdays') is distinct from 'array' or jsonb_typeof(c->'holidays') is distinct from 'array'
@@ -438,7 +442,7 @@ begin
     raise exception 'Quote not found or not assigned' using errcode='P0002'; end if;
   select coalesce(jsonb_agg(to_jsonb(p)||jsonb_build_object('definitionHash',
     encode(sha256(convert_to(p.definition::text,'UTF8')),'hex')) order by kind,status,policy_id),'[]') into policies
-    from public.field_sales_workflow_policies p where r='ADMIN' or status='approved';
+    from public.field_sales_workflow_policies p where r='ADMIN' or public.field_sales_configuration_usable(status,'approved');
   select coalesce(jsonb_agg(public.field_sales_workflow_order_facts(w.quote_id)||jsonb_build_object(
     'revision',w.revision,'state',w.state,'jobId',w.job_id,'technicianId',w.technician_id,
     'depositCents',w.deposit_cents,'balanceCents',greatest(0,(public.field_sales_workflow_order_facts(w.quote_id)->>'totalCents')::bigint
@@ -524,6 +528,7 @@ create function public.field_sales_workflow_command(p_actor uuid,p_operation uui
 language plpgsql security definer set search_path=pg_catalog,public as $$
 declare r text; prior public.field_sales_workflow_commands; w public.field_sales_workflows; q public.field_sales_quotes;
   pol public.field_sales_workflow_policies; a jsonb; actor jsonb; facts jsonb; result jsonb; job uuid; linked uuid; v jsonb;
+  configuration_status text;
 begin
   r:=public.field_sales_workflow_access(p_actor,p_lead);
   if r<>'ADMIN' then raise exception 'Management workflow authority required' using errcode='42501'; end if;
@@ -552,13 +557,19 @@ begin
       elsif p_action='policy_delete_draft' and pol.status='draft' then
         delete from public.field_sales_workflow_policies where policy_id=pol.policy_id;
       elsif p_action='policy_approve' and pol.status='draft' then
+        configuration_status:=case when public.field_sales_native_staging_scope() then 'staging_only'
+          else coalesce(p_payload->>'status','approved') end;
+        if coalesce(p_payload->>'status','approved') not in ('approved','staging_only')
+          or (configuration_status='staging_only' and not public.field_sales_native_staging_scope()) then
+          raise exception 'Staging configuration requires a verified native test run' using errcode='42501'; end if;
         if jsonb_typeof(p_payload->'evidence') is distinct from 'object' or p_payload->'evidence'='{}'::jsonb then
           raise exception 'Explicit approval evidence required' using errcode='22023'; end if;
         if pol.kind='legal' and (pol.definition->>'depositBasisPoints' is distinct from '2500'
           or jsonb_typeof(pol.definition->'requiredNotices') is distinct from 'array'
           or jsonb_array_length(pol.definition->'requiredNotices')<1
           or not pol.definition ? 'cancellationCalendar'
-          or not exists(select 1 from public.field_sales_agreement_policies where policy_id=(pol.definition->>'agreementPolicyId')::uuid and status='approved')) then
+          or not exists(select 1 from public.field_sales_agreement_policies where policy_id=(pol.definition->>'agreementPolicyId')::uuid
+            and (status='approved' or (configuration_status='staging_only' and public.field_sales_configuration_usable(status,'approved'))))) then
           raise exception 'Approved agreement, notices, 25%% and cancellation calendar required' using errcode='55000'; end if;
         if pol.kind='legal' then
           v:=pol.definition->'cancellationCalendar';
@@ -593,7 +604,9 @@ begin
             or length(coalesce(pol.definition->>'method',''))<1 or length(coalesce(pol.definition->>'classification',''))<1 then
             raise exception 'Approved settlement timezone, cutoff, holiday convention, method and classification required' using errcode='55000'; end if;
         end if;
-        update public.field_sales_workflow_policies set status='approved',approved_by=p_actor,approved_at=now(),
+        update public.field_sales_workflow_policies set status=configuration_status,
+          approved_by=case when configuration_status='staging_only' then null else p_actor end,
+          approved_at=case when configuration_status='staging_only' then null else now() end,
           approval_evidence=p_payload->'evidence' where policy_id=pol.policy_id;
       elsif p_action='policy_retire' and pol.status='approved' then
         update public.field_sales_workflow_policies set status='retired' where policy_id=pol.policy_id;
@@ -618,7 +631,7 @@ begin
       foreach a in array array[jsonb_build_object('id',p_payload->>'legal_policy_id','kind','legal'),
         jsonb_build_object('id',p_payload->>'commission_policy_id','kind','commission'),
         jsonb_build_object('id',p_payload->>'settlement_policy_id','kind','settlement')] loop
-        if not exists(select 1 from public.field_sales_workflow_policies where policy_id=(a->>'id')::uuid and kind=a->>'kind' and status='approved') then
+        if not exists(select 1 from public.field_sales_workflow_policies where policy_id=(a->>'id')::uuid and kind=a->>'kind' and public.field_sales_configuration_usable(status,'approved')) then
           raise exception 'Approved legal, commission and settlement versions required' using errcode='55000'; end if;
       end loop;
       insert into public.field_sales_workflows(quote_id,lead_id,representative_id,credit_evidence,legal_policy_id,commission_policy_id,
@@ -682,8 +695,15 @@ begin
               and (installation_job_id is not null or order_id is not null)) then
               raise exception 'Existing linked work prevents a new installation' using errcode='40001'; end if;
             job:=gen_random_uuid();
-            insert into public.h2s_dispatch_jobs(job_id,order_id,status,metadata_json) values(job,linked::text,'queued',
-              jsonb_build_object('field_sales_workflow',jsonb_build_object('enrolled',true,'quoteId',p_quote,'leadId',p_lead,'orderId',linked)));
+            if exists(select 1 from information_schema.columns where table_schema='public'
+              and table_name='h2s_dispatch_jobs' and column_name='job_kind') then
+              insert into public.h2s_dispatch_jobs(job_id,order_id,status,job_kind,metadata_json)
+                values(job,linked::text,'queued','installation',
+                  jsonb_build_object('field_sales_workflow',jsonb_build_object('enrolled',true,'quoteId',p_quote,'leadId',p_lead,'orderId',linked)));
+            else
+              insert into public.h2s_dispatch_jobs(job_id,order_id,status,metadata_json) values(job,linked::text,'queued',
+                jsonb_build_object('field_sales_workflow',jsonb_build_object('enrolled',true,'quoteId',p_quote,'leadId',p_lead,'orderId',linked)));
+            end if;
             update public.commercial_lead_operations set order_id=linked,installation_job_id=job,revision=revision+1 where lead_id=p_lead;
             update public.field_sales_workflows set job_id=job where quote_id=p_quote;
             w.job_id:=job;
@@ -883,7 +903,7 @@ begin
     select * into w from public.field_sales_workflows where quote_id=(p_payload->>'quoteId')::uuid;
     if found then
       perform public.field_sales_workflow_access(p_actor,p_lead);
-      select definition into d from public.field_sales_workflow_policies where policy_id=w.legal_policy_id and status='approved';
+      select definition into d from public.field_sales_workflow_policies where policy_id=w.legal_policy_id and public.field_sales_configuration_usable(status,'approved');
       if not public.field_sales_workflow_document_gate(w.quote_id) or d is null
         or (select agreement_policy_id from public.field_sales_transaction_settings)::text is distinct from d->>'agreementPolicyId'
         or (select deposit_policy->>'mode' from public.field_sales_transaction_settings) is distinct from 'basis_points'
@@ -1010,7 +1030,7 @@ begin
     or facts->>'disputed'='true' or (facts->>'refundedCents')::bigint>0 then
     raise exception 'Delivered accepted notices and reconciled enrolled payment state required' using errcode='55000'; end if;
   if p_kind not in ('deposit','balance') or (p_kind='balance' and w.completed_at is null) then
-    raise exception 'Enrolled sales require 25%% first and balance only after installation completion' using errcode='55000'; end if;
+    raise exception 'Enrolled sales require 25%% first and balance only after installation completion' using errcode='22023'; end if;
   select * into pay from public.field_sales_checkouts where checkout_id=p_operation;
   if found then
     if pay.quote_id<>p_quote or pay.kind<>p_kind or pay.created_by<>p_actor then raise exception 'Checkout key reused' using errcode='40001'; end if;
@@ -1143,7 +1163,7 @@ begin
   perform public.field_sales_transaction_access(p_actor,pay.lead_id);
   select * into pay from public.field_sales_checkouts where checkout_id=p_checkout for update;
   if pay.created_by<>p_actor or p_mode not in ('test','live') then raise exception 'Checkout mode authority denied' using errcode='42501'; end if;
-  if p_mode='live' and (not exists(select 1 from public.field_sales_workflows where quote_id=pay.quote_id)
+  if p_mode='live' and (public.field_sales_native_staging_scope() or not exists(select 1 from public.field_sales_workflows where quote_id=pay.quote_id)
     or not exists(select 1 from public.field_sales_workflow_settings where enabled and live_enabled)) then
     raise exception 'Distinct live payment approval disabled' using errcode='55000'; end if;
   if (pay.session_id is not null or pay.stripe_mode_bound) and pay.stripe_mode<>p_mode then

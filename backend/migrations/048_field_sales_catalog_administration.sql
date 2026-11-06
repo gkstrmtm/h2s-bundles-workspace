@@ -64,6 +64,8 @@ begin
       raise exception 'Catalog definition changed; reload before approval' using errcode='40001';
     end if;
     if p_action='publish' then
+      if catalog.source_evidence->>'stagingOnly'='true' and not public.field_sales_native_staging_scope() then
+        raise exception 'Staging catalog cannot become production published' using errcode='42501'; end if;
       if catalog.status<>'draft' or length(coalesce(p_payload->>'approvalEvidence','')) not between 3 and 2000
         or catalog.definition->>'currency'<>'usd'
         or (catalog.definition->>'validForMinutes')::integer not between 1 and 43200
@@ -74,8 +76,12 @@ begin
           where jsonb_typeof(s->'markets') is distinct from 'array' or jsonb_array_length(s->'markets')=0) then
         raise exception 'Published catalog requires approved scope, markets, validity and evidence' using errcode='22023';
       end if;
-      update public.field_sales_catalogs set status='published',approved_by=p_actor,published_at=now(),
-        source_evidence=jsonb_set(source_evidence,'{approvalEvidence}',to_jsonb(p_payload->>'approvalEvidence'))
+      update public.field_sales_catalogs set status=case when public.field_sales_native_staging_scope() then 'staging_only' else 'published' end,
+        approved_by=case when public.field_sales_native_staging_scope() then null else p_actor end,
+        published_at=case when public.field_sales_native_staging_scope() then null else now() end,
+        source_evidence=case when public.field_sales_native_staging_scope()
+          then source_evidence||jsonb_build_object('stagingOnly',true,'productionApproved',false,'stagingAuthorization',p_payload->>'approvalEvidence')
+          else jsonb_set(source_evidence,'{approvalEvidence}',to_jsonb(p_payload->>'approvalEvidence')) end
         where catalog_id=target;
     else
       if catalog.status<>'published' then raise exception 'Only a published version may retire' using errcode='22023'; end if;

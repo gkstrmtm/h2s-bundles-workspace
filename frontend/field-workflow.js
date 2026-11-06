@@ -131,7 +131,7 @@
             return result;
         }
         function policies(kind) {
-            return state.data.policies.filter(p => p.kind === kind && p.status === 'approved').map((p,index) => `<option value="${esc(p.policy_id)}">${esc(policyLabel(p,index))}</option>`).join('');
+            return state.data.policies.filter(p => p.kind === kind && ['approved','staging_only'].includes(p.status)).map((p,index) => `<option value="${esc(p.policy_id)}">${p.status==='staging_only'?'STAGING ONLY - not production approved - ':''}${esc(policyLabel(p,index))}</option>`).join('');
         }
         function form(action, w, contents, label, disabled = false) {
             return `<form data-workflow-form="${action}" class="field-sales__form">${w ? `<input type="hidden" name="quoteId" value="${esc(w.quoteId)}"><input type="hidden" name="leadId" value="${esc(w.leadId)}"><input type="hidden" name="revision" value="${esc(w.revision)}">` : ''}
@@ -299,7 +299,7 @@
                     ${[['legalPolicyId','legal','Legal policy'],['commissionPolicyId','commission','Commission policy'],['settlementPolicyId','settlement','Settlement policy']].map(([name,kind,label]) => `<label>${label}<select name="${name}" required><option value="">Choose approved version</option>${policies(kind)}</select></label>`).join('')}
                     <label class="field-sales__wide">Commission credit approval evidence<textarea name="creditEvidence" required maxlength="4000"></textarea></label>`,'Enroll exact new-sales order')}</details>
                 <details><summary>Versioned legal, commission and settlement policies</summary><p>No jurisdiction, legal days, refund rule, rate-effective event or settlement method is preselected. Drafts are not approved.</p>
-                    ${d.policies.map((p,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(policyLabel(p,index))}</h4><span class="field-sales__badge">${esc(({draft:'Draft — not approved',approved:'Approved',retired:'Retired'})[p.status] || 'Review required')}</span></header>
+                    ${d.policies.map((p,index) => `<article class="field-workflow__record"><header class="field-workflow__header"><h4>${esc(policyLabel(p,index))}</h4><span class="field-sales__badge">${esc(({draft:'Draft — not approved',approved:'Approved',staging_only:'STAGING ONLY - not production approved',retired:'Retired'})[p.status] || 'Review required')}</span></header>
                     <details class="field-workflow__audit"><summary>Admin audit details — policy ID, definition & approval</summary><pre>${esc(JSON.stringify(p,null,2))}</pre>
                     ${p.status === 'draft' ? form('policy_update',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}"><input type="hidden" name="expectedDefinitionHash" value="${esc(p.definitionHash||'')}"><label class="field-sales__wide">Policy definition JSON<textarea name="definition" required>${esc(JSON.stringify(p.definition,null,2))}</textarea></label>`,'Save draft policy',!p.definitionHash) +
                         form('policy_approve',null,`<input type="hidden" name="policyId" value="${esc(p.policy_id)}"><input type="hidden" name="expectedDefinitionHash" value="${esc(p.definitionHash||'')}">${evidence}`,'Explicitly approve policy version',!p.definitionHash) +

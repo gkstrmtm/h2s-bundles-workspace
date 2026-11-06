@@ -138,7 +138,9 @@ export async function checkout(actor: string, operationId: string, leadId: strin
       throw new BusinessError('Uncertain checkout must be reconciled before another session can be created.', 409);
     }
     await ownedOpportunity(actor, leadId);
-    const metadata = stripeMetadata(payment, quote);
+    const metadata: Record<string, string> = stripeMetadata(payment, quote);
+    const stagingRun = process.env.H2S_STAGING_SANDBOX_RUN_ID;
+    if (stagingRun) metadata.h2s_staging_run = stagingRun;
     session = await stripe.checkout.sessions.create({ mode: 'payment', client_reference_id: payment.checkout_id,
       expires_at: Math.floor(Date.parse(payment.expires_at) / 1000), metadata, payment_intent_data: { metadata },
       line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: Number(payment.amount_cents),

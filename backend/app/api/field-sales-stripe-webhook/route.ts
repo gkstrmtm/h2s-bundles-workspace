@@ -32,6 +32,15 @@ export async function POST(request: Request) {
     const object = event.data.object;
     if (!('id' in object) || typeof object.id !== 'string') throw new BusinessError('Stripe event object identity is missing.', 400);
     const metadata = 'metadata' in object ? object.metadata : null;
+    if (process.env.H2S_STAGING_SYNTHETIC_ONLY === 'true' && process.env.VERCEL_ENV === 'preview'
+      && !event.livemode && event.type === 'payment_intent.canceled' && metadata
+      && 'h2s_staging_run' in metadata && metadata.h2s_staging_run === process.env.H2S_STAGING_SANDBOX_RUN_ID
+      && 'h2s_flow' in metadata && metadata.h2s_flow === 'staging_connectivity_probe') {
+      salesChecked(await getSupabase().from('h2s_test_webhooks').upsert({
+        event_id: event.id, run_id: metadata.h2s_staging_run, type: event.type, livemode: false,
+      }, { onConflict: 'event_id' }));
+      return Response.json({ received: true, ignored: true, stagingConnectivityOnly: true });
+    }
     let checkoutId = metadata && 'h2s_flow' in metadata && metadata.h2s_flow === flow ? identifier(metadata.checkout_id) : null;
     if (!checkoutId) {
       const intentId = event.type.startsWith('payment_intent.') ? object.id :

@@ -1,15 +1,55 @@
 -- REVIEW ONLY. Prerequisites: 032/035/037/043; never apply as part of application startup.
 -- No catalog, legal language, deposit policy or transaction gate is activated here.
 begin;
+-- Staging is an owned native run, never an environment flag or caller-supplied schema.
+create function public.field_sales_native_staging_scope() returns boolean
+language plpgsql stable security definer set search_path=pg_catalog,public as $$
+declare ns record; storage_ns record; identity jsonb; run_uuid uuid; ledger record;
+begin
+  select (n.nspname) as schema_name,n.nspowner,r.rolname,r.rolcanlogin,r.rolsuper,r.rolbypassrls,
+    obj_description(n.oid,'pg_namespace') as marker into ns
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace join pg_roles r on r.oid=n.nspowner
+    where p.oid='public.field_sales_native_staging_scope()'::regprocedure and p.proowner=n.nspowner;
+  if not found or ns.schema_name !~ '^h2s_test_[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$'
+    or ns.rolname<>ns.schema_name||'_owner' or ns.rolcanlogin or ns.rolsuper or ns.rolbypassrls then return false; end if;
+  identity:=ns.marker::jsonb;
+  run_uuid:=(identity->>'runId')::uuid;
+  if identity->>'marker' is distinct from 'home2smart-native-test-run-v1'
+    or replace(run_uuid::text,'-','') is distinct from substr(ns.schema_name,10)
+    or identity->>'schema' is distinct from ns.schema_name
+    or identity->>'storageSchema' is distinct from ns.schema_name||'_storage'
+    or identity->>'role' is distinct from ns.rolname
+    or coalesce(identity->>'sourceCommit','') !~ '^[a-f0-9]{40}$'
+    or coalesce(identity->>'nativeBaselineFingerprint','') !~ '^[a-f0-9]{64}$' then return false; end if;
+  select n.nspowner,obj_description(n.oid,'pg_namespace') as marker into storage_ns
+    from pg_namespace n where n.nspname=ns.schema_name||'_storage';
+  if not found or storage_ns.nspowner<>ns.nspowner or storage_ns.marker::jsonb is distinct from identity then return false; end if;
+  if not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname=ns.schema_name and c.relname='h2s_test_run' and c.relkind='r' and c.relowner=ns.nspowner) then return false; end if;
+  select count(*) as count,bool_and(run_id=run_uuid and source_commit=identity->>'sourceCommit'
+    and baseline_sha256=identity->>'nativeBaselineFingerprint') as matches into ledger from public.h2s_test_run;
+  return ledger.count=1 and coalesce(ledger.matches,false);
+exception when others then return false;
+end $$;
+create function public.field_sales_configuration_usable(p_status text,p_production_status text) returns boolean
+language sql stable set search_path=pg_catalog,public as $$
+  select p_production_status in ('approved','published') and
+    (p_status=p_production_status or (p_status='staging_only' and public.field_sales_native_staging_scope()))
+$$;
 create table public.field_sales_catalogs (
   catalog_id uuid primary key,
   version text not null unique,
-  status text not null default 'draft' check(status in ('draft','published','retired')),
+  status text not null default 'draft' check(status in ('draft','published','retired','staging_only')),
+  "productionApproved" boolean generated always as (status='published') stored,
+  "stagingOnly" boolean generated always as (status='staging_only') stored,
   definition jsonb not null check(jsonb_typeof(definition)='object'),
   source_evidence jsonb not null,
   approved_by uuid references public."Dashboard_Users"("User_ID"),
   published_at timestamptz,
-  check(status='draft' or (approved_by is not null and published_at is not null
+  check(status<>'staging_only' or (public.field_sales_native_staging_scope() and approved_by is null and published_at is null
+    and source_evidence @> '{"stagingOnly":true,"productionApproved":false}'::jsonb
+    and coalesce(definition->>'currency'='usd' and (definition->>'validForMinutes')::integer between 1 and 43200,false))),
+  check(status in ('draft','staging_only') or (approved_by is not null and published_at is not null
     and coalesce(length(source_evidence->>'approvalEvidence'),0)>0
     and definition->>'currency'='usd' and definition->>'validForMinutes' is not null
     and (definition->>'validForMinutes')::integer between 1 and 43200))
@@ -17,12 +57,18 @@ create table public.field_sales_catalogs (
 create table public.field_sales_agreement_policies (
   policy_id uuid primary key,
   version text not null unique,
-  status text not null default 'draft' check(status in ('draft','approved','retired')),
+  status text not null default 'draft' check(status in ('draft','approved','retired','staging_only')),
+  "productionApproved" boolean generated always as (status='approved') stored,
+  "stagingOnly" boolean generated always as (status='staging_only') stored,
   terms text, cancellation_information text, electronic_delivery text, payment_terms text,
   approval_evidence text,
   approved_by uuid references public."Dashboard_Users"("User_ID"),
   approved_at timestamptz,
-  check(status='draft' or (approved_by is not null and approved_at is not null
+  check(status<>'staging_only' or (public.field_sales_native_staging_scope() and approved_by is null and approved_at is null
+    and coalesce(length(terms),0)>0 and coalesce(length(cancellation_information),0)>0
+    and coalesce(length(electronic_delivery),0)>0 and coalesce(length(payment_terms),0)>0
+    and coalesce(length(approval_evidence),0)>0)),
+  check(status in ('draft','staging_only') or (approved_by is not null and approved_at is not null
     and coalesce(length(terms),0)>0 and coalesce(length(cancellation_information),0)>0 and coalesce(length(electronic_delivery),0)>0
     and coalesce(length(payment_terms),0)>0 and coalesce(length(approval_evidence),0)>0))
 );
@@ -112,10 +158,10 @@ begin
       raise exception 'Agreement identity and evidence are immutable' using errcode='42501';
     end if;
   elsif tg_table_name='field_sales_catalogs' and old.status<>'draft' then
-    if (to_jsonb(new)-'status')<>(to_jsonb(old)-'status') or new.status<>'retired' then
+    if (to_jsonb(new)-array['status','productionApproved','stagingOnly'])<>(to_jsonb(old)-array['status','productionApproved','stagingOnly']) or new.status<>'retired' then
       raise exception 'Published catalog versions are immutable' using errcode='42501'; end if;
   elsif tg_table_name='field_sales_agreement_policies' and old.status<>'draft' then
-    if (to_jsonb(new)-'status')<>(to_jsonb(old)-'status') or new.status<>'retired' then
+    if (to_jsonb(new)-array['status','productionApproved','stagingOnly'])<>(to_jsonb(old)-array['status','productionApproved','stagingOnly']) or new.status<>'retired' then
       raise exception 'Approved legal versions are immutable' using errcode='42501'; end if;
   end if;
   return new;
@@ -146,8 +192,8 @@ begin
   r:=public.field_sales_transaction_access(p_actor,p_lead);
   return jsonb_build_object(
     'catalogs',(select coalesce(jsonb_agg(to_jsonb(c)||jsonb_build_object('digest',encode(sha256(convert_to(c.definition::text,'UTF8')),'hex'))),'[]')
-      from public.field_sales_catalogs c where c.status in ('draft','published')),
-    'policyReady',exists(select 1 from public.field_sales_transaction_settings s join public.field_sales_agreement_policies p on p.policy_id=s.agreement_policy_id where p.status='approved'),
+      from public.field_sales_catalogs c where (c.status='draft' or public.field_sales_configuration_usable(c.status,'published'))),
+    'policyReady',exists(select 1 from public.field_sales_transaction_settings s join public.field_sales_agreement_policies p on p.policy_id=s.agreement_policy_id where public.field_sales_configuration_usable(p.status,'approved')),
     'depositConfigured',(select deposit_policy is not null from public.field_sales_transaction_settings),
     'quotes',(select coalesce(jsonb_agg(x),'[]') from (select q.* from public.field_sales_quotes q
       join public.field_sales_opportunities o using(lead_id) where (p_lead is null or q.lead_id=p_lead) and (r='ADMIN' or o.owner_user_id=p_actor)
@@ -184,7 +230,7 @@ begin
       raise exception 'Accepted contract requires a separately approved amendment or cancellation' using errcode='40001'; end if;
     if p_action='quote' then
       select * into c from public.field_sales_catalogs where catalog_id=(p_payload->>'catalogId')::uuid for share;
-      if not found or c.status not in ('draft','published') or encode(sha256(convert_to(c.definition::text,'UTF8')),'hex')<>p_payload->>'catalogHash'
+      if not found or not (c.status='draft' or public.field_sales_configuration_usable(c.status,'published')) or encode(sha256(convert_to(c.definition::text,'UTF8')),'hex')<>p_payload->>'catalogHash'
         or o.revision<>(p_payload->>'opportunityRevision')::integer then
         raise exception 'Catalog or assessment changed; reload' using errcode='40001'; end if;
       snap:=p_payload->'snapshot'; state:='draft';
@@ -201,13 +247,13 @@ begin
       snap:=parent.snapshot;
       if p_action='submit' then
         if parent.state<>'draft' then raise exception 'Only a draft can be submitted' using errcode='40001'; end if;
-        state:=case when c.status='published' and jsonb_array_length(snap->'approvalReasons')=0 and (snap->>'totalCents')::bigint>0 then 'approved' else 'pending_approval' end;
+        state:=case when public.field_sales_configuration_usable(c.status,'published') and jsonb_array_length(snap->'approvalReasons')=0 and (snap->>'totalCents')::bigint>0 then 'approved' else 'pending_approval' end;
       else
         if r<>'ADMIN' or length(coalesce(p_payload->>'reason',''))<3 then raise exception 'Management approval and reason required' using errcode='42501'; end if;
         if parent.state<>'pending_approval' then raise exception 'Submit exception for review first' using errcode='40001'; end if;
         if p_action='reject' then state:='rejected';
         else
-          if c.status<>'published' then raise exception 'Only an approved published catalog can authorize payment' using errcode='22023'; end if;
+          if not public.field_sales_configuration_usable(c.status,'published') then raise exception 'Only an approved published catalog can authorize payment' using errcode='22023'; end if;
           if p_payload ? 'amountCents' then
             if (p_payload->>'amountCents')::bigint not between 1 and 100000000 then raise exception 'Invalid approved amount' using errcode='22023'; end if;
             snap:=snap||jsonb_build_object('totalCents',(p_payload->>'amountCents')::bigint,'managementAdjustmentCents',
@@ -222,8 +268,11 @@ begin
       end if;
     end if;
     if state='approved' and ((c.definition->>'validForMinutes')::integer not between 1 and 43200
-      or c.approved_by is null or c.published_at is null) then raise exception 'Approved catalog validity is required' using errcode='22023'; end if;
-    snap:=snap||jsonb_build_object('pricingStatus',case when c.status='published' then 'published' else 'unpublished_not_payable' end);
+      or (c.status<>'staging_only' and (c.approved_by is null or c.published_at is null))
+      or not public.field_sales_configuration_usable(c.status,'published')) then raise exception 'Approved catalog validity is required' using errcode='22023'; end if;
+    snap:=snap||jsonb_build_object('pricingStatus',case when c.status='staging_only' then 'staging_only'
+      when c.status='published' then 'published' else 'unpublished_not_payable' end,
+      'productionApproved',c.status='published','stagingOnly',c.status='staging_only');
     select coalesce(max(revision),0)+1 into rev from public.field_sales_quotes where lead_id=p_lead;
     insert into public.field_sales_quotes(quote_id,lead_id,revision,parent_quote_id,catalog_id,catalog_hash,opportunity_revision,snapshot,quote_hash,state,created_by,attributed_user_id,expires_at)
       values(p_operation,p_lead,rev,parent.quote_id,c.catalog_id,encode(sha256(convert_to(c.definition::text,'UTF8')),'hex'),o.revision,snap,
@@ -235,7 +284,7 @@ begin
       or q.revision<>(select max(revision) from public.field_sales_quotes where lead_id=p_lead) then
       raise exception 'Current approved unexpired quote required' using errcode='40001'; end if;
     select p.* into policy from public.field_sales_transaction_settings s join public.field_sales_agreement_policies p
-      on p.policy_id=s.agreement_policy_id where p.status='approved' for share of p;
+      on p.policy_id=s.agreement_policy_id where public.field_sales_configuration_usable(p.status,'approved') for share of p;
     if not found then raise exception 'Agreement, cancellation and electronic delivery approval is missing' using errcode='55000'; end if;
     select deposit_policy into deposit from public.field_sales_transaction_settings;
     if deposit is not null then
@@ -276,6 +325,9 @@ begin
   perform 1 from public.commercial_leads where lead_id=a.lead_id for update;
   select * into a from public.field_sales_agreements where agreement_id=a.agreement_id for update;
   select * into q from public.field_sales_quotes where quote_id=a.quote_id;
+  if (a.policy_snapshot->>'stagingOnly'='true' or q.snapshot->>'stagingOnly'='true')
+    and not public.field_sales_native_staging_scope() then
+    raise exception 'Staging agreement requires its verified native test run' using errcode='42501'; end if;
   select * into o from public.field_sales_opportunities where lead_id=a.lead_id;
   if q.state<>'approved' or q.quote_hash<>a.quote_hash or q.expires_at<=now() or o.revision<>q.opportunity_revision or o.status='closed'
     or q.revision<>(select max(revision) from public.field_sales_quotes where lead_id=a.lead_id) then
@@ -419,7 +471,8 @@ do $$ declare t text; f regprocedure; begin
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     execute format('grant select on public.%I to service_role',t);
   end loop;
-  foreach f in array array['public.field_sales_transaction_access(uuid,uuid)'::regprocedure,'public.field_sales_transaction_read(uuid,uuid)'::regprocedure,
+  foreach f in array array['public.field_sales_native_staging_scope()'::regprocedure,'public.field_sales_configuration_usable(text,text)'::regprocedure,
+    'public.field_sales_transaction_access(uuid,uuid)'::regprocedure,'public.field_sales_transaction_read(uuid,uuid)'::regprocedure,
     'public.field_sales_transaction_command(uuid,uuid,uuid,text,jsonb)'::regprocedure,'public.field_sales_customer_agreement(text,jsonb)'::regprocedure,
     'public.field_sales_reserve_checkout(uuid,uuid,uuid,uuid,text)'::regprocedure,'public.field_sales_record_receipt(uuid,text,jsonb)'::regprocedure] loop
     execute format('revoke all on function %s from public,anon,authenticated',f);
