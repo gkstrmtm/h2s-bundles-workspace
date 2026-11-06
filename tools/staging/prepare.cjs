@@ -295,7 +295,7 @@ process.exit(result.status === null ? 1 : result.status);
   write('.vercelignore', [
     '**/.env*', '**/node_modules/**', '**/.next/**', '**/tests/**', '**/migrations/**',
     '**/*.md', '**/*.pem', '**/*.key', '**/*.pfx', '**/*.p12', '**/*.bak*',
-    'backend/scripts/**', 'backend/tools/**', '!backend/tools/package-portal.cjs',
+    'backend/scripts/**', 'backend/tools/**', '!backend/tools/package-portal.cjs', '!backend/tools/package-forecast-policy.cjs',
     '!backend/tools/staging-build.cjs', 'backend/_*', 'frontend/_*', 'frontend/temp*',
     'frontend/*.test.js', 'frontend/dash.BROKEN_*', 'staging-manifest.json',
   ].join('\n') + '\n');

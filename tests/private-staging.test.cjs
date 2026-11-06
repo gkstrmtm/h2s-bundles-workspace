@@ -102,6 +102,9 @@ test('pricing source evidence remains byte-exact in private staging exports', ()
   const {adaptRuntimeText}=require('../tools/staging/prepare.cjs');
   const text='{"source":"https://home2smart.com/","reference":"https://old.supabase.co"}';
   assert.equal(adaptRuntimeText(text,path.join('config','pricing','home2smart.v2.json'),backendOrigin,frontendOrigin),text);
+  const source=require('node:fs').readFileSync(path.join(__dirname,'..','tools','staging','prepare.cjs'),'utf8');
+  for (const entry of ['!backend/tools/package-portal.cjs','!backend/tools/package-forecast-policy.cjs','!backend/tools/staging-build.cjs'])
+    assert.ok(source.includes(`'${entry}'`),`${entry} must survive the Vercel upload filter`);
 });
 test('hosted dashboard stamp must resolve to the current canonical CSS and JS, not older or missing files', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'h2s-stamp-test-'));
