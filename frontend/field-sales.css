@@ -64,6 +64,7 @@
 #h2s-app .field-sales__followup-table tbody tr:focus-within,
 #h2s-app .field-sales__followup-table tbody tr:hover { background: color-mix(in srgb, var(--sales-accent) 4%, var(--sales-surface)); }
 #h2s-app .field-sales__summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+#h2s-app .field-earnings__summary { grid-template-columns: repeat(auto-fit,minmax(min(100%,180px),1fr)); }
 #h2s-app .field-sales__metric { display: flex; flex-direction: column; justify-content: space-between; min-width: 0; gap: 4px; padding: 12px; border: 1px solid var(--sales-border); border-radius: 6px; background: var(--sales-surface); }
 #h2s-app .field-sales__metric strong { color: var(--sales-heading); font: 500 22px/1.25 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 #h2s-app .field-sales__metric:first-child { border-color: color-mix(in srgb, var(--sales-accent) 35%, var(--sales-border)); background: color-mix(in srgb, var(--sales-accent) 5%, var(--sales-surface)); }

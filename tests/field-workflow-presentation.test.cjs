@@ -336,6 +336,7 @@ test('earnings tabs keep financial summary visible and preserve settlement, adju
     assert.equal(f.root.querySelector('details:not(.field-workflow__audit),details details'),null);
     assert.match(f.root.textContent,/Qualification review details/);
     const summary=f.root.querySelector('[aria-label="Verified earnings summary"]'),summaryHTML=summary.outerHTML;
+    assert.ok(summary.classList.contains('field-earnings__summary'));
     assert.equal(summary.closest('[role="tabpanel"]'),null);
     const settlement=f.root.querySelector('[data-earnings-form="record_settlement"]');
     assert.equal(settlement.querySelector('button').textContent,'Record settlement evidence');

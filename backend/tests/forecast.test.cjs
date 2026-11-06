@@ -369,6 +369,8 @@ test('OpenAI response diagnostics are actual HTTP metadata, never credentials or
   metadata.interpretation.httpStatus=599;assert.equal(ai.diagnostics().interpretation.httpStatus,200);
   await ai.advise({text:'Synthetic management request',comparisons:[]});
   assert.match(responses[1].messages[0].content,/Return JSON only:/);
+  assert.match(responses[1].messages[0].content,/Missing-source descriptions are not metric keys/);
+  assert.match(responses[1].messages[0].content,/Only select costs when operatingProfitCents is null/);
   assert.equal(ai.diagnostics().advice.httpStatus,200);
 });
 test('service array replacements preserve complete rows and reject incomplete AI item patches',()=>{

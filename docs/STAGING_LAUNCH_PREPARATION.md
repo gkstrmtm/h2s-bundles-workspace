@@ -29,6 +29,10 @@ replace whole arrays and must contain complete retained service rows. Invalid
 partial rows are rejected without changing the prior scenario. Both OpenAI
 operations explicitly request JSON, including the advisory operation's JSON-mode
 requirement.
+Advisory selections must cite exact supplied metric keys and values; missing
+source descriptions are not metrics, and known negative profit must not be
+misclassified as unknown costs. Invalid advice stays rejected. Earnings totals
+use a bounded responsive grid so currency amounts remain readable on mobile.
 
 Research remains explicitly unavailable where no Census connector key exists.
 Missing facts remain missing; neither AI advice nor supplied scenario assumptions

@@ -134,7 +134,7 @@
             if (!s || !Array.isArray(d.orders) || !Array.isArray(d.entries) || !Array.isArray(d.runs) || !Array.isArray(d.adjustments)) {
                 status('Earnings response is incomplete. No totals or settlement are assumed.', true); return;
             }
-            root.insertAdjacentHTML('beforeend', `<div class="field-sales__summary" aria-label="Verified earnings summary">
+            root.insertAdjacentHTML('beforeend', `<div class="field-sales__summary field-earnings__summary" aria-label="Verified earnings summary">
                 ${metric('Commission earned',money(s.earnedCents))}${metric('Commission allocated · not paid',money(s.allocatedCents))}${metric('Commission independently paid',money(s.reconciledPaidCents))}
                 </div><div class="field-sales__toolbar field-workflow__counts"><span>Commission pending qualification · orders <strong>${esc(s.pendingQualification)}</strong></span><span>Amount under review <strong>${esc(s.calculationReview)}</strong></span><span>Accounting adjustments <strong>${money(s.adjustmentCents)}</strong> — not representative debt</span></div>
                 <p class="field-workflow__note" title="Commission requires installation completion, verified final payment and approved actual costs/rates. Technician compensation is separate. Allocation and export do not send money.">Loaded authorized records · allocation is not payment</p><div data-earnings-records></div>`);
