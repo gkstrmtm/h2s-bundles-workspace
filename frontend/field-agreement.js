@@ -56,7 +56,7 @@
         return `<section class="agreement-document"><h3>Full customer service agreement</h3>
             <p>Review the exact document below. Reaching its end enables the signing controls; it does not prove every word was read.</p>
             <div class="agreement-controls"><button type="button" data-agreement-end-link>Go to end of agreement</button>
-                <button type="button" data-customer-document="0">Download agreement copy (HTML)</button></div>
+                <button type="button" data-customer-document="${documents.indexOf(agreement)}">Download agreement copy (HTML)</button></div>
             <div class="agreement-review" tabindex="0" role="region" aria-label="Full customer service agreement">
                 <pre>${esc(agreement.text)}</pre><p data-agreement-end tabindex="-1">End of service agreement.</p>
             </div><p class="agreement-review-note" data-agreement-review-note>${facts.agreement.accepted_at?'Signed evidence retained.':'Reach the end of the agreement before signing.'}</p></section>

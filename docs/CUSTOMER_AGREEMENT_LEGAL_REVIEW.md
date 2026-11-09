@@ -82,6 +82,9 @@ existing agreement-policy fields, linked `customer_document`, separate required
 notices and reviewed calendar from the central wording. Publish the existing
 workflow's `requiredArtifacts`; do not replace the approved policy copy with a
 separately assembled artifact or activate these staging documents in production.
+Portable agreement copies place the 12-point bold cancellation statement next
+to signature intent. Agreement downloads select the agreement by document kind,
+not by the order of retained artifacts. Previously signed copies stay unchanged.
 
 ## Specific qualified-review and management decisions before production
 

@@ -77,10 +77,15 @@ export function customerAgreementPreparation(snapshot: JsonObject, seller: Agree
     productionApproved: false
   };
 }
-function htmlDocument(label: string, text: string, notice: boolean) {
+function htmlDocument(label: string, text: string, notice: boolean, agreement: boolean) {
+  const signatureTail = '\n\n' + template.signatureNotice + '\n\n' + signatureIntent;
+  if (agreement && !text.endsWith(signatureTail)) throw new BusinessError('Signature-adjacent cancellation statement is unavailable.', 503);
+  const body = agreement
+    ? `<pre>${escape(text.slice(0, -signatureTail.length))}</pre><p class="notice">${escape(template.signatureNotice)}</p><p>${escape(signatureIntent)}</p>`
+    : `<pre${notice ? ' class="notice"' : ''}>${escape(text)}</pre>`;
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + `<title>${escape(label)} | Home2Smart</title><style>body{font:16px/1.6 Arial,sans-serif;color:#172033;max-width:760px;margin:0 auto;padding:24px}h1{font-size:24px}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}.notice{font-size:12pt;font-weight:700}@media print{body{padding:0}h1{font-size:18pt}.notice{font-size:12pt;font-weight:700}}</style></head><body>`
-    + `<h1>${escape(label)}</h1><main><pre${notice ? ' class="notice"' : ''}>${escape(text)}</pre></main></body></html>`;
+    + `<h1>${escape(label)}</h1><main>${body}</main></body></html>`;
 }
 function quoteSummary(snapshot: JsonObject, seller: JsonObject, quote: JsonObject, reviewDate: string) {
   if (!object(snapshot.customer) || !Array.isArray(snapshot.lines) || !snapshot.lines.length) throw new BusinessError('Exact customer scope unavailable.', 503);
@@ -135,7 +140,7 @@ export function withCustomerDocuments(value: unknown): JsonObject {
   const summary = quoteSummary(value.quote.snapshot, content.seller, value.quote, date);
   const documents: AgreementDocument[] = [];
   function document(kind: string, version: unknown, label: string, text: string) {
-    const html = htmlDocument(label, text, kind === 'notice');
+    const html = htmlDocument(label, text, kind === 'notice', kind === 'agreement');
     documents.push({ kind, version: requiredText(version, 'Document version'), label, html, text, contentHash: hash(html) });
   }
   document('agreement', content.version, 'Home2Smart Customer Service Agreement',

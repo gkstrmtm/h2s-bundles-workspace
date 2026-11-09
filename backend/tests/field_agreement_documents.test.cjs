@@ -28,6 +28,7 @@ test('dated exact quote, four versioned documents and statutory duplicate notice
   assert.match(docs[0].text,/\$199\.00/);assert.match(docs[0].text,/\$49\.75/);assert.match(docs[0].text,/\$149\.25/);
   assert.match(docs[0].text,/ONN fixed mount/);assert.match(docs[0].text,/1-Year Workmanship Guarantee/);
   assert.ok(docs[0].text.includes(template.sections.find(s=>s.title==='1-Year Workmanship Guarantee').text));
+  assert.match(docs[0].html,/<p class="notice">You, the buyer, may cancel this transaction/);
   for(const doc of docs){assert.equal(doc.contentHash,crypto.createHash('sha256').update(doc.html).digest('hex'));assert.doesNotMatch(doc.html,/\{\{[A-Z_]+\}\}/);}
   for(const notice of docs.filter(d=>d.kind==='notice')){
     assert.match(notice.text,/November 12, 2026/);assert.match(notice.text,/Buyer's signature: _/);
@@ -81,6 +82,23 @@ test('existing policy preparation links frozen customer wording, duplicate notic
   assert.equal(prepared.cancellationCalendar.businessDays,3);
 });
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
+test('agreement download selects the exact agreement when retained documents arrive in a different order',async t=>{
+  const value=engine.withCustomerDocuments(facts()),docs=value.workflow.reviewDocuments;
+  value.agreement.accepted_at='2026-11-08T20:00:00Z';
+  value.agreement.acceptance={name:'Synthetic Customer',signatureIntentText:template.signatureIntent};
+  value.workflow.acceptedDocuments=[docs[3],docs[0],docs[1],docs[2]].map(doc=>({...doc,content:{html:doc.html,version:doc.version,contentHash:doc.contentHash}}));
+  const html=fs.readFileSync(path.join(__dirname,'..','..','frontend','field-agreement.html'),'utf8');
+  const dom=new JSDOM(html,{url:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64),runScripts:'outside-only'});
+  t.after(()=>dom.window.close());const w=dom.window,downloaded=[];
+  w.fetch=async()=>Response.json({ok:true,...value});
+  w.Blob=class {constructor(parts){this.html=parts[0];}};
+  w.URL.createObjectURL=blob=>{downloaded.push(blob.html);return 'blob:fixture';};w.URL.revokeObjectURL=()=>{};
+  w.HTMLAnchorElement.prototype.click=()=>{};
+  w.eval(fs.readFileSync(path.join(__dirname,'..','..','frontend','field-agreement.js'),'utf8'));await settle();
+  const button=w.document.querySelector('.agreement-document [data-customer-document]');
+  assert.equal(button.dataset.customerDocument,'1');button.click();
+  assert.equal(downloaded[0],docs[0].html);
+});
 test('customer UI retains separate unchecked acknowledgments, accessible review end and explicit signature; no automatic checkout',async t=>{
   const value=engine.withCustomerDocuments(facts()),html=fs.readFileSync(path.join(__dirname,'..','..','frontend','field-agreement.html'),'utf8');
   const dom=new JSDOM(html,{url:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64),runScripts:'outside-only'});
