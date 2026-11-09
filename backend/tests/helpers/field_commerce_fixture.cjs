@@ -43,6 +43,7 @@ async function createCommerceFixture(){
   const engine=evaluate('lib\\fieldQuote.ts',imports,globals);imports['@/lib/fieldQuote']=engine;
   const commerce=evaluate('lib\\fieldCommerce.ts',imports,globals);imports['@/lib/fieldCommerce']=commerce;
   imports['@/lib/customerAgreement.v1.json']=require('../../lib/customerAgreement.v1.json');
+  imports['@/lib/customerAgreement.nc.v1.json']=require('../../lib/customerAgreement.nc.v1.json');
   imports['@/lib/fieldAgreement']=evaluate('lib\\fieldAgreement.ts',imports,globals);
   const routes=Object.fromEntries(['field-sales-transactions','field-sales-agreement','field-sales-stripe-webhook'].map(name=>
     [name,evaluate('app\\api\\'+name+'\\route.ts',imports,globals)]));

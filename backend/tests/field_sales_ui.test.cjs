@@ -34,6 +34,22 @@ function fixture(t, role = 'SALES') {
   return { w, calls, revoked, listing, detail, click, setActor: value => { actor = value; }, respond: fn => { response = fn; }, get loggedOut() { return loggedOut; } };
 }
 const settle = async () => { for (let n = 0; n < 5; n++) await new Promise(resolve => setImmediate(resolve)); };
+test('NC launch controls are scoped, explicit and submitted without assuming city proves jurisdiction',async t=>{
+  const f=fixture(t);
+  f.listing.doorToDoorLaunch={enabled:true,jurisdiction:'NC',municipality:'Charlotte',status:'staging_only',productionApproved:false};
+  f.w.H2SFieldSales.activate();await settle();f.click('[data-sales-mode="new"]');await settle();
+  const form=f.w.document.querySelector('[data-sales-form="create"]');
+  assert.ok(form.elements.state.required);assert.ok(form.elements.salesChannel.required);
+  assert.equal(form.elements.state.value,'');assert.equal(form.elements.salesChannel.value,'');
+  assert.match(form.textContent,/not proof of city limits or solicitation permission/);
+  for(const[name,value]of Object.entries({fullName:'Synthetic NC Buyer',phone:'+15555550199',address:'100 Fictional NC Lane',city:'Charlotte',
+    state:'NC',salesChannel:'door_to_door'}))form.elements[name].value=value;
+  form.querySelector('[name="services"]').checked=true;
+  form.dispatchEvent(new f.w.SubmitEvent('submit',{bubbles:true,cancelable:true,submitter:form.querySelector('button[type="submit"]')}));
+  await settle();
+  const body=f.calls.find(call=>call.body?.action==='create').body;
+  assert.equal(body.state,'NC');assert.equal(body.salesChannel,'door_to_door');
+});
 test('SALES mobile enclave, assigned worklist, generic configured assessment, escaped identity and draft payload', async t => {
   const f = fixture(t); f.w.H2SFieldSales.activate(); await settle();
   assert.equal(f.w.document.getElementById('h2s-app').dataset.fieldSales, 'true');

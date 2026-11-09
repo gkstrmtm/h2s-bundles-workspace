@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
-import template from '@/lib/customerAgreement.v1.json';
+import template from '@/lib/customerAgreement.nc.v1.json';
+import historicalTemplate from '@/lib/customerAgreement.v1.json';
 import { BusinessError } from '@/lib/commercial_business';
 
 type JsonObject = Record<string, unknown>;
 export type AgreementDocument = { kind: string; version: string; label: string; html: string; text: string; contentHash: string };
 export type AgreementSeller = { name: string; mailingAddress: string; phone: string };
+export type AgreementTerritory = { state: 'NC'; municipality: 'Charlotte'; verifiedAddress: string; addressEvidence: string;
+  permitReviewEvidence: string; solicitationAuthorized: true; syntheticOnly: true };
+export type AgreementPresentation = { language: string; oralNoticeEvidence: string; territory: AgreementTerritory };
 const object = (value: unknown): value is JsonObject => !!value && typeof value === 'object' && !Array.isArray(value);
 const requiredText = (value: unknown, label: string): string => {
   if (typeof value !== 'string' || !value.trim() || value.length > 40000) throw new BusinessError(`${label} is unavailable; acceptance remains blocked.`, 503);
@@ -17,18 +21,30 @@ const money = (value: unknown) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(value) / 100);
 };
 export const signatureIntent = template.signatureIntent;
-export function prepareAgreementArtifacts(snapshot: JsonObject, seller: AgreementSeller, presentation: { language: string; oralNoticeEvidence: string }) {
+const supportedProtocol = (value: unknown) => value === template.protocol || value === historicalTemplate.protocol;
+function validateTerritory(snapshot: JsonObject, value: unknown): asserts value is AgreementTerritory {
+  if (!object(value) || value.state !== 'NC' || value.municipality !== 'Charlotte'
+    || value.solicitationAuthorized !== true || value.syntheticOnly !== true)
+    throw new BusinessError('Reviewed Charlotte, North Carolina territory and synthetic-only solicitation authorization are required.', 503);
+  for (const key of ['verifiedAddress', 'addressEvidence', 'permitReviewEvidence']) requiredText(value[key], `Territory ${key}`);
+  if (object(snapshot.customer) && (snapshot.customer.state !== 'NC' || typeof snapshot.customer.city !== 'string'
+    || snapshot.customer.city.trim().toLowerCase() !== 'charlotte'
+    || snapshot.customer.address !== value.verifiedAddress))
+    throw new BusinessError('The verified NC territory must match the exact quoted installation address.', 409);
+}
+export function prepareAgreementArtifacts(snapshot: JsonObject, seller: AgreementSeller, presentation: AgreementPresentation) {
   for (const [key, value] of Object.entries(seller)) requiredText(value, `Seller ${key}`);
   if (presentation.language !== 'en') throw new BusinessError('Reviewed documents in the actual sales-presentation language are required.', 503);
   requiredText(presentation.oralNoticeEvidence, 'Recorded oral cancellation notice');
+  validateTerritory(snapshot, presentation.territory);
   const content = { protocol: template.protocol, version: template.version, status: template.status, seller,
-    sale: { jurisdiction: 'SC', location: 'residence', personalSolicitation: true, oralPresentationLanguage: presentation.language,
-      oralNoticeEvidence: presentation.oralNoticeEvidence, cancellationEligibility: 'covered' },
+    sale: { jurisdiction: 'NC', location: 'residence', personalSolicitation: true, oralPresentationLanguage: presentation.language,
+      oralNoticeEvidence: presentation.oralNoticeEvidence, cancellationEligibility: 'covered', territory: presentation.territory },
     text: template.sections.map(section => section.title + '\n\n' + section.text).join('\n\n'),
-    signatureNotice: template.signatureNotice, scNotice: template.scNotice };
+    signatureNotice: template.signatureNotice, ncNotice: template.ncNotice };
   return [
     { kind: 'quote', label: 'Exact approved quote', content: snapshot },
-    { kind: 'agreement', label: 'Home2Smart Customer Service Agreement v1', content },
+    { kind: 'agreement', label: 'Home2Smart North Carolina Customer Service Agreement v1', content },
     ...[1, 2].map(copy => ({ kind: 'notice', label: `Notice of cancellation - copy ${copy}`,
       content: { protocol: template.protocol, version: template.noticeVersion, copy, text: template.cancellationNotice } })),
     { kind: 'notice', label: 'Electronic records disclosure', content: { protocol: template.protocol, version: template.consentVersion, text: template.electronicConsent } }
@@ -55,18 +71,18 @@ export function customerCancellationCalendar(year: number) {
     memorial.setUTCDate(memorial.getUTCDate() - (memorial.getUTCDay() + 6) % 7); holidays.add(date(memorial));
   }
   return { timezone: 'America/New_York', businessDays: 3, deadlineLocalTime: '23:59', startEvent: 'acceptance',
-    excludedWeekdays: [7], holidays: [...holidays].sort(), coverageYears: { first: year - 1, last: year + 10 },
-    convention: 'Federal actual and observed dates excluded conservatively; protocol deadline advances to following midnight.' };
+    excludedWeekdays: [6, 7], holidays: [...holidays].sort(), coverageYears: { first: year - 1, last: year + 10 },
+    convention: 'NC staging voluntarily extends the FTC minimum by excluding Saturdays, Sundays and federal actual/observed holidays; NC-specific statutory interpretation remains subject to counsel review. Deadline is the midnight following the printed final day.' };
 }
 export function customerAgreementPreparation(snapshot: JsonObject, seller: AgreementSeller,
-  presentation: { language: string; oralNoticeEvidence: string }, calendarYear: number) {
+  presentation: AgreementPresentation, calendarYear: number) {
   const artifacts = prepareAgreementArtifacts(snapshot, seller, presentation);
   const customerDocument = artifacts[1].content;
   return {
     agreementPolicy: {
       version: template.version, status: template.status,
       terms: requiredText(customerDocument.text, 'Service agreement'),
-      cancellation_information: template.scNotice + '\n\n' + template.signatureNotice,
+      cancellation_information: template.ncNotice + '\n\n' + template.signatureNotice,
       electronic_delivery: template.electronicConsent,
       payment_terms: template.sections[0].text,
       customer_document: customerDocument
@@ -77,11 +93,11 @@ export function customerAgreementPreparation(snapshot: JsonObject, seller: Agree
     productionApproved: false
   };
 }
-function htmlDocument(label: string, text: string, notice: boolean, agreement: boolean) {
-  const signatureTail = '\n\n' + template.signatureNotice + '\n\n' + signatureIntent;
+function htmlDocument(label: string, text: string, notice: boolean, agreement: boolean, signatureNotice: string) {
+  const signatureTail = '\n\n' + signatureNotice + '\n\n' + signatureIntent;
   if (agreement && !text.endsWith(signatureTail)) throw new BusinessError('Signature-adjacent cancellation statement is unavailable.', 503);
   const body = agreement
-    ? `<pre>${escape(text.slice(0, -signatureTail.length))}</pre><p class="notice">${escape(template.signatureNotice)}</p><p>${escape(signatureIntent)}</p>`
+    ? `<pre>${escape(text.slice(0, -signatureTail.length))}</pre><p class="notice">${escape(signatureNotice)}</p><p>${escape(signatureIntent)}</p>`
     : `<pre${notice ? ' class="notice"' : ''}>${escape(text)}</pre>`;
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
     + `<title>${escape(label)} | Home2Smart</title><style>body{font:16px/1.6 Arial,sans-serif;color:#172033;max-width:760px;margin:0 auto;padding:24px}h1{font-size:24px}pre{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere}.notice{font-size:12pt;font-weight:700}@media print{body{padding:0}h1{font-size:18pt}.notice{font-size:12pt;font-weight:700}}</style></head><body>`
@@ -92,6 +108,7 @@ function quoteSummary(snapshot: JsonObject, seller: JsonObject, quote: JsonObjec
   const total = snapshot.totalCents;
   if (!Number.isSafeInteger(total) || Number(total) < 1) throw new BusinessError('Exact agreed total unavailable.', 503);
   const deposit = Math.ceil(Number(total) / 4);
+  const state = typeof snapshot.customer.state === 'string' && snapshot.customer.state.trim() ? ', ' + snapshot.customer.state : '';
   return [
     'STAGING ONLY - fictional transaction; not production-approved legal terms or a real customer obligation.',
     `Seller: ${requiredText(seller.name, 'Seller name')}`,
@@ -99,7 +116,7 @@ function quoteSummary(snapshot: JsonObject, seller: JsonObject, quote: JsonObjec
     `Contact telephone: ${requiredText(seller.phone, 'Seller telephone')}`,
     `Transaction/signing date: ${reviewDate} (America/New_York)`,
     `Customer: ${requiredText(snapshot.customer.name, 'Customer name')}`,
-    `Installation location: ${requiredText(snapshot.customer.address, 'Installation address')}, ${requiredText(snapshot.customer.city, 'Installation city')}`,
+    `Installation location: ${requiredText(snapshot.customer.address, 'Installation address')}, ${requiredText(snapshot.customer.city, 'Installation city')}${state}`,
     `Exact approved quote: ${requiredText(quote.quote_id, 'Quote identity')}; revision ${quote.revision}; hash ${requiredText(quote.quote_hash, 'Quote hash')}`,
     ...snapshot.lines.map(line => {
       if (!object(line) || !Array.isArray(line.scope) || !Array.isArray(line.equipment) || !Array.isArray(line.exclusions))
@@ -111,19 +128,24 @@ function quoteSummary(snapshot: JsonObject, seller: JsonObject, quote: JsonObjec
 }
 export function withCustomerDocuments(value: unknown): JsonObject {
   if (!object(value) || !object(value.quote) || !object(value.agreement)) throw new BusinessError('Agreement response is incomplete.', 503);
+  if (value.agreement.accepted_at) return { ...value, signatureRequired: false };
   const workflow = object(value.workflow) ? value.workflow : null;
   const artifacts = workflow && Array.isArray(workflow.documents) ? workflow.documents.filter(object) : [];
   const source = artifacts.find(doc => doc.kind === 'agreement' && object(doc.content)
-    && (doc.content.protocol === template.protocol || object(doc.content.customer_document) && doc.content.customer_document.protocol === template.protocol));
+    && (supportedProtocol(doc.content.protocol) || object(doc.content.customer_document) && supportedProtocol(doc.content.customer_document.protocol)));
   if (!workflow || !source || !object(source.content)) {
     return { ...value, signatureRequired: !value.agreement.accepted_at,
       signatureUnavailableReason: 'Updated customer agreement and separate cancellation documents require management preparation. New acceptance is blocked.' };
   }
   const content = object(source.content.customer_document) ? source.content.customer_document : source.content;
   if (content.status !== 'staging_only' || !object(content.seller) || !object(content.sale)
-    || content.sale.jurisdiction !== 'SC' || content.sale.oralPresentationLanguage !== 'en' || content.sale.cancellationEligibility !== 'covered')
+    || content.sale.jurisdiction !== (content.protocol === template.protocol ? 'NC' : 'SC')
+    || content.sale.oralPresentationLanguage !== 'en' || content.sale.cancellationEligibility !== 'covered')
     throw new BusinessError('Customer legal eligibility or reviewed language is unresolved. Acceptance is blocked.', 503);
-  if (value.agreement.accepted_at) return { ...value, signatureRequired: false };
+  if (content.protocol === template.protocol) {
+    if (!object(value.quote.snapshot)) throw new BusinessError('Exact quoted NC address is unavailable.', 503);
+    validateTerritory(value.quote.snapshot, content.sale.territory);
+  }
   if (!object(value.quote.snapshot) || typeof workflow.reviewDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(workflow.reviewDate)
     || typeof workflow.cancellationPreviewDeadline !== 'string' || !Number.isFinite(Date.parse(workflow.cancellationPreviewDeadline)))
     throw new BusinessError('Server cancellation date is unresolved. Acceptance is blocked.', 503);
@@ -140,12 +162,12 @@ export function withCustomerDocuments(value: unknown): JsonObject {
   const summary = quoteSummary(value.quote.snapshot, content.seller, value.quote, date);
   const documents: AgreementDocument[] = [];
   function document(kind: string, version: unknown, label: string, text: string) {
-    const html = htmlDocument(label, text, kind === 'notice', kind === 'agreement');
+    const html = htmlDocument(label, text, kind === 'notice', kind === 'agreement', requiredText(content.signatureNotice, 'Signature-adjacent cancellation notice'));
     documents.push({ kind, version: requiredText(version, 'Document version'), label, html, text, contentHash: hash(html) });
   }
   document('agreement', content.version, 'Home2Smart Customer Service Agreement',
     summary + '\n\n' + requiredText(content.text, 'Service agreement') + '\n\n'
-    + fill(requiredText(content.scNotice, 'South Carolina cancellation statement')) + '\n\n'
+    + fill(requiredText(content.protocol === template.protocol ? content.ncNotice : content.scNotice, 'State cancellation statement')) + '\n\n'
     + requiredText(content.signatureNotice, 'Signature-adjacent cancellation notice') + '\n\n' + signatureIntent);
   for (const copy of [1, 2]) {
     const artifact = artifacts.find(doc => doc.kind === 'notice' && object(doc.content) && doc.content.copy === copy);
@@ -158,7 +180,7 @@ export function withCustomerDocuments(value: unknown): JsonObject {
   const bundleHash = hash(documents.map(doc => doc.contentHash).join('|') + '|' + value.quote.quote_hash + '|' + date);
   const code = bundleHash.slice(0, 8).toUpperCase();
   const demonstration = documents[0].html.replace('</body>', `<aside><h2>Electronic access demonstration</h2><p>Enter this code on the agreement page: <strong>${code}</strong></p><p>This demonstrates access to HTML records, not that every word was read.</p></aside></body>`);
-  return { ...value, signatureRequired: true, workflow: { ...workflow, signatureProtocol: template.protocol,
+  return { ...value, signatureRequired: true, workflow: { ...workflow, signatureProtocol: content.protocol,
     reviewDocuments: documents, reviewedBundleHash: bundleHash, accessDemonstrationHtml: demonstration } };
 }
 export function acceptanceEvidence(body: JsonObject, facts: ReturnType<typeof withCustomerDocuments>, request: Request) {
@@ -170,7 +192,7 @@ export function acceptanceEvidence(body: JsonObject, facts: ReturnType<typeof wi
     }
     return recorded;
   }
-  if (!object(facts.workflow) || facts.workflow.signatureProtocol !== template.protocol
+  if (!object(facts.workflow) || !supportedProtocol(facts.workflow.signatureProtocol)
     || !Array.isArray(facts.workflow.reviewDocuments)) throw new BusinessError('Required versioned customer documents are unavailable.', 409);
   for (const key of ['accepted', 'electronicDelivery', 'agreementAccepted', 'cancellationNoticeReceived', 'electronicRecordsConsent', 'signatureIntent']) {
     if (body[key] !== true) throw new BusinessError('Each separate acknowledgment and affirmative signature is required.', 400);

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   try {
     const actor = await salesActor(request);
     if (process.env.H2S_FIELD_SALES_ENABLED !== 'true') return Response.json({ ok: true, enabled: false, actor: { role: actor.role, userId: actor.userId } }, { headers: headers(request) });
-    await salesAccess(actor.userId);
+    const access = await salesAccess(actor.userId);
     const query = new URL(request.url).searchParams;
     for (const key of query.keys()) if (!['leadId','search','ownerId','customerId','limit','cursor','due','includeFollowUps','dueCursor'].includes(key)
       || query.getAll(key).length !== 1) throw new BusinessError('Unsupported Field Sales parameter.');
@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     const due = !leadId && query.get('includeFollowUps') === 'true'
       ? await opportunityPage(actor.userId, dueQuery) : null;
     return Response.json({ ok: true, enabled: true, actor: { role: actor.role, userId: actor.userId }, services: await serviceDefinitions(), ...records,
+      doorToDoorLaunch: access.doorToDoorLaunch ?? null,
       ...(due ? {followUps:due.opportunities,followUpTotal:due.total,followUpCursor:due.nextCursor} : {}) }, { headers: headers(request) });
   } catch (error) { return failure(request, error); }
 }
@@ -70,9 +71,18 @@ export async function POST(request: Request) {
         const normalized = /^\d{10}$/.test(phone) ? '+1' + phone : /^\+?[1-9]\d{6,14}$/.test(phone) ? '+' + phone.replace(/^\+/, '') : '';
         if (!normalized) throw new BusinessError('Enter a valid phone including country code.');
         const interests = assessment({ ...body, answers: {}, submit: false }, await serviceDefinitions(), market);
+        const location: Record<string, string> = {};
+        if (body.state !== undefined) {
+          location.state = text(body.state, 2).toUpperCase();
+          if (!/^[A-Z]{2}$/.test(location.state)) throw new BusinessError('Choose the installation state.');
+        }
+        if (body.salesChannel !== undefined) {
+          location.salesChannel = text(body.salesChannel, 30);
+          if (!['door_to_door', 'other'].includes(location.salesChannel)) throw new BusinessError('Choose how this customer was contacted.');
+        }
         payload = { ownerId, market, fullName: text(body.fullName, 120), phone: normalized,
           address: text(body.address, 500), city: text(body.city, 120), notes: text(body.notes ?? '', 2000, false),
-          followUpAt: followUp(body.followUpAt ?? null), ...interests };
+          followUpAt: followUp(body.followUpAt ?? null), ...interests, ...location };
       }
     } else {
       const leadId = identifier(body.leadId), snapshot = await ownedOpportunity(actor.userId, leadId);

@@ -78,7 +78,7 @@
                     <label class="field-sales__wide field-sales__check"><input type="checkbox" name="agreementAccepted" required>I accept this exact approved quote and customer service agreement.</label>
                     <label class="field-sales__wide field-sales__check"><input type="checkbox" name="cancellationNoticeReceived" required>I acknowledge receipt of both separate cancellation-notice copies. This does not waive cancellation rights.</label>
                     <label class="field-sales__wide field-sales__check"><input type="checkbox" name="electronicRecordsConsent" required>I consent to the electronic-record disclosure for this transaction and have demonstrated access to its HTML format. I may choose paper instead.</label>
-                    <p class="field-sales__wide agreement-signature-notice">You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached notice of cancellation form for an explanation of this right.</p>
+                    <p class="field-sales__wide agreement-signature-notice">You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached Notice of Cancellation form for an explanation of this right.</p>
                     <label class="field-sales__wide field-sales__check"><input type="checkbox" name="signatureIntent" required>${esc(signatureIntent)}</label>
                     <button type="submit" disabled>Sign agreement and record acceptance</button>
                 </form>`}`;

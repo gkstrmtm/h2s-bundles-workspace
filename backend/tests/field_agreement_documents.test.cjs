@@ -1,15 +1,20 @@
 const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto'),fs=require('node:fs'),path=require('node:path');
 const {JSDOM}=require('jsdom');
 const {evaluate}=require('./helpers/commercial_operations_fixture.cjs');
-const template=require('../lib/customerAgreement.v1.json');
+const historicalTemplate=require('../lib/customerAgreement.v1.json');
+const template=require('../lib/customerAgreement.nc.v1.json');
 class BusinessError extends Error { constructor(message,status=400){super(message);this.status=status;} }
-const engine=evaluate('lib\\fieldAgreement.ts',{'node:crypto':crypto,'@/lib/customerAgreement.v1.json':template,'@/lib/commercial_business':{BusinessError}});
-const snapshot={customer:{name:'Synthetic Customer',address:'100 Synthetic Example Lane',city:'Greenville',market:'residential'},totalCents:19900,
+const engine=evaluate('lib\\fieldAgreement.ts',{'node:crypto':crypto,'@/lib/customerAgreement.v1.json':historicalTemplate,
+  '@/lib/customerAgreement.nc.v1.json':template,'@/lib/commercial_business':{BusinessError}});
+const snapshot={customer:{name:'Synthetic Customer',address:'100 Synthetic Example Lane',city:'Charlotte',state:'NC',salesChannel:'door_to_door',market:'residential'},totalCents:19900,
   lines:[{service:'TV mounting',description:'56-65 inch TV with standard fixed ONN mount',quantity:1,baseCents:19900,totalCents:19900,addOns:[],
     equipment:['ONN fixed mount','Included installation materials'],scope:['Mount customer-owned TV'],exclusions:['Unapproved additional work']}]};
+const presentation=()=>({language:'en',oralNoticeEvidence:'SYNTHETIC English presentation and oral cancellation notice fixture',
+  territory:{state:'NC',municipality:'Charlotte',verifiedAddress:snapshot.customer.address,addressEvidence:'SYNTHETIC jurisdiction review, not a real parcel verification',
+    permitReviewEvidence:'SYNTHETIC permit review only; no real solicitation authorized',solicitationAuthorized:true,syntheticOnly:true}});
 function facts(){
-  const artifacts=engine.prepareAgreementArtifacts(snapshot,{name:'SYNTHETIC HOME2SMART ONLY',mailingAddress:'100 Fictional Example Lane, Greenville SC 29601 (TEST ONLY)',phone:'864-387-8413'},
-    {language:'en',oralNoticeEvidence:'SYNTHETIC English presentation and oral cancellation notice fixture'});
+  const artifacts=engine.prepareAgreementArtifacts(snapshot,{name:'SYNTHETIC HOME2SMART ONLY',mailingAddress:'100 Fictional Example Lane, Charlotte NC 28202 (TEST ONLY)',phone:'864-387-8413'},
+    presentation());
   return {quote:{quote_id:'00000000-0000-4000-8000-000000000001',quote_hash:'a'.repeat(64),revision:1,snapshot},
     agreement:{accepted_at:null,policy_snapshot:{version:'synthetic-legal-v1',paymentPlan:{depositCents:4975,remainingAfterDepositCents:14925}}},
     workflow:{documents:artifacts,originalArtifactHashes:artifacts.map((_,i)=>String(i).repeat(64)),reviewDate:'2026-11-08',
@@ -27,6 +32,8 @@ test('dated exact quote, four versioned documents and statutory duplicate notice
   assert.equal(docs.length,4);assert.equal(docs.filter(d=>d.kind==='notice').length,2);
   assert.match(docs[0].text,/\$199\.00/);assert.match(docs[0].text,/\$49\.75/);assert.match(docs[0].text,/\$149\.25/);
   assert.match(docs[0].text,/ONN fixed mount/);assert.match(docs[0].text,/1-Year Workmanship Guarantee/);
+  assert.match(docs[0].text,/NORTH CAROLINA/);assert.doesNotMatch(docs[0].text,/SOUTH CAROLINA|Greenville SC/);
+  assert.match(docs[0].text,/Installation location: 100 Synthetic Example Lane, Charlotte, NC/);
   assert.ok(docs[0].text.includes(template.sections.find(s=>s.title==='1-Year Workmanship Guarantee').text));
   assert.match(docs[0].html,/<p class="notice">You, the buyer, may cancel this transaction/);
   for(const doc of docs){assert.equal(doc.contentHash,crypto.createHash('sha256').update(doc.html).digest('hex'));assert.doesNotMatch(doc.html,/\{\{[A-Z_]+\}\}/);}
@@ -65,21 +72,40 @@ test('quote content is escaped rather than executed in portable copies',()=>{
   const doc=engine.withCustomerDocuments(value).workflow.reviewDocuments[0];
   assert.doesNotMatch(doc.html,/<script>/);assert.match(doc.html,/&lt;script&gt;/);
 });
-test('FTC calendar counts Saturdays and excludes Sundays, federal actual/observed holidays including Juneteenth',()=>{
+test('NC conservative extension excludes weekends and federal actual/observed holidays without claiming a settled state-law definition',()=>{
   const calendar=engine.customerCancellationCalendar(2026);
-  assert.deepEqual(Array.from(calendar.excludedWeekdays),[7]);assert.equal(calendar.businessDays,3);
+  assert.deepEqual(Array.from(calendar.excludedWeekdays),[6,7]);assert.equal(calendar.businessDays,3);
+  assert.match(calendar.convention,/voluntarily extends the FTC minimum/);
   for(const holiday of ['2026-11-11','2026-11-26','2026-06-19','2026-07-03','2026-07-04'])assert.ok(calendar.holidays.includes(holiday),holiday);
-  assert.ok(!calendar.holidays.includes('2026-11-14'),'Ordinary Saturday counts');
+  assert.ok(!calendar.holidays.includes('2026-11-14'),'Ordinary Saturday is excluded as a weekday, not invented as a federal holiday');
 });
 test('existing policy preparation links frozen customer wording, duplicate notices and nonwaived cancellation calendar',()=>{
   const prepared=engine.customerAgreementPreparation(snapshot,
-    {name:'SYNTHETIC SELLER',mailingAddress:'100 Fictional Lane, Greenville SC 29601',phone:'864-387-8413'},
-    {language:'en',oralNoticeEvidence:'Synthetic oral notice at signing'},2026);
+    {name:'SYNTHETIC SELLER',mailingAddress:'100 Fictional Lane, Charlotte NC 28202',phone:'864-387-8413'},
+    presentation(),2026);
   assert.equal(prepared.productionApproved,false);
   assert.equal(prepared.agreementPolicy.status,'staging_only');
   assert.equal(prepared.agreementPolicy.customer_document.protocol,template.protocol);
   assert.equal(prepared.requiredNotices.length,3);
   assert.equal(prepared.cancellationCalendar.businessDays,3);
+});
+test('NC preparation requires explicit matching state, address and independent synthetic permit review',()=>{
+  const seller={name:'SYNTHETIC SELLER',mailingAddress:'100 Fictional Lane, Charlotte NC 28202',phone:'555-0100'};
+  for(const customer of [{...snapshot.customer,state:'SC'},{...snapshot.customer,state:undefined},{...snapshot.customer,city:'Fort Mill'},
+    {...snapshot.customer,address:'Another address'}])
+    assert.throws(()=>engine.prepareAgreementArtifacts({...snapshot,customer},seller,presentation()),/verified NC territory/);
+  for(const changed of [{state:'SC'},{municipality:'Greenville'},{syntheticOnly:false},{solicitationAuthorized:false},{addressEvidence:''},{permitReviewEvidence:''}])
+    assert.throws(()=>engine.prepareAgreementArtifacts(snapshot,seller,{...presentation(),territory:{...presentation().territory,...changed}}),/territory|Territory|solicitation/);
+  assert.equal(template.sections.find(s=>s.title==='1-Year Workmanship Guarantee').text,
+    historicalTemplate.sections.find(s=>s.title==='1-Year Workmanship Guarantee').text);
+});
+test('executed SC documents return exact retained evidence before applying current NC eligibility',()=>{
+  const historical={quote:{snapshot:{customer:{state:'SC'}}},agreement:{accepted_at:'2026-11-08T20:00:00Z',
+    acceptance:{protocol:historicalTemplate.protocol}},workflow:{acceptedDocuments:[{contentHash:'a'.repeat(64),html:'EXACT EXECUTED SC COPY'}]}};
+  const before=JSON.stringify(historical);
+  const result=engine.withCustomerDocuments(historical);
+  assert.equal(result.signatureRequired,false);assert.equal(JSON.stringify(historical),before);
+  assert.equal(result.workflow.acceptedDocuments[0].html,'EXACT EXECUTED SC COPY');
 });
 const settle=async()=>{for(let i=0;i<8;i++)await new Promise(r=>setImmediate(r));};
 test('agreement download selects the exact agreement when retained documents arrive in a different order',async t=>{

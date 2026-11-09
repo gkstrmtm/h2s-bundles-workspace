@@ -59,11 +59,19 @@ async function protocolRecord(f,{publish=true,calendarOverrides={},saleOverrides
   const policyId=crypto.randomUUID(),agreementPolicyId=crypto.randomUUID();
   const leadId=await f.lead(),quoteId=await f.submit(leadId,await f.quote(leadId)),record={leadId,quoteId};
   const snapshot=(await f.db.query('select snapshot from field_sales_quotes where quote_id=$1',[quoteId])).rows[0].snapshot;
-  const documents=evaluate('lib\\fieldAgreement.ts',{'node:crypto':crypto,'@/lib/commercial_business':f.business,
-    '@/lib/customerAgreement.v1.json':require('../lib/customerAgreement.v1.json')});
-  const prepared=documents.prepareAgreementArtifacts(snapshot,{name:'Synthetic Home2Smart',
-    mailingAddress:'100 Test Street, SC 29000',phone:'555-0100'},
-    {language:'en',oralNoticeEvidence:'Synthetic seller personally explained covered cancellation rights'});
+  const historical=require('../lib/customerAgreement.v1.json');
+  const prepared=[
+    {kind:'quote',label:'Exact approved quote',content:snapshot},
+    {kind:'agreement',label:'Historical SC Customer Service Agreement v1',content:{
+      protocol:historical.protocol,version:historical.version,status:historical.status,
+      seller:{name:'Synthetic Home2Smart',mailingAddress:'100 Test Street, SC 29000',phone:'555-0100'},
+      sale:{jurisdiction:'SC',location:'residence',personalSolicitation:true,oralPresentationLanguage:'en',
+        oralNoticeEvidence:'Synthetic historical SC seller personally explained covered cancellation rights',cancellationEligibility:'covered'},
+      text:historical.sections.map(s=>s.title+'\n\n'+s.text).join('\n\n'),signatureNotice:historical.signatureNotice,scNotice:historical.scNotice}},
+    ...[1,2].map(copy=>({kind:'notice',label:`Notice of cancellation - copy ${copy}`,
+      content:{protocol:historical.protocol,version:historical.noticeVersion,copy,text:historical.cancellationNotice}})),
+    {kind:'notice',label:'Electronic records disclosure',content:{protocol:historical.protocol,version:historical.consentVersion,text:historical.electronicConsent}}
+  ];
   Object.assign(prepared.find(d=>d.kind==='agreement').content.sale,saleOverrides);
   await f.db.query(`insert into field_sales_agreement_policies(policy_id,version,status,terms,cancellation_information,
     electronic_delivery,payment_terms,approval_evidence,approved_by,approved_at,customer_document)
@@ -307,7 +315,8 @@ test('native signature SQL: protocol admission, immutable exact evidence, idempo
       const apiRecord=await protocolRecord(f);
       const facts=await context(f,apiRecord);
       const documents=evaluate('lib\\fieldAgreement.ts',{'node:crypto':crypto,'@/lib/commercial_business':f.business,
-        '@/lib/customerAgreement.v1.json':require('../lib/customerAgreement.v1.json')});
+        '@/lib/customerAgreement.v1.json':require('../lib/customerAgreement.v1.json'),
+        '@/lib/customerAgreement.nc.v1.json':require('../lib/customerAgreement.nc.v1.json')});
       const decorated=documents.withCustomerDocuments(facts);
       const body={operationId:crypto.randomUUID(),name:'Synthetic Signer',email:'signature@example.invalid',
         quoteHash:decorated.quote.quote_hash,policyVersion:decorated.agreement.policy_snapshot.version,

@@ -2,7 +2,109 @@
 
 Status: **nonproduction only; not a legal opinion or production approval**.
 
-The versioned wording is in [customerAgreement.v1.json](../backend/lib/customerAgreement.v1.json).
+## Current launch: North Carolina, initially Charlotte
+
+The current versioned wording is
+[customerAgreement.nc.v1.json](../backend/lib/customerAgreement.nc.v1.json):
+`customer-service-nc-v1`, `nc-ftc-cancellation-v1`, and the existing
+`electronic-records-v1`. The South Carolina template and migration 056 are
+historical, not the current launch configuration. Additive migration 057 does
+not rewrite signed SC agreements, retained artifacts, or their deadlines.
+
+### NC and federal requirements
+
+Official NC sources reviewed:
+
+- https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/BySection/Chapter_25A/GS_25A-38.pdf
+- https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/BySection/Chapter_25A/GS_25A-39.pdf
+- https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/BySection/Chapter_25A/GS_25A-40.pdf
+- https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/BySection/Chapter_25A/GS_25A-41.pdf
+- https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/BySection/Chapter_25A/GS_25A-2.pdf
+
+NC 25A-38 is a **consumer-credit-sale** definition, not an unconditional rule
+for every cash service sale. Counsel must determine its application to the
+actual 25%-deposit/balance arrangement. No exemption is assumed: the staging
+residential solicitation is treated as covered by both NC and FTC protections.
+The FTC residential threshold is $25, regardless of credit financing.
+
+NC 25A-39 provides cancellation until midnight of the third business day after
+the buyer signs a compliant agreement, recognizes FTC-compliant documents, and
+treats properly addressed, postage-prepaid mailed cancellation as given on
+mailing. NC 25A-40 and FTC 429.1 require a completed dated contract, identified
+seller/business address, a signature-adjacent cancellation statement, and two
+completed, independently detachable cancellation forms in the presentation's
+language. The NC signature statement is:
+
+> You, the buyer, may cancel this transaction at any time prior to midnight of
+> the third business day after the date of this transaction. See the attached
+> Notice of Cancellation form for an explanation of this right.
+
+The current separate forms preserve the FTC model's complete cancellation,
+refund, security-interest, return/collection, 20-day and blank cancellation
+signature/date provisions. NC 25A-41 requires restoring payments/evidence of
+debt within 10 business days. Existing 12-point bold notice styling exceeds
+the 10-point minimum. Oral notice at signing remains separate from electronic
+acknowledgments. The stored oral-notice evidence is synthetic, not proof that
+a real customer received an oral presentation.
+
+FTC 429.0(f) counts Saturdays, but Chapter 25A does not itself define
+"business day." **NC interpretation remains a legal-review question.** New NC
+staging documents explicitly promise a customer-protective contractual
+extension: exclude Saturdays, Sundays, and actual/observed federal holidays;
+honor the printed later deadline. This is not presented as a verified NC
+statutory definition. Holds end only at midnight following that printed day
+in America/New_York, including DST. Historical SC calendars remain unchanged.
+
+Electronic consent, format-access demonstration, four separately retained
+executed documents, typed affirmative signature, immutable quote/hash/version
+evidence, the 1-year workmanship guarantee, 25% deposit and financial gates
+are preserved. Counsel must approve electronic substitute delivery, duplicate
+detachable notices, signing-time receipt and the paper fallback under
+15 USC 7001(c) before real use. No emergency or checkbox waiver is implemented.
+
+### Charlotte: separately verified municipal requirements
+
+The current official ordinance was read through an ordinary browser after
+automated retrieval was denied:
+
+https://library.municode.com/nc/charlotte/codes/code_of_ordinances?nodeId=PTIICOOR_CH6BUTR_ARTVIIIPE
+
+- **6-431:** peddling involves retail merchandise offered on foot/from a
+  vehicle with proposed **instant delivery upon receipt of the purchase price**.
+  Do not assume a later-installed service is automatically classified as
+  peddling, or that it is exempt from all other solicitation restrictions.
+- **6-432:** required peddling licenses must be secured for applicable
+  street/sidewalk sales and exhibited to an officer on demand.
+- **6-433 through 6-435:** the free producer-peddler permit is for qualifying
+  self/family-produced goods, not a generic permit for reselling ONN/Eufy goods.
+- **6-436:** specified congested-business, coliseum and stadium districts have
+  additional restrictions and limited event/market exceptions.
+- **6-437:** peddling may not occupy a street space within one block or 300 feet
+  for more than 30 minutes during a 24-hour period.
+- **6-438:** residential-zoned peddling is prohibited 8 p.m.-8 a.m.; while
+  daylight saving time applies, 9 p.m.-8 a.m. Do not substitute unverified
+  secondary-source "9 a.m." claims or apply these hours to a different
+  permit classification without review.
+
+**No real solicitation authorization is asserted.** Management must obtain a
+current classification/permit determination for Home2Smart's actual service,
+address and representative, confirm any registration/badge/background-check
+requirements and fees, and review no-soliciting/private-property restrictions.
+A Charlotte mailing address/ZIP does not establish city limits. Unincorporated
+Mecklenburg, Matthews, Mint Hill, Huntersville, Cornelius, Davidson and other
+municipalities are not silently included. Their requirements need separate
+review before territory expansion.
+
+Only the UUID-owned native sandbox may use synthetic-only territory/permit
+evidence. The NC document requires an exact quoted-address match, independent
+address-review evidence and separate permit-review evidence. Explicit NC
+state and door-to-door channel are server-validated; new SC door-to-door sales
+are blocked in this launch. Other service channels are not globally disabled.
+Production documents, real permits and live payments remain unactivated.
+
+## Historical South Carolina implementation
+
+The retained SC versioned wording is in [customerAgreement.v1.json](../backend/lib/customerAgreement.v1.json).
 The existing quote, agreement, workflow artifact/delivery, customer capability and
 Stripe checkout infrastructure is reused. No separate agreement system is introduced.
 Existing signed evidence must not be overwritten.

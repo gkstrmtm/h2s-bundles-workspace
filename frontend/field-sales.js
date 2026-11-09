@@ -215,6 +215,9 @@
                 <label>Phone<input name="phone" type="tel" required maxlength="40" autocomplete="tel"></label>
                 <label class="field-sales__wide">Property address<input name="address" required maxlength="500" autocomplete="street-address"></label>
                 <label>City<input name="city" required maxlength="120" autocomplete="address-level2"></label>
+                ${data.doorToDoorLaunch?.enabled ? `<label>State<input name="state" required minlength="2" maxlength="2" autocomplete="address-level1" placeholder="NC"></label>
+                <label>How was this customer contacted?<select name="salesChannel" required><option value="">Choose contact channel</option><option value="door_to_door">Door-to-door / home solicitation</option><option value="other">Other service channel</option></select></label>
+                <p class="field-sales__wide field-sales__note">Door-to-door launch: Charlotte, North Carolina only. A Charlotte mailing address is not proof of city limits or solicitation permission. Management must review address and permit evidence before preparing the customer agreement. This does not change other Home2Smart service workflows.</p>` : ''}
                 <label>Property type<select name="market"><option value="residential">Residential</option><option value="commercial">Commercial</option></select></label>
                 ${admin() ? `<label>Assigned representative<select name="ownerId" required><option value="">Choose representative</option>${representatives()}</select></label>` : ''}</fieldset>
                 <fieldset class="field-sales__wide"><legend>2 · Service interests</legend><p>Select all that apply. Only selected services need an assessment.</p><div class="field-sales__services">${interests()}</div></fieldset>
