@@ -1,0 +1,24 @@
+.field-sales--agreement { max-width: 900px; margin: 0 auto; padding: 16px; }
+.agreement-document { border-top: 1px solid var(--border, #d4dbe5); padding: 16px 0; }
+.agreement-review { max-height: 65vh; overflow: auto; padding: 16px; border: 1px solid var(--border, #d4dbe5); }
+.agreement-review:focus-visible, .agreement-document button:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.field-sales--agreement pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; line-height: 1.6; }
+.agreement-cancellation { border: 2px solid var(--cobalt); padding: 16px; margin: 16px 0; }
+.agreement-cancellation pre, .agreement-signature-notice { font-size: 12pt; font-weight: 700; }
+.agreement-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.agreement-controls button { max-width: 100%; }
+.field-sales--agreement .field-sales__check { align-items: start; gap: 8px; }
+.field-sales--agreement .field-sales__check input { margin-top: 4px; }
+.agreement-review-note { color: var(--muted); }
+.agreement-confirmation { border: 1px solid var(--success); padding: 16px; margin: 16px 0; }
+@media (max-width: 480px) {
+    .field-sales--agreement { padding: 12px; }
+    .agreement-review, .agreement-cancellation { padding: 12px; }
+    .agreement-controls { flex-direction: column; }
+    .agreement-controls button { width: 100%; }
+}
+@media print {
+    .agreement-cancellation pre, .agreement-signature-notice { font-size: 12pt; font-weight: 700; }
+    .agreement-review { max-height: none; overflow: visible; border: 0; }
+    .agreement-controls, [data-agreement-accept] { display: none; }
+}

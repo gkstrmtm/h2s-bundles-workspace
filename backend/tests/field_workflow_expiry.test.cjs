@@ -80,7 +80,7 @@ test('aged accepted immutable contract completes after expiry and receives only 
     values($1,$2,$3,'accepted_documents_balance',60,now()-interval '1 minute',$4)`,
     [crypto.randomUUID(),quoteId,f.commerce.tokenHash(expiredToken),id(20)]);
   assert.equal((await f.request('field-sales-agreement','GET',null,expiredToken)).status,404);
-  assert.equal((await f.request('field-sales-agreement','POST',customerAcceptance,expiredToken)).status,404);
+  assert.equal((await f.request('field-sales-agreement','POST',customerAcceptance,expiredToken)).status,400);
   delete f.env.H2S_FIELD_AGREEMENT_HANDOFF_MINUTES;
   assert.equal((await f.post({action:'agreement_link',leadId,quoteId})).status,503);
   const unacceptedLead=await f.lead(),unacceptedTemplate=await f.submit(unacceptedLead,await f.quote(unacceptedLead));
@@ -95,7 +95,7 @@ test('aged accepted immutable contract completes after expiry and receives only 
     values($1,$2,$3,$4,$5,$6,$7,now()-interval '1 day',$8)`,[unacceptedAgreement,unacceptedQuote,unacceptedLead,uq,id(811),
       JSON.stringify(policy),f.commerce.tokenHash(unacceptedToken),id(9)]);
   assert.equal((await f.request('field-sales-agreement','GET',null,unacceptedToken)).status,404);
-  assert.equal((await f.request('field-sales-agreement','POST',{...customerAcceptance,quoteHash:uq},unacceptedToken)).status,404);
+  assert.equal((await f.request('field-sales-agreement','POST',{...customerAcceptance,quoteHash:uq},unacceptedToken)).status,400);
   assert.equal((await f.request('field-sales-agreement','POST',{action:'checkout',operationId:crypto.randomUUID(),kind:'deposit'},unacceptedToken)).status,403);
   assert.equal((await f.post({action:'agreement_link',leadId:unacceptedLead,quoteId:unacceptedQuote})).status,409);
 });

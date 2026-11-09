@@ -163,7 +163,7 @@ async function createWorkflowFixture(){
     const facts=await(await f.request('field-sales-agreement','GET',null,record.token)).json();if(!facts.ok)throw Error(facts.error);
     const body={operationId:crypto.randomUUID(),name:'Synthetic customer',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
       quoteHash:facts.quote.quote_hash,policyVersion:facts.agreement.policy_snapshot.version};
-    const result=await(await f.request('field-sales-agreement','POST',body,record.token)).json();if(!result.ok)throw Error(result.error);
+    await f.historicalAcceptance(record.token,body);
     return {...record,acceptance:body};
   }
   async function collect(record,kind='deposit',actor='a'){

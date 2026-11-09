@@ -11,7 +11,9 @@
     let facts,busy=false,attempt,ended=false,sync,dirty=false,edits=0,readVersion=0;
     const lifetime=new AbortController();
     const downloads=new Set();
-    addEventListener('pagehide',()=>{ended=true;sync?.destroy();lifetime.abort();token='';facts=attempt=null;for(const url of downloads)URL.revokeObjectURL(url);downloads.clear();content.replaceChildren();message('Reopen the secure agreement link to continue.');});
+    const signatureIntent='I intend to electronically sign this exact Home2Smart service agreement.';
+    let reachedEnd=false,reviewedBundle='',reviewObserver;
+    addEventListener('pagehide',()=>{ended=true;sync?.destroy();reviewObserver?.disconnect();lifetime.abort();token='';facts=attempt=null;for(const url of downloads)URL.revokeObjectURL(url);downloads.clear();content.replaceChildren();message('Reopen the secure agreement link to continue.');});
     function message(text,error=false){
         status.textContent=text;status.setAttribute('role',error?'alert':'status');
         if(error&&sync&&!ended){
@@ -35,6 +37,73 @@
         }
         if(!response.ok||!result.ok)throw Error(result.error||'Agreement unavailable. No acceptance or payment is implied.');return result;
     }
+    function customerDocuments(){
+        const workflow=facts.workflow||{};
+        if(facts.agreement.accepted_at&&Array.isArray(workflow.acceptedDocuments)){
+            return workflow.acceptedDocuments.map(doc=>{
+                const value=doc.content||doc,html=value.html||'';
+                const parsed=new DOMParser().parseFromString(html,'text/html');
+                return {kind:doc.kind,version:value.version||doc.version,label:doc.label,
+                    contentHash:value.contentHash||doc.contentHash,html,text:parsed.body.textContent||''};
+            });
+        }
+        return workflow.reviewDocuments||[];
+    }
+    function documentExperience(){
+        const documents=customerDocuments(),agreement=documents.find(doc=>doc.kind==='agreement'),
+            notices=documents.filter(doc=>doc.kind==='notice'&&doc.version!=='electronic-records-v1'),consent=documents.find(doc=>doc.kind==='electronic_consent'||doc.version==='electronic-records-v1');
+        if(!agreement)return `<p role="alert">${esc(facts.signatureUnavailableReason||'Required customer documents are unavailable. New acceptance and checkout remain blocked.')}</p>`;
+        return `<section class="agreement-document"><h3>Full customer service agreement</h3>
+            <p>Review the exact document below. Reaching its end enables the signing controls; it does not prove every word was read.</p>
+            <div class="agreement-controls"><button type="button" data-agreement-end-link>Go to end of agreement</button>
+                <button type="button" data-customer-document="0">Download agreement copy (HTML)</button></div>
+            <div class="agreement-review" tabindex="0" role="region" aria-label="Full customer service agreement">
+                <pre>${esc(agreement.text)}</pre><p data-agreement-end tabindex="-1">End of service agreement.</p>
+            </div><p class="agreement-review-note" data-agreement-review-note>${facts.agreement.accepted_at?'Signed evidence retained.':'Reach the end of the agreement before signing.'}</p></section>
+            ${notices.map(doc=>`<section class="agreement-cancellation"><h3>${esc(doc.label)}</h3>
+                <pre>${esc(doc.text)}</pre><button type="button" data-customer-document="${documents.indexOf(doc)}">Download this separate cancellation notice (HTML)</button></section>`).join('')}
+            ${consent?`<section class="agreement-document"><h3>Electronic records: your choices and requirements</h3><pre>${esc(consent.text)}</pre>
+                <button type="button" data-customer-document="${documents.indexOf(consent)}">Download electronic-record disclosure (HTML)</button>
+                ${!facts.agreement.accepted_at?'<button type="button" data-agreement-access>Download and open electronic access demonstration (HTML)</button>':''}</section>`:''}
+            ${facts.agreement.accepted_at?`<section class="agreement-confirmation"><h3>Signature and acceptance recorded</h3>
+                <p>Signed by ${esc(facts.agreement.acceptance.name)} at ${esc(new Date(facts.agreement.accepted_at).toLocaleString())}.</p>
+                <p>Intent: ${esc(facts.agreement.acceptance.signatureIntentText||signatureIntent)}</p>
+                <p>Exact signed copies are retained. This confirmation is not a payment receipt.</p>
+                ${documents.map((doc,index)=>`<button type="button" data-customer-document="${index}">Download retained ${esc(doc.label)}</button>`).join('')}</section>`:
+                `<form class="field-sales__form" data-agreement-accept>
+                    <label>Your full signature name<input name="name" autocomplete="name" maxlength="120" required></label>
+                    <label>Your email for transaction records<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
+                    <label class="field-sales__wide">Electronic access code<input name="accessCode" maxlength="8" minlength="8" autocomplete="off" required aria-describedby="agreement-access-help"></label>
+                    <p id="agreement-access-help" class="field-sales__wide">Open the downloaded access demonstration and enter its displayed code. Download links alone are not proof that a file was saved.</p>
+                    <label class="field-sales__wide field-sales__check"><input type="checkbox" name="agreementAccepted" required>I accept this exact approved quote and customer service agreement.</label>
+                    <label class="field-sales__wide field-sales__check"><input type="checkbox" name="cancellationNoticeReceived" required>I acknowledge receipt of both separate cancellation-notice copies. This does not waive cancellation rights.</label>
+                    <label class="field-sales__wide field-sales__check"><input type="checkbox" name="electronicRecordsConsent" required>I consent to the electronic-record disclosure for this transaction and have demonstrated access to its HTML format. I may choose paper instead.</label>
+                    <p class="field-sales__wide agreement-signature-notice">You, the buyer, may cancel this transaction at any time prior to midnight of the third business day after the date of this transaction. See the attached notice of cancellation form for an explanation of this right.</p>
+                    <label class="field-sales__wide field-sales__check"><input type="checkbox" name="signatureIntent" required>${esc(signatureIntent)}</label>
+                    <button type="submit" disabled>Sign agreement and record acceptance</button>
+                </form>`}`;
+    }
+    function updateSigningControls(){
+        const form=content.querySelector('[data-agreement-accept]');
+        if(form)form.querySelector('[type="submit"]').disabled=!reachedEnd||!form.checkValidity();
+        const note=content.querySelector('[data-agreement-review-note]');
+        if(note&&!facts.agreement.accepted_at)note.textContent=reachedEnd?'End reached. Complete each separate acknowledgment and signature; scrolling is not proof of reading.':'Reach the end of the agreement before signing.';
+    }
+    function bindReviewEnd(){
+        reviewObserver?.disconnect();
+        if(reviewedBundle!==facts.workflow?.reviewedBundleHash){reviewedBundle=facts.workflow?.reviewedBundleHash||'';reachedEnd=false;}
+        const root=content.querySelector('.agreement-review'),end=content.querySelector('[data-agreement-end]');
+        if(!root||!end)return;
+        const check=()=>{
+            const bounds=root.getBoundingClientRect(),marker=end.getBoundingClientRect();
+            if(bounds.height>0&&marker.height>0&&marker.top>=bounds.top&&marker.bottom<=bounds.bottom+2){reachedEnd=true;updateSigningControls();}
+        };
+        root.addEventListener('scroll',check,{passive:true});end.addEventListener('focus',check);
+        if(window.IntersectionObserver){reviewObserver=new IntersectionObserver(entries=>{
+            if(entries.some(entry=>entry.isIntersecting)){reachedEnd=true;updateSigningControls();}
+        },{root,threshold:1});reviewObserver.observe(end);}
+        updateSigningControls();check();
+    }
     function render(){
         const q=facts.quote,s=q.snapshot,a=facts.agreement,p=a.policy_snapshot;
         const staging=s.pricingStatus==='staging_only'||p.status==='staging_only';
@@ -51,8 +120,8 @@
             ${s.managementAdjustmentCents!==undefined?`<p>Management adjustment: ${money(s.managementAdjustmentCents)}</p>`:''}
             <h3>${staging?'Staging-only test quote':'Approved quote'} total: ${money(s.totalCents)}</h3><p>Quote valid until ${esc(new Date(q.expires_at).toLocaleString())}</p>
             ${p.paymentPlan?.depositCents>0?`<p>${facts.workflow?'Exact new-sales 25% deposit':'Approved optional deposit'}: ${money(p.paymentPlan.depositCents)}; remaining balance: ${money(p.paymentPlan.remainingAfterDepositCents)}.${facts.workflow?' Net balance is collected after installation.':' Full payment: '+money(p.paymentPlan.fullCents)+'.'} Payment terms are shown below.</p>`:''}
-            <p class="field-sales__id">Quote ${esc(q.quote_id)} / ${esc(q.quote_hash)}</p><h3>Agreement version ${esc(p.version)}</h3>
-            <h4>Service agreement</h4><pre>${esc(p.terms)}</pre><h4>Payment terms</h4><pre>${esc(p.payment_terms)}</pre>
+            <h3>Agreement version ${esc(p.version)}</h3>
+            ${facts.workflow?.signatureProtocol||a.accepted_at&&facts.workflow?.acceptedDocuments?documentExperience():`<h4>Service agreement</h4><pre>${esc(p.terms)}</pre><h4>Payment terms</h4><pre>${esc(p.payment_terms)}</pre>
             <h4>Cancellation information</h4><pre>${esc(p.cancellation_information)}</pre><h4>Electronic delivery</h4><pre>${esc(p.electronic_delivery)}</pre>
             ${facts.workflow?`<h3>${staging?'Staging-only immutable test':'Approved immutable customer'} copies & notices</h3>
                 <p>These copies belong to this exact approved quote. Retrieval is recorded by the secure server. Download and retain them before acknowledging acceptance.</p>
@@ -60,11 +129,7 @@
                     <p class="field-sales__id">${esc(doc.contentHash)}</p><pre>${esc(copyText(doc.content))}</pre><button type="button" data-agreement-download="${index}">Download ${esc(documentLabel(doc))}</button></section>`).join('')||'<p>Approved copies unavailable. Acceptance and legal clearance remain blocked.</p>'}
                 <p>Cancellation deadline: ${facts.workflow.cancellationDeadline?esc(new Date(facts.workflow.cancellationDeadline).toLocaleString()):'Not established — legal policy and delivery evidence required'}. Deposit alone is not scheduling clearance.</p>`:''}
             ${a.accepted_at?`<p>Acceptance recorded ${esc(new Date(a.accepted_at).toLocaleString())} by ${esc(a.acceptance.name)}. This is not a payment receipt.</p>`:
-                `<form class="field-sales__form" data-agreement-accept><label>Your full name<input name="name" autocomplete="name" maxlength="120" required></label>
-                <label>Email for this agreement<input name="email" type="email" autocomplete="email" maxlength="254" required></label>
-                <label class="field-sales__wide field-sales__check"><input type="checkbox" name="accepted" required>I have reviewed and accept this exact quote, agreement and ${facts.workflow?(staging?'staging-only immutable test copies and notices':'approved immutable copies and notices'):'terms'} shown above.</label>
-                <label class="field-sales__wide field-sales__check"><input type="checkbox" name="electronicDelivery" required>I have reviewed and consent to the electronic delivery information shown above.</label>
-                <button type="submit"${facts.workflow&&!(facts.workflow.documents||[]).length?' disabled':''}>Record customer acceptance</button></form>`}
+                `<p role="alert">${esc(facts.signatureUnavailableReason||'Updated separate notices and electronic signature are required before new acceptance.')}</p>`}`}
             ${facts.workflow?`<h3>Secure deposit, installation & balance</h3>
                 <p>Total verified payments (net of refunds): ${money(facts.workflow.netPaidCents)}. Outstanding balance: ${money(facts.workflow.balanceCents)}.</p>
                 <p>Installation: ${facts.workflow.completedAt?'Completion recorded '+esc(new Date(facts.workflow.completedAt).toLocaleString()):'Not completed — balance collection blocked'}.</p>
@@ -75,6 +140,7 @@
                 <p>No card details are entered here. Checkout creation or return is never proof of payment. Current approved gates are checked again by the server.</p>
                 <div data-agreement-handoff></div>`:''}`;
         message(a.accepted_at?'Acceptance recorded. Payment is verified separately.':'Review the complete quote and approved agreement before accepting. No card details are collected on this page.');
+        bindReviewEnd();
     }
     if(fragment==='#checkout-returned'||fragment==='#checkout-cancelled'){message('Checkout returned or was canceled. This page does not verify payment. Ask your representative to verify the payment status with Stripe.');return;}
     if(!token||!/^[a-f0-9]{64}$/.test(token)){message('Secure agreement link missing or invalid. Contact Home2Smart.',true);return;}
@@ -96,6 +162,17 @@
     }
     content.addEventListener('click',async event=>{
         if(busy||ended)return;
+        const endLink=event.target.closest('[data-agreement-end-link]');
+        if(endLink){const end=content.querySelector('[data-agreement-end]');end?.scrollIntoView({block:'end'});end?.focus({preventScroll:true});return;}
+        const documentButton=event.target.closest('[data-customer-document],[data-agreement-access]');
+        if(documentButton){
+            const demo=documentButton.hasAttribute('data-agreement-access'),doc=demo?null:customerDocuments()[Number(documentButton.dataset.customerDocument)];
+            const html=demo?facts.workflow?.accessDemonstrationHtml:doc?.html;
+            if(!html){message('Exact retained customer copy is unavailable. Contact Home2Smart.',true);return;}
+            const blob=new Blob([html],{type:'text/html;charset=utf-8'}),url=URL.createObjectURL(blob);downloads.add(url);
+            const link=document.createElement('a');link.href=url;link.download=`Home2Smart-${demo?'electronic-access':String(doc.label).replace(/[^a-z0-9-]/gi,'-')}.html`;
+            content.append(link);link.click();link.remove();return;
+        }
         const payment=event.target.closest('[data-agreement-checkout],[data-agreement-verify]');
         if(payment){
             if(payment.dataset.agreementVerify)paymentAction({action:'refresh_payment',checkoutId:payment.dataset.agreementVerify});
@@ -109,14 +186,18 @@
     });
     content.addEventListener('submit',async event=>{
         const form=event.target.closest('[data-agreement-accept]');if(!form)return;event.preventDefault();if(busy)return;busy=true;readVersion++;
-        try{if(attempt?.action)throw Error('A payment operation is interrupted. Retry it unchanged before accepting a different operation.');if(!attempt)attempt={operationId:crypto.randomUUID(),name:form.elements.name.value,email:form.elements.email.value,
+        try{if(!reachedEnd)throw Error('Reach the end of the agreement before signing.');if(attempt?.action)throw Error('A payment operation is interrupted. Retry it unchanged before accepting a different operation.');if(!attempt)attempt={operationId:crypto.randomUUID(),name:form.elements.name.value,email:form.elements.email.value,
             quoteHash:facts.quote.quote_hash,policyVersion:facts.agreement.policy_snapshot.version,
-            accepted:form.elements.accepted.checked,electronicDelivery:form.elements.electronicDelivery.checked};
+            accepted:form.elements.agreementAccepted.checked,electronicDelivery:form.elements.electronicRecordsConsent.checked,
+            agreementAccepted:form.elements.agreementAccepted.checked,cancellationNoticeReceived:form.elements.cancellationNoticeReceived.checked,
+            electronicRecordsConsent:form.elements.electronicRecordsConsent.checked,signatureIntent:form.elements.signatureIntent.checked,
+            signatureIntentText:signatureIntent,accessCode:form.elements.accessCode.value,
+            reviewedBundleHash:facts.workflow.reviewedBundleHash,reviewDate:facts.workflow.reviewDate};
             message('Recording the exact acceptance. Interrupted requests keep the same retry key.');
             facts=await request(attempt);attempt=null;dirty=false;render();
         }catch(error){console.error('Customer agreement acceptance failed.');message(error.message,true);}finally{busy=false;}
     });
-    const edited=event=>{if(event.target.closest('form')){dirty=true;edits++;}};
+    const edited=event=>{if(event.target.closest('form')){dirty=true;edits++;updateSigningControls();}};
     content.addEventListener('input',edited);content.addEventListener('change',edited);
     async function synchronize(){
         const read=++readVersion,edit=edits,result=await request();

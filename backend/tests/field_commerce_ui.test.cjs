@@ -108,17 +108,15 @@ test('successful immutable revision actions select the new revision instead of r
   assert.equal(submitted.amountCents,undefined);assert.equal(submitted.totalCents,undefined);
   assert.equal(f.root.querySelector('[data-commerce-submit]'),null);
 });
-test('customer fragment is removed, exact quote/policy accepted without payment assertion or token persistence',async t=>{
+test('legacy unsigned customer copies cannot bypass updated signatures; fragment and tokens remain private',async t=>{
   const dom=new JSDOM(source('field-agreement.html'),{runScripts:'outside-only',url:'https://fixture.invalid/field-agreement.html#token='+'a'.repeat(64)});t.after(()=>dom.window.close());
   const w=dom.window,calls=[];w.crypto.randomUUID=crypto.randomUUID;w.console.error=()=>{};
   const facts={ok:true,quote:{quote_id:'quote',quote_hash:'hash',revision:2,snapshot:snapshot(),expires_at:'2099-01-01'},
     agreement:{accepted_at:null,policy_snapshot:{version:'fixture-legal',terms:'Synthetic terms',payment_terms:'Synthetic payment',cancellation_information:'Synthetic notice',electronic_delivery:'Synthetic delivery',paymentPlan:{fullCents:10000,depositCents:4000,remainingAfterDepositCents:6000}}}};
   w.fetch=async(url,init)=>{calls.push({url,init,body:init.body&&JSON.parse(init.body)});if(init.method==='POST')facts.agreement={...facts.agreement,accepted_at:'2026-01-01',acceptance:{name:'Fixture customer'}};return Response.json(facts);};
   w.eval(source('field-agreement.js'));assert.equal(w.location.hash,'');await settle();assert.equal(w.document.querySelector('img'),null);
-  const form=w.document.querySelector('form');form.elements.name.value='Fixture customer';form.elements.email.value='fixture@example.invalid';form.elements.accepted.checked=form.elements.electronicDelivery.checked=true;
-  form.dispatchEvent(new w.SubmitEvent('submit',{bubbles:true,cancelable:true}));await settle();
-  assert.equal(calls[1].body.quoteHash,'hash');assert.equal(calls[1].body.policyVersion,'fixture-legal');
-  assert.equal(calls[0].url.includes('token'),false);assert.equal(w.localStorage.length,0);assert.match(w.document.body.textContent,/not a payment receipt/);
+  assert.equal(w.document.querySelector('form'),null);assert.equal(calls.length,1);
+  assert.equal(calls[0].url.includes('token'),false);assert.equal(w.localStorage.length,0);assert.match(w.document.body.textContent,/electronic signature.*required/);
   assert.match(w.document.body.textContent,/Exact fixture size: 50/);assert.match(w.document.body.textContent,/Approved optional deposit: \$40\.00; remaining balance: \$60\.00/);
   w.dispatchEvent(new w.Event('pagehide'));assert.equal(w.document.querySelector('[data-agreement-content]').children.length,0);
 });

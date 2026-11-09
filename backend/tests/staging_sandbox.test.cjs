@@ -21,7 +21,7 @@ test('sandbox cleanup requires exact matching run confirmation before issuing SQ
 });
 test('reviewed native candidate sources are available, checksummed and do not contain outer commit after wrapping', () => {
   const sources = migrationSources();
-  assert.equal(sources.at(-1).file, '054_field_sales_residential_booking.sql');
+  assert.equal(sources.at(-1).file, '056_field_sales_customer_signature.sql');
   assert.ok(!sources.some(s => s.file.startsWith('040_')));
   for (const source of sources) {
     assert.match(source.sha256, /^[a-f0-9]{64}$/);

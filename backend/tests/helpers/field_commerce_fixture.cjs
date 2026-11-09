@@ -42,6 +42,8 @@ async function createCommerceFixture(){
   const globals={process:{env},Buffer,Headers};
   const engine=evaluate('lib\\fieldQuote.ts',imports,globals);imports['@/lib/fieldQuote']=engine;
   const commerce=evaluate('lib\\fieldCommerce.ts',imports,globals);imports['@/lib/fieldCommerce']=commerce;
+  imports['@/lib/customerAgreement.v1.json']=require('../../lib/customerAgreement.v1.json');
+  imports['@/lib/fieldAgreement']=evaluate('lib\\fieldAgreement.ts',imports,globals);
   const routes=Object.fromEntries(['field-sales-transactions','field-sales-agreement','field-sales-stripe-webhook'].map(name=>
     [name,evaluate('app\\api\\'+name+'\\route.ts',imports,globals)]));
   const request=(name,method='GET',body,actor='a',query='')=>routes[name][method](new Request('https://fixture.invalid/api/'+name+query,
@@ -82,9 +84,12 @@ async function createCommerceFixture(){
     const facts=await(await request('field-sales-agreement','GET',null,token)).json();
     const body={operationId:crypto.randomUUID(),name:'Synthetic customer',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
       quoteHash:facts.quote.quote_hash,policyVersion:facts.agreement.policy_snapshot.version};
-    const response=await request('field-sales-agreement','POST',body,token);if(response.status!==200)throw Error(await response.text());
+    await historicalAcceptance(token,body);
     return {quoteId:q,token,body,agreementId:prepared.id};
   }
+  // These pre-056 fixtures represent already-signed legacy records, not the new customer signature flow.
+  const historicalAcceptance=(token,body)=>f.db.query('select field_sales_customer_agreement($1::text,$2::jsonb) result',
+    [crypto.createHash('sha256').update(token).digest('hex'),JSON.stringify(body)]);
   function paid(sid){
     const session=sessions.get(sid),pid='pi_'+sid,cid='ch_'+sid;
     session.status='complete';session.payment_status='paid';session.payment_intent=pid;session.url=null;
@@ -99,6 +104,6 @@ async function createCommerceFixture(){
       {method:'POST',headers:{'stripe-signature':signature},body:payload}));
   };
   return {...f,env,engine,commerce,routes,request,post,catalogId,definition,enable,publish,legal,lead,lines,quote,submit,accepted,
-    sessions,intents,charges,keys,stripeCalls,paid,webhook};
+    sessions,intents,charges,keys,stripeCalls,paid,webhook,historicalAcceptance};
 }
 module.exports={createCommerceFixture,id,baseOffer};

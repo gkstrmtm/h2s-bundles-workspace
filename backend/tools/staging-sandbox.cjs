@@ -16,7 +16,8 @@ const migrations = ['014_create_commercial_consultation.sql','031_commercial_rel
   '045_field_sales_launch_contracts.sql','046_field_sales_workflow.sql','047_field_sales_earnings.sql',
   '048_field_sales_catalog_administration.sql','049_field_sales_opportunities.sql',
   '050_field_sales_credentials.sql','051_field_sales_company_installation.sql','052_shared_dispatch_installation.sql',
-  '053_staging_configuration_scope.sql','054_field_sales_residential_booking.sql'];
+  '053_staging_configuration_scope.sql','054_field_sales_residential_booking.sql',
+  '056_field_sales_customer_signature.sql'];
 const quote = name => '"' + String(name).replace(/"/g, '""') + '"';
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 function runNames(runId) {

@@ -125,7 +125,7 @@ test('management exceptions are new immutable revisions; pricing drift and stale
   assert.equal(rejected.ok,true,rejected.error);
   assert.equal((await f.post({action:'submit',leadId:other,quoteId:rejected.id})).status,409);
 });
-test('agreement gates, exact quote hash, explicit customer acceptance, token replay and immutable evidence',async t=>{
+test('legacy agreement evidence stays immutable while bare-checkbox new acceptance is rejected',async t=>{
   const f=await createCommerceFixture();t.after(()=>f.db.close());await f.enable();await f.publish();const lead=await f.lead();
   const quoteId=await f.submit(lead,await f.quote(lead));
   assert.equal((await f.post({action:'agreement',leadId:lead,quoteId})).status,503);
@@ -138,9 +138,10 @@ test('agreement gates, exact quote hash, explicit customer acceptance, token rep
     quoteHash:facts.quote.quote_hash,policyVersion:facts.agreement.policy_snapshot.version};
   assert.equal((await f.request('field-sales-agreement','POST',{...accept,quoteHash:'0'.repeat(64)},token)).status,400);
   assert.equal((await f.request('field-sales-agreement','POST',{...accept,electronicDelivery:false},token)).status,400);
-  assert.equal((await f.request('field-sales-agreement','POST',accept,token)).status,200);
-  assert.equal((await f.request('field-sales-agreement','POST',accept,token)).status,200);
-  assert.equal((await f.request('field-sales-agreement','POST',{...accept,name:'Different evidence'},token)).status,409);
+  assert.equal((await f.request('field-sales-agreement','POST',accept,token)).status,400);
+  await f.historicalAcceptance(token,accept);
+  await f.historicalAcceptance(token,accept);
+  await assert.rejects(f.historicalAcceptance(token,{...accept,name:'Different evidence'}),/different evidence/);
   await assert.rejects(f.db.exec("update field_sales_agreements set acceptance='{}'"),/immutable/);
   f.env.H2S_FIELD_CUSTOMER_AGREEMENTS_ENABLED='false';assert.equal((await f.request('field-sales-agreement','GET',null,token)).status,503);
   assert.equal((await f.post({action:'quote',leadId:lead,catalogId:f.catalogId,lines:f.lines()})).status,409);

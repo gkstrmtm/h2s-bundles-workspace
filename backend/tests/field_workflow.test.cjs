@@ -27,7 +27,7 @@ test('workflow SQL and authenticated route fail closed, versions and attribution
   await assert.rejects(f.db.query('update field_sales_workflow_artifacts set label=$1 where quote_id=$2',['tampered',record.quoteId]),/Immutable/);
   const body={operationId:crypto.randomUUID(),name:'Customer',email:'synthetic@example.invalid',accepted:true,electronicDelivery:true,
     quoteHash:(await f.db.query('select quote_hash from field_sales_quotes where quote_id=$1',[record.quoteId])).rows[0].quote_hash,policyVersion:'synthetic-legal-v1'};
-  assert.equal((await f.request('field-sales-agreement','POST',body,copy.token)).status,503);
+  assert.equal((await f.request('field-sales-agreement','POST',body,copy.token)).status,400);
   const accepted=await f.accept(copy);assert.ok(accepted.token);
   assert.equal(w.documents.length,3);
   const customer=await json(await f.request('field-sales-agreement','GET',null,copy.token));assert.ok(customer.workflow.cancellationDeadline);
