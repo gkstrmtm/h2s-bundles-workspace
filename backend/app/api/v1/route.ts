@@ -1809,7 +1809,10 @@ async function salesLoginAllowed(userId: string): Promise<boolean> {
   if (main && mgmt && main.replace(/\/$/, '') !== mgmt.replace(/\/$/, '')) return false;
   const result = await getDeliverablesDb().rpc('field_sales_access', { p_actor: userId });
   if (result.error) console.error('Sales session enrollment unavailable', { code: result.error.code });
-  return !result.error && result.data === 'SALES';
+  const access: unknown = result.data;
+  const role = typeof access === 'string' ? access
+    : access && typeof access === 'object' && !Array.isArray(access) && 'role' in access ? access.role : null;
+  return !result.error && role === 'SALES';
 }
 
 async function getDashboardAuthUserFromSession(request: Request, allowSales = false): Promise<DashboardAuthUser | null> {

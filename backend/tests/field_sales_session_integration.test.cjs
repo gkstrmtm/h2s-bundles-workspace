@@ -1,6 +1,30 @@
 const test = require('node:test'), assert = require('node:assert/strict'), crypto = require('node:crypto');
 const { createSalesFixture } = require('./helpers/field_sales_fixture.cjs');
 const { evaluate } = require('./helpers/commercial_operations_fixture.cjs');
+test('sales login and session checks accept legacy or NC role metadata and reject malformed or unauthorized roles',async t=>{
+  const f=await createSalesFixture();t.after(()=>f.db.close());await f.enable();
+  const rpc=f.client.rpc.bind(f.client);
+  let access='SALES';
+  f.client.rpc=(name,args)=>name==='field_sales_access'?Promise.resolve({data:access,error:null}):rpc(name,args);
+  const login=()=>f.auth.dashboardLogin(new Request('https://fixture.invalid'),
+    {username:'SALESA',pin:'temporary-fixture-password-a'});
+  for(const value of ['SALES',{role:'SALES',doorToDoorLaunch:null},
+    {role:'SALES',doorToDoorLaunch:{enabled:true,jurisdiction:'NC',municipality:'Charlotte'}}]){
+    access=value;
+    const result=await login();
+    assert.match(result.token,/^h2s-sales:/);
+    const request=new Request('https://fixture.invalid',{headers:{authorization:'Bearer '+result.token}});
+    assert.equal((await f.auth.dashboardMe(request)).role,'SALES');
+    access={role:'ADMIN'};
+    assert.equal((await f.auth.dashboardMe(request)).status,401,'Session enrollment is revalidated');
+  }
+  for(const value of [null,{},[],[{role:'SALES'}],'ADMIN',{role:'ADMIN'},{role:true},{Role:'SALES'}]){
+    access=value;
+    assert.equal((await login()).status,403,JSON.stringify(value));
+  }
+  access={role:'SALES'};f.env.H2S_FIELD_SALES_ENABLED='false';
+  assert.equal((await login()).status,403,'Metadata does not override the feature gate');
+});
 test('five real synthetic dashboard login tokens authenticate owned sales records and retain legacy isolation', async t => {
   const f = await createSalesFixture(); t.after(() => f.db.close()); await f.enable();
   const auth = evaluate('lib\\dashboardAuth.ts', {
