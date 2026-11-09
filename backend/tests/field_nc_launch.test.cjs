@@ -275,17 +275,26 @@ test('057 native NC launch uses real SQL, frozen jurisdiction evidence and uncha
   });
   await t.test('NC voluntarily extends printed deadlines to three Mon-Fri days; SC retains Saturday and old deadlines',async()=>{
     const nc=f.ncRecord;
-    for(const [stamp,expected] of [
-      ['2026-11-06T15:00:00Z','2026-11-13T05:00:00+00:00'],
-      ['2026-07-02T15:00:00Z','2026-07-09T04:00:00+00:00'],
-      ['2026-03-06T15:00:00Z','2026-03-12T04:00:00+00:00']
+    for(const [label,stamp,expected,ftcExpected] of [
+      ['Friday before Veterans Day','2026-11-06T15:00:00Z','2026-11-13T05:00:00Z','2026-11-11T05:00:00Z'],
+      ['Saturday before Veterans Day','2026-11-07T15:00:00Z','2026-11-13T05:00:00Z','2026-11-13T05:00:00Z'],
+      ['Veterans Day eve','2026-11-10T15:00:00Z','2026-11-17T05:00:00Z','2026-11-15T05:00:00Z'],
+      ['Veterans Day signing','2026-11-11T15:00:00Z','2026-11-17T05:00:00Z','2026-11-15T05:00:00Z'],
+      ['Thanksgiving eve','2026-11-25T15:00:00Z','2026-12-02T05:00:00Z','2026-12-01T05:00:00Z'],
+      ['Saturday after Thanksgiving','2026-11-28T15:00:00Z','2026-12-03T05:00:00Z','2026-12-03T05:00:00Z'],
+      ['Actual and observed Independence Day','2026-07-02T15:00:00Z','2026-07-09T04:00:00Z','2026-07-09T04:00:00Z'],
+      ['Friday across spring DST','2026-03-06T15:00:00Z','2026-03-12T04:00:00Z','2026-03-11T04:00:00Z'],
+      ['Friday across autumn DST','2026-10-30T15:00:00Z','2026-11-05T05:00:00Z','2026-11-04T05:00:00Z'],
+      ['Friday 23:59:59 New York before spring DST','2026-03-07T04:59:59Z','2026-03-12T04:00:00Z','2026-03-11T04:00:00Z'],
+      ['Saturday 00:00 New York before spring DST','2026-03-07T05:00:00Z','2026-03-12T04:00:00Z','2026-03-12T04:00:00Z'],
+      ['Sunday 23:59:59 New York after spring DST','2026-03-09T03:59:59Z','2026-03-12T04:00:00Z','2026-03-12T04:00:00Z'],
+      ['Monday 00:00 New York after spring DST','2026-03-09T04:00:00Z','2026-03-13T04:00:00Z','2026-03-13T04:00:00Z']
     ]){
       const actual=await rpc(f,'field_sales_workflow_deadline',['uuid','timestamptz'],[nc.quoteId,stamp]);
-      assert.equal(new Date(actual).toISOString(),new Date(expected).toISOString());
+      assert.equal(new Date(actual).toISOString(),new Date(expected).toISOString(),label+' NC voluntary printed deadline');
+      const ftc=await rpc(f,'field_sales_workflow_deadline',['uuid','timestamptz'],[sc.quoteId,stamp]);
+      assert.equal(new Date(ftc).toISOString(),new Date(ftcExpected).toISOString(),label+' preserved FTC convention');
     }
-    const start='2026-03-06T15:00:00Z';
-    const old=await rpc(f,'field_sales_workflow_deadline',['uuid','timestamptz'],[sc.quoteId,start]);
-    assert.equal(new Date(old).toISOString(),'2026-03-11T04:00:00.000Z');
     const lead=await command(f,'create',{...createPayload,phone:'+15555559875'});
     const bad=await protocolRecord(f,{nc:true,leadId:lead.leadId,publish:false,calendarOverrides:{excludedWeekdays:[7]}});
     await assert.rejects(workflow(f,bad,'documents_publish',{artifacts:bad.artifacts,
