@@ -4,6 +4,10 @@ import { requireTransactions, tokenHash, salesChecked, readJson, identifier, tex
 import { acceptanceEvidence, withCustomerDocuments } from '@/lib/fieldAgreement';
 export const dynamic = 'force-dynamic';
 const headers = (request: Request) => ({ ...corsHeaders(request), 'Cache-Control': 'private, no-store', Vary: 'Authorization, Origin', 'Referrer-Policy': 'no-referrer' });
+function agreementChecked<T>(result: { data: T; error: { code?: string; message: string } | null }): T {
+  if (result.error?.code === '55000') throw new BusinessError(result.error.message, 409);
+  return salesChecked(result);
+}
 async function handle(request: Request, accept: boolean) {
   try {
     requireTransactions();
@@ -24,12 +28,12 @@ async function handle(request: Request, accept: boolean) {
       for (const key of ['accepted','electronicDelivery','agreementAccepted','cancellationNoticeReceived','electronicRecordsConsent','signatureIntent']) {
         if (body[key] !== true) throw new BusinessError('Every separate document acknowledgment and affirmative signature is required.');
       }
-      const context = salesChecked(await getSupabase().rpc('field_sales_customer_signature_context', { p_token_hash: tokenHash(token) }));
+      const context = agreementChecked(await getSupabase().rpc('field_sales_customer_signature_context', { p_token_hash: tokenHash(token) }));
       payload = acceptanceEvidence({ ...body, operationId: identifier(body.operationId), name: text(body.name, 120), email: text(body.email, 254).toLowerCase(),
         quoteHash: text(body.quoteHash, 64), policyVersion: text(body.policyVersion, 100), accepted: body.accepted === true,
         electronicDelivery: body.electronicDelivery === true }, withCustomerDocuments(context), request);
     }
-    const result = salesChecked(await getSupabase().rpc('field_sales_customer_agreement', { p_token_hash: tokenHash(token), p_accept: payload }));
+    const result = agreementChecked(await getSupabase().rpc('field_sales_customer_agreement', { p_token_hash: tokenHash(token), p_accept: payload }));
     return Response.json({ ok: true, ...withCustomerDocuments(result) }, { headers: headers(request) });
   } catch (error) {
     console.error('Customer agreement request failed', { type: error instanceof Error ? error.name : 'Unknown' });

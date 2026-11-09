@@ -316,7 +316,7 @@ test('native signature SQL: protocol admission, immutable exact evidence, idempo
         reviewedBundleHash:decorated.workflow.reviewedBundleHash,reviewDate:decorated.workflow.reviewDate,
         accessCode:decorated.workflow.reviewedBundleHash.slice(0,8).toUpperCase()};
       const noRetrieval=await f.request('field-sales-agreement','POST',body,apiRecord.token);
-      assert.notEqual(noRetrieval.status,200);
+      assert.equal(noRetrieval.status,409);
       assert.equal((await f.db.query('select count(*)::int n from field_sales_workflow_delivery where quote_id=$1',[apiRecord.quoteId])).rows[0].n,0);
       const served=await f.request('field-sales-agreement','GET',null,apiRecord.token),servedFacts=await served.json();
       assert.equal(served.status,200,servedFacts.error);assert.equal(servedFacts.workflow.reviewDocuments.length,4);

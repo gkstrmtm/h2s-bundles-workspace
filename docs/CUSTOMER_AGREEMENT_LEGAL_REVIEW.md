@@ -74,6 +74,14 @@ acknowledgment events are retained. Reviewed documents and executed copies are
 stored in existing immutable artifacts. Customer retrieval is recorded separately;
 no email delivery is claimed without provider evidence. Later edits require new
 quote/document versions; renewed finite capabilities only retrieve existing copies.
+Customer-specific missing signing prerequisites return a clear HTTP 409 conflict,
+not a misleading storage-outage response. Other lifecycle/payment errors are unchanged.
+
+`customerAgreementPreparation` in `backend/lib/fieldAgreement.ts` generates the
+existing agreement-policy fields, linked `customer_document`, separate required
+notices and reviewed calendar from the central wording. Publish the existing
+workflow's `requiredArtifacts`; do not replace the approved policy copy with a
+separately assembled artifact or activate these staging documents in production.
 
 ## Specific qualified-review and management decisions before production
 
