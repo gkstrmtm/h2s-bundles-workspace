@@ -46,6 +46,7 @@ function catalogDefinition() {
 async function createOfferFixture() {
   const f=await createCommerceFixture();
   await f.db.exec(fs.readFileSync(path.join(__dirname,'..','..','migrations','058_field_sales_offer_assistant.sql'),'utf8'));
+  await f.db.exec(fs.readFileSync(path.join(__dirname,'..','..','migrations','059_field_sales_offer_business_conflicts.sql'),'utf8'));
   const original=f.client.rpc,casts={field_sales_offer_read:['uuid','uuid'],field_sales_offer_save:['uuid','uuid','uuid','integer','jsonb'],
     field_sales_offer_quote:['uuid','uuid','uuid','integer','text','jsonb'],field_sales_offer_reference:['uuid','uuid','uuid','boolean','jsonb']};
   f.client.rpc=async(name,args)=>{

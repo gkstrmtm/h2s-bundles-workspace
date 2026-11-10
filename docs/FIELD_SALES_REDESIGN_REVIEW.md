@@ -23,6 +23,11 @@ requirements; discovery does not replace them or alter an accepted contract.
   and apply only to the verified owned staging namespace; do not apply to
   production without separate approval. Existing quotes, accounts, financial
   settings and signed SC/NC document evidence are not rewritten.
+- Additive migration `059_field_sales_offer_business_conflicts.sql` changes only
+  the new save/quote functions' expected conflicts to PostgREST `PT409`. Real
+  staging showed prompt PostgreSQL `40001` rejection but a timed-out REST
+  response. Business conflicts now carry a nonretryable HTTP 409; append-only
+  evidence guards and applied migration 058 remain unchanged.
 - Product facts remain in `equipment.v1.json` and `residential-cameras.v1.json`.
   `field-offer-knowledge.v1.json` supplies versioned FAQs and explicit legacy
   scope bindings. Shared camera qualification and preference helpers are reused;

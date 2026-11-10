@@ -135,6 +135,11 @@ test('guided offers use existing quote authority and append-only owned discovery
     assert.equal(permissions.rows[0].allowed,false);
   });
   let quoteId;
+  await t.test('expected native save conflicts use nonretryable PostgREST HTTP 409',async()=>{
+    const leadId=await f.lead(),saved=await(await f.save(leadId,answers())).json();
+    await assert.rejects(f.db.query('select field_sales_offer_save($1,$2,$3,0,$4)',
+      [saved.discovery.actor_id,crypto.randomUUID(),leadId,saved.discovery.document]),error=>error.code==='PT409');
+  });
   await t.test('qualified discovery creates one exact draft through the existing quote authority',async()=>{
     const operationId=crypto.randomUUID(),payload={action:'quote',leadId,operationId,revision:1,knowledgeHash:f.offer.offerKnowledgeHash};
     let response=await f.offerRequest('POST',payload);assert.equal(response.status,200,JSON.stringify(await response.clone().json()));quoteId=(await response.json()).id;

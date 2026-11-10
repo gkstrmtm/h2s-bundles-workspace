@@ -11,6 +11,16 @@ const migrationDir = path.join(__dirname, '..', 'migrations');
 const sources = fs.readdirSync(migrationDir).filter(name =>
   /^(?:007_|014_create_commercial_|03[1-9]_|04[1-9]_|05[0-2]_)/.test(name));
 
+for (const name of ['058_field_sales_offer_assistant.sql','059_field_sales_offer_business_conflicts.sql']) {
+  test(`retargets offer migration ${name} without widening dynamic SQL permissions`, () => {
+    assert.equal(validateSourceName(name),name);
+    const actual=retargetSql(fs.readFileSync(path.join(migrationDir,name),'utf8'),targets);
+    assert.doesNotMatch(actual,/\bpublic\./i);
+    assert.equal(retargetSql(actual,targets),actual);
+    assert.ok(actual.includes(targets.schema));
+  });
+}
+
 test('only the exact 23 reviewed migration basenames are approved', () => {
   assert.equal(sources.length, 23);
   for (const name of sources) assert.equal(validateSourceName(name), name);

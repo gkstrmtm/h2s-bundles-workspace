@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = (request: Request) => ({ ...corsHeaders(request),'Cache-Control':'private, no-store',Vary:'Authorization, Origin' });
 function checked<T>(result: { data:T|null; error:{code?:string;message:string}|null }):T {
-  if (result.error?.code === '40001') throw new BusinessError('Discovery, catalog or operation changed. Reload the saved copy before continuing.',409);
+  if (result.error?.code === '40001' || result.error?.code === 'PT409') throw new BusinessError('Discovery, catalog or operation changed. Reload the saved copy before continuing.',409);
   if (result.error?.code === 'P0001') throw new BusinessError('Product-reference usage limit reached. Wait 15 minutes before trying again.',429);
   if (result.error?.code === '22023') throw new BusinessError('Discovery data, record size or reference input is unsupported. Review the saved answers.',400);
   const data=salesChecked(result);
