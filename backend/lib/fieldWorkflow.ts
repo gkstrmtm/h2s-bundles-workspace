@@ -26,9 +26,16 @@ export type Workflow = { quoteId: string; leadId: string; orderId: string | null
   state: 'enrolled' | 'scheduled' | 'completed' | 'cancelled' | 'refund_review'; representativeId: string;
   totalCents: number; netPaidCents: number; depositCents: number; balanceCents: number; completedAt: string | null;
   processingFeeCents: number | null; expenses: WorkflowExpense[]; jobId: string | null; technicianId: string | null;
+  acceptedAt: string | null; cancellationDeadline: string | null;
   proof: WorkflowProof | null; holds: string[];
   gates: { canSchedule: boolean; canAssign: boolean; canBalance: boolean; canDeposit: boolean; canComplete: boolean } };
 export type WorkflowRead = { policies: Array<Record<string, unknown>>; workflows: Workflow[]; nextActions: string[] };
+export class InstallationHoldError extends BusinessError {
+  constructor(message: string, public readonly code: 'INSTALLATION_CANCELLATION_HOLD' | 'INSTALLATION_NOT_READY',
+    public readonly earliestSchedulingAt: string | null = null) {
+    super(message, 409);
+  }
+}
 export async function workflowRead(actor: string, leadId: string | null, quoteId: string | null): Promise<WorkflowRead> {
   return salesChecked(await getSupabase().rpc('field_sales_workflow_read', { p_actor: actor, p_lead: leadId, p_quote: quoteId })) as WorkflowRead;
 }
@@ -55,10 +62,31 @@ export async function workflowCommand(actor: { userId: string; role: string }, b
   const revision = policy ? null : body.revision;
   if (!policy && (!Number.isSafeInteger(revision) || Number(revision) < 0)) throw new BusinessError('Reload the exact workflow revision.');
   const payload = Object.fromEntries(allowed.filter(key => body[key] !== undefined).map(key => [sqlKeys[key] || key, body[key]]));
-  return salesChecked(await getSupabase().rpc('field_sales_workflow_command', {
-    p_actor: actor.userId, p_operation: identifier(body.operationId), p_lead: policy ? null : identifier(body.leadId),
-    p_quote: policy ? null : identifier(body.quoteId), p_revision: revision, p_action: action, p_payload: payload,
-  }));
+  const leadId = policy ? null : identifier(body.leadId), quoteId = policy ? null : identifier(body.quoteId);
+  const result = await getSupabase().rpc('field_sales_workflow_command', {
+    p_actor: actor.userId, p_operation: identifier(body.operationId), p_lead: leadId,
+    p_quote: quoteId, p_revision: revision, p_action: action, p_payload: payload,
+  });
+  if (['schedule', 'reschedule', 'preparation', 'assign'].includes(action) && result.error?.code === '55000'
+    && result.error.message === 'Accepted delivered notices and verified 25% deposit without exceptions required') {
+    const current = await workflowRead(actor.userId, leadId, quoteId);
+    const workflow = current.workflows.find(row => row.quoteId === quoteId && row.leadId === leadId);
+    const accepted = typeof workflow?.acceptedAt === 'string' ? Date.parse(workflow.acceptedAt) : NaN;
+    const deadline = typeof workflow?.cancellationDeadline === 'string' ? Date.parse(workflow.cancellationDeadline) : NaN;
+    const now = Date.now();
+    if (workflow && workflow.gates.canSchedule === false && Array.isArray(workflow.holds)
+      && workflow.holds.includes('Configured cancellation deadline must clear before scheduling')
+      && !['cancelled', 'refund_review'].includes(workflow.state) && Number.isFinite(accepted)
+      && accepted <= now && Number.isFinite(deadline) && deadline > now && deadline > accepted) {
+      throw new InstallationHoldError(
+        "Installation cannot be scheduled during the customer's cancellation period. Scheduling is possible only after that period ends and all other requirements, including the verified deposit, are met.",
+        'INSTALLATION_CANCELLATION_HOLD', new Date(deadline).toISOString());
+    }
+    throw new InstallationHoldError(
+      'Installation requirements are not yet satisfied. Confirm the signed agreement, delivered cancellation notices and verified 25% deposit, and resolve any cancellation, refund or dispute holds before scheduling.',
+      'INSTALLATION_NOT_READY');
+  }
+  return salesChecked(result);
 }
 export async function completeEnrolledJob(proId: string, jobId: string, body: Record<string, unknown>) {
   if (!workflowEnabled()) return { enrolled: false } as const;

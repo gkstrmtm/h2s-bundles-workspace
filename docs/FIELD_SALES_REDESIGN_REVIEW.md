@@ -30,6 +30,22 @@ mobile navigation. Reference amounts and policies were not copied.
   statuses. Supplied representative names are preferred; missing names are
   explicitly unavailable rather than replaced with internal codes.
 
+### Installation cancellation-period responses
+
+The existing database scheduling/assignment guard remains authoritative. Its
+specific legal/payment readiness rejection now returns HTTP 409 with
+`INSTALLATION_CANCELLATION_HOLD` and `earliestSchedulingAt` only when a fresh,
+authorized read verifies an accepted agreement, the database's active
+cancellation hold, disabled scheduling gate and a future stored cancellation
+deadline. This timestamp is the earliest possible scheduling time, not clearance:
+the verified deposit and all other requirements still apply. Other instances of
+the same readiness guard return `INSTALLATION_NOT_READY` without a date.
+Unrelated database/authority failures still return 503.
+
+Scheduling shows the existing hold with a timezone-labelled date. A definitive
+hold response preserves form inputs but is not labelled an interrupted write;
+uncertain failures retain the original identical-operation retry behavior.
+
 ### Customer dropdown: demonstrated cause and correction
 
 The existing absolute-positioned popup had no viewport-aware bounds or flipping.

@@ -1,12 +1,13 @@
 import { corsHeaders } from '@/lib/adminAuth';
 import { salesActor, identifier, readJson, BusinessError } from '@/lib/fieldSales';
-import { workflowActor, workflowEnabled, workflowRead, workflowCommand } from '@/lib/fieldWorkflow';
+import { workflowActor, workflowEnabled, workflowRead, workflowCommand, InstallationHoldError } from '@/lib/fieldWorkflow';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 const headers = (request: Request) => ({ ...corsHeaders(request), 'Cache-Control': 'private, no-store', Vary: 'Authorization, Origin' });
 function failure(request: Request, error: unknown) {
   console.error('Field workflow request failed', { type: error instanceof Error ? error.name : 'Unknown' });
-  return Response.json({ ok: false, error: error instanceof BusinessError ? error.message : 'Workflow schema or authority unavailable. No lifecycle success is implied.' },
+  return Response.json({ ok: false, error: error instanceof BusinessError ? error.message : 'Workflow schema or authority unavailable. No lifecycle success is implied.',
+    ...(error instanceof InstallationHoldError ? { code: error.code, earliestSchedulingAt: error.earliestSchedulingAt } : {}) },
     { status: error instanceof BusinessError ? error.status : 503, headers: headers(request) });
 }
 export async function OPTIONS(request: Request) { return Response.json({}, { headers: headers(request) }); }

@@ -4,6 +4,16 @@
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const money = value => Number.isSafeInteger(value) ? new Intl.NumberFormat(undefined,{style:'currency',currency:'USD'}).format(value / 100) : 'Evidence pending';
     const date = value => value ? esc(new Date(value).toLocaleString()) : 'Not established';
+    const schedulingDate = value => {
+        const stamp=typeof value==='string'?Date.parse(value):NaN;
+        return Number.isFinite(stamp)?new Date(stamp).toLocaleString(undefined,{year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):null;
+    };
+    function cancellationSchedulingNote(w){
+        const accepted=typeof w.acceptedAt==='string'?Date.parse(w.acceptedAt):NaN;
+        const deadline=typeof w.cancellationDeadline==='string'?Date.parse(w.cancellationDeadline):NaN,now=Date.now();
+        if(w.gates?.canSchedule!==false||!Array.isArray(w.holds)||!w.holds.includes('Configured cancellation deadline must clear before scheduling')||['cancelled','refund_review'].includes(w.state)||!Number.isFinite(accepted)||accepted>now||!Number.isFinite(deadline)||deadline<=now||deadline<=accepted)return '';
+        return "The customer's cancellation period is active. Earliest possible scheduling: "+schedulingDate(w.cancellationDeadline)+'. A verified deposit and all other requirements must also be satisfied.';
+    }
     const contentText = value => typeof value === 'string' ? value : JSON.stringify(value,null,2);
     const labels = {enrolled:'Agreement in progress',deposit_pending:'Deposit pending',deposit_paid:'Deposit received',ready:'Ready for scheduling',scheduled:'Installation scheduled',completed:'Installation completed',cancelled:'Cancelled',refund_review:'Refund under review',legal_review:'Agreement under review',accepted:'Agreement accepted',awaiting_deposit:'Awaiting deposit'};
     const human = value => labels[value] || 'Order under review';
@@ -108,11 +118,11 @@
             const audit = event.target.closest('details.field-workflow__audit');
             if (audit) audit.open = true;
         },{capture:true,signal:state.controller.signal});
-        function status(text, error = false) {
+        function status(text, error = false, refreshLabel = 'Retry') {
             if (!valid()) return;
             const el = root.querySelector('[data-workflow-status]');
             if (el) { el.textContent = text; el.setAttribute('role',error ? 'alert' : 'status'); }
-            if (el && error && !state.attempt) el.insertAdjacentHTML('beforeend',' <button type="button" data-workflow-refresh>Retry</button>');
+            if (el && error && !state.attempt) el.insertAdjacentHTML('beforeend',` <button type="button" data-workflow-refresh>${esc(refreshLabel)}</button>`);
         }
         async function api(body) {
             if (!valid()) throw Error('Session changed; workflow response discarded.');
@@ -127,7 +137,15 @@
             if ([401,403].includes(response.status)) { options.onSessionEnded?.(); reset(); throw Error('Workflow access ended.'); }
             const result = await response.json();
             if (!valid()) throw Error('Session changed; workflow response discarded.');
-            if (!response.ok || !result.ok) throw Error(result.error || 'Order workflow unavailable. No clearance or completion is implied.');
+            if (!response.ok || !result.ok) {
+                const error=Error(result.error || 'Order workflow unavailable. No clearance or completion is implied.');
+                error.installationHold=response.status===409&&result.ok===false&&typeof result.error==='string'&&['INSTALLATION_CANCELLATION_HOLD','INSTALLATION_NOT_READY'].includes(result.code);
+                if(error.installationHold&&result.code==='INSTALLATION_CANCELLATION_HOLD'){
+                    const earliest=schedulingDate(result.earliestSchedulingAt);
+                    error.message+=earliest?' Earliest possible scheduling: '+earliest+'.':' The earliest scheduling date could not be verified. Refresh the order before planning installation.';
+                }
+                throw error;
+            }
             return result;
         }
         function policies(kind) {
@@ -263,7 +281,8 @@
             const preview = w.assignmentPreview, technicians = preview?.technicians || [];
             const assignment = form('assign',w,`<label>Available technician<select name="proId" required><option value="">Choose an authorized technician</option>${technicians.map((t,i)=>`<option value="${esc(t.proId)}">${esc(t.name || 'Technician '+(i+1))}</option>`).join('')}</select></label>
                 <input name="context" type="hidden" value="${esc(preview?.job?.context || '')}"><label class="field-sales__wide">Assignment note<textarea name="note" required maxlength="4000"></textarea></label>`,'Submit managed assignment',w.gates?.canAssign !== true || !preview?.job?.context || !technicians.length);
-            return {documents:docForms,readiness,scheduling:`${holds.length ? '<p>Scheduling and assignment have separate requirements; disabled actions are not ready. The server revalidates every transition.</p>' : ''}${schedule}${assignment}`,
+            const cancellationNote=cancellationSchedulingNote(w);
+            return {documents:docForms,readiness,scheduling:`${cancellationNote?`<p class="field-workflow__note">${esc(cancellationNote)}</p>`:holds.length ? '<p>Scheduling and assignment have separate requirements; disabled actions are not ready. The server revalidates every transition.</p>' : ''}${schedule}${assignment}`,
                 cancellation:`<p>Review only — no automatic refund.</p>${form('cancel',w,reason+evidence,'Record cancellation and holds')}${form('refund_review',w,reason+evidence,'Record refund review — no automatic transfer')}`};
         }
         function costReview(w){
@@ -348,8 +367,16 @@
             try { await api(state.attempt); if (!valid()) return; state.attempt = null; state.dirty=false; await load(); }
             catch (error) {
                 if (valid()) {
-                    console.error('Field workflow action failed:',error.message); status(error.message + ' The exact interrupted operation is retained.',true);
-                    if (!root.querySelector('[data-workflow-retry]')) root.querySelector('[data-workflow-status]').insertAdjacentHTML('afterend','<button type="button" data-workflow-retry>Retry identical interrupted operation</button><button type="button" data-workflow-discard-attempt>Discard interrupted action</button>');
+                    console.error('Field workflow action failed:',error.message);
+                    if(error.installationHold){
+                        state.attempt=null;
+                        root.querySelectorAll('[data-workflow-retry],[data-workflow-discard-attempt]').forEach(button=>button.remove());
+                        root.querySelectorAll('[data-workflow-form="schedule"] button[type="submit"],[data-workflow-form="reschedule"] button[type="submit"],[data-workflow-form="preparation"] button[type="submit"],[data-workflow-form="assign"] button[type="submit"]').forEach(button=>{button.disabled=true;});
+                        status(error.message+' No installation action was recorded. Your inputs are retained.',true,'Refresh order');
+                    }else{
+                        status(error.message + ' The exact interrupted operation is retained.',true);
+                        if (!root.querySelector('[data-workflow-retry]')) root.querySelector('[data-workflow-status]').insertAdjacentHTML('afterend','<button type="button" data-workflow-retry>Retry identical interrupted operation</button><button type="button" data-workflow-discard-attempt>Discard interrupted action</button>');
+                    }
                 }
             } finally { state.busy = false; }
         }
