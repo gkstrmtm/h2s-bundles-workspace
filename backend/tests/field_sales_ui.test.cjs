@@ -6,11 +6,12 @@ const service = { service_id: 'future_fixture', version: 3, enabled: true, defin
   questions: [{ id: 'quantity', label: 'Fixture quantity', type: 'number', required: true, min: 1, max: 10 },
     { id: 'equipment', label: 'Equipment preference', type: 'select', required: false, options: ['Customer equipment','Review needed'] }] } };
 const lead = '00000000-0000-4000-8000-000000000001';
-function fixture(t, role = 'SALES') {
+function fixture(t, role = 'SALES', standalone = false) {
   const dom = new JSDOM('<div id="h2s-app"><div class="app-topbar"></div><div class="app-sidebar-group" data-group-id="admin"><div class="app-sidebar-group-items"><button class="app-sidebar-nav-item">Staff only</button></div></div><div class="app-content"><section class="pane active">Staff pane</section></div></div><span id="currentAreaTitle"></span>',
     { runScripts: 'outside-only', url: 'https://fixture.invalid' });
   t.after(() => dom.window.close());
   const w = dom.window, calls = [], revoked = [];
+  if (standalone) w.document.body.dataset.salesApp = 'true';
   let actor = { token: 'h2s-sales:fixture', role }, response;
   const listing = { ok: true, enabled: true, services: [service], representatives: [{ user_id: 'rep', display_name: 'Fixture rep', username: 'SALESFIXTURE', active: true }],
     opportunities: [{ lead_id: lead, full_name: '<img src=x onerror=alert(1)>', phone: '+15555550100', address: 'Fixture property', market: 'residential',
@@ -34,6 +35,22 @@ function fixture(t, role = 'SALES') {
   return { w, calls, revoked, listing, detail, click, setActor: value => { actor = value; }, respond: fn => { response = fn; }, get loggedOut() { return loggedOut; } };
 }
 const settle = async () => { for (let n = 0; n < 5; n++) await new Promise(resolve => setImmediate(resolve)); };
+test('official header logo is limited to standalone sales and survives navigation without changing destinations',async t=>{
+  const f=fixture(t,'SALES',true);f.w.H2SFieldSales.activate();await settle();
+  for(const mode of ['opportunities','quotes']){
+    const logo=f.w.document.querySelector('.field-sales__header .sales-brand__logo');
+    assert.equal(logo.getAttribute('src'),'./media/home2smart-logo.png');
+    assert.equal(logo.getAttribute('width'),'24');assert.equal(logo.getAttribute('height'),'24');
+    assert.equal(logo.getAttribute('alt'),'Home2Smart');
+    assert.equal(f.w.document.querySelectorAll('.field-sales__nav button').length,5);
+    assert.ok(f.w.document.querySelector('[data-sales-logout]'));
+    f.click('[data-sales-mode="'+mode+'"]');await settle();
+  }
+  for(const role of ['SALES','ADMIN']){
+    const embedded=fixture(t,role);embedded.w.H2SFieldSales.activate();await settle();
+    assert.equal(embedded.w.document.querySelector('.sales-brand__logo'),null);
+  }
+});
 test('NC launch controls are scoped, explicit and submitted without assuming city proves jurisdiction',async t=>{
   const f=fixture(t);
   f.listing.doorToDoorLaunch={enabled:true,jurisdiction:'NC',municipality:'Charlotte',status:'staging_only',productionApproved:false};

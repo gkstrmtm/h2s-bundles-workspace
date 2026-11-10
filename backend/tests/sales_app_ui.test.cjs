@@ -27,6 +27,15 @@ test('dedicated entry has no management navigation and requires the existing acc
     assert.equal(f.doc.querySelector('.app-sidebar'),null);
     assert.doesNotMatch(f.doc.body.textContent,/Hiring|Technician screening|Administrator tools/);
 });
+test('standalone sign-in uses the existing official logo beside accessible brand text',async t=>{
+    const f=await fixture(t),brand=f.doc.querySelector('.sales-access__brand'),logo=brand.querySelector('img');
+    assert.equal(logo.getAttribute('src'),'./media/home2smart-logo.png');
+    assert.ok(fs.existsSync(path.join(frontend,'media','home2smart-logo.png')));
+    assert.equal(logo.getAttribute('width'),'48');assert.equal(logo.getAttribute('height'),'48');
+    assert.equal(logo.getAttribute('alt'),'');
+    assert.match(brand.textContent,/Home2Smart\s+Field Sales/);
+    assert.equal(f.calls.length,0);
+});
 test('cached salesperson token is verified by native dashboardMe before mounting',async t=>{
     const f=await fixture(t,{token:'synthetic-existing'});
     assert.match(f.calls[0].url,/\/api\/v1\?action=dashboardMe$/);
