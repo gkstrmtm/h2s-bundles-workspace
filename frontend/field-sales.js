@@ -50,6 +50,7 @@
         if (busy || preparing) { status('Wait for the current save or photo preparation to finish.'); return false; }
         if (attempt) { status('Retry the interrupted save before leaving, or discard that interrupted action explicitly.', true); return false; }
         if (global.H2SFieldCommerce?.canLeave?.() === false) return false;
+        if (global.H2SFieldOffers?.canLeave?.() === false) return false;
         if (mountedDirty && !global.confirm('Leave this destination and discard its unsaved changes, including any selected files?')) return false;
         mountedDirty = false;
         retainDraft(); retainQuoteDraft();
@@ -96,12 +97,14 @@
     const instant = value => value ? new Date(value).toISOString() : null;
     function release() { for (const url of urls) global.URL.revokeObjectURL(url); urls.clear(); }
     function reset() {
+        global.H2SFieldOffers?.reset();
         sync?.destroy(); sync = null;
         clearTimeout(searchTimer); filters={search:'',owner:''}; pages=[null];pageIndex=0;duePages=[null];dueIndex=0;
         customerHistory=null;historyPages=[null];historyIndex=0;
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
         global.H2SFieldEarnings?.reset();
+        global.H2SFieldOffers?.reset();
         ++version; controller?.abort(); release(); draftViews.clear(); quoteDrafts.clear(); renderedKey = savedForm = actorRole = null; assessmentDraft = {}; mountedDirty = false; data = detail = attempt = quoteLead = null; busy = preparing = false; mode = 'dashboard'; token = ''; root.replaceChildren(); nav.hidden = true;
         delete document.getElementById('h2s-app').dataset.fieldSales;
         for (const [element, hidden] of hiddenNav) element.hidden = hidden; hiddenNav.clear();
@@ -155,6 +158,7 @@
         }).join('');
     }
     function render() {
+        global.H2SFieldOffers?.reset();
         retainQuoteDraft();
         global.H2SFieldCommerce?.reset();
         global.H2SFieldWorkflow?.reset();
@@ -262,6 +266,7 @@
                 <p>Original representative: ${esc(op.originating_user_id || 'Historical origin unverified')} / creator ${esc(op.created_by || 'Unverified')} / current owner ${esc(op.owner_user_id)}. Reassignment does not rewrite original identity or approved commission credit.</p></details>` : ''}
                 <p class="field-sales__note">Assessment progress: ${required.filter(answer => answer !== undefined && answer !== '').length}/${required.length} required answers;
                     ${expectedPhotos.filter(Boolean).length}/${expectedPhotos.length} requested photo labels have ready evidence.</p>
+                ${detail.lead.attribution.market==='residential'?'<section data-sales-offers aria-label="Guided homeowner offer discovery"></section>':''}
                 <form data-sales-form="save" class="field-sales__form"><fieldset class="field-sales__wide"><legend>1 · Selected services</legend><div class="field-sales__services">${interests(op.services, detail.lead.attribution.market)}</div></fieldset>
                 <div data-sales-questions class="field-sales__wide"></div>
                 <fieldset class="field-sales__wide field-sales__form"><legend>3 · Notes & photo permission</legend>
@@ -346,6 +351,14 @@
         }
         savedForm = null;
         renderedKey = key;
+        const offerTarget = content.querySelector('[data-sales-offers]');
+        if (offerTarget) {
+            if (global.H2SFieldOffers) global.H2SFieldOffers.mount(offerTarget,{apiBase:options.apiBase,getSession:session,leadId:detail.opportunity.lead_id,
+                onSessionEnded:()=>reset(),
+                openQuotes:()=>root.querySelector('[data-sales-build-quote]').click(),
+                reviewAssessment:()=>content.querySelector('[data-sales-form="save"]').scrollIntoView({block:'start'})});
+            else offerTarget.textContent='Offer assistant unavailable. Existing service assessment and quote workflow remain available.';
+        }
         if (retained) retainDraft();
         global.h2sInitDateInputs?.();
     }
@@ -445,7 +458,7 @@
     }
     root.addEventListener('change', event => {
         editVersion++;
-        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
+        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') && !event.target.closest('[data-field-offers]') &&
             !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
         if (event.target.name === 'services') questions();
         if (event.target.name === 'market') {
@@ -487,23 +500,24 @@
             filters.search=event.target.value.trim();resetPages();clearTimeout(searchTimer);
             searchTimer=setTimeout(()=>reloadPage(),300);
         }
-        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') &&
+        if (event.target.closest('form') && !event.target.closest('[data-sales-form]') && !event.target.closest('[data-field-offers]') &&
             !(global.H2SFieldCommerce?.captureDraft && event.target.closest('[data-commerce-create]'))) mountedDirty = true;
     });
     function hasUnsavedDraft() {
         const nodes = [root, ...[...draftViews.values()].flatMap(draft => draft.forms), ...[...quoteDrafts.values()].map(draft => draft.form)];
-        const changed = nodes.some(node => node.querySelectorAll && [...node.querySelectorAll('form input,form select,form textarea')].some(control =>
+        const changed = nodes.some(node => node.querySelectorAll && [...node.querySelectorAll('form input,form select,form textarea')].filter(control=>!control.closest('[data-field-offers]')).some(control =>
             control.type === 'file' ? control.files.length > 0
                 : ['checkbox','radio'].includes(control.type) ? control.checked !== control.defaultChecked
                 : control.tagName === 'SELECT' ? control.selectedIndex !== Math.max(0, [...control.options].findIndex(option => option.defaultSelected))
                 : control.value !== control.defaultValue));
-        return changed || mountedDirty || busy || preparing || !!attempt;
+        return changed || mountedDirty || busy || preparing || !!attempt || global.H2SFieldOffers?.isDirty?.() === true;
     }
     global.addEventListener('beforeunload', event => {
         if (hasUnsavedDraft()) { event.preventDefault(); event.returnValue = ''; }
     });
     root.addEventListener('submit', async event => {
         const form = event.target.closest('[data-sales-form]'); if (!form) return; event.preventDefault();
+        if (global.H2SFieldOffers?.canLeave?.() === false) {status('Finish saving guided discovery before changing the service assessment.');return;}
         if (busy || preparing) return;
         const generation = version, started = session()?.token;
         try {

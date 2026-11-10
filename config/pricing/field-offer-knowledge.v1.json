@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "version": "field-offer-knowledge-v1",
+  "references": {
+    "equipment": "equipment.v1.json",
+    "cameraConfiguration": "residential-cameras.v1.json",
+    "cameraQualifications": "camera-recommendations.cjs",
+    "planningPrices": "home2smart.v2.json",
+    "historicalLaunchExperiment": "offers/residential/v5-launch-proposed.json"
+  },
+  "legacyBindings": {
+    "tv_mounting": {
+      "tv_fixed_1_43": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_fixed_44_55": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_fixed_56_65": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_fixed_66_75": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_fixed_76_85": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_fixed_86_plus": {"kind": "tv", "ownership": "supplied", "mountStyle": "fixed"},
+      "tv_install_1_43": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"},
+      "tv_install_44_55": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"},
+      "tv_install_56_65": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"},
+      "tv_install_66_75": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"},
+      "tv_install_76_85": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"},
+      "tv_install_86_plus": {"kind": "tv", "ownership": "customer", "mountStyle": "fixed"}
+    },
+    "equipment_cameras": {
+      "camera_install_1": {"kind": "camera", "ownership": "customer"},
+      "camera_install_2": {"kind": "camera", "ownership": "customer"},
+      "camera_install_3": {"kind": "camera", "ownership": "customer"},
+      "camera_install_4": {"kind": "camera", "ownership": "customer"},
+      "camera_install_6": {"kind": "camera", "ownership": "customer"},
+      "camera_install_8": {"kind": "camera", "ownership": "customer"},
+      "camera_install_12": {"kind": "camera", "ownership": "customer"},
+      "camera_install_16": {"kind": "camera", "ownership": "customer"}
+    }
+  },
+  "faq": [
+    {
+      "id": "price_authority",
+      "title": "Which price can I offer?",
+      "text": "The selected published Field Sales catalog controls customer prices. V2 and launch experiments are planning references, not proof of publication. Staging-only estimates are synthetic test prices, not permission to sell. Recommendations are not approved quotes; use the existing management review and acceptance workflow."
+    },
+    {
+      "id": "multiple_tvs",
+      "title": "How do the second- and third-TV discounts work?",
+      "text": "The documented V2 schedule is marginal: the highest base-price TV is first, the second gets 10% off its own eligible base price, and the third gets 15% off its own eligible base price. Upgrades are not discounted or stacked. The quote calculator applies this only when the selected residential catalog explicitly contains that rule and eligible offers. Otherwise request management review. Four or more TVs require a custom quote."
+    },
+    {
+      "id": "tv_compatibility",
+      "title": "Is this mount compatible?",
+      "text": "Screen size alone is not enough. Confirm the TV model, exact VESA pattern, weight, wall construction and the mount manual. Catalog VESA bounds are not proof that every pattern is supported. A customer-owned compatible mount uses an installation-only offer. Tilt and full-motion upgrades require a configured catalog option; a proposed upgrade is not an active customer price."
+    },
+    {
+      "id": "power_and_connection",
+      "title": "Does wireless mean battery powered?",
+      "text": "No. Wi-Fi describes the data connection, not the power supply. Battery cameras may use solar charging but do not promise unlimited runtime. The C31 needs its specified USB-C DC adapter; the Floodlight E30 needs compatible hardwired AC. Neither is a PoE camera. Verify power, weather protection and the network at each location. This reference is not an installation tutorial."
+    },
+    {
+      "id": "recording_and_storage",
+      "title": "Can every eufy camera record continuously?",
+      "text": "No. S220, S340, SoloCam E30 and E40 use motion-event recording in these controlled standards. Continuous recording requires a compatible continuously powered model and the specified recording media. Built-in storage, a separate microSD card and a required HomeBase are different choices. An included solar panel does not turn an event camera into a continuous-recording camera."
+    },
+    {
+      "id": "camera_packages",
+      "title": "Can I substitute another camera in a package?",
+      "text": "Not automatically. The catalog must identify the exact equipment and eligible quantity. A generic equipment-included package does not identify an S220, E40 or any other model. Different models, mixed equipment, missing storage and unsupported quantities require an explicitly configured offer or management review."
+    },
+    {
+      "id": "coverage",
+      "title": "How many cameras are needed?",
+      "text": "Use one camera per independently assessed coverage position. A rotating or tracking camera does not establish simultaneous coverage of separate areas. Confirm the coverage position, mounting, installation complexity, Wi-Fi or HomeBase radio link, storage compatibility and any model-specific sunlight requirement. Unknown conditions stay unknown."
+    },
+    {
+      "id": "payment_and_guarantee",
+      "title": "What happens after a recommendation?",
+      "text": "Save a quote draft, obtain required management approval, and use the existing customer agreement and secure 25% deposit checkout. The remaining balance follows the existing completion rules. The one-year workmanship guarantee and cancellation scheduling holds remain unchanged. Discovery is not acceptance, payment confirmation or authorization to install."
+    }
+  ]
+}

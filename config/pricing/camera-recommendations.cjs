@@ -394,4 +394,5 @@ function recommendResidentialCameras(config, catalog, baseline, input) {
   return result;
 }
 
-module.exports = { validateRecommendationConfiguration, recommendResidentialCameras };
+module.exports = { validateRecommendationConfiguration, recommendResidentialCameras,
+  cameraQualificationFailures: candidateReasons, rankCameraPreference: rankCamera };

@@ -37,6 +37,8 @@ test('prepared middleware never opens legacy or nonisolated routes, even if an o
   const req=(url,method='GET',body='')=>({nextUrl:new URL('https://fixture.invalid'+url),method,clone:()=>({text:async()=>body})});
   const valid=stagingMiddleware(env);
   assert.equal((await valid(req('/api/field-sales'))).status,200);
+  assert.equal((await valid(req('/api/field-sales-offers?leadId=fixture'))).status,200);
+  assert.equal((await valid(req('/api/field-sales-offers','POST','{"action":"save"}'))).status,200);
   assert.equal((await valid(req('/api/forecast'))).status,200);
   assert.equal((await valid(req('/api/forecast','POST','{"action":"interpret"}'))).status,200);
   assert.equal((await valid(req('/api/v1?action=dashboardLogin','POST','{}'))).status,200);
@@ -46,6 +48,7 @@ test('prepared middleware never opens legacy or nonisolated routes, even if an o
   for(const override of [{H2S_STAGING_SANDBOX_RUN_ID:''},{VERCEL_ENV:'production'},{H2S_FIELD_STRIPE_MODE:'live'},
     {H2S_FIELD_STRIPE_LIVE_ENABLED:'true'},{H2S_STAGING_DATABASE_SCHEMA:'public'}]){
     assert.equal((await stagingMiddleware({...env,...override})(req('/api/field-sales'))).status,503);
+    assert.equal((await stagingMiddleware({...env,...override})(req('/api/field-sales-offers'))).status,503);
     assert.equal((await stagingMiddleware({...env,...override})(req('/api/forecast'))).status,503);
   }
 });
@@ -88,7 +91,8 @@ test('only runtime authorities and assets are eligible, never maintenance script
   for (const file of ['backend/app/api/field-sales/route.ts', 'backend/lib/fieldSales.ts',
     'backend/schema.prisma', 'backend/tools/package-portal.cjs', 'backend/tools/package-forecast-policy.cjs',
     'config/pricing/home2smart.v2.json', 'config/pricing/reconciliation/source/Home2Smart_Complete_Service_Pricing.pdf',
-    'config/pricing/forecast-business.v1.json', 'frontend/field-sales.js', 'portal.html']) {
+    'config/pricing/forecast-business.v1.json', 'config/pricing/field-offer-knowledge.v1.json',
+    'backend/app/api/field-sales-offers/route.ts', 'frontend/field-offers.js', 'frontend/field-offers.css', 'frontend/field-sales.js', 'portal.html']) {
     assert.equal(isRuntimeFile(file.split('/').join(path.sep)), true, file);
   }
   for (const file of ['backend/force-fix-data.js', 'backend/tests/fixture.cjs', 'backend/scripts/migrate.js',

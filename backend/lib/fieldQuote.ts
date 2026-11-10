@@ -2,15 +2,20 @@ import { BusinessError } from '@/lib/commercial_business';
 
 export type QuoteQuestion = { id: string; label: string; type: 'text' | 'number' | 'select'; required: boolean;
   min?: number; max?: number; options?: string[] };
-export type QuoteOption = { id: string; label: string; amountCents: number; perUnit: boolean; equipment: string[]; replacesEquipment?: string[] };
+export type QuoteOption = { id: string; label: string; amountCents: number; perUnit: boolean; equipment: string[]; replacesEquipment?: string[];
+  guidance?: { mountStyle: 'tilt' | 'full_motion'; equipmentId: string } };
 export type QuoteCompletionRequirement = { id: string; label: string; type: 'photo' | 'signature' | 'checklist'; minimumCount: number };
+export type QuoteGuidance = { kind: 'tv' | 'camera'; ownership: 'supplied' | 'customer';
+  mountStyle?: 'fixed' | 'tilt' | 'full_motion'; equipmentId?: string };
+export type TvMarginalDiscounts = { basis: 'highest_base_price_first_marginal'; percentsByPosition: [0, 10, 15]; eligibleOfferIds: string[] };
 export const FIELD_COMPLETION_PROOF_MAX_BYTES = 4456448;
 export type QuoteOffer = { id: string; label: string; enabled: boolean; unitCents: number | null; basis: 'per_unit' | 'package';
   minimum: number; maximum: number; starting: boolean; equipment: string[]; scope: string[]; exclusions: string[];
-  questions: QuoteQuestion[]; options: QuoteOption[]; qualifications: { question: string; allowed: (string | number)[]; reason: string }[] };
+  questions: QuoteQuestion[]; options: QuoteOption[]; qualifications: { question: string; allowed: (string | number)[]; reason: string }[];
+  guidance?: QuoteGuidance };
 export type QuoteCatalog = { catalog_id: string; version: string; status: 'draft' | 'published' | 'retired' | 'staging_only'; digest: string;
   definition: { currency: 'usd'; validForMinutes: number | null; services: { id: string; label: string; markets: string[];
-    offers: QuoteOffer[]; completionRequirements?: QuoteCompletionRequirement[] }[] } };
+    offers: QuoteOffer[]; completionRequirements?: QuoteCompletionRequirement[]; tvMarginalDiscounts?: TvMarginalDiscounts }[] } };
 const slug = /^[a-z][a-z0-9_-]{0,79}$/;
 const money = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 100000000;
 const label = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0 && value.length <= 2000;
@@ -46,11 +51,30 @@ export function validateQuoteCatalog(catalog: QuoteCatalog): QuoteCatalog {
           || (q.type === 'select' && (!strings(q.options) || !q.options.length))
           || (q.type === 'number' && ((q.min !== undefined && !Number.isFinite(q.min)) || (q.max !== undefined && !Number.isFinite(q.max)) || (q.min ?? 0) > (q.max ?? 100000))))
         || o.options.some(option => !option || !label(option.label) || !money(option.amountCents) || typeof option.perUnit !== 'boolean' || !strings(option.equipment)
-          || (option.replacesEquipment !== undefined && (!strings(option.replacesEquipment) || option.replacesEquipment.some(item => !o.equipment.includes(item)))))
+          || (option.replacesEquipment !== undefined && (!strings(option.replacesEquipment) || option.replacesEquipment.some(item => !o.equipment.includes(item))))
+          || (option.guidance !== undefined && (!option.guidance || !['tilt','full_motion'].includes(option.guidance.mountStyle)
+            || !slug.test(option.guidance.equipmentId) || Object.keys(option.guidance).some(key => !['mountStyle','equipmentId'].includes(key)))))
         || o.qualifications.some(rule => !rule || !o.questions.some(q => q.id === rule.question) || !Array.isArray(rule.allowed)
           || !rule.allowed.length || rule.allowed.some(v => typeof v !== 'string' && (typeof v !== 'number' || !Number.isFinite(v))) || !label(rule.reason))) {
         throw new BusinessError('Offer, equipment or qualification configuration is invalid.', 503);
       }
+      if (o.guidance !== undefined && (!o.guidance || !['tv','camera'].includes(o.guidance.kind)
+        || !['supplied','customer'].includes(o.guidance.ownership)
+        || (o.guidance.mountStyle !== undefined && !['fixed','tilt','full_motion'].includes(o.guidance.mountStyle))
+        || (o.guidance.equipmentId !== undefined && !slug.test(o.guidance.equipmentId))
+        || Object.keys(o.guidance).some(key => !['kind','ownership','mountStyle','equipmentId'].includes(key)))) {
+        throw new BusinessError('Offer knowledge linkage requires management review.', 503);
+      }
+    }
+    const discounts = service.tvMarginalDiscounts;
+    if (discounts !== undefined && (!discounts || service.id !== 'tv_mounting'
+      || service.markets.length !== 1 || service.markets[0] !== 'residential'
+      || discounts.basis !== 'highest_base_price_first_marginal'
+      || JSON.stringify(discounts.percentsByPosition) !== '[0,10,15]'
+      || !Array.isArray(discounts.eligibleOfferIds) || !discounts.eligibleOfferIds.length || !unique(discounts.eligibleOfferIds)
+      || discounts.eligibleOfferIds.some(id => !service.offers.some(offer => offer.id === id && offer.basis === 'per_unit' && !offer.starting && offer.unitCents !== null))
+      || Object.keys(discounts).some(key => !['basis','percentsByPosition','eligibleOfferIds'].includes(key)))) {
+      throw new BusinessError('Residential marginal TV discount configuration requires management review.', 503);
     }
   }
   return catalog;
@@ -106,6 +130,32 @@ export function calculateFieldQuote(catalog: QuoteCatalog, input: unknown, marke
       scope: offer.scope, exclusions: offer.exclusions, starting: offer.starting,
       ...(service.completionRequirements !== undefined
         ? { completionRequirements: service.completionRequirements.map(requirement => ({ ...requirement })) } : {}) });
+  }
+  for (const service of catalog.definition.services) {
+    const policy = service.tvMarginalDiscounts;
+    if (!policy || market !== 'residential') continue;
+    const selected = lines.filter(line => line.serviceId === service.id);
+    if (selected.reduce((count,line) => count+Number(line.quantity),0)>3) {
+      unpriced = true;
+      approvalReasons.push('TV quantities or offers outside the configured marginal discount schedule require a custom quote.');
+      continue;
+    }
+    const units = selected.flatMap((line, index) => Array.from({ length: Number(line.quantity) }, () => ({
+      index, baseCents: Number(line.baseCents) / Number(line.quantity), offerId: String(line.offerId)
+    })));
+    if (units.length > 3 || units.some(unit => !policy.eligibleOfferIds.includes(unit.offerId))) {
+      unpriced = true;
+      approvalReasons.push('TV quantities or offers outside the configured marginal discount schedule require a custom quote.');
+      continue;
+    }
+    units.sort((a, b) => b.baseCents - a.baseCents || a.index - b.index);
+    for (const [position, unit] of units.entries()) {
+      const discount = Math.round(unit.baseCents * policy.percentsByPosition[position] / 100);
+      const line = selected[unit.index];
+      line.discountCents = Number(line.discountCents ?? 0) + discount;
+      line.totalCents = Number(line.totalCents) - discount;
+      total -= discount;
+    }
   }
   const bindings: { serviceId: string; requirementId: string; artifactIds: string[] }[] = [];
   const checklists: { serviceId: string; requirementId: string; affirmed: boolean; evidence: { reference: string } }[] = [];

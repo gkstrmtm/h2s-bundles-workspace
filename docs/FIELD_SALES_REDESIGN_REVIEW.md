@@ -1,5 +1,88 @@
 # Field Sales interface review
 
+## Guided homeowner offer assistant
+
+The existing residential opportunity detail now includes **Find the Right Offer**
+and a searchable product reference. Discovery is distinct from the existing
+service assessment, management approval, signed agreement, payment and installation
+evidence. Use **Review full service assessment** to complete the original review
+requirements; discovery does not replace them or alter an accepted contract.
+
+- `GET /api/field-sales-offers?leadId=<owned opportunity>` returns the exact saved
+  discovery, its last ten immutable revisions, current quoting catalogs, controlled
+  knowledge, accepted-contract lock and catalog/knowledge-change indicator.
+- `POST` actions are `save`, `quote`, `knowledge` and optional `ask`. Saves require
+  the expected discovery revision, current knowledge hash and selected catalog
+  digest. Quote creation accepts no client totals, prices, lines or equipment.
+  It recomputes the saved discovery with `calculateFieldQuote`, then atomically
+  creates an ordinary draft using the existing transaction command.
+- Reviewed additive migration `058_field_sales_offer_assistant.sql` adds
+  append-only opportunity-scoped revisions and reference usage accounting.
+  Anonymous/authenticated direct table and function access is revoked. The existing
+  authenticated application and SQL ownership checks remain required. Retarget
+  and apply only to the verified owned staging namespace; do not apply to
+  production without separate approval. Existing quotes, accounts, financial
+  settings and signed SC/NC document evidence are not rewritten.
+- Product facts remain in `equipment.v1.json` and `residential-cameras.v1.json`.
+  `field-offer-knowledge.v1.json` supplies versioned FAQs and explicit legacy
+  scope bindings. Shared camera qualification and preference helpers are reused;
+  the older offline camera price/commission calculator is **not** used for quotes.
+  The saved recommendation retains selected equipment IDs, names and a controlled
+  product-facts snapshot. Supplier check dates are historical, not live verification.
+- A reviewed future catalog can attach offer `guidance`:
+  `{"kind":"tv","ownership":"supplied","mountStyle":"fixed","equipmentId":"onn_fixed_32_86"}`
+  or `{"kind":"camera","ownership":"supplied","equipmentId":"eufy_solocam_s220"}`.
+  Customer-owned scope uses `ownership:"customer"`. A configured TV upgrade option
+  can attach `guidance` with `mountStyle` and exact `equipmentId`. Generic
+  equipment-included packages and mount labels never identify a particular SKU.
+- Marginal TV discounts are an optional **catalog-owned** rule, not an assistant
+  calculator or automatic pricing change. A residential-only `tv_mounting` service
+  can explicitly define
+  `{"tvMarginalDiscounts":{"basis":"highest_base_price_first_marginal","percentsByPosition":[0,10,15],"eligibleOfferIds":["reviewed-offer-id"]}}`.
+  The existing quote calculator sorts eligible TVs by descending base price and
+  rounds each unit's discount to cents. Upgrades are unchanged; unsupported offers
+  or four-plus quantities require a custom quote. No existing catalog was
+  published, annotated or repriced by this implementation.
+- Private staging preparation includes this endpoint only inside the existing
+  verified synthetic namespace/test-mode middleware gate. Application sign-in
+  and opportunity ownership remain required; legacy routes stay quarantined.
+- Drafts never produce a verified customer price. Staging estimates are explicitly
+  synthetic. V2 and historical $199/$499/$749/$999 examples do not establish the
+  current published quote price. Missing facts, solar exposure, power, recording
+  media, hub/firmware compatibility, exact SKUs and unsupported quantities stay
+  unresolved and prevent assistant quote creation.
+- `H2S_FIELD_OFFER_AI_ENABLED=true` optionally uses the **existing**
+  `OPENAI_API_KEY`; it is off by default. No new key is required. AI can only
+  select up to three existing reference IDs; the server returns controlled text,
+  never generated product facts or prices. Only recognized product vocabulary and
+  selected equipment IDs are sent, not raw questions, customer records or
+  discovery room labels. Chat is not retained. SQL limits AI attempts to ten per
+  actor per fifteen minutes and all reference events to thirty. Provider calls
+  have a ten-second timeout, no retries and bounded output; failures are explicit
+  and leave saved discovery and product reference usable.
+- Existing audit history includes `offer.started`, `offer.progress`,
+  `offer.recommended`, `offer.quote`, `offer.knowledge` and `offer.ask`. Management
+  can inspect the same saved discovery and revision history on the existing lead.
+  Started discovery with no recommendation indicates incomplete work, not proof
+  of abandonment. No automatic transfers, compensation changes or new enrollment.
+
+Focused verification commands:
+
+```powershell
+Set-Location backend
+node --test tests\field_offer_assistant.test.cjs tests\field_offer_ui.test.cjs tests\field_sales_ui.test.cjs tests\sales_app_ui.test.cjs tests\field_workflow_scheduling.test.cjs
+node --test tests\field_commerce.test.cjs tests\field_commerce_ui.test.cjs tests\staging_sandbox.test.cjs tests\staging_sql_namespace.test.cjs tests\staging_sandbox_client.test.cjs
+node --test ..\config\pricing\tests\recommendations.test.cjs
+node --test ..\tests\private-staging.test.cjs
+.\node_modules\.bin\tsc.cmd --noEmit --incremental false
+.\node_modules\.bin\next.cmd build
+```
+
+Browser verification uses actual frontend modules and authenticated API handlers
+against an isolated synthetic local PostgreSQL fixture, not live payments or a
+live AI connection. Production publication and optional AI activation remain
+separate management actions.
+
 ## Approved visual direction implementation
 
 Implemented on `retro-dev`, continuing from

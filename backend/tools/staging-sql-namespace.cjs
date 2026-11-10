@@ -27,6 +27,7 @@ const SOURCES = new Set([
   '050_field_sales_credentials.sql',
   '051_field_sales_company_installation.sql',
   '052_shared_dispatch_installation.sql',
+  '058_field_sales_offer_assistant.sql',
 ]);
 
 function fail(message) {
